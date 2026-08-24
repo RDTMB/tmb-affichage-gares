@@ -43,8 +43,9 @@ export interface DataProvider {
 create table jours (
   date date primary key,
   grille_version text not null,                 -- ex : 2026-ete-grand-service
-  terminus_bellevue boolean not null default false,
-  terminus_a_partir_de time,                    -- null = journée entière
+  terminus_bellevue_a_partir_du_train int,      -- bascule PAR ROTATION (docs/01 §2.3) :
+                                                -- numéro de MONTÉE (impair, pair normalisé N−1) ;
+                                                -- null = pas de bascule ; 1 = journée entière (hiver)
   genere_le timestamptz default now()
 );
 
@@ -59,7 +60,10 @@ create table circulations (
   velos boolean not null default false,
   rame text not null,             -- portée par la MONTÉE ; la descente appariée (numero+1) hérite
   terminus text not null default 'nid-daigle' check (terminus in ('nid-daigle','bellevue')),
-                                  -- montées non express uniquement ; descente appariée : départ de Bellevue
+                                  -- porté par la MONTÉE : UNIQUE source de vérité pour l'affichage
+                                  -- (pré-rempli par la bascule, prioritaire et ajustable) ;
+                                  -- descente appariée : départ de Bellevue ; montée express :
+                                  -- jamais tronquée, signalée « à traiter » (docs/01 §2.2)
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,
@@ -146,15 +150,19 @@ create table publications (
 Entrées : grille active (JSON), jour (circulations + terminus), gare, heure
 injectée. Fonctions : `serviceActif(date)`, `passagesPourGare`,
 `prochaineArrivee`, `compteARebours`, `finDeService` (lit la grille du
-lendemain), `positionsTrains`, `appliqueTerminusBellevue`,
-`generationJour(grille,date)`.
+lendemain), `positionsTrains`, `appliqueTerminusBellevue` (« à partir du
+TRAIN N », docs/01 §2.3), `expressATraiter`, `generationJour(grille,date)`.
 
 Tests Vitest exigés : passages réels (T9 express absent à Voza/Bellevue,
 présent à Motivon 10:57), arrivée = départ − 60 s et « — » à l'origine,
 facultatif masqué/affiché selon `facultatif_actif`, retard décalant tous
-les passages, suppression visible puis retirée, terminus Bellevue (montées
-tronquées, descentes depuis Bellevue, express retirés, état Nid d'Aigle,
-variante `a_partir_de`), rotation rame montée n → descente n+1, fin de
+les passages, suppression visible puis retirée, terminus Bellevue PAR
+ROTATION (« à partir du T19 » : rotations ≥ 19 limitées — montées tronquées,
+descentes appariées depuis Bellevue — T15/T16 et T17/T18 strictement
+normaux ; « à partir du T1 » = journée entière ; express de la plage
+signalé « à traiter », jamais tronqué, sa descente non express partant de
+Bellevue ; numéro PAIR normalisé vers N−1 ; état « tronçon fermé » du Nid
+d'Aigle), rotation rame montée n → descente n+1, fin de
 service, passage de minuit, tri multi-sens.
 
 ## 4. Front écrans
@@ -184,6 +192,14 @@ service, passage de minuit, tri multi-sens.
 - Cohérence des rotations : la rame est stockée sur la montée ; à la
   lecture, la descente n+1 affiche la rame de la montée n (jointure) ; un
   trigger SQL maintient `rame` de la descente synchronisée pour les exports.
+- Suppression et rotations (outillage à l'étape 6, aucun impact moteur en
+  étape 1) : la suppression d'une MONTÉE propose la suppression de sa
+  descente appariée — proposition par défaut Oui, dérogeable par la
+  supervision (la descente peut être maintenue, ex. avec une rame de
+  remplacement). Express « à traiter » (bascule Terminus Bellevue,
+  docs/01 §2.2–§2.3) : requalification manuelle en omnibus limité à
+  Bellevue → sa descente appariée part de Bellevue ; suppression → même
+  proposition de suppression de la descente appariée.
 - **Traduction automatique des messages** : à la saisie du FR (ou si EN
   vide à l'enregistrement), appel au service de traduction — phase 1 : API
   DeepL Free (500 000 caractères/mois, clé stockée en secret de dépôt,

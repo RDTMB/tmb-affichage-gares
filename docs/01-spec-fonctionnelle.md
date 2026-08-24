@@ -183,7 +183,13 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    bascule affiche « à traiter » au lieu du sélecteur), interrupteur Activé/Non activé pour les facultatifs
    (ligne grisée + « ne circule pas — absent des écrans »), statut 3
    boutons, pas de retard ±5 min (min 5), motif ; confirmation avant
-   suppression ; « Générer depuis la grille » (n'écrase pas les lignes déjà
+   suppression — **la suppression d'une MONTÉE propose aussi la suppression
+   de sa descente appariée** (proposition par défaut : Oui, dérogeable par
+   la supervision, ex. rame de remplacement) ; pour un express
+   « à traiter » : requalification en omnibus limité à Bellevue (sa
+   descente part alors de Bellevue) ou suppression (avec la même
+   proposition pour la descente appariée) — outillage à l'étape 6 ;
+   « Générer depuis la grille » (n'écrase pas les lignes déjà
    modifiées, confirmation) ; export CSV.
 2. **Messages** : liste + formulaire (FR requis ; EN **généré
    automatiquement à la saisie** puis modifiable ; cible toutes/gares/
