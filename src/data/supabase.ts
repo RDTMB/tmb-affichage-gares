@@ -34,6 +34,22 @@ function verifie(erreur: { message: string } | null): void {
   if (erreur) throw new Error(erreur.message);
 }
 
+/**
+ * Échec BRUYANT d'une écriture sans effet : PostgREST répond « succès » avec
+ * 0 ligne quand la cible n'existe pas (ou que RLS filtre l'update) — sans ce
+ * garde-fou, la supervision affichait un faux toast de succès (bug exploitant
+ * du 25/08/2026). À utiliser avec `.select()` sur chaque update/upsert.
+ */
+export function exigeLignes(
+  resultat: { data: unknown[] | null; error: { message: string } | null },
+  contexte: string,
+): void {
+  if (resultat.error) throw new Error(resultat.error.message);
+  if (!resultat.data || resultat.data.length === 0) {
+    throw new Error(`Modification non enregistrée — ${contexte}`);
+  }
+}
+
 export class SupabaseProvider implements DataProvider {
   private readonly client: SupabaseClient;
   private grilles: Promise<Grille[]> | null = null;
@@ -73,12 +89,13 @@ export class SupabaseProvider implements DataProvider {
     const circulations = (circRes.data ?? []) as Circulation[];
 
     if (!ligne || circulations.length === 0) {
-      // Jour pas encore généré en supervision : les écrans affichent la
-      // marche théorique par défaut (rien n'est écrit en base ici).
+      // Jour pas encore généré : aperçu théorique à la volée (rien n'est
+      // écrit en base ici — la première écriture l'enregistrera).
       const grille = serviceActif(grilles, date) ?? grilles[0];
       if (!grille) throw new Error('Aucune grille disponible');
       const defaut = generationJour(grille, date);
       if (ligne) defaut.terminus_bellevue = versFlag(ligne);
+      defaut.enregistre = false;
       return defaut;
     }
     return {
@@ -86,7 +103,27 @@ export class SupabaseProvider implements DataProvider {
       grille_version: ligne.grille_version,
       terminus_bellevue: versFlag(ligne),
       circulations,
+      enregistre: true,
     };
+  }
+
+  /**
+   * Toute écriture liée à une date crée d'abord la journée si elle n'existe
+   * pas encore (idempotent, n'écrase rien) : l'exploitant n'a jamais à
+   * cliquer « Générer depuis la grille » pour que ses modifications tiennent.
+   */
+  private readonly joursAssures = new Set<string>();
+
+  private async assureJour(date: string): Promise<void> {
+    if (this.joursAssures.has(date)) return;
+    const { data, error } = await this.client
+      .from('jours')
+      .select('date')
+      .eq('date', date)
+      .maybeSingle();
+    verifie(error);
+    if (!data) await this.genererJour(date);
+    this.joursAssures.add(date);
   }
 
   async getMessages(): Promise<Message[]> {
@@ -226,20 +263,24 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async saveCirculation(c: Circulation): Promise<void> {
-    const { error } = await this.client
+    await this.assureJour(c.date);
+    const resultat = await this.client
       .from('circulations')
-      .upsert(c, { onConflict: 'date,numero' });
-    verifie(error);
+      .upsert(c, { onConflict: 'date,numero' })
+      .select();
+    exigeLignes(resultat, 'journée absente en base');
   }
 
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
-    const { error } = await this.client
+    await this.assureJour(date);
+    const resultat = await this.client
       .from('jours')
       .update({
         terminus_bellevue_a_partir_du_train: v === false ? null : v.a_partir_du_train,
       })
-      .eq('date', date);
-    verifie(error);
+      .eq('date', date)
+      .select();
+    exigeLignes(resultat, 'journée absente en base');
     if (v !== false) {
       // Pré-remplissage de la colonne Terminus des rotations concernées
       // (docs/01 §2.3) — la colonne reste ajustable ensuite.
@@ -249,17 +290,18 @@ export class SupabaseProvider implements DataProvider {
         .update({ terminus: 'bellevue' })
         .eq('date', date)
         .eq('sens', 'montee')
-        .gte('numero', Math.max(1, seuil));
-      verifie(maj.error);
+        .gte('numero', Math.max(1, seuil))
+        .select();
+      exigeLignes(maj, 'journée absente en base');
     }
   }
 
   async saveMessage(m: Message): Promise<void> {
     const { id, ...reste } = m;
-    const { error } = id
-      ? await this.client.from('messages').update(reste).eq('id', id)
-      : await this.client.from('messages').insert(reste);
-    verifie(error);
+    const resultat = id
+      ? await this.client.from('messages').update(reste).eq('id', id).select()
+      : await this.client.from('messages').insert(reste).select();
+    exigeLignes(resultat, 'message introuvable ou écriture refusée');
   }
 
   async deleteMessage(id: string): Promise<void> {
@@ -276,8 +318,8 @@ export class SupabaseProvider implements DataProvider {
 
   async saveMedia(m: Media): Promise<void> {
     const { id, url: _url, ...reste } = m;
-    const { error } = await this.client.from('medias').update(reste).eq('id', id);
-    verifie(error);
+    const resultat = await this.client.from('medias').update(reste).eq('id', id).select();
+    exigeLignes(resultat, 'média introuvable ou écriture refusée');
   }
 
   async deleteMedia(id: string): Promise<void> {
@@ -292,12 +334,18 @@ export class SupabaseProvider implements DataProvider {
       ([cle]) => !['machines', 'motifs'].includes(cle), // tables dédiées
     );
     for (const [cle, valeur] of entrees) {
-      verifie((await this.client.from('params').upsert({ cle, valeur })).error);
+      exigeLignes(
+        await this.client.from('params').upsert({ cle, valeur }).select(),
+        `paramètre ${cle} refusé (droits insuffisants ?)`,
+      );
     }
   }
 
   async saveMachine(m: Machine): Promise<void> {
-    verifie((await this.client.from('machines').upsert(m)).error);
+    exigeLignes(
+      await this.client.from('machines').upsert(m).select(),
+      'machine refusée (droits insuffisants ?)',
+    );
   }
 
   async deleteMachine(nom: string): Promise<void> {
@@ -305,7 +353,10 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async saveMotif(m: Motif): Promise<void> {
-    verifie((await this.client.from('motifs').upsert(m)).error);
+    exigeLignes(
+      await this.client.from('motifs').upsert(m).select(),
+      'motif refusé (droits insuffisants ?)',
+    );
   }
 
   async deleteMotif(fr: string): Promise<void> {
@@ -319,13 +370,13 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async saveUser(u: User): Promise<void> {
-    verifie(
-      (
-        await this.client
-          .from('profils')
-          .update({ nom: u.nom, role: u.role, actif: u.actif })
-          .eq('user_id', u.user_id)
-      ).error,
+    exigeLignes(
+      await this.client
+        .from('profils')
+        .update({ nom: u.nom, role: u.role, actif: u.actif })
+        .eq('user_id', u.user_id)
+        .select(),
+      'profil introuvable ou écriture refusée',
     );
   }
 
@@ -372,7 +423,10 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async demanderRechargement(id: string): Promise<void> {
-    verifie((await this.client.from('ecrans').update({ recharger: true }).eq('id', id)).error);
+    exigeLignes(
+      await this.client.from('ecrans').update({ recharger: true }).eq('id', id).select(),
+      'écran inconnu',
+    );
   }
 }
 

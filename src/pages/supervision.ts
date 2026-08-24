@@ -286,6 +286,9 @@ function rendreCirculations(): void {
   $('sous-titre-jour').textContent = `du ${dateAffichee}`;
   $('chip-auj').classList.toggle('on', dateSel === dateISO(0));
   $('chip-dem').classList.toggle('on', dateSel === dateISO(1));
+  // Journée pas encore enregistrée : bandeau discret (la première
+  // modification l'enregistre automatiquement — assureJour côté provider)
+  $('bandeau-apercu').style.display = jour.enregistre === false ? '' : 'none';
 
   const service = serviceActif(grilles, dateSel);
   $('service-tag').textContent = service

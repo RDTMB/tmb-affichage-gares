@@ -187,6 +187,7 @@ export class MockProvider implements DataProvider {
 
     // Modifications de supervision (prioritaires sur la démo)
     const etatJour = litEtat().jours[date];
+    jour.enregistre = etatJour !== undefined; // false = aperçu théorique
     if (etatJour) {
       for (const c of jour.circulations) {
         const modif = etatJour.circulations[String(c.numero)];

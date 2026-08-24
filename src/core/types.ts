@@ -112,6 +112,11 @@ export interface Jour {
   grille_version: string;
   terminus_bellevue: TerminusFlag;
   circulations: Circulation[];
+  /**
+   * false = journée pas encore enregistrée côté données (aperçu théorique
+   * généré à la volée) ; la première écriture l'enregistre automatiquement.
+   */
+  enregistre?: boolean;
 }
 
 // ---------------------------------------------------------------------------
