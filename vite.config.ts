@@ -17,6 +17,7 @@ export default defineConfig({
     __LOGO_ROND__: logoDataUri('logo-rond.svg'),
     __LOGO_ROND_BLANC__: logoDataUri('logo-rond-blanc.svg'),
     __MOTRICE_BLANC__: logoDataUri('motrice-direct_blanc_FFFFFF.svg'),
+    __MOTRICE_MARINE__: logoDataUri('motrice-direct_marine_213B57.svg'),
   },
   build: {
     rollupOptions: {

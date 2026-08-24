@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@fontsource/amaranth": "^5.2.5",
-    "@fontsource/lato": "^5.2.5"
+    "@fontsource/lato": "^5.2.5",
+    "@supabase/supabase-js": "^2.112.4"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

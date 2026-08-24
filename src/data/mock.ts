@@ -1,15 +1,39 @@
-// DataProvider factice (étape 2) : rejoue la grille active avec l'état du
-// jour de la maquette validée — facultatifs 3/4/9/10/17/18 activés, retard
-// +10 min (Météo) sur le TRAIN 11, descente 16 supprimée (Météo).
-// Paramètre d'URL de démo : ?terminus=N applique la bascule Terminus
-// Bellevue « à partir du TRAIN N » (1 = journée entière).
+// DataProvider factice — démo complète SANS Supabase : l'état d'exploitation
+// (circulations modifiées, terminus, messages, paramètres, médias, écrans)
+// vit dans localStorage et se propage entre onglets (événement `storage`) :
+// une modification en supervision mock apparaît sur les écrans mock < 2 s.
+// Démo par défaut (maquette validée) : facultatifs 3/4/9/10/17/18 activés,
+// retard +10 min (Météo) sur le TRAIN 11, descente 16 supprimée (Météo).
+// Paramètre d'URL écran : ?terminus=N (bascule « à partir du TRAIN N »).
+// Connexion mock : le début de l'email fixe le rôle (admin… → admin,
+// caisse… → caisse, sinon supervision) ; mot de passe libre.
 import { appliqueTerminusBellevue, generationJour, serviceActif } from '../core/horaires';
-import type { Grille, Jour, Media, Message, Params, Session, User } from '../core/types';
+import type {
+  Circulation,
+  EcranInfo,
+  GareId,
+  Grille,
+  Jour,
+  Machine,
+  Media,
+  Message,
+  MediaMeta,
+  Motif,
+  Params,
+  Role,
+  Session,
+  TerminusFlag,
+  User,
+} from '../core/types';
 import type { DataProvider } from './provider';
+
+const CLE_ETAT = 'tmb-mock-etat';
+const CLE_SESSION = 'tmb-mock-session';
+const EVENEMENT_LOCAL = 'tmb-mock-change';
 
 const FACULTATIFS_ACTIVES = [3, 4, 9, 10, 17, 18];
 
-const MESSAGES: Message[] = [
+const MESSAGES_DEMO: Message[] = [
   {
     id: 'demo-1',
     texte_fr: 'Réservation obligatoire pour tous les trajets — pensez à réserver votre descente.',
@@ -36,7 +60,7 @@ const MESSAGES: Message[] = [
   },
 ];
 
-const PARAMS: Params = {
+const PARAMS_DEMO: Params = {
   meteo_sommet: { t: 9, ciel_fr: 'Dégagé', ciel_en: 'Clear' },
   veille_nuit: { debut: '21:00', fin: '06:00' },
   duree_horaires_s: 20,
@@ -56,13 +80,70 @@ const PARAMS: Params = {
   ],
 };
 
-export interface OptionsMock {
-  /** Bascule Terminus Bellevue « à partir du TRAIN N » appliquée au jour. */
-  terminusAPartirDuTrain?: number;
+const UTILISATEURS_DEMO: User[] = [
+  { user_id: 'demo-admin', nom: 'Thomas (démo)', email: 'admin@demo', role: 'admin', actif: true },
+  {
+    user_id: 'demo-sup',
+    nom: 'Supervision (démo)',
+    email: 'supervision@demo',
+    role: 'supervision',
+    actif: true,
+  },
+  {
+    user_id: 'demo-caisse',
+    nom: 'Caisse (démo)',
+    email: 'caisse@demo',
+    role: 'caisse',
+    actif: true,
+  },
+];
+
+/** État persistant partagé entre onglets. */
+interface EtatMock {
+  jours: Record<
+    string,
+    { terminus: number | null; circulations: Record<string, Partial<Circulation>> }
+  >;
+  messages: Message[] | null; // null = messages de démo
+  paramsSimples: Partial<
+    Pick<Params, 'meteo_sommet' | 'veille_nuit' | 'duree_horaires_s' | 'duree_cache_min'>
+  > | null;
+  machines: Machine[] | null;
+  motifs: Motif[] | null;
+  medias: Media[];
+  ecrans: Record<string, EcranInfo & { recharger?: boolean }>;
+  publications: { quand: string; qui: string; resume: string }[];
+  utilisateurs: User[] | null;
 }
 
-function indisponible(): never {
-  throw new Error('Fonction de supervision indisponible en mode mock (étape 5+).');
+function litEtat(): EtatMock {
+  try {
+    const brut = localStorage.getItem(CLE_ETAT);
+    if (brut) return JSON.parse(brut) as EtatMock;
+  } catch {
+    // état corrompu : on repart de la démo
+  }
+  return {
+    jours: {},
+    messages: null,
+    paramsSimples: null,
+    machines: null,
+    motifs: null,
+    medias: [],
+    ecrans: {},
+    publications: [],
+    utilisateurs: null,
+  };
+}
+
+function ecritEtat(etat: EtatMock): void {
+  localStorage.setItem(CLE_ETAT, JSON.stringify(etat));
+  window.dispatchEvent(new Event(EVENEMENT_LOCAL)); // même onglet ; autres onglets : `storage`
+}
+
+export interface OptionsMock {
+  /** Bascule Terminus Bellevue « à partir du TRAIN N » appliquée à l'affichage (démo écrans). */
+  terminusAPartirDuTrain?: number;
 }
 
 export class MockProvider implements DataProvider {
@@ -71,25 +152,30 @@ export class MockProvider implements DataProvider {
   constructor(private readonly options: OptionsMock = {}) {}
 
   getGrilles(): Promise<Grille[]> {
-    // Les grilles officielles restent des fichiers versionnés servis par
-    // l'application elle-même : aucune requête externe.
+    // `no-store` : la sonde traverse le service worker et détecte la coupure
+    // réseau (mode dégradé) ; les données restent servies par le snapshot.
     this.grilles ??= Promise.all(
       ['2026-ete-grand-service', '2026-ete-petit-service'].map(async (nom) => {
-        const reponse = await fetch(`/grilles/${nom}.json`);
+        const reponse = await fetch(`${import.meta.env.BASE_URL}grilles/${nom}.json`, {
+          cache: 'no-store',
+        });
         if (!reponse.ok) throw new Error(`Grille ${nom} introuvable (${reponse.status})`);
         return (await reponse.json()) as Grille;
       }),
-    );
+    ).catch((erreur: unknown) => {
+      this.grilles = null; // nouvelle tentative à la prochaine synchro
+      throw erreur;
+    });
     return this.grilles;
   }
 
   async getJour(date: string): Promise<Jour> {
     const grilles = await this.getGrilles();
-    // Hors saison, la démo rejoue le grand service pour rester utilisable.
-    const grille = serviceActif(grilles, date) ?? grilles[0];
+    const grille = serviceActif(grilles, date) ?? grilles[0]; // démo : grand service hors saison
     if (!grille) throw new Error('Aucune grille disponible');
 
-    let jour = generationJour(grille, date);
+    const jour = generationJour(grille, date);
+    // Perturbations de démonstration (état du jour de la maquette validée)
     for (const numero of FACULTATIFS_ACTIVES) {
       const c = jour.circulations.find((x) => x.numero === numero);
       if (c) c.facultatif_actif = true;
@@ -99,83 +185,248 @@ export class MockProvider implements DataProvider {
     const t16 = jour.circulations.find((x) => x.numero === 16);
     if (t16) Object.assign(t16, { statut: 'supprime', motif: 'Météo' });
 
+    // Modifications de supervision (prioritaires sur la démo)
+    const etatJour = litEtat().jours[date];
+    if (etatJour) {
+      for (const c of jour.circulations) {
+        const modif = etatJour.circulations[String(c.numero)];
+        if (modif) Object.assign(c, modif);
+      }
+      jour.terminus_bellevue =
+        etatJour.terminus === null ? false : { a_partir_du_train: etatJour.terminus };
+    }
+
     if (this.options.terminusAPartirDuTrain !== undefined) {
-      jour = appliqueTerminusBellevue(grille, jour, this.options.terminusAPartirDuTrain).jour;
+      return appliqueTerminusBellevue(grille, jour, this.options.terminusAPartirDuTrain).jour;
     }
     return jour;
   }
 
   async getMessages(): Promise<Message[]> {
-    return MESSAGES;
+    return litEtat().messages ?? MESSAGES_DEMO;
   }
 
-  async getMedias(): Promise<Media[]> {
-    return [];
+  async getMedias(gare: GareId): Promise<Media[]> {
+    return litEtat().medias.filter((m) => m.actif && (!m.gares || m.gares.includes(gare)));
   }
 
   async getParams(): Promise<Params> {
-    return PARAMS;
+    const etat = litEtat();
+    return {
+      ...PARAMS_DEMO,
+      ...etat.paramsSimples,
+      machines: etat.machines ?? PARAMS_DEMO.machines,
+      motifs: etat.motifs ?? PARAMS_DEMO.motifs,
+    };
   }
 
-  onChange(): () => void {
-    return () => {}; // pas de temps réel en mode mock
+  onChange(cb: () => void): () => void {
+    const surStorage = (e: StorageEvent): void => {
+      if (e.key === CLE_ETAT) cb();
+    };
+    const surLocal = (): void => cb();
+    window.addEventListener('storage', surStorage);
+    window.addEventListener(EVENEMENT_LOCAL, surLocal);
+    return () => {
+      window.removeEventListener('storage', surStorage);
+      window.removeEventListener(EVENEMENT_LOCAL, surLocal);
+    };
   }
 
-  async heartbeat(): Promise<void> {}
+  async heartbeat(e: EcranInfo): Promise<void> {
+    const etat = litEtat();
+    const existant = etat.ecrans[e.id];
+    etat.ecrans[e.id] = { ...e, derniere_vue: new Date().toISOString(), recharger: false };
+    localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // sans notification (bruit)
+    if (existant?.recharger) window.location.reload();
+  }
 
-  // — supervision : indisponible en mode mock —
-  async signIn(): Promise<Session> {
-    return indisponible();
+  // -------------------------------------------------------------- supervision
+
+  async signIn(email: string, _mdp: string): Promise<Session> {
+    const role: Role = email.startsWith('admin')
+      ? 'admin'
+      : email.startsWith('caisse')
+        ? 'caisse'
+        : 'supervision';
+    sessionStorage.setItem(CLE_SESSION, JSON.stringify({ email, role }));
+    return { user_id: `mock-${role}`, email };
   }
-  async getRole(): Promise<never> {
-    return indisponible();
+
+  async getRole(): Promise<Role> {
+    const brut = sessionStorage.getItem(CLE_SESSION);
+    if (!brut) throw new Error('Non connecté');
+    return (JSON.parse(brut) as { role: Role }).role;
   }
-  async genererJour(): Promise<void> {
-    indisponible();
+
+  async genererJour(date: string): Promise<void> {
+    const etat = litEtat();
+    // Idempotent : n'écrase jamais les modifications déjà enregistrées
+    etat.jours[date] ??= { terminus: null, circulations: {} };
+    ecritEtat(etat);
   }
-  async saveCirculation(): Promise<void> {
-    indisponible();
+
+  async saveCirculation(c: Circulation): Promise<void> {
+    const etat = litEtat();
+    etat.jours[c.date] ??= { terminus: null, circulations: {} };
+    const jour = etat.jours[c.date];
+    if (jour) jour.circulations[String(c.numero)] = c;
+    ecritEtat(etat);
   }
-  async setTerminusBellevue(): Promise<void> {
-    indisponible();
+
+  async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
+    const grilles = await this.getGrilles();
+    const grille = serviceActif(grilles, date) ?? grilles[0];
+    const etat = litEtat();
+    etat.jours[date] ??= { terminus: null, circulations: {} };
+    const etatJour = etat.jours[date];
+    if (!etatJour || !grille) return;
+    if (v === false) {
+      etatJour.terminus = null;
+    } else {
+      const seuil = Math.max(
+        1,
+        v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
+      );
+      etatJour.terminus = seuil;
+      // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable ensuite
+      for (const montee of grille.montees) {
+        if (montee.numero < seuil) continue;
+        const cle = String(montee.numero);
+        etatJour.circulations[cle] = { ...etatJour.circulations[cle], terminus: 'bellevue' };
+      }
+    }
+    ecritEtat(etat);
   }
-  async saveMessage(): Promise<void> {
-    indisponible();
+
+  async saveMessage(m: Message): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.messages ?? [...MESSAGES_DEMO];
+    const complet: Message = { ...m, id: m.id || `msg-${Date.now()}` };
+    const index = liste.findIndex((x) => x.id === complet.id);
+    if (index >= 0) liste[index] = complet;
+    else liste.push(complet);
+    etat.messages = liste;
+    ecritEtat(etat);
   }
-  async deleteMessage(): Promise<void> {
-    indisponible();
+
+  async deleteMessage(id: string): Promise<void> {
+    const etat = litEtat();
+    etat.messages = (etat.messages ?? [...MESSAGES_DEMO]).filter((m) => m.id !== id);
+    ecritEtat(etat);
   }
-  async uploadMedia(): Promise<void> {
-    indisponible();
+
+  async uploadMedia(file: File, meta: MediaMeta): Promise<void> {
+    if (!file.type.startsWith('image/') || file.size > 1_500_000) {
+      throw new Error('Mode mock : images ≤ 1,5 Mo uniquement (vidéos : nécessite Supabase).');
+    }
+    const url = await new Promise<string>((resolve, reject) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resolve(String(lecteur.result));
+      lecteur.onerror = () => reject(new Error('Lecture du fichier impossible'));
+      lecteur.readAsDataURL(file);
+    });
+    const etat = litEtat();
+    etat.medias.push({ ...meta, id: `media-${Date.now()}`, url, actif: true });
+    ecritEtat(etat);
   }
-  async saveMedia(): Promise<void> {
-    indisponible();
+
+  async saveMedia(m: Media): Promise<void> {
+    const etat = litEtat();
+    const index = etat.medias.findIndex((x) => x.id === m.id);
+    if (index >= 0) etat.medias[index] = m;
+    ecritEtat(etat);
   }
-  async deleteMedia(): Promise<void> {
-    indisponible();
+
+  async deleteMedia(id: string): Promise<void> {
+    const etat = litEtat();
+    etat.medias = etat.medias.filter((m) => m.id !== id);
+    ecritEtat(etat);
   }
-  async saveParams(): Promise<void> {
-    indisponible();
+
+  async saveParams(p: Partial<Params>): Promise<void> {
+    const etat = litEtat();
+    const { machines, motifs, ...simples } = p;
+    if (machines) etat.machines = machines;
+    if (motifs) etat.motifs = motifs;
+    etat.paramsSimples = { ...etat.paramsSimples, ...simples };
+    ecritEtat(etat);
   }
-  async saveMachine(): Promise<void> {
-    indisponible();
+
+  async saveMachine(m: Machine): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.machines ?? [...PARAMS_DEMO.machines];
+    const index = liste.findIndex((x) => x.nom === m.nom);
+    if (index >= 0) liste[index] = m;
+    else liste.push(m);
+    etat.machines = liste;
+    ecritEtat(etat);
   }
-  async saveMotif(): Promise<void> {
-    indisponible();
+
+  async deleteMachine(nom: string): Promise<void> {
+    const etat = litEtat();
+    etat.machines = (etat.machines ?? [...PARAMS_DEMO.machines]).filter((m) => m.nom !== nom);
+    ecritEtat(etat);
   }
+
+  async saveMotif(m: Motif): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.motifs ?? [...PARAMS_DEMO.motifs];
+    const index = liste.findIndex((x) => x.fr === m.fr);
+    if (index >= 0) liste[index] = m;
+    else liste.push(m);
+    etat.motifs = liste;
+    ecritEtat(etat);
+  }
+
+  async deleteMotif(fr: string): Promise<void> {
+    const etat = litEtat();
+    etat.motifs = (etat.motifs ?? [...PARAMS_DEMO.motifs]).filter((m) => m.fr !== fr);
+    ecritEtat(etat);
+  }
+
   async listUsers(): Promise<User[]> {
-    return indisponible();
+    return litEtat().utilisateurs ?? UTILISATEURS_DEMO;
   }
-  async saveUser(): Promise<void> {
-    indisponible();
+
+  async saveUser(u: User): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.utilisateurs ?? [...UTILISATEURS_DEMO];
+    const index = liste.findIndex((x) => x.user_id === u.user_id);
+    if (index >= 0) liste[index] = u;
+    else liste.push(u);
+    etat.utilisateurs = liste;
+    ecritEtat(etat);
   }
-  async logPublication(): Promise<void> {
-    indisponible();
+
+  async inviteUser(email: string, nom: string, role: Role): Promise<void> {
+    await this.saveUser({ user_id: `mock-${Date.now()}`, nom, email, role, actif: true });
   }
-  async listEcrans(): Promise<never> {
-    return indisponible();
+
+  async resetMotDePasse(): Promise<void> {
+    // rien à faire en mode mock
   }
-  async demanderRechargement(): Promise<void> {
-    indisponible();
+
+  async traduire(): Promise<string | null> {
+    return null; // repli : dictionnaire local de phrases types
+  }
+
+  async logPublication(resume: string): Promise<void> {
+    const etat = litEtat();
+    const session = sessionStorage.getItem(CLE_SESSION);
+    const qui = session ? (JSON.parse(session) as { email: string }).email : 'inconnu';
+    etat.publications.push({ quand: new Date().toISOString(), qui, resume });
+    ecritEtat(etat);
+  }
+
+  async listEcrans(): Promise<EcranInfo[]> {
+    return Object.values(litEtat().ecrans);
+  }
+
+  async demanderRechargement(id: string): Promise<void> {
+    const etat = litEtat();
+    const ecran = etat.ecrans[id];
+    if (ecran) ecran.recharger = true;
+    ecritEtat(etat);
   }
 }

@@ -1,0 +1,57 @@
+# Déploiement GitHub Pages (docs/02 §6) : tests obligatoires — un test rouge
+# bloque le déploiement. config.js est généré depuis les VARIABLES de dépôt
+# (Settings → Secrets and variables → Actions → Variables) : jamais de clé
+# dans le code. La clé « publishable » Supabase est publique par conception.
+name: Déploiement GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Génère public/config.js depuis les variables de dépôt
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ]; then
+            printf 'window.TMB_CONFIG = { supabaseUrl: "%s", supabaseKey: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > public/config.js
+            echo "config.js généré (mode Supabase)"
+          else
+            echo "Variables absentes : déploiement en mode mock (démo)"
+          fi
+      - name: Build (base = /nom-du-depot/)
+        run: npm run build -- --base=/${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

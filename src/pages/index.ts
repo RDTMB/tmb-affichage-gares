@@ -30,11 +30,11 @@ if (liste) {
     altitude.textContent = `${gare.altitude_m} m`;
 
     const lienEcran = document.createElement('a');
-    lienEcran.href = `/ecran.html?gare=${id}`;
+    lienEcran.href = `ecran.html?gare=${id}`; // relatif : compatible base GitHub Pages
     lienEcran.textContent = 'Écran';
 
     const lienGrille = document.createElement('a');
-    lienGrille.href = `/grille.html?gare=${id}`;
+    lienGrille.href = `grille.html?gare=${id}`;
     lienGrille.textContent = 'Grille';
 
     li.append(nom, altitude, lienEcran, lienGrille);

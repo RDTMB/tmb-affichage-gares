@@ -46,9 +46,16 @@ export interface DataProvider {
   deleteMedia(id: string): Promise<void>;
   saveParams(p: Partial<Params>): Promise<void>;
   saveMachine(m: Machine): Promise<void>;
+  deleteMachine(nom: string): Promise<void>;
   saveMotif(m: Motif): Promise<void>;
+  deleteMotif(fr: string): Promise<void>;
   listUsers(): Promise<User[]>;
   saveUser(u: User): Promise<void>;
+  /** Création par invitation email (Edge Function — clé secrète jamais côté front). */
+  inviteUser(email: string, nom: string, role: Role): Promise<void>;
+  resetMotDePasse(email: string): Promise<void>;
+  /** Traduction FR → EN (Edge Function DeepL ; null = service indisponible, repli local). */
+  traduire(texteFr: string): Promise<string | null>;
   logPublication(resume: string): Promise<void>;
   listEcrans(): Promise<EcranInfo[]>;
   demanderRechargement(id: string): Promise<void>;

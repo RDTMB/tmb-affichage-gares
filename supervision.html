@@ -3,27 +3,300 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TMB — Supervision</title>
+    <title>TMB — Supervision affichage</title>
   </head>
   <body>
-    <header class="bandeau">
-      <img src="/logos/logo-rond.svg" alt="Tramway du Mont-Blanc" class="bandeau-logo" />
-      <div class="bandeau-centre">
-        <h1 class="bandeau-titre">Supervision</h1>
-        <p class="bandeau-sous-titre">Accès réservé aux agents</p>
-      </div>
-      <div class="bandeau-horloge">
-        <span id="horloge">--:--:--</span>
-        <span id="date-jour"></span>
+    <header>
+      <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
+      <h1>
+        Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
+      </h1>
+      <div class="spacer"></div>
+      <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
+      <div class="pill" id="pill-service">—</div>
+      <div class="user" id="bloc-user" style="display: none">
+        <div class="avatar" id="avatar">–</div>
+        <span id="user-nom">—</span>
+        <span class="role-tag" id="user-role"></span>
+        <button class="leger" id="btn-deconnexion">Quitter</button>
       </div>
     </header>
-    <main>
-      <p class="note-squelette">
-        Étape 1 — squelette du poste de supervision. Connexion obligatoire et onglets (Circulations,
-        Messages, Médias, Écrans, Paramètres, Publication) à l'étape 6, fidèles à
-        <code>maquettes/supervision.html</code>.
-      </p>
+
+    <div class="connexion" id="connexion">
+      <form class="connexion-carte" id="form-connexion">
+        <h2>Connexion</h2>
+        <p class="note" style="padding: 0">
+          Accès réservé aux agents. En mode démo (sans Supabase) : le début de l'adresse fixe le
+          rôle — <code>admin…</code>, <code>caisse…</code>, sinon supervision.
+        </p>
+        <input type="email" id="login-email" placeholder="adresse@tramwaydumontblanc.fr" required />
+        <input type="password" id="login-mdp" placeholder="Mot de passe" required />
+        <button class="primaire" type="submit">Se connecter</button>
+        <div class="erreur" id="login-erreur"></div>
+      </form>
+    </div>
+
+    <nav class="tabs" id="tabs" style="display: none">
+      <button data-t="circulations" class="on">Circulations</button>
+      <button data-t="messages">Messages <span class="badge" id="badge-msgs">0</span></button>
+      <button data-t="medias">Médias</button>
+      <button data-t="ecrans">Écrans</button>
+      <button data-t="parametres">Paramètres</button>
+    </nav>
+
+    <main id="contenu" style="display: none">
+      <!-- ================= CIRCULATIONS ================= -->
+      <section class="onglet on" id="t-circulations">
+        <div class="carte">
+          <div class="barre-jour">
+            <div class="nav-date">
+              <button class="leger" id="btn-jour-prec">◀</button>
+              <input type="date" id="date-picker" />
+              <button class="leger" id="btn-jour-suiv">▶</button>
+            </div>
+            <div class="chips">
+              <button class="chip-btn" id="chip-auj">Aujourd'hui</button>
+              <button class="chip-btn" id="chip-dem">Demain</button>
+            </div>
+            <span class="service-tag" id="service-tag">—</span>
+            <label class="terminus">
+              <input type="checkbox" id="chk-terminus" />
+              ⚠ Terminus Bellevue à partir du
+              <select id="sel-terminus-train"></select>
+            </label>
+          </div>
+          <h2>
+            Circulations <span class="sous" id="sous-titre-jour"></span>
+            <div class="actions">
+              <button class="leger" id="btn-generer">⟳ Générer depuis la grille</button>
+              <button class="leger" id="btn-csv">Exporter CSV</button>
+            </div>
+          </h2>
+          <table id="tab-circ">
+            <thead>
+              <tr>
+                <th style="width: 78px">Train</th>
+                <th style="width: 118px">Sens</th>
+                <th style="width: 150px">Rame</th>
+                <th style="width: 150px">Terminus</th>
+                <th style="width: 140px">Facultatif</th>
+                <th>Statut</th>
+                <th style="width: 160px">Motif</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="note">
+            Les trains sont présentés par rotation : la montée et « sa » descente (assurées par la
+            même machine) sont l'une sous l'autre — la rame se choisit sur la montée et s'applique
+            automatiquement à la descente. La colonne Terminus limite un train précis à Bellevue ;
+            la bascule « ⚠ Terminus Bellevue à partir du TRAIN N » pré-remplit la colonne des
+            rotations concernées (N = montée ; TRAIN 1 = journée entière) — un express n'est jamais
+            tronqué : il est signalé « à traiter » (à supprimer ou requalifier).
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= MESSAGES ================= -->
+      <section class="onglet" id="t-messages">
+        <div class="carte">
+          <h2>
+            Messages voyageurs
+            <span class="sous">diffusés en bandeau FR/EN sur les écrans ciblés</span>
+          </h2>
+          <div id="liste-msgs"></div>
+          <div class="ajout">
+            <input type="text" id="msg-fr" placeholder="Message en français…" maxlength="200" />
+            <input
+              type="text"
+              id="msg-en"
+              placeholder="English — traduit automatiquement dès la saisie du français, modifiable avant publication"
+              maxlength="200"
+            />
+            <div class="ligne">
+              <label
+                >Cible :
+                <select id="msg-cible">
+                  <option value="toutes">Toutes les gares</option>
+                  <option value="gares">Certaines gares…</option>
+                  <option value="train">Un train précis…</option>
+                </select>
+              </label>
+              <span id="msg-gares" style="display: none"></span>
+              <select id="msg-train" style="display: none"></select>
+              <select id="msg-prio">
+                <option value="normale">Priorité normale (défilement)</option>
+                <option value="importante">Priorité importante (bandeau fixe)</option>
+              </select>
+              <label
+                >Expire :
+                <select id="msg-expire">
+                  <option value="">jamais</option>
+                  <option value="soir">ce soir</option>
+                  <option value="1h">dans 1 h</option>
+                  <option value="3h">dans 3 h</option>
+                  <option value="date">date…</option>
+                </select>
+              </label>
+              <input type="datetime-local" id="msg-expire-date" style="display: none" />
+              <button class="primaire leger" id="btn-msg">Ajouter</button>
+              <button class="leger" id="btn-msg-annuler" style="display: none">Annuler</button>
+            </div>
+            <div style="font-size: 12px; color: var(--sec)">
+              La traduction anglaise est générée automatiquement (service DeepL, repli dictionnaire
+              local), puis reste modifiable. Cliquez « Modifier » sur un message existant pour le
+              corriger.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= MÉDIAS ================= -->
+      <section class="onglet" id="t-medias">
+        <div class="carte">
+          <h2>
+            Médias diffusés entre les pages horaires
+            <div class="actions">
+              <button class="primaire leger" id="btn-media-ajout">+ Ajouter un média</button>
+              <input
+                type="file"
+                id="media-fichier"
+                accept="image/jpeg,image/png,video/mp4"
+                style="display: none"
+              />
+            </div>
+          </h2>
+          <div class="media-reglage">
+            Durée d'affichage de l'écran horaires entre deux médias :
+            <input type="number" id="duree-horaires" min="5" max="600" /> secondes
+            <span style="font-weight: 400; color: var(--sec)"
+              >— chaque média a ensuite sa propre durée. Les écrans enchaînent : horaires → média →
+              horaires → média suivant…</span
+            >
+          </div>
+          <div class="medias" id="medias"></div>
+          <div class="note">
+            Formats acceptés : images JPG/PNG et vidéos MP4 sans son, plein écran 16:9 (1920×1080),
+            20 Mo max. Un média expiré disparaît automatiquement des écrans. Jamais de média pendant
+            un « À QUAI » ni dans les 2 minutes avant un départ.
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ÉCRANS ================= -->
+      <section class="onglet" id="t-ecrans">
+        <div class="carte">
+          <h2>
+            État des écrans
+            <span class="sous">signal de vie toutes les 30 s · commandes à distance</span>
+          </h2>
+          <div class="ecrans" id="ecrans"></div>
+          <div class="note">
+            Un écran est « en ligne » s'il a donné signe de vie il y a moins de 90 secondes.
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PARAMÈTRES ================= -->
+      <section class="onglet" id="t-parametres">
+        <div class="param-grid">
+          <div class="carte">
+            <h2>
+              Machines (rames)
+              <div class="actions">
+                <button class="leger" id="btn-machine-ajout">+ Ajouter</button>
+              </div>
+            </h2>
+            <div id="machines"></div>
+            <div class="note">
+              Le nom et la couleur apparaissent sur les écrans voyageurs (« cercle » = couleur
+              d'anneau, ex. Marguerite). Une machine « hors service » ne peut plus être affectée.
+            </div>
+          </div>
+          <div class="carte">
+            <h2>
+              Motifs de perturbation
+              <div class="actions">
+                <input
+                  type="text"
+                  id="nouveau-motif"
+                  placeholder="Nouveau motif…"
+                  style="width: 140px"
+                />
+                <input
+                  type="text"
+                  id="nouveau-motif-en"
+                  placeholder="English…"
+                  style="width: 130px"
+                />
+                <button class="leger" id="btn-motif-ajout">+ Ajouter</button>
+              </div>
+            </h2>
+            <div class="motifs" id="motifs"></div>
+            <div class="note">
+              Proposés dans l'onglet Circulations et affichés en gare « FR / EN ».
+            </div>
+          </div>
+          <div class="carte">
+            <h2>
+              Utilisateurs et droits
+              <div class="actions">
+                <button class="leger" id="btn-user-ajout">+ Ajouter un utilisateur</button>
+              </div>
+            </h2>
+            <div class="ajout" id="form-user" style="display: none">
+              <div class="ligne">
+                <input type="text" id="user-nouveau-nom" placeholder="Nom" />
+                <input type="email" id="user-nouveau-email" placeholder="email@…" />
+                <select id="user-nouveau-role">
+                  <option value="supervision">Supervision</option>
+                  <option value="caisse">Caisse</option>
+                  <option value="admin">Administrateur</option>
+                </select>
+                <button class="primaire leger" id="btn-user-inviter">Inviter par email</button>
+              </div>
+            </div>
+            <div id="users"></div>
+            <div class="note">
+              Création par invitation email (Edge Function). Le détail fin des droits par catégorie
+              sera précisé plus tard avec l'exploitant.
+            </div>
+          </div>
+          <div class="carte">
+            <h2>Saisons, veille et météo sommet</h2>
+            <div class="saisons" id="saisons"></div>
+            <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
+              <label style="font-weight: 700; color: var(--texte)"
+                >Veille des écrans : de <input type="time" id="veille-debut" /> à
+                <input type="time" id="veille-fin"
+              /></label>
+              <label style="font-weight: 700; color: var(--texte)"
+                >Météo sommet : <input type="number" id="meteo-t" style="width: 60px" />°C
+                <input type="text" id="meteo-fr" placeholder="Ciel (FR)" style="width: 110px" />
+                <input type="text" id="meteo-en" placeholder="Sky (EN)" style="width: 110px" />
+                <button class="leger" id="btn-meteo">Enregistrer</button></label
+              >
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <div class="publier" id="barre-publier" style="display: none">
+      <div>
+        <div class="etat" id="etat-pub">Tout est publié ✓</div>
+        <div class="detail" id="detail-pub">
+          Les modifications s'appliquent immédiatement ; « Publier » consigne un résumé horodaté
+          dans l'historique.
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <button id="btn-apercu">Aperçu écrans</button>
+      <button class="primaire" id="btn-publier">Publier sur les 6 gares</button>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script src="./config.js"></script>
     <script type="module" src="/src/pages/supervision.ts"></script>
   </body>
 </html>

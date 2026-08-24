@@ -1,8 +1,8 @@
-// Grille du jour (étape 3) — reproduit fidèlement maquettes/grille-horaire.html.
+// Grille du jour — étapes 3 (rendu maquette) et 4 (résilience).
 // Deux tableaux (montée, descente) : colonnes = trains effectivement en
 // circulation, lignes = gares avec altitudes officielles. Paramètres d'URL :
-// gare (cible des messages), ecran, simule=HH:MM, zoom, et en mode mock
-// terminus=N (bascule « à partir du TRAIN N »).
+// gare (cible des messages), ecran, simule=HH:MM, zoom, cache=N (tests) et
+// en mode mock terminus=N (bascule « à partir du TRAIN N »).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/400.css';
@@ -26,6 +26,13 @@ import type {
 import { creeProvider } from '../data';
 import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
+import {
+  creeSynchronisation,
+  demarreAntiBurnIn,
+  enregistreServiceWorker,
+  SEUIL_BADGE_MS,
+  type Synchronisation,
+} from './resilience';
 
 const RAME_INCONNUE: Machine = { nom: '?', couleur: '#708DA4', en_service: true };
 
@@ -50,20 +57,36 @@ const heure = creeSourceHeure(url.get('simule'));
 
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
-// Identifiant physique : défaut « <gare>-1 » (docs/01 §1) — une gare équipée
-// de plusieurs écrans les distingue via ?ecran=.
-document.body.dataset.ecran = url.get('ecran') ?? `${gareParam ?? 'grille'}-1`;
+// Identifiant physique : défaut « <gare>-1 » (docs/01 §1) — plusieurs écrans
+// dans une même gare se distinguent via ?ecran=.
+const idEcran = url.get('ecran') ?? `${gareParam ?? 'grille'}-1`;
+document.body.dataset.ecran = idEcran;
 
 ($('logo') as HTMLImageElement).src = __LOGO_ROND__;
+($('logo-neutre') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+
+interface DonneesGrille {
+  grilles: Grille[];
+  jour: Jour;
+  params: Params;
+  messages: Message[];
+}
 
 let grille: Grille | null = null;
 let jour: Jour | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
+let sync: Synchronisation | null = null;
 const majTicker = creeTicker($('ticker'));
 
 function machineDe(nomRame: string): Machine {
   return params?.machines.find((m) => m.nom === nomRame) ?? { ...RAME_INCONNUE, nom: nomRame };
+}
+
+function dureeCacheMs(): number {
+  const surcharge = Number(url.get('cache'));
+  const minutes = surcharge > 0 ? surcharge : (params?.duree_cache_min ?? 15);
+  return minutes * 60_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +192,7 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
 }
 
 // ---------------------------------------------------------------------------
-// Légende, météo, erreur
+// Légende, en-têtes, erreur
 // ---------------------------------------------------------------------------
 
 function rendsLegende(): void {
@@ -192,21 +215,25 @@ function rendsLegende(): void {
     '<span class="item">● en ligne / running</span>';
 }
 
+/** En-têtes et blocs statiques, réappliqués après CHAQUE synchronisation. */
+function rendsEntetesEtPied(): void {
+  if (!grille || !params) return;
+  // « Today's timetable · Grand service » — libellé du service depuis la grille
+  const service = grille.libelle.split('—')[0]?.trim() ?? '';
+  $('sous-titre').textContent = service ? `Today's timetable · ${service}` : "Today's timetable";
+  rendsLegende();
+  $('meteo').innerHTML = meteoHtml(params, grille);
+}
+
 function afficheErreur(titre: string, detail: string): void {
   document.body.classList.add('mode-erreur');
   $('erreur-config').innerHTML = `<h2>${echapper(titre)}</h2><p>${detail}</p>`;
 }
 
-/** Horloge seule (états d'erreur) : l'écran garde toujours une heure vivante. */
-function demarreHorlogeSeule(): void {
-  const maj = (): void => {
-    const maintenant = heure.maintenantS();
-    $('horloge').innerHTML =
-      `${formatHeure(maintenant)}<span class="sec">${String(maintenant % 60).padStart(2, '0')}</span>`;
-    $('date-jour').textContent = heure.dateLongue();
-  };
-  maj();
-  window.setInterval(maj, 1000);
+function majHorloge(maintenant_s: number): void {
+  $('horloge').innerHTML =
+    `${formatHeure(maintenant_s)}<span class="sec">${String(maintenant_s % 60).padStart(2, '0')}</span>`;
+  $('date-jour').textContent = heure.dateLongue();
 }
 
 // ---------------------------------------------------------------------------
@@ -215,9 +242,22 @@ function demarreHorlogeSeule(): void {
 
 function rendre(): void {
   const maintenant = heure.maintenantS();
-  $('horloge').innerHTML =
-    `${formatHeure(maintenant)}<span class="sec">${String(maintenant % 60).padStart(2, '0')}</span>`;
-  $('date-jour').textContent = heure.dateLongue();
+  majHorloge(maintenant);
+
+  // Mode dégradé : badge après 2 min sans synchro, écran neutre au-delà
+  const age = sync?.ageMs() ?? null;
+  const neutre = age === null || age > dureeCacheMs();
+  document.body.classList.toggle('mode-neutre', neutre);
+  if (neutre) {
+    $('horloge-neutre').textContent = formatHeure(maintenant);
+    return;
+  }
+  const degrade = age > SEUIL_BADGE_MS;
+  document.body.classList.toggle('mode-degrade', degrade);
+  if (degrade) {
+    const quand = sync?.heureSync() ?? '--:--';
+    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
+  }
 
   if (!grille || !jour) return;
 
@@ -231,89 +271,74 @@ function rendre(): void {
   majTicker(messagesVisibles(messages, gare, passagesGare, heure.maintenantMs()));
 }
 
-/** En-têtes et blocs statiques, réappliqués après CHAQUE rechargement (minuit, onChange). */
-function rendsEntetesEtPied(): void {
-  if (!grille || !params) return;
-  // « Today's timetable · Grand service » — libellé du service depuis la grille
-  const service = grille.libelle.split('—')[0]?.trim() ?? '';
-  $('sous-titre').textContent = service ? `Today's timetable · ${service}` : "Today's timetable";
-  rendsLegende();
-  $('meteo').innerHTML = meteoHtml(params, grille);
-}
-
 async function demarre(): Promise<void> {
   if (gareParam && gare === null) {
-    // Paramètre présent mais inconnu (faute de frappe à l'installation) :
-    // même erreur explicite que l'écran de gare, plutôt qu'un ciblage des
-    // messages silencieusement perdu.
+    // Paramètre présent mais inconnu (faute de frappe à l'installation)
     const liste = ORDRE_GARES.map((g) => `<code>${g}</code>`).join(' · ');
     afficheErreur(
       'Écran non configuré / Screen not configured',
       `Le paramètre <code>?gare=</code> est inconnu. / The <code>?gare=</code> parameter is unknown.<br><br>Gares valides / valid stations : ${liste}<br><br>Exemple / example : <code>grille.html?gare=saint-gervais</code>`,
     );
-    demarreHorlogeSeule();
+    window.setInterval(() => majHorloge(heure.maintenantS()), 1000);
     return;
   }
 
-  let provider: ReturnType<typeof creeProvider>;
-  let rechargementEnCours = false;
+  enregistreServiceWorker();
+  demarreAntiBurnIn();
 
-  async function chargeDonnees(): Promise<void> {
+  const terminusParam = url.get('terminus');
+  const provider = creeProvider(
+    terminusParam !== null && Number(terminusParam) > 0
+      ? { terminusAPartirDuTrain: Number(terminusParam) }
+      : {},
+  );
+
+  const charge = async (): Promise<DonneesGrille> => {
     const dateJour = heure.dateISO();
-    const [grilles, chargeParams, chargeMessages, chargeJour] = await Promise.all([
+    const [grilles, p, m, j] = await Promise.all([
       provider.getGrilles(),
       provider.getParams(),
       provider.getMessages(gare ?? 'le-fayet'),
       provider.getJour(dateJour),
     ]);
-    jour = chargeJour;
-    params = chargeParams;
-    messages = chargeMessages;
-    grille = grilles.find((g) => g.version === chargeJour.grille_version) ?? grilles[0] ?? null;
+    return { grilles, params: p, messages: m, jour: j };
+  };
+
+  const applique = (d: DonneesGrille): void => {
+    jour = d.jour;
+    params = d.params;
+    messages = d.messages;
+    grille = d.grilles.find((g) => g.version === d.jour.grille_version) ?? d.grilles[0] ?? null;
     rendsEntetesEtPied();
-  }
+  };
 
-  /** Au changement de date (minuit), recharge le jour d'exploitation courant. */
-  function verifieChangementDeDate(): void {
-    if (!jour || rechargementEnCours || jour.date === heure.dateISO()) return;
-    rechargementEnCours = true;
-    void chargeDonnees()
-      .catch(() => {}) // l'affichage garde le dernier état connu (mode dégradé à l'étape 4)
-      .finally(() => {
-        rechargementEnCours = false;
-      });
-  }
-
-  try {
-    const terminusParam = url.get('terminus');
-    provider = creeProvider(
-      terminusParam !== null && Number(terminusParam) > 0
-        ? { terminusAPartirDuTrain: Number(terminusParam) }
-        : {},
-    );
-    await chargeDonnees();
-  } catch (erreur) {
-    afficheErreur(
-      'Informations momentanément indisponibles',
-      `Real-time information temporarily unavailable — adressez-vous au personnel.<br><code>${echapper(String(erreur))}</code>`,
-    );
-    demarreHorlogeSeule();
-    return;
-  }
-
-  if (!grille) {
-    afficheErreur('Aucune grille horaire', 'No timetable available.');
-    demarreHorlogeSeule();
-    return;
-  }
-
-  provider.onChange(() => {
-    void chargeDonnees().catch(() => {}); // l'affichage garde le dernier état connu
+  sync = creeSynchronisation<DonneesGrille>({
+    cleSnapshot: `tmb-grille-${gare ?? 'ligne'}`,
+    charge,
+    applique,
   });
+  await sync.demarre();
+
+  provider.onChange(() => sync?.resynchronise());
+  window.setInterval(() => sync?.resynchronise(), 30_000);
+  window.addEventListener('online', () => sync?.resynchronise());
+
+  const bat = (): void => {
+    void provider
+      .heartbeat({
+        id: idEcran,
+        gare: gare ?? 'le-fayet',
+        type: 'grille',
+        version_app: import.meta.env.MODE,
+      })
+      .catch(() => {});
+  };
+  bat();
+  window.setInterval(bat, 30_000);
 
   rendre();
   window.setInterval(() => {
-    verifieChangementDeDate();
+    if (jour && jour.date !== heure.dateISO()) sync?.resynchronise(); // passage de minuit
     rendre();
   }, 1000);
 }

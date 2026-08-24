@@ -1,7 +1,7 @@
-// Écran de gare (étape 2) — reproduit fidèlement maquettes/ecran-gare.html.
+// Écran de gare — étapes 2 (rendu maquette), 4 (résilience) et 7 (médias).
 // Paramètres d'URL : gare (obligatoire), ecran (identifiant physique, défaut
-// <gare>-1), simule=HH:MM (heure simulée), zoom (facteur), et en mode mock
-// terminus=N (bascule Terminus Bellevue « à partir du TRAIN N »).
+// <gare>-1), simule=HH:MM, zoom, cache=N (minutes, tests du mode dégradé) et
+// en mode mock terminus=N (bascule « à partir du TRAIN N »).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/300.css';
@@ -29,6 +29,7 @@ import type {
   Grille,
   Jour,
   Machine,
+  Media,
   Message,
   Params,
   PassageGare,
@@ -36,6 +37,13 @@ import type {
 import { creeProvider } from '../data';
 import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
+import {
+  creeSynchronisation,
+  demarreAntiBurnIn,
+  enregistreServiceWorker,
+  SEUIL_BADGE_MS,
+  type Synchronisation,
+} from './resilience';
 
 // Flèches obliques ↗ / ↙ de la maquette (inline, aucune ressource externe)
 const FLECHE_UP =
@@ -71,18 +79,36 @@ const heure = creeSourceHeure(url.get('simule'));
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 
-// Identifiant physique de l'écran (heartbeat à l'étape 5)
-document.body.dataset.ecran = url.get('ecran') ?? `${gareParam ?? 'ecran'}-1`;
+// Identifiant physique de l'écran (heartbeat)
+const idEcran = url.get('ecran') ?? `${gareParam ?? 'ecran'}-1`;
+document.body.dataset.ecran = idEcran;
 
 ($('logo') as HTMLImageElement).src = __LOGO_ROND__;
+($('logo-neutre') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+
+interface DonneesEcran {
+  grilles: Grille[];
+  jour: Jour;
+  params: Params;
+  messages: Message[];
+  medias: Media[];
+}
 
 let grille: Grille | null = null;
 let jour: Jour | null = null;
 let grilleDemain: Grille | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
+let medias: Media[] = [];
 let dernierEtatSpecial = '';
+let sync: Synchronisation | null = null;
 const majTicker = creeTicker($('ticker'));
+
+// Cycle médias (étape 7)
+let mediaCourant: Media | null = null;
+let mediaFinMs = 0;
+let prochaineBasculeMs = Date.now() + 20_000;
+let indexMedia = 0;
 
 function nomGare(id: GareId): string {
   return grille?.gares.find((g) => g.id === id)?.nom ?? id;
@@ -95,6 +121,13 @@ function machineDe(nomRame: string): Machine {
 function motifBilingue(fr: string): string {
   const en = params?.motifs.find((m) => m.fr === fr)?.en;
   return en ? `${fr} / ${en}` : fr;
+}
+
+/** Durée du cache avant écran neutre (paramètre, surchargée par ?cache=N pour les tests). */
+function dureeCacheMs(): number {
+  const surcharge = Number(url.get('cache'));
+  const minutes = surcharge > 0 ? surcharge : (params?.duree_cache_min ?? 15);
+  return minutes * 60_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,14 +256,61 @@ function rendsArrivee(gare: GareId, maintenant_s: number): void {
     <span>(TRAIN ${prochaine.numero}), en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
 }
 
-function rendsTicker(gare: GareId, passagesRestants: PassageGare[]): void {
-  // Expiration comparée à l'heure simulable, comme tout le reste de l'écran
-  majTicker(messagesVisibles(messages, gare, passagesRestants, heure.maintenantMs()));
-}
-
 function rendsMeteo(): void {
   if (!params || !grille) return;
   $('meteo').innerHTML = meteoHtml(params, grille);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle médias plein écran (docs/01 §2.5 — étape 7)
+// ---------------------------------------------------------------------------
+
+function mediasAffichables(): Media[] {
+  const nowMs = heure.maintenantMs();
+  return medias.filter(
+    (m) => m.actif && (!m.expire_at || new Date(m.expire_at).getTime() >= nowMs),
+  );
+}
+
+function quitteMedia(): void {
+  if (!mediaCourant) return;
+  mediaCourant = null;
+  document.body.classList.remove('mode-media');
+  $('media-plein').innerHTML = '';
+  indexMedia += 1;
+  prochaineBasculeMs = Date.now() + (params?.duree_horaires_s ?? 20) * 1000;
+}
+
+function entreMedia(liste: Media[]): void {
+  const media = liste[indexMedia % liste.length];
+  if (!media) return;
+  mediaCourant = media;
+  mediaFinMs = Date.now() + media.duree_s * 1000;
+  const conteneur = $('media-plein');
+  conteneur.innerHTML =
+    media.type === 'video'
+      ? `<video src="${echapper(media.url)}" muted playsinline autoplay></video>`
+      : `<img src="${echapper(media.url)}" alt="" />`;
+  document.body.classList.add('mode-media');
+  conteneur.querySelector('video')?.addEventListener('ended', () => quitteMedia());
+  // Préchargement du média suivant (les vidéos sont mises en cache par le SW)
+  const suivant = liste[(indexMedia + 1) % liste.length];
+  if (suivant && suivant.type === 'image') new Image().src = suivant.url;
+}
+
+/** JAMAIS de média pendant un « À QUAI » ni dans les 2 min avant un départ. */
+function gereMedias(departs: PassageGare[], maintenant_s: number): void {
+  const departProche = departs.some(
+    (p) => p.statut !== 'supprime' && p.depart_s !== null && p.depart_s - maintenant_s <= 120,
+  );
+  if (mediaCourant) {
+    if (departProche || Date.now() >= mediaFinMs || !mediaCourant.actif) quitteMedia();
+    return;
+  }
+  const liste = mediasAffichables();
+  if (liste.length > 0 && !departProche && Date.now() >= prochaineBasculeMs) {
+    entreMedia(liste);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,16 +322,10 @@ function afficheErreur(titre: string, detail: string): void {
   $('erreur-config').innerHTML = `<h2>${echapper(titre)}</h2><p>${detail}</p>`;
 }
 
-/** Horloge seule (états d'erreur) : l'écran garde toujours une heure vivante. */
-function demarreHorlogeSeule(): void {
-  const maj = (): void => {
-    const maintenant = heure.maintenantS();
-    $('horloge').innerHTML =
-      `${formatHeure(maintenant)}<span class="sec">${String(maintenant % 60).padStart(2, '0')}</span>`;
-    $('date-jour').textContent = heure.dateLongue();
-  };
-  maj();
-  window.setInterval(maj, 1000);
+function majHorloge(maintenant_s: number): void {
+  $('horloge').innerHTML =
+    `${formatHeure(maintenant_s)}<span class="sec">${String(maintenant_s % 60).padStart(2, '0')}</span>`;
+  $('date-jour').textContent = heure.dateLongue();
 }
 
 function enVeille(maintenant_s: number): boolean {
@@ -269,22 +343,40 @@ function enVeille(maintenant_s: number): boolean {
 
 function rendre(gare: GareId): void {
   const maintenant = heure.maintenantS();
+  majHorloge(maintenant);
 
-  $('horloge').innerHTML =
-    `${formatHeure(maintenant)}<span class="sec">${String(maintenant % 60).padStart(2, '0')}</span>`;
-  $('date-jour').textContent = heure.dateLongue();
-
+  // 1. Veille nuit (écran noir + horloge discrète)
   const veille = enVeille(maintenant);
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);
-    return; // écran noir : rien d'autre à mettre à jour
+    quitteMedia();
+    return;
+  }
+
+  // 2. Mode dégradé : badge après 2 min sans synchro, écran neutre au-delà
+  //    de duree_cache_min — JAMAIS d'horaires potentiellement périmés.
+  const age = sync?.ageMs() ?? null;
+  const neutre = age === null || age > dureeCacheMs();
+  document.body.classList.toggle('mode-neutre', neutre);
+  if (neutre) {
+    $('horloge-neutre').textContent = formatHeure(maintenant);
+    quitteMedia();
+    return;
+  }
+  const degrade = age > SEUIL_BADGE_MS;
+  document.body.classList.toggle('mode-degrade', degrade);
+  if (degrade) {
+    const quand = sync?.heureSync() ?? '--:--';
+    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
   }
 
   if (!grille || !jour) return;
 
   const passages = passagesPourGare(grille, jour, gare, maintenant);
   const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
+
+  gereMedias(departs, maintenant);
 
   if (etatTronconFerme(grille, jour, gare, maintenant)) {
     afficheEtatSpecial(htmlTronconFerme());
@@ -295,7 +387,7 @@ function rendre(gare: GareId): void {
   }
 
   rendsArrivee(gare, maintenant);
-  rendsTicker(gare, passages);
+  majTicker(messagesVisibles(messages, gare, passages, heure.maintenantMs()));
 }
 
 async function demarre(): Promise<void> {
@@ -305,80 +397,71 @@ async function demarre(): Promise<void> {
       'Écran non configuré / Screen not configured',
       `Le paramètre <code>?gare=</code> est manquant ou inconnu. / The <code>?gare=</code> parameter is missing or unknown.<br><br>Gares valides / valid stations : ${liste}<br><br>Exemple / example : <code>ecran.html?gare=saint-gervais</code>`,
     );
-    demarreHorlogeSeule();
+    window.setInterval(() => majHorloge(heure.maintenantS()), 1000);
     return;
   }
   const gare = gareParam as GareId;
 
-  let provider: ReturnType<typeof creeProvider>;
-  let rechargementEnCours = false;
+  enregistreServiceWorker();
+  demarreAntiBurnIn();
 
-  async function chargeDonnees(): Promise<void> {
+  const terminusParam = url.get('terminus');
+  const provider = creeProvider(
+    terminusParam !== null && Number(terminusParam) > 0
+      ? { terminusAPartirDuTrain: Number(terminusParam) }
+      : {},
+  );
+
+  const charge = async (): Promise<DonneesEcran> => {
     const dateJour = heure.dateISO();
-    const [grilles, chargeParams, chargeMessages, chargeJour] = await Promise.all([
+    const [grilles, p, m, j, med] = await Promise.all([
       provider.getGrilles(),
       provider.getParams(),
       provider.getMessages(gare),
       provider.getJour(dateJour),
+      provider.getMedias(gare),
     ]);
-    jour = chargeJour;
-    params = chargeParams;
-    messages = chargeMessages;
-    grille = grilles.find((g) => g.version === chargeJour.grille_version) ?? grilles[0] ?? null;
-    grilleDemain = serviceActif(grilles, dateSuivante(dateJour));
-  }
+    return { grilles, params: p, messages: m, jour: j, medias: med };
+  };
 
-  /** Au changement de date (minuit), recharge le jour d'exploitation courant. */
-  function verifieChangementDeDate(): void {
-    if (!jour || rechargementEnCours || jour.date === heure.dateISO()) return;
-    rechargementEnCours = true;
-    void chargeDonnees()
-      .then(() => rendsMeteo())
-      .catch(() => {}) // l'affichage garde le dernier état connu (mode dégradé à l'étape 4)
-      .finally(() => {
-        rechargementEnCours = false;
-      });
-  }
+  const applique = (d: DonneesEcran): void => {
+    jour = d.jour;
+    params = d.params;
+    messages = d.messages;
+    medias = d.medias;
+    grille = d.grilles.find((g) => g.version === d.jour.grille_version) ?? d.grilles[0] ?? null;
+    grilleDemain = serviceActif(d.grilles, dateSuivante(d.jour.date));
+    if (!grille) return;
+    document.title = `TMB — ${nomGare(gare)}`;
+    $('gare-nom').textContent = nomGare(gare);
+    const altitude = grille.gares.find((g) => g.id === gare)?.altitude_m;
+    $('gare-alt').textContent =
+      altitude !== undefined ? `Altitude ${altitude.toLocaleString('fr-FR')} m` : '';
+    rendsMeteo();
+  };
 
-  try {
-    const terminusParam = url.get('terminus');
-    provider = creeProvider(
-      terminusParam !== null && Number(terminusParam) > 0
-        ? { terminusAPartirDuTrain: Number(terminusParam) }
-        : {},
-    );
-    await chargeDonnees();
-  } catch (erreur) {
-    afficheErreur(
-      'Informations momentanément indisponibles',
-      `Real-time information temporarily unavailable — adressez-vous au personnel.<br><code>${echapper(String(erreur))}</code>`,
-    );
-    demarreHorlogeSeule();
-    return;
-  }
+  sync = creeSynchronisation<DonneesEcran>({ cleSnapshot: `tmb-ecran-${gare}`, charge, applique });
+  await sync.demarre(); // sans réseau ni cache : la boucle affiche l'écran neutre
 
-  if (!grille) {
-    afficheErreur('Aucune grille horaire', 'No timetable available.');
-    demarreHorlogeSeule();
-    return;
-  }
+  // Resynchronisation : temps réel (onChange), périodique 30 s, retour réseau,
+  // et changement de date (minuit) détecté dans la boucle.
+  provider.onChange(() => sync?.resynchronise());
+  window.setInterval(() => sync?.resynchronise(), 30_000);
+  window.addEventListener('online', () => sync?.resynchronise());
 
-  document.title = `TMB — ${nomGare(gare)}`;
-  $('gare-nom').textContent = nomGare(gare);
-  const altitude = grille.gares.find((g) => g.id === gare)?.altitude_m;
-  $('gare-alt').textContent =
-    altitude !== undefined ? `Altitude ${altitude.toLocaleString('fr-FR')} m` : '';
-
-  rendsMeteo();
-  provider.onChange(() => {
-    void chargeDonnees()
-      .then(() => rendsMeteo())
-      .catch(() => {}); // l'affichage garde le dernier état connu
-  });
+  // Heartbeat 30 s (id écran, gare, version) — la commande « recharger »
+  // est honorée par le provider.
+  const bat = (): void => {
+    void provider
+      .heartbeat({ id: idEcran, gare, type: 'ecran', version_app: import.meta.env.MODE })
+      .catch(() => {});
+  };
+  bat();
+  window.setInterval(bat, 30_000);
 
   rendre(gare);
   window.setInterval(() => {
-    verifieChangementDeDate();
+    if (jour && jour.date !== heure.dateISO()) sync?.resynchronise(); // passage de minuit
     rendre(gare);
   }, 1000);
 }

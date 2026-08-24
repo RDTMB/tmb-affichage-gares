@@ -418,6 +418,69 @@ footer {
   text-transform: uppercase;
 }
 
+/* ============ RÉSILIENCE (étape 4) ============ */
+body {
+  cursor: none;
+}
+
+.badge-cache {
+  position: fixed;
+  top: 13.5vh;
+  right: 1vw;
+  z-index: 60;
+  display: none;
+  background: var(--retard);
+  color: #402800;
+  font-weight: 900;
+  font-size: 1.8vh;
+  padding: 0.5vh 1vw;
+  border-radius: 0.8vh;
+}
+
+body.mode-degrade .badge-cache {
+  display: block;
+}
+
+.neutre {
+  position: fixed;
+  inset: 0;
+  background: var(--marine);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3vh;
+  text-align: center;
+  padding: 0 8vw;
+  z-index: 48;
+}
+
+body.mode-neutre .neutre {
+  display: flex;
+}
+
+.neutre .logo-neutre {
+  height: 18vh;
+  width: auto;
+  opacity: 0.95;
+}
+
+.horloge-neutre {
+  font-size: 7vh;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.neutre p {
+  font-size: 2.6vh;
+  color: var(--texte-sec);
+  line-height: 1.6;
+}
+
+.neutre p span {
+  font-size: 2.1vh;
+}
+
 /* ============ ERREUR DE CHARGEMENT ============ */
 .erreur-config {
   flex: 1;
