@@ -1,0 +1,29 @@
+{
+  "name": "tmb-affichage-gares",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Affichage voyageurs en gare — Tramway du Mont-Blanc (v2)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@fontsource/amaranth": "^5.2.5",
+    "@fontsource/lato": "^5.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

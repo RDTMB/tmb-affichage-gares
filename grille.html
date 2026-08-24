@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TMB — Grille du jour</title>
+  </head>
+  <body>
+    <header class="bandeau">
+      <img src="/logos/logo-rond.svg" alt="Tramway du Mont-Blanc" class="bandeau-logo" />
+      <div class="bandeau-centre">
+        <h1 class="bandeau-titre" id="nom-gare">Grille du jour</h1>
+        <p class="bandeau-sous-titre">Horaires du jour / Today's timetable</p>
+      </div>
+      <div class="bandeau-horloge">
+        <span id="horloge">--:--:--</span>
+        <span id="date-jour"></span>
+      </div>
+    </header>
+    <main>
+      <p class="note-squelette">
+        Étape 1 — squelette de la grille du jour (tableaux montée / descente). Implémentation
+        complète à l'étape 3, fidèle à <code>maquettes/grille-horaire.html</code>.
+      </p>
+    </main>
+    <script type="module" src="/src/pages/grille.ts"></script>
+  </body>
+</html>

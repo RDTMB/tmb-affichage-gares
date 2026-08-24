@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TMB — Portail de test des écrans</title>
+  </head>
+  <body>
+    <header class="bandeau">
+      <img src="/logos/logo-rond.svg" alt="Tramway du Mont-Blanc" class="bandeau-logo" />
+      <div class="bandeau-centre">
+        <h1 class="bandeau-titre">Tramway du Mont-Blanc</h1>
+        <p class="bandeau-sous-titre">Portail de test — affichage voyageurs</p>
+      </div>
+      <div class="bandeau-horloge">
+        <span id="horloge">--:--:--</span>
+        <span id="date-jour"></span>
+      </div>
+    </header>
+    <main>
+      <h2>Écrans par gare</h2>
+      <ul class="liens-portail" id="liste-gares"></ul>
+      <h2>Supervision</h2>
+      <ul class="liens-portail">
+        <li><a href="/supervision.html">Poste de supervision</a></li>
+      </ul>
+      <p class="note-squelette">
+        Étape 1 — squelette. Astuce test : ajouter <code>?simule=HH:MM</code> à l'URL d'un écran
+        pour rejouer la journée à une heure donnée (implémenté à l'étape 2).
+      </p>
+    </main>
+    <script type="module" src="/src/pages/index.ts"></script>
+  </body>
+</html>

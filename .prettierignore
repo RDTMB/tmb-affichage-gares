@@ -1,0 +1,18 @@
+# Générés
+node_modules/
+dist/
+package-lock.json
+
+# Documents de référence : ne pas reformater
+docs/
+supabase/
+CLAUDE.md
+
+# Horaires OFFICIELS : ne jamais reformater ni modifier à la main
+public/grilles/
+
+# Maquettes validées par l'exploitant : elles font foi, ne pas y toucher
+maquettes/
+
+# Logos officiels
+public/logos/

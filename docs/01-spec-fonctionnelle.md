@@ -6,11 +6,11 @@ horaires : `public/grilles/*.json` (officiels été 2026).
 
 ## 1. Vues
 
-| URL | Usage | Utilisateur |
-|---|---|---|
-| `ecran.html?gare=<id>` | Arrivées/départs + médias (quai/extérieur) | Écran public plein écran |
-| `grille.html?gare=<id>` | Grille complète du jour | Écran public optionnel (22", totem…) |
-| `supervision.html` | Pilotage (onglets) | Agents authentifiés |
+| URL                     | Usage                                      | Utilisateur                          |
+| ----------------------- | ------------------------------------------ | ------------------------------------ |
+| `ecran.html?gare=<id>`  | Arrivées/départs + médias (quai/extérieur) | Écran public plein écran             |
+| `grille.html?gare=<id>` | Grille complète du jour                    | Écran public optionnel (22", totem…) |
+| `supervision.html`      | Pilotage (onglets)                         | Agents authentifiés                  |
 
 Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant physique,
 défaut `<gare>-1`), `simule=HH:MM` (démo/tests), `zoom=`.
@@ -39,13 +39,31 @@ n'importe quelle date future (calendrier).
 **Rotation appariée** : la montée n et la descente n+1 sont assurées par la
 même rame ; la rame se choisit sur la montée et s'applique automatiquement
 à la descente (non modifiable côté descente). **Terminus par train** : une
-montée limitée à Bellevue entraîne un départ de Bellevue pour sa descente
-appariée ; interdit pour un express.
+montée dont la colonne Terminus vaut Bellevue est tronquée à Bellevue et sa
+descente appariée part de Bellevue. Une montée EXPRESS n'est JAMAIS
+tronquée (elle ne dessert pas Bellevue) : la limitation manuelle est
+interdite dans l'interface ; si la bascule de plage (§2.3) positionne sa
+colonne sur Bellevue, l'express circule normalement et est signalé
+« à traiter » en supervision (à supprimer ou à requalifier manuellement en
+omnibus limité à Bellevue — traitement outillé à l'étape 6) ; sa descente
+appariée non express part, elle, de Bellevue.
+_(Correctif validé par l'exploitant le 24/08/2026.)_
 
 ### 2.3 Jour d'exploitation (drapeaux du jour)
 
-`terminus_bellevue` : false | true | {a_partir_de: "HH:MM"} — activable
-pour la journée ou en cours de journée (demi-journée). Effets : voir §3.
+`terminus_bellevue` : false | {a_partir_du_train: N} — bascule PAR
+ROTATION : N est un numéro de MONTÉE (impair) ; toutes les rotations dont
+la montée porte un numéro ≥ N sont limitées (montée tronquée à Bellevue,
+descente appariée au départ de Bellevue). « Terminus Bellevue toute la
+journée » ≡ « à partir du T1 » (c'est aussi le régime hiver permanent). Si
+un numéro PAIR est fourni (import, API), il est normalisé vers la montée de
+sa rotation (N−1) ; l'interface de supervision ne propose que les montées.
+La bascule ne fait que PRÉ-REMPLIR la colonne Terminus des rotations
+concernées : la colonne reste prioritaire et ajustable train par train
+ensuite. Exemple grand service, « à partir du T19 » : T19/T20, T21/T22,
+T23/T24 et T25/T26 limités (T23, express, est signalé « à traiter » —
+voir §2.2) ; T15/T16 et T17/T18 restent strictement normaux (T16 part bien
+du Nid d'Aigle à 14:13:30). Effets écrans : voir §3.
 
 ### 2.4 Messages
 
@@ -121,11 +139,15 @@ Reproduit `maquettes/ecran-gare.html` :
 - Passages d'une gare = tous les trains du jour dont la grille contient un
   passage à cette gare (donc pas les express à Voza/Bellevue), facultatifs
   seulement si `facultatif_actif`, décalés de `retard_min`.
-- Terminus Bellevue : montées tronquées à Bellevue (destination
-  « Bellevue »), descentes démarrant à Bellevue à leur horaire de passage,
-  express retirés, gare nid-daigle en état « tronçon fermé ». Si
-  `a_partir_de` est défini, la règle ne s'applique qu'aux trains dont le
-  départ d'origine est ≥ à cette heure.
+- Terminus Bellevue (bascule « à partir du TRAIN N », voir §2.3) : pour
+  chaque rotation dont la montée porte un numéro ≥ N — montée tronquée à
+  Bellevue (destination « Bellevue »), descente appariée démarrant à
+  Bellevue à son horaire de passage. Les rotations dont la montée porte un
+  numéro < N restent strictement normales. Un EXPRESS de la plage n'est
+  JAMAIS limité automatiquement : il circule normalement et est signalé
+  « à traiter » en supervision (sa descente appariée non express part de
+  Bellevue). Gare nid-daigle en état « tronçon fermé » dès qu'elle n'a plus
+  aucun passage à afficher.
 
 ## 4. Grille du jour (`grille.html`)
 
@@ -146,14 +168,19 @@ détermine les onglets accessibles (§ docs/02 sécurité).
 
 1. **Circulations** : navigation par date (◀ ▶, saisie calendrier, raccourcis
    Aujourd'hui/Demain) ; libellé du service auto (grand/petit/hiver selon
-   date) ; bascule « ⚠ Terminus Bellevue » (avec option « à partir de
-   HH:MM ») ; **ordre apparié** : chaque montée est suivie de sa descente
+   date) ; bascule « ⚠ Terminus Bellevue » (journée entière = à partir du
+   TRAIN 1, ou « à partir du TRAIN N » — sélecteur proposant uniquement les
+   MONTÉES ; la bascule PRÉ-REMPLIT la colonne Terminus des rotations
+   concernées, ajustable ensuite train par train, et signale « à traiter »
+   les express de la plage — à supprimer ou requalifier manuellement,
+   traitement outillé à l'étape 6) ; **ordre apparié** : chaque montée est suivie de sa descente
    (même rotation), séparées visuellement par paires ; par ligne : « TRAIN
    X », heure, sens, badges express/vélos, rame (liste des machines —
    uniquement sur la montée ; la descente affiche la rame héritée avec la
    mention « rotation »), **colonne Terminus** (montées non express : Nid
    d'Aigle / Bellevue ; la descente appariée affiche « Départ de Bellevue »
-   le cas échéant), interrupteur Activé/Non activé pour les facultatifs
+   le cas échéant ; une montée express dont la rotation est limitée par la
+   bascule affiche « à traiter » au lieu du sélecteur), interrupteur Activé/Non activé pour les facultatifs
    (ligne grisée + « ne circule pas — absent des écrans »), statut 3
    boutons, pas de retard ±5 min (min 5), motif ; confirmation avant
    suppression ; « Générer depuis la grille » (n'écrase pas les lignes déjà

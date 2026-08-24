@@ -22,7 +22,8 @@ et src/core/horaires.ts : moteur PUR (heure injectée, jamais Date.now())
 implémentant serviceActif(date), generationJour, passagesPourGare (arrivée
 = départ − arret_intermediaire_s, « — » à l'origine), prochaineArrivee,
 compteARebours, finDeService (grille du lendemain), positionsTrains,
-appliqueTerminusBellevue (journée entière ou a_partir_de). Tests Vitest
+appliqueTerminusBellevue (à partir du TRAIN N, journée entière = T1, pair
+normalisé N−1) + expressATraiter. Tests Vitest
 complets listés dans docs/02 §3 — utilise les vrais horaires (ex. : T9
 express 10:30 → Saint-Gervais 10:45, Motivon 10:57, Nid d'Aigle 11:30,
 absent à Col de Voza et Bellevue ; T1 07:00 → rame de T2 08:13).
@@ -111,7 +112,9 @@ Lis docs/01 §5 et maquettes/supervision.html : implémente
 supervision.html : connexion Supabase Auth + rôle (profils), en-tête et
 onglets fidèles à la maquette. Onglet Circulations : navigation par date
 (calendrier + Aujourd'hui/Demain), génération idempotente du jour, service
-affiché selon la date, bascule Terminus Bellevue (avec « à partir de »),
+affiché selon la date, bascule Terminus Bellevue (« à partir du TRAIN N »,
+montées uniquement ; pré-remplit la colonne Terminus, express signalés
+« à traiter »),
 ORDRE APPARIÉ montée puis descente de la même rotation (rame choisie sur la
 montée seulement, héritée par la descente ; libellés TRAIN X), colonne
 Terminus par train (montées non express : Nid d'Aigle/Bellevue, descente

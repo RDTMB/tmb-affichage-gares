@@ -1,0 +1,20 @@
+/* Charte graphique 2026 — valeurs de CLAUDE.md, ne pas modifier sans validation exploitant. */
+:root {
+  --tmb-rouge: #e52a23;
+  --tmb-bleu-clair: #bddcf4;
+  --tmb-bleu-gris: #708da4;
+  --tmb-rouge-fonce: #8b1419;
+  --tmb-creme: #f1e5d1;
+  --tmb-marine: #213b57;
+
+  /* Couleurs par défaut des rames (modifiables dans Paramètres → Machines) */
+  --rame-marie: #2e74b5;
+  --rame-anne: #7fa51e;
+  --rame-jeanne: #c2447a;
+  --rame-marguerite: #ffffff;
+  --rame-marguerite-cercle: #e52a23;
+
+  /* Amaranth : titres, noms de gares — Lato : textes, heures. Auto-hébergées, jamais de CDN. */
+  --police-titres: 'Amaranth', 'Trebuchet MS', sans-serif;
+  --police-textes: 'Lato', 'Segoe UI', sans-serif;
+}

@@ -64,17 +64,24 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   sous l'autre.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
-  alors de Bellevue. La bascule globale « Terminus Bellevue » l'applique à
-  toute la journée.
+  alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir
+  du TRAIN N » (N = montée, impair ; pair normalisé vers N−1) et PRÉ-REMPLIT
+  la colonne des rotations dont la montée porte un numéro ≥ N — la colonne
+  reste prioritaire et ajustable ; journée entière = à partir du T1.
 - **Express** : passages absents à col-de-voza et bellevue (rien à afficher
   dans ces gares) ; GRAND picto motrice à droite du nom de la destination +
   ligne « EXPRESS — sans arrêt / non-stop : Col de Voza & Bellevue ». Un
-  express ne peut pas être limité à Bellevue.
+  express n'est JAMAIS tronqué à Bellevue : dans une plage limitée, il
+  circule normalement et est signalé « à traiter » (suppression ou
+  requalification manuelle en supervision) ; sa descente appariée non
+  express part, elle, de Bellevue.
 - **Facultatif** : n'apparaît sur AUCUN écran tant qu'il n'est pas activé en
   supervision ; une fois activé, il s'affiche normalement.
-- **Terminus Bellevue** (météo, journée ou demi-journée, et service hiver) :
-  montées → destination « Bellevue — terminus exceptionnel », express
-  retirés, écran du Nid d'Aigle → état « tronçon fermé » bilingue avec logo.
+- **Terminus Bellevue** (météo, à partir du TRAIN N, et service hiver =
+  à partir du T1) : montées ≥ N → destination « Bellevue — terminus
+  exceptionnel », express signalés « à traiter » (jamais retirés
+  automatiquement), écran du Nid d'Aigle → état « tronçon fermé » bilingue
+  avec logo dès qu'il n'a plus aucun passage à afficher.
 - **Arrivée + départ** affichés pour chaque passage ; arrivée intermédiaire
   = départ − `arret_intermediaire_s` (60 s, dans la grille JSON) ; « — » au
   point d'origine.

@@ -1,0 +1,115 @@
+/* Style minimal des squelettes (étape 1) — le rendu définitif reproduira les maquettes. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--police-textes);
+  background: var(--tmb-marine);
+  color: #ffffff;
+  min-height: 100vh;
+}
+
+/* Bandeau crème : logo à gauche, titre centré, horloge à droite, liseré rouge. */
+.bandeau {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: var(--tmb-creme);
+  color: var(--tmb-marine);
+  padding: 12px 24px;
+  border-bottom: 6px solid var(--tmb-rouge);
+}
+
+.bandeau-logo {
+  height: 64px;
+  width: auto;
+}
+
+.bandeau-centre {
+  flex: 1;
+  text-align: center;
+}
+
+.bandeau-titre {
+  font-family: var(--police-titres);
+  font-size: 2rem;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--tmb-marine);
+}
+
+.bandeau-sous-titre {
+  margin: 2px 0 0;
+  color: var(--tmb-rouge);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.bandeau-horloge {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#horloge {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+#date-jour {
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+main {
+  padding: 32px 24px;
+}
+
+.note-squelette {
+  opacity: 0.75;
+  font-size: 0.95rem;
+  max-width: 60ch;
+}
+
+a {
+  color: var(--tmb-bleu-clair);
+}
+
+.liens-portail {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  max-width: 40rem;
+}
+
+.liens-portail li {
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 4px solid var(--tmb-rouge);
+  padding: 10px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.liens-portail .nom-gare {
+  font-family: var(--police-titres);
+  font-size: 1.15rem;
+  min-width: 11rem;
+}
+
+.liens-portail .altitude {
+  color: var(--tmb-bleu-clair);
+  font-size: 0.85rem;
+  min-width: 5.5rem;
+}
