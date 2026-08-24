@@ -6,24 +6,44 @@
     <title>TMB — Écran de gare</title>
   </head>
   <body>
-    <header class="bandeau">
-      <img src="/logos/logo-rond.svg" alt="Tramway du Mont-Blanc" class="bandeau-logo" />
-      <div class="bandeau-centre">
-        <h1 class="bandeau-titre" id="nom-gare">Écran de gare</h1>
-        <p class="bandeau-sous-titre" id="altitude-gare"></p>
+    <header>
+      <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
+      <div class="gare-bloc">
+        <div class="gare-nom" id="gare-nom"></div>
+        <div class="gare-alt" id="gare-alt"></div>
       </div>
-      <div class="bandeau-horloge">
-        <span id="horloge">--:--:--</span>
-        <span id="date-jour"></span>
+      <div class="heure-bloc">
+        <div class="horloge" id="horloge">--:--<span class="sec">--</span></div>
+        <div class="date" id="date-jour">—</div>
       </div>
     </header>
+
     <main>
-      <p class="note-squelette">
-        Étape 1 — squelette de l'écran de gare (arrivées / départs). Le tableau des passages, la
-        prochaine arrivée, les messages défilants et la météo sommet arrivent à l'étape 2, fidèles à
-        <code>maquettes/ecran-gare.html</code>.
-      </p>
+      <div class="titre-tableau">
+        <h1>Prochains départs</h1>
+        <span class="en">Next departures</span>
+      </div>
+      <div class="gridrow entetes" id="entetes">
+        <div>Arrivée<small>Arrival</small></div>
+        <div>Départ<small>Departure</small></div>
+        <div>Destination<small>Towards</small></div>
+        <div>Train<small>Tram</small></div>
+        <div>Départ dans<small>Departs in</small></div>
+        <div>Statut<small>Status</small></div>
+      </div>
+      <div class="corps" id="corps"></div>
+      <div class="plein-ecran" id="etat-special"></div>
+      <div class="erreur-config" id="erreur-config"></div>
+      <div class="arrivee" id="arrivee"></div>
     </main>
+
+    <footer>
+      <div class="ticker"><div class="ticker-inner" id="ticker"></div></div>
+      <div class="meteo" id="meteo"></div>
+    </footer>
+
+    <div class="veille"><div class="horloge-veille" id="horloge-veille">--:--</div></div>
+
     <script type="module" src="/src/pages/ecran.ts"></script>
   </body>
 </html>

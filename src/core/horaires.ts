@@ -24,7 +24,7 @@ export const RAMES_DEFAUT = ['Marie', 'Anne', 'Jeanne', 'Marguerite'];
 /** Ligne retirée de l'écran 2 minutes après le départ réel. */
 const RETRAIT_APRES_DEPART_S = 120;
 
-/** « À QUAI » de T − 1 min jusqu'au retrait de la ligne. */
+/** « < 1 min » clignotant de T − 1 min au départ (puis « À QUAI » jusqu'au retrait). */
 const SEUIL_A_QUAI_S = 60;
 
 // ---------------------------------------------------------------------------
@@ -368,13 +368,17 @@ export function prochaineArrivee(
 }
 
 /**
- * Compte à rebours avant départ : « n min », « n h mm » si ≥ 60 min,
- * « À QUAI » de T − 1 min jusqu'au retrait de la ligne.
+ * Compte à rebours avant départ (rendu de la maquette validée) : « n min »,
+ * « n h mm » si ≥ 60 min, « < 1 min » clignotant de T − 1 min au départ,
+ * puis « À QUAI » clignotant jusqu'au retrait de la ligne.
  */
 export function compteARebours(depart_s: number, maintenant_s: number): CompteARebours {
   const restant = depart_s - maintenant_s;
-  if (restant <= SEUIL_A_QUAI_S) {
+  if (restant <= 0) {
     return { type: 'quai', libelle: 'À QUAI' };
+  }
+  if (restant < SEUIL_A_QUAI_S) {
+    return { type: 'imminent', libelle: '< 1 min' };
   }
   const minutes = Math.ceil(restant / 60);
   if (minutes >= 60) {
@@ -391,9 +395,11 @@ export function compteARebours(depart_s: number, maintenant_s: number): CompteAR
 }
 
 /**
- * Fin de service à une gare : null tant qu'il reste des passages affichables ;
- * sinon, premier départ du LENDEMAIN à cette gare (lu dans la grille du
- * lendemain — null si pas de service demain, ex. fin de saison).
+ * Fin de service à une gare : null tant qu'il reste des DÉPARTS affichables
+ * (le tableau n'affiche que des départs — les arrivées restantes continuent
+ * d'alimenter la ligne « prochaine arrivée », cf. maquette) ; sinon, premier
+ * départ du LENDEMAIN à cette gare (lu dans la grille du lendemain — null si
+ * pas de service demain, ex. fin de saison).
  */
 export function finDeService(
   grille: Grille,
@@ -403,7 +409,9 @@ export function finDeService(
   grilleDemain: Grille | null,
   jourDemain?: Jour,
 ): FinDeService | null {
-  const restants = passagesPourGare(grille, jour, gare, maintenant_s);
+  const restants = passagesPourGare(grille, jour, gare, maintenant_s).filter(
+    (p) => p.depart_s !== null,
+  );
   if (restants.length > 0) return null;
 
   if (grilleDemain === null) return { premierDepart_s: null };

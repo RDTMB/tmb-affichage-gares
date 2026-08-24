@@ -109,14 +109,18 @@ Reproduit `maquettes/ecran-gare.html` :
      Bellevue » (taille réduite pour tenir sur une ligne) ; « Vélos
      acceptés / Bikes allowed » si train vélos ; motif en orange si retard.
    - Train : pastille couleur rame + nom + « TRAIN X » (majuscules, sans n°).
-   - Compte à rebours : « n min » ; « n h mm » si ≥ 60 min ; « À QUAI »
-     clignotant de T−1 min à T ; ligne retirée 2 min après départ
-     (immédiatement à l'heure théorique pour un supprimé). Les cases du
-     compte à rebours ont TOUTES la même taille (largeur fixe, centré).
+   - Compte à rebours (rendu exact de la maquette) : « n min » (mis en
+     évidence à 5 min ou moins) ; « n h mm » si ≥ 60 min ; « < 1 min »
+     clignotant de T−1 min au départ, puis « À QUAI » clignotant jusqu'au
+     retrait ; ligne retirée 2 min après départ (immédiatement à l'heure
+     théorique pour un supprimé). Les cases du compte à rebours ont TOUTES
+     la même taille (largeur fixe, centré).
    - Statut : À l'heure/On time (vert) · Retard +n min/Delayed (orange,
      heure réelle affichée + « théorique HH:MM ») · Supprimé/Cancelled
      (rouge, heure et destination barrées).
-   - 5 lignes max, tri par heure de départ, deux sens mélangés.
+   - 5 lignes max, tri par heure de départ, deux sens mélangés ; seuls les
+     passages AVEC départ figurent dans le tableau (au terminus d'un train,
+     son arrivée n'apparaît que via la ligne « prochaine arrivée »).
 3. **Prochaine arrivée** : « HH:MM — <Rame en SA couleur> (train n° X), en
    provenance de … ». Marguerite (blanche) : léger halo rouge pour rester
    lisible.
@@ -124,7 +128,9 @@ Reproduit `maquettes/ecran-gare.html` :
    pavé météo sommet (température + ciel, saisi en supervision).
 5. **États spéciaux** (plein tableau, logo blanc affiché dessous) :
    - Fin de service : « Service terminé — premier départ demain à HH:MM »
-     bilingue (premier départ lu dans la grille du lendemain) ;
+     bilingue (premier départ lu dans la grille du lendemain) — affiché dès
+     qu'il n'y a plus aucun DÉPART à afficher dans la gare, les arrivées
+     restantes continuant d'alimenter la ligne « prochaine arrivée » ;
    - Nid d'Aigle quand terminus Bellevue : « Tronçon Bellevue – Nid
      d'Aigle fermé » bilingue ;
    - Écran neutre du mode dégradé (voir §7) ;

@@ -1,0 +1,618 @@
+/* Écran de gare — port fidèle de maquettes/ecran-gare.html (validée par
+   l'exploitant, elle fait foi pour le visuel). Unités vh/vw : le rendu de
+   référence est un écran 16:9 plein écran (1920×1080). */
+
+:root {
+  /* Alias maquette → tokens charte (src/styles/tokens.css) */
+  --rouge: var(--tmb-rouge);
+  --rouge-fonce: var(--tmb-rouge-fonce);
+  --bleu-clair: var(--tmb-bleu-clair);
+  --bleu-gris: var(--tmb-bleu-gris);
+  --creme: var(--tmb-creme);
+  --marine: var(--tmb-marine);
+  /* Nuances propres à l'écran (issues de la maquette validée) */
+  --marine-fonce: #182c42;
+  --marine-ligne: #33517a;
+  --marine-row: #26436a;
+  --ok: #3fa96c;
+  --retard: #f2a33c;
+  --jaune: #f5ce5e;
+  --supprime: #ff6b5e;
+  --texte-sec: #a9c0d8;
+  --texte-ter: #7c96b0;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--marine-fonce);
+  color: #fff;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============ BANDEAU HAUT ============ */
+header {
+  background: var(--creme);
+  color: var(--marine);
+  flex: 0 0 14vh;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 0.9vh solid var(--rouge);
+  padding: 0 1.6vw;
+}
+
+.logo {
+  height: 12.2vh;
+  width: auto;
+  flex: none;
+}
+
+.gare-bloc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.gare-nom {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 6.4vh;
+  line-height: 1;
+  color: var(--marine);
+}
+
+.gare-alt {
+  font-weight: 700;
+  font-size: 2.1vh;
+  color: var(--rouge);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  margin-top: 0.7vh;
+}
+
+.heure-bloc {
+  text-align: right;
+}
+
+.horloge {
+  font-weight: 900;
+  font-size: 6.8vh;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--marine);
+}
+
+.horloge .sec {
+  font-size: 3.2vh;
+  color: var(--rouge);
+  font-weight: 700;
+}
+
+.date {
+  font-size: 1.95vh;
+  color: var(--bleu-gris);
+  font-weight: 700;
+  margin-top: 0.5vh;
+}
+
+/* ============ TABLEAU ============ */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: var(--marine);
+}
+
+.titre-tableau {
+  display: flex;
+  align-items: baseline;
+  gap: 1.2vw;
+  padding: 1.5vh 2vw 0.7vh;
+}
+
+.titre-tableau h1 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 3.2vh;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.titre-tableau .en {
+  font-size: 2vh;
+  color: var(--texte-sec);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+.gridrow {
+  display: grid;
+  grid-template-columns: 8vw 11.5vw 1fr 14.5vw 11.5vw 12.5vw;
+  gap: 0.9vw;
+  align-items: center;
+  padding: 0 1.8vw;
+}
+
+.entetes {
+  font-size: 1.7vh;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--texte-ter);
+  font-weight: 700;
+  padding-bottom: 0.7vh;
+}
+
+.entetes small {
+  display: block;
+  font-size: 1.4vh;
+  letter-spacing: 0.06em;
+  color: #5e7890;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.corps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.rangee {
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--marine-ligne);
+  background: var(--marine);
+}
+
+.rangee:nth-child(even) {
+  background: var(--marine-row);
+}
+
+.rangee.supprime .r-dep,
+.rangee.supprime .r-dest .dest {
+  text-decoration: line-through;
+  opacity: 0.42;
+}
+
+.r-arr {
+  font-weight: 400;
+  font-size: 3.1vh;
+  color: var(--texte-sec);
+  font-variant-numeric: tabular-nums;
+}
+
+.r-arr .tiret {
+  color: #4a6486;
+}
+
+.r-dep {
+  font-weight: 900;
+  font-size: 5.6vh;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.r-dep .retard-old {
+  display: block;
+  font-size: 1.9vh;
+  color: var(--retard);
+  font-weight: 700;
+}
+
+.r-dest {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  min-width: 0;
+}
+
+.fleche {
+  width: 5vh;
+  height: 5vh;
+  flex: none;
+  border-radius: 1vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fleche svg {
+  width: 3.2vh;
+  height: 3.2vh;
+}
+
+.fleche.up {
+  background: #2c5580;
+}
+
+.fleche.down {
+  background: #1b3a5e;
+}
+
+.r-dest .txt {
+  min-width: 0;
+}
+
+.r-dest .dest {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 4.3vh;
+  line-height: 1.08;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.r-dest .dest img.motrice-dest {
+  height: 7vh;
+  width: auto;
+  vertical-align: -1.9vh;
+  margin-left: 1.4vw;
+}
+
+.r-dest .note {
+  font-size: 1.95vh;
+  color: var(--texte-sec);
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.5vw;
+}
+
+.r-dest .note b {
+  color: var(--retard);
+  font-weight: 700;
+}
+
+.r-dest .note .exp {
+  color: var(--jaune);
+  font-weight: 700;
+}
+
+.r-dest .note .motif-supprime {
+  color: var(--supprime);
+  font-weight: 700;
+}
+
+.r-dest .note.note-exp {
+  font-size: 1.62vh;
+}
+
+.r-train {
+  display: flex;
+  align-items: center;
+  gap: 0.7vw;
+  min-width: 0;
+}
+
+.pastille {
+  width: 3vh;
+  height: 3vh;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 0.4vh rgba(255, 255, 255, 0.14);
+}
+
+.r-train .txt {
+  min-width: 0;
+}
+
+.r-train .nom-rame {
+  font-size: 2.6vh;
+  font-weight: 700;
+  color: #e8f0f8;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.r-train .num {
+  display: block;
+  font-size: 1.7vh;
+  color: var(--texte-ter);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.chip {
+  font-weight: 900;
+  font-size: 3.2vh;
+  padding: 1vh 0;
+  border-radius: 1.1vh;
+  white-space: nowrap;
+  background: #1a3454;
+  border: 1px solid #3a5e88;
+  color: #d8e8f8;
+  font-variant-numeric: tabular-nums;
+  width: 10.5vw;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.chip.proche {
+  color: #fff;
+  border-color: #5e86b4;
+  background: #254a74;
+}
+
+.chip.quai {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #06301a;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.r-statut {
+  font-size: 2.5vh;
+  font-weight: 700;
+}
+
+.r-statut span {
+  white-space: nowrap;
+}
+
+.r-statut small {
+  display: block;
+  font-size: 1.75vh;
+  font-weight: 400;
+  color: var(--texte-ter);
+  padding-left: 1.4vw;
+}
+
+.st-ok {
+  color: var(--ok);
+}
+
+.st-retard {
+  color: var(--retard);
+}
+
+.st-supp {
+  color: var(--supprime);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.st-ok::before,
+.st-retard::before,
+.st-supp::before {
+  content: '●';
+  margin-right: 0.5vw;
+  font-size: 1.7vh;
+  vertical-align: 0.4vh;
+}
+
+/* ============ ARRIVÉE + ÉTATS SPÉCIAUX ============ */
+.arrivee {
+  border-top: 1px solid var(--marine-ligne);
+  background: #1b3252;
+  display: flex;
+  align-items: center;
+  gap: 0.9vw;
+  padding: 1.2vh 2vw;
+  flex: 0 0 auto;
+  font-size: 2.25vh;
+  color: var(--texte-sec);
+}
+
+.arrivee b {
+  color: #fff;
+  font-weight: 900;
+}
+
+.arrivee .lbl {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 1.75vh;
+  color: var(--texte-ter);
+  font-weight: 700;
+}
+
+.arrivee .rame-col {
+  font-weight: 900;
+}
+
+.plein-ecran {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.6vh;
+  text-align: center;
+  padding: 0 6vw;
+}
+
+.plein-ecran h2 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 5.6vh;
+  font-weight: 700;
+}
+
+.plein-ecran p {
+  font-size: 2.8vh;
+  color: var(--texte-sec);
+  line-height: 1.5;
+}
+
+.plein-ecran p .en {
+  font-size: 2.2vh;
+}
+
+.plein-ecran img.logo-fin {
+  height: 20vh;
+  width: auto;
+  opacity: 0.95;
+  margin-top: 1vh;
+}
+
+/* ============ BAS ============ */
+footer {
+  flex: 0 0 8.5vh;
+  display: flex;
+  align-items: stretch;
+  background: var(--rouge);
+  color: #fff;
+}
+
+.ticker {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-inner {
+  display: inline-block;
+  white-space: nowrap;
+  animation: defile 80s linear infinite;
+  font-size: 2.9vh;
+  font-weight: 700;
+  padding-left: 100vw;
+}
+
+.ticker-inner .sep {
+  opacity: 0.55;
+  margin: 0 2.2vw;
+}
+
+.ticker-inner .en {
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+@keyframes defile {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* Message prioritaire « importante » : bandeau fixe, sans défilement */
+.ticker-inner.fixe {
+  animation: none;
+  padding-left: 2vw;
+}
+
+.meteo {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  padding: 0 1.8vw;
+  background: var(--rouge-fonce);
+  font-weight: 700;
+  font-size: 2.3vh;
+}
+
+.meteo .t {
+  font-size: 4.4vh;
+  font-weight: 900;
+}
+
+.meteo small {
+  display: block;
+  font-size: 1.65vh;
+  font-weight: 400;
+  opacity: 0.9;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ============ VEILLE NUIT ============ */
+/* Écran noir + horloge discrète (docs/01 §3.5) ; plage réglée en supervision. */
+.veille {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+body.mode-veille .veille {
+  display: flex;
+}
+
+.veille .horloge-veille {
+  font-size: 9vh;
+  font-weight: 300;
+  color: var(--bleu-gris);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============ ERREUR DE CONFIGURATION ============ */
+.erreur-config {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  text-align: center;
+  padding: 0 8vw;
+  background: var(--marine);
+}
+
+body.mode-erreur main > :not(.erreur-config) {
+  display: none !important;
+}
+
+body.mode-erreur .erreur-config {
+  display: flex;
+}
+
+.erreur-config h2 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 4.6vh;
+  color: var(--jaune);
+}
+
+.erreur-config p {
+  font-size: 2.4vh;
+  color: var(--texte-sec);
+  line-height: 1.6;
+}
+
+.erreur-config code {
+  background: #1a3454;
+  border: 1px solid #3a5e88;
+  border-radius: 0.6vh;
+  padding: 0.2vh 0.6vw;
+  font-size: 2vh;
+  color: #fff;
+}

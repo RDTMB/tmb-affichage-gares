@@ -270,10 +270,19 @@ describe('compteARebours', () => {
     expect(compteARebours(h('11:00'), h('10:00'))).toMatchObject({ libelle: '1 h 00' });
   });
 
-  it('affiche « À QUAI » de T − 1 min au départ', () => {
-    expect(compteARebours(h('10:00'), h('09:59:00')).type).toBe('quai');
-    expect(compteARebours(h('10:00'), h('09:59:30')).type).toBe('quai');
+  it('affiche « < 1 min » clignotant de T − 1 min au départ (maquette)', () => {
+    expect(compteARebours(h('10:00'), h('09:59:00'))).toMatchObject({ libelle: '1 min' });
+    expect(compteARebours(h('10:00'), h('09:59:01')).type).toBe('imminent');
+    expect(compteARebours(h('10:00'), h('09:59:30'))).toMatchObject({
+      type: 'imminent',
+      libelle: '< 1 min',
+    });
+  });
+
+  it('affiche « À QUAI » du départ jusqu’au retrait de la ligne', () => {
     expect(compteARebours(h('10:00'), h('10:00:00')).type).toBe('quai');
+    expect(compteARebours(h('10:00'), h('10:00:30')).type).toBe('quai');
+    expect(compteARebours(h('10:00'), h('10:01:59')).type).toBe('quai');
   });
 });
 
@@ -315,6 +324,14 @@ describe('finDeService', () => {
   it('pas de fin de service avant le premier train du matin', () => {
     expect(finDeService(GRAND, jourGrand(), 'le-fayet', h('05:00'), demain)).toBeNull();
     expect(finDeService(GRAND, jourGrand(), 'saint-gervais', h('12:00'), demain)).toBeNull();
+  });
+
+  it('se déclenche dès qu’il n’y a plus de DÉPART affichable (les arrivées continuent)', () => {
+    // Au Fayet, dernier départ à 16:00 (T25) ; les descentes arrivent encore jusqu'à 18:24:30
+    const fin = finDeService(GRAND, jourGrand(), 'le-fayet', h('16:30'), demain);
+    expect(fin?.premierDepart_s).toBe(h('07:00:00'));
+    // …et la « prochaine arrivée » reste alimentée (T22 arrive à 17:24:30)
+    expect(prochaineArrivee(GRAND, jourGrand(), 'le-fayet', h('16:30'))?.numero).toBe(22);
   });
 
   it('au Nid d’Aigle : premier départ demain 08:13 (descente T2)', () => {

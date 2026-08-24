@@ -175,6 +175,7 @@ export interface ProchaineArrivee {
 
 export type CompteARebours =
   | { type: 'quai'; libelle: string }
+  | { type: 'imminent'; libelle: string }
   | { type: 'minutes'; minutes: number; libelle: string }
   | { type: 'heures'; heures: number; minutes: number; libelle: string };
 
@@ -189,6 +190,107 @@ export interface PositionTrain {
   sens: Sens;
   rame: string;
   gare: GareId;
+}
+
+// ---------------------------------------------------------------------------
+// Données d'exploitation hors horaires (messages, médias, paramètres, comptes)
+// ---------------------------------------------------------------------------
+
+export interface MeteoSommet {
+  t: number;
+  ciel_fr: string;
+  ciel_en: string;
+}
+
+/** Plage de veille nuit « HH:MM » → « HH:MM » (peut franchir minuit). */
+export interface VeilleNuit {
+  debut: string;
+  fin: string;
+}
+
+/** Machine (rame) paramétrable en supervision ; `cercle` = couleur d'anneau (Marguerite). */
+export interface Machine {
+  nom: string;
+  couleur: string;
+  cercle?: string | null;
+  en_service: boolean;
+}
+
+/** Motif de perturbation avec sa traduction (défauts : Météo→Weather…). */
+export interface Motif {
+  fr: string;
+  en: string;
+}
+
+export interface Params {
+  meteo_sommet: MeteoSommet;
+  veille_nuit: VeilleNuit;
+  /** Temps d'affichage de la page horaires entre deux médias (défaut 20 s). */
+  duree_horaires_s: number;
+  /** Âge maximal du cache avant écran neutre (défaut 15 min). */
+  duree_cache_min: number;
+  machines: Machine[];
+  motifs: Motif[];
+}
+
+export type CibleMessage = 'toutes' | 'gares' | 'train';
+
+export interface Message {
+  id: string;
+  texte_fr: string;
+  texte_en: string;
+  cible_type: CibleMessage;
+  /** Si cible_type = 'gares'. */
+  gares?: GareId[] | null;
+  /** Si cible_type = 'train' : affiché dans les gares encore desservies par ce train. */
+  train_numero?: number | null;
+  priorite: 'normale' | 'importante';
+  actif: boolean;
+  expire_at?: string | null;
+}
+
+export interface Media {
+  id: string;
+  nom: string;
+  type: 'image' | 'video';
+  url: string;
+  duree_s: number;
+  /** null = toutes les gares. */
+  gares?: GareId[] | null;
+  actif: boolean;
+  expire_at?: string | null;
+}
+
+export interface MediaMeta {
+  nom: string;
+  type: 'image' | 'video';
+  duree_s: number;
+  gares?: GareId[] | null;
+  expire_at?: string | null;
+}
+
+export type Role = 'admin' | 'supervision' | 'caisse';
+
+export interface Session {
+  user_id: string;
+  email: string;
+}
+
+export interface User {
+  user_id: string;
+  nom: string;
+  email: string;
+  role: Role;
+  actif: boolean;
+}
+
+export interface EcranInfo {
+  id: string;
+  gare: GareId;
+  type?: string | null;
+  derniere_vue?: string | null;
+  version_app?: string | null;
+  reseau?: string | null;
 }
 
 /** Résultat de la bascule « Terminus Bellevue à partir du TRAIN N ». */
