@@ -1,0 +1,570 @@
+{
+ "version": "2026-ete-petit-service",
+ "libelle": "Petit service — été 2026",
+ "source": "Horaires été 2026 publics — mise à jour du 05/06/2026",
+ "periodes": [
+  {
+   "du": "2026-06-13",
+   "au": "2026-07-03"
+  },
+  {
+   "du": "2026-08-31",
+   "au": "2026-09-27"
+  }
+ ],
+ "gares": [
+  {
+   "id": "le-fayet",
+   "nom": "Le Fayet",
+   "altitude_m": 580
+  },
+  {
+   "id": "saint-gervais",
+   "nom": "Saint-Gervais",
+   "altitude_m": 786
+  },
+  {
+   "id": "motivon",
+   "nom": "Motivon",
+   "altitude_m": 1375
+  },
+  {
+   "id": "col-de-voza",
+   "nom": "Col de Voza",
+   "altitude_m": 1653
+  },
+  {
+   "id": "bellevue",
+   "nom": "Bellevue",
+   "altitude_m": 1794
+  },
+  {
+   "id": "nid-daigle",
+   "nom": "Nid d'Aigle",
+   "altitude_m": 2412
+  }
+ ],
+ "arret_intermediaire_s": 60,
+ "regles": {
+  "express": "ne dessert pas col-de-voza ni bellevue (passages absents) ; picto motrice + mention bilingue",
+  "facultatif": "opéré selon météo et affluence, confirmé au plus tard la veille au soir ; n'apparaît sur les écrans que s'il est activé en supervision",
+  "velos": "train accessible aux vélos (limite 5, selon affluence)",
+  "rotation": "la rame de la montée n assure la descente qui suit son arrivée (train n+1)"
+ },
+ "montees": [
+  {
+   "numero": 1,
+   "express": false,
+   "facultatif": false,
+   "velos": true,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "07:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "07:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "07:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "07:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "07:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "08:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 5,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "09:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "09:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "09:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "09:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "09:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "10:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 7,
+   "express": false,
+   "facultatif": true,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "10:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "10:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "10:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "10:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "10:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "11:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 11,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "11:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "11:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "11:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "11:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "11:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "12:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 13,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "12:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "12:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "12:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "12:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "12:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "13:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 15,
+   "express": false,
+   "facultatif": true,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "13:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "13:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "13:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "13:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "13:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "14:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 19,
+   "express": false,
+   "facultatif": false,
+   "velos": true,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "14:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "14:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "14:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "14:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "14:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "15:05:30"
+    }
+   ]
+  },
+  {
+   "numero": 21,
+   "express": false,
+   "facultatif": false,
+   "velos": true,
+   "passages": [
+    {
+     "gare": "le-fayet",
+     "d": "15:00:00"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "15:15:00"
+    },
+    {
+     "gare": "motivon",
+     "d": "15:27:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "15:42:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "15:49:30"
+    },
+    {
+     "gare": "nid-daigle",
+     "a": "16:05:30"
+    }
+   ]
+  }
+ ],
+ "descentes": [
+  {
+   "numero": 2,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "08:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "08:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "08:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "08:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "09:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "09:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 6,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "10:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "10:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "10:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "10:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "11:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "11:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 8,
+   "express": false,
+   "facultatif": true,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "11:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "11:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "11:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "11:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "12:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "12:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 12,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "12:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "12:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "12:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "12:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "13:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "13:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 14,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "13:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "13:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "13:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "13:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "14:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "14:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 16,
+   "express": false,
+   "facultatif": true,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "14:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "14:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "14:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "14:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "15:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "15:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 20,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "15:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "15:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "15:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "15:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "16:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "16:24:30"
+    }
+   ]
+  },
+  {
+   "numero": 22,
+   "express": false,
+   "facultatif": false,
+   "velos": false,
+   "passages": [
+    {
+     "gare": "nid-daigle",
+     "d": "16:13:30"
+    },
+    {
+     "gare": "bellevue",
+     "d": "16:33:30"
+    },
+    {
+     "gare": "col-de-voza",
+     "d": "16:41:30"
+    },
+    {
+     "gare": "motivon",
+     "d": "16:57:30"
+    },
+    {
+     "gare": "saint-gervais",
+     "d": "17:13:30"
+    },
+    {
+     "gare": "le-fayet",
+     "a": "17:24:30"
+    }
+   ]
+  }
+ ]
+}
