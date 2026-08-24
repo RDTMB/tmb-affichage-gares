@@ -442,7 +442,9 @@ export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number
     const departOrigine = premier.depart_s ?? premier.arrivee_s;
     const arriveeTerminus = dernier.arrivee_s ?? dernier.depart_s;
     if (departOrigine === null || arriveeTerminus === null) continue;
-    if (maintenant_s < departOrigine + decalage || maintenant_s > arriveeTerminus + decalage) {
+    // En ligne dès le départ THÉORIQUE (un train retardé est à quai de son
+    // origine — rendu maquette), jusqu'à l'arrivée RÉELLE au terminus.
+    if (maintenant_s < departOrigine || maintenant_s > arriveeTerminus + decalage) {
       continue;
     }
 

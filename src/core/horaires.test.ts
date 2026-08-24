@@ -580,6 +580,16 @@ describe('positionsTrains', () => {
     expect(positions).toHaveLength(3);
   });
 
+  it('un train retardé est en ligne à son origine dès son heure théorique (maquette)', () => {
+    const jour = jourGrand();
+    Object.assign(circ(jour, 11), { statut: 'retard', retard_min: 10, motif: 'Météo' });
+    // Départ théorique 11:00, départ réel 11:10 : à 11:02 le train est à quai au Fayet
+    const positions = positionsTrains(GRAND, jour, h('11:02'));
+    expect(positions.find((p) => p.numero === 11)?.gare).toBe('le-fayet');
+    // Avant l'heure théorique : pas encore en ligne
+    expect(positionsTrains(GRAND, jour, h('10:59')).find((p) => p.numero === 11)).toBeUndefined();
+  });
+
   it('un train supprimé n’est jamais en ligne', () => {
     const jour = jourGrand();
     Object.assign(circ(jour, 7), { statut: 'supprime' });

@@ -34,6 +34,7 @@ import type {
   PassageGare,
 } from '../core/types';
 import { creeProvider } from '../data';
+import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 
 // Flèches obliques ↗ / ↙ de la maquette (inline, aucune ressource externe)
@@ -48,15 +49,6 @@ function $(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Élément #${id} introuvable`);
   return el;
-}
-
-function echapper(texte: string): string {
-  return texte
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /** « 7:00 am » — format du texte anglais de la maquette. */
@@ -90,7 +82,7 @@ let grilleDemain: Grille | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
 let dernierEtatSpecial = '';
-let derniereSignatureTicker: string | null = null;
+const majTicker = creeTicker($('ticker'));
 
 function nomGare(id: GareId): string {
   return grille?.gares.find((g) => g.id === id)?.nom ?? id;
@@ -231,45 +223,14 @@ function rendsArrivee(gare: GareId, maintenant_s: number): void {
     <span>(TRAIN ${prochaine.numero}), en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
 }
 
-/** Messages visibles dans cette gare (cible toutes / gares / train encore desservi). */
-function messagesVisibles(gare: GareId, passagesRestants: PassageGare[]): Message[] {
-  // Expiration comparée à l'heure simulable, comme tout le reste de l'écran
-  const nowMs = heure.maintenantMs();
-  return messages.filter((m) => {
-    if (!m.actif) return false;
-    if (m.expire_at && new Date(m.expire_at).getTime() < nowMs) return false;
-    if (m.cible_type === 'gares') return (m.gares ?? []).includes(gare);
-    if (m.cible_type === 'train') {
-      return passagesRestants.some((p) => p.numero === m.train_numero);
-    }
-    return true;
-  });
-}
-
 function rendsTicker(gare: GareId, passagesRestants: PassageGare[]): void {
-  const visibles = messagesVisibles(gare, passagesRestants);
-  const importantes = visibles.filter((m) => m.priorite === 'importante');
-  const affiches = importantes.length > 0 ? importantes : visibles;
-  const signature = `${importantes.length > 0 ? 'fixe' : 'defile'}:${affiches.map((m) => m.id).join('|')}`;
-  if (signature === derniereSignatureTicker) return;
-  derniereSignatureTicker = signature;
-  const ticker = $('ticker');
-  ticker.classList.toggle('fixe', importantes.length > 0);
-  ticker.innerHTML = affiches
-    .map(
-      (m) =>
-        `${echapper(m.texte_fr)}<span class="sep">•</span><span class="en">${echapper(m.texte_en)}</span>`,
-    )
-    .join('<span class="sep">◆</span>');
+  // Expiration comparée à l'heure simulable, comme tout le reste de l'écran
+  majTicker(messagesVisibles(messages, gare, passagesRestants, heure.maintenantMs()));
 }
 
 function rendsMeteo(): void {
   if (!params || !grille) return;
-  const meteo = params.meteo_sommet;
-  const sommet = grille.gares.find((g) => g.id === 'nid-daigle');
-  const altitude = sommet ? `${sommet.nom} · ${sommet.altitude_m.toLocaleString('fr-FR')} m` : '';
-  $('meteo').innerHTML = `<div class="t">${meteo.t}°C</div>
-    <div>${echapper(altitude)}<small>${echapper(`${meteo.ciel_fr} / ${meteo.ciel_en}`)}</small></div>`;
+  $('meteo').innerHTML = meteoHtml(params, grille);
 }
 
 // ---------------------------------------------------------------------------
@@ -365,7 +326,6 @@ async function demarre(): Promise<void> {
     messages = chargeMessages;
     grille = grilles.find((g) => g.version === chargeJour.grille_version) ?? grilles[0] ?? null;
     grilleDemain = serviceActif(grilles, dateSuivante(dateJour));
-    derniereSignatureTicker = null; // le bandeau sera reconstruit
   }
 
   /** Au changement de date (minuit), recharge le jour d'exploitation courant. */
@@ -373,6 +333,7 @@ async function demarre(): Promise<void> {
     if (!jour || rechargementEnCours || jour.date === heure.dateISO()) return;
     rechargementEnCours = true;
     void chargeDonnees()
+      .then(() => rendsMeteo())
       .catch(() => {}) // l'affichage garde le dernier état connu (mode dégradé à l'étape 4)
       .finally(() => {
         rechargementEnCours = false;
@@ -410,7 +371,9 @@ async function demarre(): Promise<void> {
 
   rendsMeteo();
   provider.onChange(() => {
-    void chargeDonnees().then(() => rendsMeteo());
+    void chargeDonnees()
+      .then(() => rendsMeteo())
+      .catch(() => {}); // l'affichage garde le dernier état connu
   });
 
   rendre(gare);

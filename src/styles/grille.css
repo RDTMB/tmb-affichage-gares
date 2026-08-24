@@ -1,0 +1,460 @@
+/* Grille du jour — port fidèle de maquettes/grille-horaire.html (validée par
+   l'exploitant, elle fait foi pour le visuel). Unités vh/vw : écran 16:9. */
+
+:root {
+  /* Alias maquette → tokens charte (src/styles/tokens.css) */
+  --rouge: var(--tmb-rouge);
+  --rouge-fonce: var(--tmb-rouge-fonce);
+  --bleu-clair: var(--tmb-bleu-clair);
+  --bleu-gris: var(--tmb-bleu-gris);
+  --creme: var(--tmb-creme);
+  --marine: var(--tmb-marine);
+  /* Nuances propres à la grille (issues de la maquette validée) */
+  --marine-fonce: #182c42;
+  --marine-ligne: #33517a;
+  --marine-row: #26436a;
+  --ok: #3fa96c;
+  --retard: #f2a33c;
+  --jaune: #f5ce5e;
+  --supprime: #ff8a7e;
+  --texte-sec: #a9c0d8;
+  --texte-ter: #7c96b0;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--marine);
+  color: #fff;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============ BANDEAU HAUT ============ */
+header {
+  background: var(--creme);
+  color: var(--marine);
+  flex: 0 0 12vh;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 0.9vh solid var(--rouge);
+  padding: 0 1.5vw;
+}
+
+.logo {
+  height: 10.4vh;
+  width: auto;
+}
+
+.titre-bloc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.titre-bloc h1 {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 4.6vh;
+  line-height: 1;
+  color: var(--marine);
+}
+
+.titre-bloc .en {
+  font-weight: 700;
+  font-size: 1.9vh;
+  color: var(--rouge);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  margin-top: 0.5vh;
+}
+
+.heure-bloc {
+  text-align: right;
+}
+
+.horloge {
+  font-weight: 900;
+  font-size: 5.8vh;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--marine);
+}
+
+.horloge .sec {
+  font-size: 2.8vh;
+  color: var(--rouge);
+  font-weight: 700;
+}
+
+.date {
+  font-size: 1.85vh;
+  color: var(--bleu-gris);
+  font-weight: 700;
+  margin-top: 0.4vh;
+}
+
+/* ============ TABLEAUX MONTÉE / DESCENTE ============ */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1vh 1.2vw;
+  gap: 0.8vh;
+  overflow: hidden;
+}
+
+.sens {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sens h2 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 2.2vh;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2vh 0.2vw 0.6vh;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+}
+
+.sens h2 .fl {
+  color: var(--bleu-clair);
+  font-family: 'Lato', sans-serif;
+}
+
+.sens h2 span.en {
+  color: var(--texte-sec);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-size: 1.75vh;
+  font-family: 'Lato', sans-serif;
+}
+
+.tabwrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th,
+td {
+  border: 1px solid var(--marine-ligne);
+  text-align: center;
+  position: relative;
+}
+
+thead th {
+  background: #1b3252;
+  font-size: 2.25vh;
+  font-weight: 900;
+  padding: 0.3vh 0;
+  font-variant-numeric: tabular-nums;
+}
+
+thead th .num {
+  display: block;
+  font-size: 1.35vh;
+  font-weight: 700;
+  color: var(--texte-ter);
+  letter-spacing: 0.06em;
+}
+
+thead th .picto {
+  display: block;
+  font-size: 1.35vh;
+  line-height: 1.4;
+  font-weight: 900;
+  color: var(--jaune);
+}
+
+thead th img.motrice {
+  height: 3.3vh;
+  width: auto;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+thead th .velo {
+  color: var(--bleu-clair);
+  font-size: 1.5vh;
+}
+
+thead th.col-gare {
+  width: 10vw;
+  background: #1b3252;
+  font-size: 1.55vh;
+  letter-spacing: 0.12em;
+  color: var(--texte-ter);
+  font-weight: 700;
+}
+
+tbody th {
+  background: var(--marine-row);
+  font-size: 1.85vh;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.25vh 0.7vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Amaranth', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+tbody th small {
+  display: block;
+  font-size: 1.3vh;
+  color: var(--texte-ter);
+  font-weight: 400;
+  font-family: 'Lato', sans-serif;
+}
+
+tbody td {
+  background: var(--marine);
+  font-size: 2.25vh;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15vh 0;
+}
+
+/* « | » : passage express sans arrêt — « — » : gare non desservie (terminus Bellevue) */
+td.saute {
+  color: #4a6486;
+  font-size: 1.85vh;
+}
+
+td.passe,
+th.passe {
+  opacity: 0.36;
+}
+
+th.next,
+td.next {
+  background: #2c5580 !important;
+  box-shadow: inset 0 0 0 2px #5e86b4;
+}
+
+thead th.retard,
+td.retard {
+  color: var(--retard);
+}
+
+thead th.retard .badge,
+thead th.supp .badge {
+  display: block;
+  font-size: 1.25vh;
+  font-weight: 900;
+}
+
+thead th.supp {
+  color: var(--supprime);
+}
+
+td.supp {
+  color: #5e7890;
+  text-decoration: line-through;
+}
+
+/* Point pulsant couleur rame : dernier point de passage des trains en ligne */
+.train-pos {
+  position: absolute;
+  right: 0.3vw;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.7vh;
+  height: 1.7vh;
+  border-radius: 50%;
+  animation: pulse 1.4s ease-in-out infinite;
+  box-shadow:
+    0 0 0 2px rgba(24, 44, 66, 0.75),
+    0 0 0.9vh rgba(255, 255, 255, 0.9);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ============ LÉGENDE ============ */
+.legende {
+  flex: 0 0 3.8vh;
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+  font-size: 1.45vh;
+  color: var(--texte-sec);
+  padding: 0 0.3vw;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.legende .item {
+  display: flex;
+  align-items: center;
+  gap: 0.4vw;
+}
+
+.legende .rame-dot {
+  width: 1.7vh;
+  height: 1.7vh;
+  border-radius: 50%;
+}
+
+.legende b {
+  color: #fff;
+  font-weight: 700;
+}
+
+.legende img.motrice {
+  height: 2.8vh;
+  width: auto;
+}
+
+/* ============ BAS ============ */
+footer {
+  flex: 0 0 7.5vh;
+  display: flex;
+  align-items: stretch;
+  background: var(--rouge);
+  color: #fff;
+}
+
+.ticker {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-inner {
+  display: inline-block;
+  white-space: nowrap;
+  animation: defile 80s linear infinite;
+  font-size: 2.6vh;
+  font-weight: 700;
+  padding-left: 100vw;
+}
+
+.ticker-inner .sep {
+  opacity: 0.55;
+  margin: 0 2vw;
+}
+
+.ticker-inner .en {
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+@keyframes defile {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* Message prioritaire « importante » : bandeau fixe, sans défilement */
+.ticker-inner.fixe {
+  animation: none;
+  padding-left: 2vw;
+}
+
+.meteo {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.9vw;
+  padding: 0 1.6vw;
+  background: var(--rouge-fonce);
+  font-weight: 700;
+  font-size: 2.1vh;
+}
+
+.meteo .t {
+  font-size: 3.9vh;
+  font-weight: 900;
+}
+
+.meteo small {
+  display: block;
+  font-size: 1.5vh;
+  font-weight: 400;
+  opacity: 0.9;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ============ ERREUR DE CHARGEMENT ============ */
+.erreur-config {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  text-align: center;
+  padding: 0 8vw;
+}
+
+body.mode-erreur main > :not(.erreur-config) {
+  display: none !important;
+}
+
+body.mode-erreur .erreur-config {
+  display: flex;
+}
+
+.erreur-config h2 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 4.2vh;
+  color: var(--jaune);
+}
+
+.erreur-config p {
+  font-size: 2.3vh;
+  color: var(--texte-sec);
+  line-height: 1.6;
+}
+
+.erreur-config code {
+  background: #1a3454;
+  border: 1px solid #3a5e88;
+  border-radius: 0.6vh;
+  padding: 0.2vh 0.6vw;
+  font-size: 1.9vh;
+  color: #fff;
+}

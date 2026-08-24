@@ -3,26 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TMB — Grille du jour</title>
+    <title>TMB — Grille horaire du jour</title>
   </head>
   <body>
-    <header class="bandeau">
-      <img src="/logos/logo-rond.svg" alt="Tramway du Mont-Blanc" class="bandeau-logo" />
-      <div class="bandeau-centre">
-        <h1 class="bandeau-titre" id="nom-gare">Grille du jour</h1>
-        <p class="bandeau-sous-titre">Horaires du jour / Today's timetable</p>
+    <header>
+      <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
+      <div class="titre-bloc">
+        <h1>Horaires du jour</h1>
+        <div class="en" id="sous-titre">Today's timetable</div>
       </div>
-      <div class="bandeau-horloge">
-        <span id="horloge">--:--:--</span>
-        <span id="date-jour"></span>
+      <div class="heure-bloc">
+        <div class="horloge" id="horloge">--:--<span class="sec">--</span></div>
+        <div class="date" id="date-jour">—</div>
       </div>
     </header>
+
     <main>
-      <p class="note-squelette">
-        Étape 1 — squelette de la grille du jour (tableaux montée / descente). Implémentation
-        complète à l'étape 3, fidèle à <code>maquettes/grille-horaire.html</code>.
-      </p>
+      <section class="sens">
+        <h2>
+          <span class="fl">↗</span> Montée — Le Fayet → Nid d'Aigle <span class="en">Ascent</span>
+        </h2>
+        <div class="tabwrap"><table id="tab-montee"></table></div>
+      </section>
+      <section class="sens">
+        <h2>
+          <span class="fl">↙</span> Descente — Nid d'Aigle → Le Fayet
+          <span class="en">Descent</span>
+        </h2>
+        <div class="tabwrap"><table id="tab-descente"></table></div>
+      </section>
+      <div class="legende" id="legende"></div>
+      <div class="erreur-config" id="erreur-config"></div>
     </main>
+
+    <footer>
+      <div class="ticker"><div class="ticker-inner" id="ticker"></div></div>
+      <div class="meteo" id="meteo"></div>
+    </footer>
+
     <script type="module" src="/src/pages/grille.ts"></script>
   </body>
 </html>
