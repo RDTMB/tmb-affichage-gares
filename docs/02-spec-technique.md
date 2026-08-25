@@ -205,7 +205,10 @@ service, passage de minuit, tri multi-sens.
   vide à l'enregistrement), appel au service de traduction — phase 1 : API
   DeepL Free (500 000 caractères/mois, clé stockée en secret de dépôt,
   appelée via une Edge Function Supabase pour ne pas exposer la clé) avec
-  repli sur un dictionnaire local des phrases types ; phase 2 : LibreTranslate
+  repli sur un dictionnaire local des PHRASES TYPES (apparié sur la phrase
+  entière : jamais de substitution mot à mot, qui produirait du franglais ;
+  si la phrase est inconnue, `texte_en` reste VIDE et l'écran n'affiche que
+  le français — aucun faux anglais n'est fabriqué) ; phase 2 : LibreTranslate
   auto-hébergé sur la tour. Le texte EN reste toujours modifiable.
 - Navigation par date : `genererJour(date)` idempotent (n'écrase pas les
   lignes modifiées, upsert sur (date,numero) avec garde).

@@ -89,13 +89,21 @@ du Nid d'Aigle à 14:13:30). Effets écrans : voir §3.
 
 ### 2.4 Messages
 
-`texte_fr, texte_en, cible` = toutes | liste de gares | numéro de train,
+`texte_fr, texte_en` (l'anglais peut rester VIDE : les écrans n'affichent
+alors que le français, sans séparateur ni bloc anglais — on ne fabrique
+JAMAIS de faux anglais, ni « [EN] français », ni du franglais mot à mot),
+`cible` = toutes | liste de gares | numéro de train,
 `priorite` normale (défilement) / importante (bandeau fixe), `expire_at`,
 `actif`. Un message ciblé « train » ne s'affiche que dans les gares encore
 desservies par ce train, tant qu'il n'est pas passé. **Les messages sont
 modifiables après création** (édition en place). **La traduction anglaise
 est générée automatiquement** dès la saisie du français (service de
 traduction, voir docs/02 §5) et reste modifiable avant et après publication.
+Si le service est indisponible et que la phrase n'est pas une phrase type
+connue du repli, le champ anglais reste VIDE et la supervision affiche un
+avertissement explicite (« Traduction automatique indisponible — saisissez
+l'anglais, sinon le message ne sera diffusé qu'en français ») sans bloquer la
+publication.
 
 ### 2.5 Médias
 

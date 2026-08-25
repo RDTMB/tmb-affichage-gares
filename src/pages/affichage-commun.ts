@@ -34,6 +34,21 @@ export function messagesVisibles(
 }
 
 /**
+ * Contenu du bandeau : « FR • EN » quand la traduction existe, français SEUL
+ * sinon — pas de séparateur « • » orphelin ni de bloc anglais vide (la
+ * traduction indisponible ne doit jamais produire de faux anglais).
+ */
+export function contenuTicker(affiches: Message[]): string {
+  return affiches
+    .map((m) => {
+      const en = m.texte_en.trim();
+      const fr = echapper(m.texte_fr);
+      return en ? `${fr}<span class="sep">•</span><span class="en">${echapper(en)}</span>` : fr;
+    })
+    .join('<span class="sep">◆</span>');
+}
+
+/**
  * Bandeau de messages : défilement lent FR • EN (priorité « importante » =
  * bandeau fixe). Reconstruit uniquement quand le contenu change, pour ne pas
  * réinitialiser l'animation CSS à chaque seconde.
@@ -49,12 +64,7 @@ export function creeTicker(element: HTMLElement): (visibles: Message[]) => void 
     if (signature === derniereSignature) return;
     derniereSignature = signature;
     element.classList.toggle('fixe', importantes.length > 0);
-    element.innerHTML = affiches
-      .map(
-        (m) =>
-          `${echapper(m.texte_fr)}<span class="sep">•</span><span class="en">${echapper(m.texte_en)}</span>`,
-      )
-      .join('<span class="sep">◆</span>');
+    element.innerHTML = contenuTicker(affiches);
   };
 }
 

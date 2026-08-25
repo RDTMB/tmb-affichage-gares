@@ -70,6 +70,56 @@ export function messageDepuisFormulaire(f: FormulaireMessage, id: string): Messa
 }
 
 /**
+ * Dictionnaire de repli des PHRASES TYPES (docs/02 §5), utilisé quand le
+ * service de traduction est indisponible. Volontairement limité aux
+ * formulations récurrentes de l'exploitation, et apparié sur la phrase
+ * ENTIÈRE : une substitution mot à mot produirait du franglais
+ * (« le chef de station »), c'est-à-dire un autre faux anglais. Liste
+ * extensible au fil des besoins de l'exploitant.
+ */
+const PHRASES_TYPES: [string, string][] = [
+  [
+    'réservation obligatoire pour tous les trajets — pensez à réserver votre descente',
+    'Booking is compulsory for all journeys — remember to book your descent.',
+  ],
+  ['réservation obligatoire pour tous les trajets', 'Booking is compulsory for all journeys.'],
+  ['réservation obligatoire', 'Booking is compulsory.'],
+  [
+    'restez derrière la ligne jaune à l’approche du train',
+    'Please stand behind the yellow line when the tram approaches.',
+  ],
+  [
+    'trains vélos : transport limité à 5 vélos, selon affluence',
+    'Bike trains: limited to 5 bikes, subject to capacity.',
+  ],
+  ['forte affluence attendue', 'High demand expected.'],
+  ['service interrompu', 'Service suspended.'],
+  ['adressez-vous au personnel en gare', 'Please contact station staff.'],
+];
+
+/** Comparaison indulgente : casse, accents d'apostrophe et ponctuation finale. */
+function normalise(texte: string): string {
+  return texte
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '’')
+    .replace(/[.!…]+$/, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Traduction de repli. Renvoie une chaîne VIDE si la phrase n'est pas une
+ * phrase type connue : on ne fabrique JAMAIS de faux anglais — ni un texte
+ * français préfixé « [EN] », ni du franglais mot à mot. L'écran n'affiche
+ * alors que le français, et la supervision avertit l'agent.
+ */
+export function traductionLocale(fr: string): string {
+  const source = normalise(fr);
+  if (!source) return '';
+  return PHRASES_TYPES.find(([type]) => normalise(type) === source)?.[1] ?? '';
+}
+
+/**
  * Identifiant physique d'un écran : le TYPE de page en fait partie, sinon
  * l'écran des départs et l'écran grille d'une même gare s'écrasent dans
  * « État des écrans » et le bouton « Recharger » vise le mauvais poste.

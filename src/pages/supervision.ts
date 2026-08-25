@@ -32,6 +32,7 @@ import {
   datetimeLocalVersIso,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
+  traductionLocale,
   valeursFormulaireMessage,
   type FormulaireMessage,
 } from './supervision-logique';
@@ -708,23 +709,9 @@ function exporteCsv(): void {
 // Onglet Messages (traduction EN automatique : Edge Function + repli local)
 // ---------------------------------------------------------------------------
 
-const TRADUCTIONS_LOCALES: [RegExp, string][] = [
-  [/réservation obligatoire/gi, 'booking is compulsory'],
-  [/pensez à réserver votre descente/gi, 'remember to book your descent'],
-  [/forte affluence/gi, 'high demand'],
-  [/travaux/gi, 'works'],
-  [/vent fort/gi, 'strong wind'],
-  [/retardé de/gi, 'delayed by'],
-  [/supprimé/gi, 'cancelled'],
-  [/minutes?/gi, 'min'],
-  [/gare/gi, 'station'],
-  [/train/gi, 'tram'],
-];
-
-function traductionLocale(fr: string): string {
-  let en = fr;
-  for (const [motif, remplacement] of TRADUCTIONS_LOCALES) en = en.replace(motif, remplacement);
-  return en === fr ? `[EN] ${fr}` : en.charAt(0).toUpperCase() + en.slice(1);
+/** Avertit l'agent que l'anglais n'a pas pu être produit automatiquement. */
+function afficheAvertissementTraduction(visible: boolean): void {
+  $('msg-trad-avert').style.display = visible ? '' : 'none';
 }
 
 let traductionId = 0;
@@ -733,13 +720,18 @@ function lanceTraduction(): void {
   if (traductionManuelle) return; // le texte EN a été retouché à la main
   if (!fr) {
     ($('msg-en') as HTMLInputElement).value = '';
+    afficheAvertissementTraduction(false);
     return;
   }
   window.clearTimeout(traductionId);
   traductionId = window.setTimeout(() => {
     void provider.traduire(fr).then((en) => {
       if (traductionManuelle) return;
-      ($('msg-en') as HTMLInputElement).value = en ?? traductionLocale(fr);
+      // Service indisponible (null) : repli dictionnaire ; s'il ne connaît
+      // pas la phrase, on laisse VIDE — jamais de faux anglais.
+      const traduit = en ?? traductionLocale(fr);
+      ($('msg-en') as HTMLInputElement).value = traduit;
+      afficheAvertissementTraduction(traduit === '');
     });
   }, 500);
 }
@@ -869,6 +861,7 @@ function majChampsCible(cible: Message['cible_type'], trainSelectionne: number |
 function annuleEditionMessage(): void {
   editionMessageId = null;
   traductionManuelle = false;
+  afficheAvertissementTraduction(false);
   remplitFormulaireMessage(null);
   $('btn-msg').textContent = 'Ajouter';
   $('btn-msg-annuler').style.display = 'none';
@@ -897,7 +890,9 @@ function initMessages(): void {
   $('msg-expire').addEventListener('change', appliqueRaccourciExpiration);
   $('msg-fr').addEventListener('input', lanceTraduction);
   $('msg-en').addEventListener('input', () => {
-    traductionManuelle = ($('msg-en') as HTMLInputElement).value.trim() !== '';
+    const saisi = ($('msg-en') as HTMLInputElement).value.trim() !== '';
+    traductionManuelle = saisi;
+    if (saisi) afficheAvertissementTraduction(false); // l'agent a fourni l'anglais
   });
   $('btn-msg-annuler').addEventListener('click', annuleEditionMessage);
 
@@ -911,6 +906,8 @@ function initMessages(): void {
       toast('Cochez au moins une gare, sinon le message ne s’affichera nulle part');
       return;
     }
+    // Anglais absent : repli dictionnaire, sinon VIDE (l'écran n'affichera
+    // que le français — jamais de faux anglais). L'agent a été averti.
     if (!f.texte_en.trim()) f.texte_en = traductionLocale(f.texte_fr);
     // Le formulaire est la source de vérité : cible et expiration affichées
     // sont exactement celles enregistrées (elles ont été restituées à

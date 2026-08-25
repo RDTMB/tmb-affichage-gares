@@ -9,6 +9,7 @@ import {
   identifiantEcran,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
+  traductionLocale,
   valeursFormulaireMessage,
 } from './supervision-logique';
 
@@ -88,6 +89,57 @@ describe('Édition d’un message : cible et expiration préservées', () => {
     expect(isoVersDatetimeLocal(iso)).toBe(local);
     expect(datetimeLocalVersIso('')).toBeNull();
     expect(isoVersDatetimeLocal(null)).toBe('');
+  });
+});
+
+describe('Traduction de repli : jamais de faux anglais', () => {
+  it('rend une chaîne VIDE quand le dictionnaire ne connaît pas la phrase', () => {
+    expect(traductionLocale('Quai glissant, soyez prudents.')).toBe('');
+    expect(traductionLocale('Phrase totalement inédite du chef de gare.')).toBe('');
+  });
+
+  it('ne préfixe JAMAIS le français par « [EN] »', () => {
+    for (const phrase of [
+      'Quai glissant, soyez prudents.',
+      'Réservation obligatoire pour tous les trajets.',
+      'Le train de 11 h est retardé de 10 minutes.',
+      '',
+      '   ',
+    ]) {
+      expect(traductionLocale(phrase)).not.toContain('[EN]');
+    }
+  });
+
+  it('traduit les phrases types connues, appariées sur la phrase entière', () => {
+    expect(traductionLocale('Réservation obligatoire pour tous les trajets.')).toBe(
+      'Booking is compulsory for all journeys.',
+    );
+    expect(traductionLocale('forte affluence attendue')).toBe('High demand expected.');
+  });
+
+  it('ne produit pas de franglais mot à mot (« chef de station »)', () => {
+    // « gare » ou « train » figurant dans une phrase inconnue ne doivent
+    // déclencher aucune substitution partielle.
+    expect(traductionLocale('Le chef de gare vous accueille au train de 9 h.')).toBe('');
+    expect(traductionLocale('Panne technique en gare.')).toBe('');
+  });
+
+  it('rend vide sur une entrée vide ou blanche', () => {
+    expect(traductionLocale('')).toBe('');
+    expect(traductionLocale('   ')).toBe('');
+  });
+
+  it('un message enregistré sans anglais garde texte_en vide (pas de faux anglais)', () => {
+    const f = {
+      texte_fr: 'Quai glissant, soyez prudents.',
+      texte_en: traductionLocale('Quai glissant, soyez prudents.'),
+      cible_type: 'toutes' as const,
+      gares: [],
+      train_numero: null,
+      priorite: 'normale' as const,
+      expire_local: '',
+    };
+    expect(messageDepuisFormulaire(f, '').texte_en).toBe('');
   });
 });
 
