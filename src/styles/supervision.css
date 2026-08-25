@@ -720,6 +720,79 @@ tr.paire-fin td {
   margin-right: 8px;
 }
 
+/* Aperçu en direct du bandeau défilant (réglage de vitesse) */
+.apercu-ticker {
+  flex: 1 1 260px;
+  min-width: 200px;
+  overflow: hidden;
+  background: var(--rouge);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 0;
+  display: flex;
+  align-items: center;
+}
+
+.apercu-ticker-inner {
+  display: inline-block;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 13px;
+  padding-left: 100%;
+  animation: apercu-defile 20s linear infinite;
+}
+
+@keyframes apercu-defile {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* Bibliothèque de messages */
+.modele-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  border-top: 1px solid #eef2f6;
+  flex-wrap: wrap;
+}
+
+.modele-row.inactif {
+  opacity: 0.55;
+}
+
+.modele-row .cat {
+  font-size: 11.5px;
+  font-weight: 900;
+  background: var(--bleu-bg);
+  color: var(--bleu);
+  border-radius: 5px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.modele-row .titre {
+  font-weight: 900;
+  min-width: 150px;
+}
+
+.modele-row .textes {
+  flex: 1;
+  min-width: 220px;
+  font-size: 12.5px;
+}
+
+.modele-row .textes .en {
+  color: var(--sec);
+  font-style: italic;
+}
+
+.modele-row .textes .manque {
+  color: var(--retard);
+  font-weight: 700;
+}
+
 /* Avertissement : aucune traduction automatique disponible */
 .avert-trad {
   background: var(--retard-bg);

@@ -240,8 +240,26 @@ export interface Params {
   duree_horaires_s: number;
   /** Âge maximal du cache avant écran neutre (défaut 15 min). */
   duree_cache_min: number;
+  /**
+   * Vitesse de défilement du bandeau de messages, en PIXELS PAR SECONDE :
+   * la durée de l'animation est recalculée selon la longueur du texte, pour
+   * que la vitesse de lecture reste constante (défaut 90).
+   */
+  vitesse_ticker_px_s: number;
   machines: Machine[];
   motifs: Motif[];
+}
+
+/** Message préenregistré bilingue, proposé dans le formulaire Messages. */
+export interface ModeleMessage {
+  id: string;
+  titre: string;
+  texte_fr: string;
+  texte_en: string;
+  categorie: string;
+  /** Ordre d'affichage dans le sélecteur et la bibliothèque. */
+  ordre: number;
+  actif: boolean;
 }
 
 export type CibleMessage = 'toutes' | 'gares' | 'train';

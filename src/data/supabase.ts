@@ -15,6 +15,7 @@ import type {
   Media,
   MediaMeta,
   Message,
+  ModeleMessage,
   Motif,
   Params,
   Role,
@@ -22,6 +23,7 @@ import type {
   TerminusFlag,
   User,
 } from '../core/types';
+import { VITESSE_TICKER_DEFAUT } from '../pages/ticker';
 import type { DataProvider } from './provider';
 
 /**
@@ -39,6 +41,7 @@ export const TABLES_AFFICHAGE = [
   'params',
   'machines',
   'motifs',
+  'modeles_messages',
 ] as const;
 
 interface LigneJour {
@@ -242,6 +245,8 @@ export class SupabaseProvider implements DataProvider {
       },
       duree_horaires_s: (valeurs.get('duree_horaires_s') as number) ?? 20,
       duree_cache_min: (valeurs.get('duree_cache_min') as number) ?? 15,
+      // Repli et bornes appliqués à l'affichage par vitesseTickerValide()
+      vitesse_ticker_px_s: (valeurs.get('vitesse_ticker_px_s') as number) ?? VITESSE_TICKER_DEFAUT,
       machines: (machinesRes.data ?? []) as Machine[],
       motifs: (motifsRes.data ?? []) as Motif[],
     };
@@ -465,6 +470,31 @@ export class SupabaseProvider implements DataProvider {
     exigeLignes(
       await this.client.from('motifs').upsert(m).select(),
       'motif refusé (droits insuffisants ?)',
+    );
+  }
+
+  async getModelesMessages(): Promise<ModeleMessage[]> {
+    const { data, error } = await this.client
+      .from('modeles_messages')
+      .select('*')
+      .order('ordre')
+      .order('titre');
+    verifie(error);
+    return (data ?? []) as ModeleMessage[];
+  }
+
+  async saveModeleMessage(m: ModeleMessage): Promise<void> {
+    const { id, ...reste } = m;
+    const resultat = id
+      ? await this.client.from('modeles_messages').update(reste).eq('id', id).select()
+      : await this.client.from('modeles_messages').insert(reste).select();
+    exigeLignes(resultat, 'modèle refusé (droits administrateur requis ?)');
+  }
+
+  async deleteModeleMessage(id: string): Promise<void> {
+    exigeLignes(
+      await this.client.from('modeles_messages').delete().eq('id', id).select(),
+      'modèle introuvable ou droits insuffisants',
     );
   }
 

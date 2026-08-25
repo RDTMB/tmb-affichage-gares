@@ -24,8 +24,14 @@ insert into params (cle, valeur) values
   ('meteo_sommet', '{"t": 9, "ciel_fr": "Dégagé", "ciel_en": "Clear"}'),
   ('veille_nuit',  '{"debut": "21:00", "fin": "06:00"}'),
   ('duree_horaires_s', '20'),
-  ('duree_cache_min',  '15')
+  ('duree_cache_min',  '15'),
+  ('vitesse_ticker_px_s', '90')   -- Lent 60 · Normal 90 · Rapide 130 · Très rapide 180
 on conflict (cle) do nothing;
+
+-- ⚠ Bibliothèque de messages préenregistrés : exécuter ENSUITE le script
+-- supabase/ajout-modeles.sql (il crée la table si besoin, ses policies et les
+-- 11 modèles validés par l'exploitant). Il est idempotent et fonctionne aussi
+-- sur une base déjà en service.
 
 -- ------------------------------------------------ jour de démonstration
 insert into jours (date, grille_version) values ('2026-08-24', '2026-ete-grand-service')

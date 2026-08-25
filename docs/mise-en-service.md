@@ -18,6 +18,10 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
    `supabase/schema.sql` → **Run**. Aucune erreur attendue.
 3. Nouvelle requête → coller `supabase/seed.sql` → **Run** (machines,
    motifs, paramètres, jour de démonstration).
+4. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
+   (bibliothèque de messages préenregistrés). Ce script est **idempotent** :
+   il peut aussi être exécuté seul, plus tard, sur une base déjà en service,
+   sans rejouer le reste ni écraser les modèles retouchés en supervision.
 4. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
    schéma), public, limite 20 Mo.
 5. Menu **Database → Replication** (ou **Realtime**) : vérifier que la

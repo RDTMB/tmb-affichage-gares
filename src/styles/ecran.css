@@ -498,6 +498,9 @@ footer {
 .ticker-inner {
   display: inline-block;
   white-space: nowrap;
+  /* Durée fixée par le script d'après la vitesse en px/s (paramètre
+     vitesse_ticker_px_s) : la vitesse de lecture ne dépend donc pas de la
+     longueur du texte. La valeur ci-dessous n'est qu'un repli. */
   animation: defile 80s linear infinite;
   font-size: 2.9vh;
   font-weight: 700;

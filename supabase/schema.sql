@@ -76,6 +76,18 @@ create table if not exists motifs (
   en text not null default ''
 );
 
+-- Bibliothèque de messages préenregistrés bilingues (docs/01 §2.4)
+create table if not exists modeles_messages (
+  id uuid primary key default gen_random_uuid(),
+  titre text not null,
+  texte_fr text not null,
+  texte_en text not null default '',
+  categorie text not null default 'Général',
+  ordre int not null default 0,
+  actif boolean not null default true
+);
+create unique index if not exists modeles_messages_titre_unique on modeles_messages (titre);
+
 create table if not exists params (
   cle text primary key,
   valeur jsonb not null,
@@ -138,6 +150,7 @@ alter table messages enable row level security;
 alter table medias enable row level security;
 alter table machines enable row level security;
 alter table motifs enable row level security;
+alter table modeles_messages enable row level security;
 alter table params enable row level security;
 alter table profils enable row level security;
 alter table ecrans enable row level security;
@@ -177,6 +190,13 @@ create policy "admin" on motifs for all to authenticated
 create policy "admin" on params for all to authenticated
   using (role_courant() = 'admin') with check (role_courant() = 'admin');
 
+-- Bibliothèque de messages : lecture pour tout compte connecté (le
+-- formulaire Messages est ouvert à tous les rôles), écriture admin seule.
+create policy "lecture connectes" on modeles_messages for select to authenticated
+  using (role_courant() in ('admin','supervision','caisse'));
+create policy "admin" on modeles_messages for all to authenticated
+  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+
 -- Profils : chacun lit son profil ; l'admin lit et gère tout
 create policy "lire son profil" on profils for select to authenticated
   using (user_id = auth.uid() or role_courant() = 'admin');
@@ -199,7 +219,7 @@ create policy "journal select" on publications for select to authenticated
 
 -- ---------------------------------------------------------------- realtime
 alter publication supabase_realtime add table jours, circulations, messages,
-  medias, params, machines, motifs, ecrans;
+  medias, params, machines, motifs, modeles_messages, ecrans;
 
 -- ---------------------------------------------------------------- storage
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

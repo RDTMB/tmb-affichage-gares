@@ -21,6 +21,7 @@ import type {
   Machine,
   Media,
   Message,
+  ModeleMessage,
   Params,
   Role,
   TrainGrille,
@@ -28,6 +29,7 @@ import type {
 } from '../core/types';
 import { creeProvider } from '../data';
 import { echapper } from './affichage-commun';
+import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
 import {
   datetimeLocalVersIso,
   isoVersDatetimeLocal,
@@ -64,6 +66,9 @@ let params: Params | null = null;
 let messages: Message[] = [];
 let medias: Media[] = [];
 let utilisateurs: User[] = [];
+let modeles: ModeleMessage[] = [];
+let editionModeleId: string | null = null;
+let traductionModeleManuelle = false;
 let modifs = 0;
 const journal: string[] = [];
 let editionMessageId: string | null = null;
@@ -115,17 +120,19 @@ function erreurVersToast(erreur: unknown): void {
 
 async function chargeTout(): Promise<void> {
   const demande = dateSel;
-  const [g, p, msg, med, j] = await Promise.all([
+  const [g, p, msg, med, mod, j] = await Promise.all([
     provider.getGrilles(),
     provider.getParams(),
     provider.getMessages('le-fayet'),
     provider.listMedias(), // TOUS les médias : un média désactivé doit rester gérable
+    provider.getModelesMessages().catch(() => [] as ModeleMessage[]),
     provider.getJour(demande),
   ]);
   grilles = g;
   params = p;
   messages = msg;
   medias = med;
+  modeles = mod;
   // Garde de course : ne pas écraser l'affichage si l'agent a changé de date
   // pendant le chargement (l'en-tête et le tableau seraient désynchronisés).
   if (demande === dateSel) jour = j;
@@ -143,6 +150,8 @@ function rendreTout(): void {
   rendreEnTete();
   rendreCirculations();
   rendreCasesGares(); // noms de gares : les grilles sont chargées à ce stade
+  rendreSelecteurModeles();
+  rendreBibliotheque();
   rendreMessages();
   rendreMedias();
   void rendreEcrans();
@@ -177,6 +186,11 @@ function initOnglets(): void {
       document.querySelectorAll('.onglet').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');
       $(`t-${b.dataset.t}`).classList.add('on');
+      // Un élément d'onglet masqué a une largeur nulle : l'aperçu du bandeau
+      // doit être remesuré une fois l'onglet réellement affiché.
+      if (b.dataset.t === 'parametres' && params) {
+        majApercuTicker(vitesseTickerValide(params.vitesse_ticker_px_s));
+      }
     });
   });
 }
@@ -881,8 +895,38 @@ function rendreCasesGares(): void {
   ).join('');
 }
 
+/** Sélecteur « Modèle… » du formulaire (modèles actifs, groupés par catégorie). */
+function rendreSelecteurModeles(): void {
+  const actifs = modeles.filter((m) => m.actif);
+  const categories = [...new Set(actifs.map((m) => m.categorie))];
+  const groupes = categories
+    .map(
+      (cat) =>
+        `<optgroup label="${echapper(cat)}">${actifs
+          .filter((m) => m.categorie === cat)
+          .map((m) => `<option value="${echapper(m.id)}">${echapper(m.titre)}</option>`)
+          .join('')}</optgroup>`,
+    )
+    .join('');
+  ($('msg-modele') as HTMLSelectElement).innerHTML = `<option value="">Modèle…</option>${groupes}`;
+}
+
 function initMessages(): void {
   rendreCasesGares(); // reconstruites après chargement des grilles (rendreTout)
+
+  // Choisir un modèle remplit FR et EN ; les textes restent modifiables et
+  // la cible / priorité / expiration se choisissent normalement ensuite.
+  $('msg-modele').addEventListener('change', () => {
+    const select = $('msg-modele') as HTMLSelectElement;
+    const modele = modeles.find((m) => m.id === select.value);
+    select.value = '';
+    if (!modele) return;
+    ($('msg-fr') as HTMLInputElement).value = modele.texte_fr;
+    ($('msg-en') as HTMLInputElement).value = modele.texte_en;
+    traductionManuelle = true; // ne pas écraser l'anglais du modèle
+    afficheAvertissementTraduction(modele.texte_en.trim() === '');
+    toast(`Modèle « ${modele.titre} » chargé — ajustez le texte si nécessaire`);
+  });
 
   $('msg-cible').addEventListener('change', () => {
     majChampsCible(($('msg-cible') as HTMLSelectElement).value as Message['cible_type'], null);
@@ -1173,6 +1217,162 @@ function initEcrans(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Bibliothèque de messages préenregistrés (admin)
+// ---------------------------------------------------------------------------
+
+function rendreBibliotheque(): void {
+  const liste = $('modeles');
+  if (modeles.length === 0) {
+    liste.innerHTML =
+      '<div class="note">Aucun modèle : exécutez <code>supabase/ajout-modeles.sql</code> ou ajoutez-en un.</div>';
+    return;
+  }
+  liste.innerHTML = modeles
+    .map(
+      (m, i) => `
+    <div class="modele-row${m.actif ? '' : ' inactif'}">
+      <span class="cat">${echapper(m.categorie)}</span>
+      <span class="titre">${echapper(m.titre)}</span>
+      <span class="textes">
+        ${echapper(m.texte_fr)}<br />
+        <span class="en">${
+          m.texte_en.trim() ? echapper(m.texte_en) : '<span class="manque">anglais manquant</span>'
+        }</span>
+      </span>
+      <button class="leger" data-monter="${echapper(m.id)}" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="leger" data-descendre="${echapper(m.id)}" ${
+        i === modeles.length - 1 ? 'disabled' : ''
+      }>↓</button>
+      <label class="switch"><input type="checkbox" ${m.actif ? 'checked' : ''} data-modele-actif="${echapper(m.id)}" />Actif</label>
+      <button class="leger" data-modele-modifier="${echapper(m.id)}">Modifier</button>
+      <button class="leger" data-modele-suppr="${echapper(m.id)}">Retirer</button>
+    </div>`,
+    )
+    .join('');
+}
+
+function remplitFormulaireModele(m: ModeleMessage | null): void {
+  editionModeleId = m?.id ?? null;
+  traductionModeleManuelle = (m?.texte_en ?? '').trim() !== '';
+  ($('modele-titre') as HTMLInputElement).value = m?.titre ?? '';
+  ($('modele-categorie') as HTMLInputElement).value = m?.categorie ?? 'Général';
+  const dernierOrdre = modeles.length > 0 ? (modeles[modeles.length - 1]?.ordre ?? 0) : 0;
+  ($('modele-ordre') as HTMLInputElement).value = String(m?.ordre ?? dernierOrdre + 10);
+  ($('modele-fr') as HTMLInputElement).value = m?.texte_fr ?? '';
+  ($('modele-en') as HTMLInputElement).value = m?.texte_en ?? '';
+  $('modele-trad-avert').style.display = 'none';
+  $('form-modele').style.display = '';
+}
+
+async function rechargeModeles(): Promise<void> {
+  modeles = await provider.getModelesMessages();
+  rendreBibliotheque();
+  rendreSelecteurModeles();
+}
+
+let traductionModeleId = 0;
+function initBibliotheque(): void {
+  $('btn-modele-ajout').addEventListener('click', () => remplitFormulaireModele(null));
+  $('btn-modele-annuler').addEventListener('click', () => {
+    $('form-modele').style.display = 'none';
+    editionModeleId = null;
+  });
+
+  // Traduction anglaise proposée à la saisie du français, modifiable
+  $('modele-fr').addEventListener('input', () => {
+    if (traductionModeleManuelle) return;
+    const fr = ($('modele-fr') as HTMLInputElement).value.trim();
+    window.clearTimeout(traductionModeleId);
+    traductionModeleId = window.setTimeout(() => {
+      void provider.traduire(fr).then((en) => {
+        if (traductionModeleManuelle) return;
+        const traduit = fr ? (en ?? traductionLocale(fr)) : '';
+        ($('modele-en') as HTMLInputElement).value = traduit;
+        $('modele-trad-avert').style.display = fr && !traduit ? '' : 'none';
+      });
+    }, 500);
+  });
+  $('modele-en').addEventListener('input', () => {
+    traductionModeleManuelle = ($('modele-en') as HTMLInputElement).value.trim() !== '';
+    if (traductionModeleManuelle) $('modele-trad-avert').style.display = 'none';
+  });
+
+  $('btn-modele-valider').addEventListener('click', () => {
+    const titre = ($('modele-titre') as HTMLInputElement).value.trim();
+    const fr = ($('modele-fr') as HTMLInputElement).value.trim();
+    if (!titre || !fr) {
+      toast('Titre et texte français requis');
+      return;
+    }
+    const modele: ModeleMessage = {
+      id: editionModeleId ?? '',
+      titre,
+      categorie: ($('modele-categorie') as HTMLInputElement).value.trim() || 'Général',
+      ordre: Number(($('modele-ordre') as HTMLInputElement).value) || 0,
+      texte_fr: fr,
+      texte_en: ($('modele-en') as HTMLInputElement).value.trim(),
+      actif: modeles.find((m) => m.id === editionModeleId)?.actif ?? true,
+    };
+    const enEdition = editionModeleId !== null;
+    void provider
+      .saveModeleMessage(modele)
+      .then(() => rechargeModeles())
+      .then(() => {
+        bump(`modèle ${enEdition ? 'modifié' : 'ajouté'} : ${titre}`);
+        toast(`Modèle « ${titre} » enregistré`);
+        $('form-modele').style.display = 'none';
+        editionModeleId = null;
+      })
+      .catch(erreurVersToast);
+  });
+
+  /** Réordonnancement : échange l'ordre avec le voisin. */
+  const deplace = (id: string, sens: -1 | 1): void => {
+    const index = modeles.findIndex((m) => m.id === id);
+    const courant = modeles[index];
+    const voisin = modeles[index + sens];
+    if (!courant || !voisin) return;
+    const ordreCourant = courant.ordre;
+    void provider
+      .saveModeleMessage({ ...courant, ordre: voisin.ordre })
+      .then(() => provider.saveModeleMessage({ ...voisin, ordre: ordreCourant }))
+      .then(() => rechargeModeles())
+      .then(() => bump(`ordre du modèle ${courant.titre} modifié`))
+      .catch(erreurVersToast);
+  };
+
+  $('modeles').addEventListener('click', (e) => {
+    const cible = e.target as HTMLElement;
+    if (cible.dataset.monter) deplace(cible.dataset.monter, -1);
+    else if (cible.dataset.descendre) deplace(cible.dataset.descendre, 1);
+    else if (cible.dataset.modeleModifier) {
+      const m = modeles.find((x) => x.id === cible.dataset.modeleModifier);
+      if (m) remplitFormulaireModele(m);
+    } else if (cible.dataset.modeleSuppr) {
+      const m = modeles.find((x) => x.id === cible.dataset.modeleSuppr);
+      if (!m || !window.confirm(`Retirer le modèle « ${m.titre} » ?`)) return;
+      void provider
+        .deleteModeleMessage(m.id)
+        .then(() => rechargeModeles())
+        .then(() => bump(`modèle retiré : ${m.titre}`))
+        .catch(erreurVersToast);
+    }
+  });
+  $('modeles').addEventListener('change', (e) => {
+    const cible = e.target as HTMLInputElement;
+    const id = cible.dataset.modeleActif;
+    if (!id) return;
+    const m = modeles.find((x) => x.id === id);
+    if (!m) return;
+    void provider
+      .saveModeleMessage({ ...m, actif: cible.checked })
+      .then(() => rechargeModeles())
+      .then(() => bump(`modèle ${m.titre} ${cible.checked ? 'activé' : 'désactivé'}`))
+      .catch(erreurVersToast);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Onglet Paramètres (admin)
 // ---------------------------------------------------------------------------
 
@@ -1231,12 +1431,40 @@ function rendreParametres(): void {
       })
       .join('') +
     '<div class="saison"><b>Service hiver</b><span class="per">terminus Bellevue permanent (à partir du TRAIN 1) — grille à charger</span><span class="etat" style="background:#FBEEC2;color:#7A6017">À CRÉER</span></div>';
+  // Vitesse du bandeau + aperçu en direct
+  const vitesse = vitesseTickerValide(params.vitesse_ticker_px_s);
+  const selVitesse = $('vitesse-ticker') as HTMLSelectElement;
+  selVitesse.innerHTML = NIVEAUX_VITESSE_TICKER.map(
+    (n) =>
+      `<option value="${n.px_s}" ${n.px_s === vitesse ? 'selected' : ''}>${n.libelle} (${n.px_s} px/s)</option>`,
+  ).join('');
+  if (!NIVEAUX_VITESSE_TICKER.some((n) => n.px_s === vitesse)) {
+    // Valeur hors niveaux (saisie directe en base) : on l'affiche telle quelle
+    selVitesse.insertAdjacentHTML(
+      'afterbegin',
+      `<option value="${vitesse}" selected>Personnalisée (${vitesse} px/s)</option>`,
+    );
+  }
+  majApercuTicker(vitesse);
+
   // Veille + météo
   ($('veille-debut') as HTMLInputElement).value = params.veille_nuit.debut;
   ($('veille-fin') as HTMLInputElement).value = params.veille_nuit.fin;
   ($('meteo-t') as HTMLInputElement).value = String(params.meteo_sommet.t);
   ($('meteo-fr') as HTMLInputElement).value = params.meteo_sommet.ciel_fr;
   ($('meteo-en') as HTMLInputElement).value = params.meteo_sommet.ciel_en;
+}
+
+/** Aperçu en direct : même calcul durée = largeur / vitesse que les écrans. */
+function majApercuTicker(vitessePxS: number): void {
+  const apercu = $('apercu-ticker');
+  const texte =
+    messages
+      .filter((m) => m.actif)
+      .map((m) => m.texte_fr)
+      .join(' ◆ ') || 'Aperçu du bandeau de messages voyageurs ◆ Passenger information ticker';
+  if (apercu.textContent !== texte) apercu.textContent = texte;
+  apercu.style.animationDuration = `${dureeDefilementS(apercu.offsetWidth, vitessePxS)}s`;
 }
 
 async function rechargeParams(): Promise<void> {
@@ -1364,6 +1592,19 @@ function initParametres(): void {
       .catch(erreurVersToast);
   });
 
+  $('vitesse-ticker').addEventListener('change', () => {
+    const v = vitesseTickerValide(($('vitesse-ticker') as HTMLSelectElement).value);
+    majApercuTicker(v); // aperçu immédiat, avant même l'enregistrement
+    void provider
+      .saveParams({ vitesse_ticker_px_s: v })
+      .then(() => {
+        if (params) params.vitesse_ticker_px_s = v;
+        bump(`vitesse du bandeau → ${v} px/s`);
+        toast('Vitesse du bandeau appliquée aux écrans (sans rechargement)');
+      })
+      .catch(erreurVersToast);
+  });
+
   const sauveVeille = (): void => {
     void provider
       .saveParams({
@@ -1430,6 +1671,7 @@ async function demarre(): Promise<void> {
   initMessages();
   initMedias();
   initEcrans();
+  initBibliotheque();
   initParametres();
   initPublication();
 

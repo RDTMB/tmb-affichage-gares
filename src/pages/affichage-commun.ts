@@ -1,6 +1,7 @@
 // Éléments d'affichage partagés entre l'écran de gare et la grille du jour :
 // échappement HTML, pied de page (messages défilants + météo sommet).
 import type { GareId, Grille, Message, Params, PassageGare } from '../core/types';
+import { dureeDefilementS, vitesseTickerValide } from './ticker';
 
 export function echapper(texte: string): string {
   return texte
@@ -53,18 +54,53 @@ export function contenuTicker(affiches: Message[]): string {
  * bandeau fixe). Reconstruit uniquement quand le contenu change, pour ne pas
  * réinitialiser l'animation CSS à chaque seconde.
  */
-export function creeTicker(element: HTMLElement): (visibles: Message[]) => void {
+export function creeTicker(
+  element: HTMLElement,
+): (visibles: Message[], vitessePxS?: unknown) => void {
   let derniereSignature: string | null = null;
-  return (visibles) => {
+  let derniereVitesse: number | null = null;
+  let fixe = false;
+
+  /** Durée d'animation recalculée d'après la largeur RÉELLE du contenu. */
+  const ajusteDuree = (vitesse: number): void => {
+    if (fixe) {
+      element.style.animationDuration = '';
+      return;
+    }
+    element.style.animationDuration = `${dureeDefilementS(element.offsetWidth, vitesse)}s`;
+  };
+
+  // Les polices arrivent après le premier rendu : la largeur change, donc la
+  // durée doit être recalculée (sinon la vitesse serait fausse au démarrage).
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+      if (derniereVitesse !== null) ajusteDuree(derniereVitesse);
+    }).observe(element);
+  }
+
+  return (visibles, vitessePxS) => {
+    const vitesse = vitesseTickerValide(vitessePxS);
     const importantes = visibles.filter((m) => m.priorite === 'importante');
     const affiches = importantes.length > 0 ? importantes : visibles;
     const signature =
       (importantes.length > 0 ? 'fixe' : 'defile') +
       affiches.map((m) => `§${m.id}§${m.texte_fr}§${m.texte_en}`).join('');
-    if (signature === derniereSignature) return;
-    derniereSignature = signature;
-    element.classList.toggle('fixe', importantes.length > 0);
-    element.innerHTML = contenuTicker(affiches);
+
+    if (signature !== derniereSignature) {
+      derniereSignature = signature;
+      fixe = importantes.length > 0;
+      element.classList.toggle('fixe', fixe);
+      element.innerHTML = contenuTicker(affiches);
+      derniereVitesse = vitesse;
+      ajusteDuree(vitesse);
+      return;
+    }
+    // Contenu inchangé : la vitesse peut avoir été modifiée en supervision
+    // (prise en compte sans rechargement de l'écran).
+    if (vitesse !== derniereVitesse) {
+      derniereVitesse = vitesse;
+      ajusteDuree(vitesse);
+    }
   };
 }
 

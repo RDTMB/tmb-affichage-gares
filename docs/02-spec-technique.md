@@ -108,7 +108,23 @@ create table motifs (
 
 create table params (cle text primary key, valeur jsonb not null, maj timestamptz default now());
 -- clés : meteo_sommet {t,ciel_fr,ciel_en}, veille_nuit {debut,fin},
---        duree_horaires_s, duree_cache_min
+--        duree_horaires_s, duree_cache_min,
+--        vitesse_ticker_px_s (défilement des messages, en px/s — la durée de
+--        l'animation vaut largeur du texte / vitesse ; repli 90 si absente
+--        ou aberrante ; niveaux proposés : 60 / 90 / 130 / 180)
+
+-- Bibliothèque de messages préenregistrés bilingues (docs/01 §2.4).
+-- Lecture : tout compte connecté ; écriture : admin (comme machines/motifs).
+-- Script d'ajout sur base existante : supabase/ajout-modeles.sql (idempotent).
+create table modeles_messages (
+  id uuid primary key default gen_random_uuid(),
+  titre text not null,                          -- unique (index)
+  texte_fr text not null,
+  texte_en text not null default '',            -- peut rester vide
+  categorie text not null default 'Général',
+  ordre int not null default 0,
+  actif boolean not null default true
+);
 
 create table profils (
   user_id uuid primary key references auth.users(id) on delete cascade,

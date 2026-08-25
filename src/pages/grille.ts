@@ -270,7 +270,10 @@ function rendre(): void {
       '<tbody><tr><td style="padding:2vh;border:none;color:var(--texte-sec);font-weight:700">Aucun service ne circule à cette date / No service on this date</td></tr></tbody>';
     $('tab-montee').innerHTML = message;
     $('tab-descente').innerHTML = message;
-    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()));
+    majTicker(
+      messagesVisibles(messages, gare, [], heure.maintenantMs()),
+      params?.vitesse_ticker_px_s,
+    );
     return;
   }
 
@@ -281,7 +284,10 @@ function rendre(): void {
   $('tab-descente').innerHTML = tableHtml('descente', maintenant, positions);
 
   const passagesGare = gare ? passagesPourGare(grille, jour, gare, maintenant) : [];
-  majTicker(messagesVisibles(messages, gare, passagesGare, heure.maintenantMs()));
+  majTicker(
+    messagesVisibles(messages, gare, passagesGare, heure.maintenantMs()),
+    params?.vitesse_ticker_px_s,
+  );
 }
 
 async function demarre(): Promise<void> {

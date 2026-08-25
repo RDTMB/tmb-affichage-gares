@@ -118,6 +118,17 @@
           </h2>
           <div id="liste-msgs"></div>
           <div class="ajout">
+            <div class="ligne">
+              <label
+                >Modèle :
+                <select id="msg-modele">
+                  <option value="">Modèle…</option>
+                </select>
+              </label>
+              <span style="font-size: 12px; color: var(--sec)"
+                >Remplit le français et l'anglais ; les textes restent modifiables.</span
+              >
+            </div>
             <input type="text" id="msg-fr" placeholder="Message en français…" maxlength="200" />
             <input
               type="text"
@@ -279,9 +290,62 @@
             </div>
           </div>
           <div class="carte">
+            <h2>
+              Bibliothèque de messages
+              <span class="sous">messages préenregistrés bilingues, proposés à la saisie</span>
+              <div class="actions">
+                <button class="leger" id="btn-modele-ajout">+ Ajouter un modèle</button>
+              </div>
+            </h2>
+            <div class="ajout" id="form-modele" style="display: none">
+              <div class="ligne">
+                <input
+                  type="text"
+                  id="modele-titre"
+                  placeholder="Titre (ex. Vent fort)"
+                  style="width: 200px"
+                />
+                <input
+                  type="text"
+                  id="modele-categorie"
+                  placeholder="Catégorie"
+                  style="width: 140px"
+                />
+                <input type="number" id="modele-ordre" placeholder="Ordre" style="width: 80px" />
+              </div>
+              <input type="text" id="modele-fr" placeholder="Texte en français…" maxlength="200" />
+              <input
+                type="text"
+                id="modele-en"
+                placeholder="English — proposé automatiquement, modifiable"
+                maxlength="200"
+              />
+              <div class="avert-trad" id="modele-trad-avert" style="display: none">
+                ⚠ Traduction automatique indisponible — saisissez l'anglais, sinon ce modèle ne sera
+                diffusé qu'en français.
+              </div>
+              <div class="ligne">
+                <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
+                <button class="leger" id="btn-modele-annuler">Annuler</button>
+              </div>
+            </div>
+            <div id="modeles"></div>
+            <div class="note">
+              Un modèle désactivé n'est plus proposé à la saisie mais reste conservé. L'ordre
+              détermine la place dans la liste déroulante.
+            </div>
+          </div>
+          <div class="carte">
             <h2>Saisons, veille et météo sommet</h2>
             <div class="saisons" id="saisons"></div>
             <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
+              <label style="font-weight: 700; color: var(--texte)"
+                >Vitesse du bandeau de messages :
+                <select id="vitesse-ticker"></select>
+              </label>
+              <div class="apercu-ticker">
+                <div class="apercu-ticker-inner" id="apercu-ticker"></div>
+              </div>
               <label style="font-weight: 700; color: var(--texte)"
                 >Veille des écrans : de <input type="time" id="veille-debut" /> à
                 <input type="time" id="veille-fin"

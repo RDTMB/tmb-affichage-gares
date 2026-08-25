@@ -11,6 +11,7 @@ import type {
   Media,
   MediaMeta,
   Message,
+  ModeleMessage,
   Motif,
   Params,
   Role,
@@ -53,6 +54,11 @@ export interface DataProvider {
   deleteMachine(nom: string): Promise<void>;
   saveMotif(m: Motif): Promise<void>;
   deleteMotif(fr: string): Promise<void>;
+  /** Bibliothèque de messages préenregistrés (lecture : tout compte connecté). */
+  getModelesMessages(): Promise<ModeleMessage[]>;
+  /** Écriture réservée au rôle admin (RLS). */
+  saveModeleMessage(m: ModeleMessage): Promise<void>;
+  deleteModeleMessage(id: string): Promise<void>;
   listUsers(): Promise<User[]>;
   saveUser(u: User): Promise<void>;
   /** Création par invitation email (Edge Function — clé secrète jamais côté front). */

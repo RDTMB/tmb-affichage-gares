@@ -343,6 +343,65 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
   });
 });
 
+describe('Bibliothèque de messages préenregistrés', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('fournit les 11 modèles validés par l’exploitant, bilingues et ordonnés', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const liste = await provider.getModelesMessages();
+    expect(liste).toHaveLength(11);
+    for (const m of liste) {
+      expect(m.texte_fr.trim()).not.toBe('');
+      expect(m.texte_en.trim()).not.toBe(''); // bibliothèque livrée bilingue
+      expect(m.categorie.trim()).not.toBe('');
+    }
+    // Ordonnée
+    const ordres = liste.map((m) => m.ordre);
+    expect([...ordres].sort((a, b) => a - b)).toEqual(ordres);
+    // Catégories attendues
+    expect(new Set(liste.map((m) => m.categorie))).toEqual(
+      new Set(['Réservation', 'Sécurité', 'Météo', 'Exploitation', 'Confort', 'Travaux']),
+    );
+  });
+
+  it('ajout, modification, désactivation et suppression', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.saveModeleMessage({
+      id: '',
+      titre: 'Chien tenu en laisse',
+      categorie: 'Sécurité',
+      ordre: 45,
+      texte_fr: 'Les chiens doivent être tenus en laisse.',
+      texte_en: 'Dogs must be kept on a lead.',
+      actif: true,
+    });
+    let liste = await provider.getModelesMessages();
+    expect(liste).toHaveLength(12);
+    const ajoute = liste.find((m) => m.titre === 'Chien tenu en laisse');
+    if (!ajoute) throw new Error('modèle ajouté introuvable');
+    // L'ordre place le modèle entre 40 et 50
+    expect(liste.indexOf(ajoute)).toBe(4);
+
+    await provider.saveModeleMessage({ ...ajoute, actif: false });
+    liste = await provider.getModelesMessages();
+    expect(liste.find((m) => m.id === ajoute.id)?.actif).toBe(false);
+
+    await provider.deleteModeleMessage(ajoute.id);
+    expect(await provider.getModelesMessages()).toHaveLength(11);
+    await expect(provider.deleteModeleMessage(ajoute.id)).rejects.toThrow(/introuvable/);
+  });
+
+  it('le paramètre de vitesse du bandeau est fourni et modifiable', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    expect((await provider.getParams()).vitesse_ticker_px_s).toBe(90);
+    await provider.saveParams({ vitesse_ticker_px_s: 130 });
+    expect((await provider.getParams()).vitesse_ticker_px_s).toBe(130);
+  });
+});
+
 describe('exigeLignes — échec bruyant des écritures sans effet', () => {
   it('lève une erreur explicite quand 0 ligne est affectée', () => {
     expect(() => exigeLignes({ data: [], error: null }, 'journée absente en base')).toThrow(

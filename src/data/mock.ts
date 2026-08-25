@@ -18,6 +18,7 @@ import type {
   Media,
   Message,
   MediaMeta,
+  ModeleMessage,
   Motif,
   Params,
   Role,
@@ -66,11 +67,90 @@ const MESSAGES_DEMO: Message[] = [
   },
 ];
 
+/** Bibliothèque initiale validée par l'exploitant (voir supabase/ajout-modeles.sql). */
+const MODELES_DEMO: ModeleMessage[] = [
+  [
+    'Réservation obligatoire',
+    'Réservation',
+    'Réservation obligatoire pour tous les trajets.',
+    'Booking is compulsory for all journeys.',
+  ],
+  [
+    'Réserver sa descente',
+    'Réservation',
+    'Pensez à réserver votre descente.',
+    'Remember to book your descent.',
+  ],
+  [
+    'Ligne jaune',
+    'Sécurité',
+    'Restez derrière la ligne jaune à l’approche du train.',
+    'Please stand behind the yellow line when the tram approaches.',
+  ],
+  [
+    'Enfants sur les quais',
+    'Sécurité',
+    'Tenez les enfants par la main sur les quais.',
+    'Please hold children by the hand on the platforms.',
+  ],
+  [
+    'Vent fort au sommet',
+    'Météo',
+    'Vent fort au sommet : les circulations peuvent être adaptées.',
+    'Strong wind at the summit: services may be adjusted.',
+  ],
+  [
+    'Tronçon supérieur fermé',
+    'Météo',
+    'Tronçon Bellevue – Nid d’Aigle fermé pour raisons météorologiques.',
+    'The Bellevue – Nid d’Aigle section is closed due to weather conditions.',
+  ],
+  [
+    'Terminus exceptionnel Bellevue',
+    'Météo',
+    'Terminus exceptionnel à Bellevue.',
+    'Exceptional terminus at Bellevue.',
+  ],
+  [
+    'Train complet',
+    'Exploitation',
+    'Train complet : présentez-vous au personnel en gare.',
+    'This service is full: please speak to station staff.',
+  ],
+  [
+    'Vélos',
+    'Exploitation',
+    'Vélos acceptés dans la limite de 5 par train, selon l’affluence.',
+    'Bikes carried subject to availability, up to 5 per tram.',
+  ],
+  [
+    'Vêtements chauds',
+    'Confort',
+    'Prévoyez des vêtements chauds : la température baisse fortement avec l’altitude.',
+    'Please bring warm clothing: temperatures drop sharply with altitude.',
+  ],
+  [
+    'Travaux en gare',
+    'Travaux',
+    'Travaux en gare : suivez la signalisation.',
+    'Works in progress: please follow the signs.',
+  ],
+].map(([titre, categorie, texte_fr, texte_en], i) => ({
+  id: `modele-${i + 1}`,
+  titre: titre ?? '',
+  categorie: categorie ?? '',
+  texte_fr: texte_fr ?? '',
+  texte_en: texte_en ?? '',
+  ordre: (i + 1) * 10,
+  actif: true,
+}));
+
 const PARAMS_DEMO: Params = {
   meteo_sommet: { t: 9, ciel_fr: 'Dégagé', ciel_en: 'Clear' },
   veille_nuit: { debut: '21:00', fin: '06:00' },
   duree_horaires_s: 20,
   duree_cache_min: 15,
+  vitesse_ticker_px_s: 90,
   machines: [
     { nom: 'Marie', couleur: '#2E74B5', en_service: true },
     { nom: 'Anne', couleur: '#7FA51E', en_service: true },
@@ -112,10 +192,18 @@ interface EtatMock {
   >;
   messages: Message[] | null; // null = messages de démo
   paramsSimples: Partial<
-    Pick<Params, 'meteo_sommet' | 'veille_nuit' | 'duree_horaires_s' | 'duree_cache_min'>
+    Pick<
+      Params,
+      | 'meteo_sommet'
+      | 'veille_nuit'
+      | 'duree_horaires_s'
+      | 'duree_cache_min'
+      | 'vitesse_ticker_px_s'
+    >
   > | null;
   machines: Machine[] | null;
   motifs: Motif[] | null;
+  modeles: ModeleMessage[] | null;
   medias: Media[];
   ecrans: Record<string, EcranInfo & { recharger?: boolean }>;
   publications: { quand: string; qui: string; resume: string }[];
@@ -135,6 +223,7 @@ function litEtat(): EtatMock {
     paramsSimples: null,
     machines: null,
     motifs: null,
+    modeles: null,
     medias: [],
     ecrans: {},
     publications: [],
@@ -432,6 +521,30 @@ export class MockProvider implements DataProvider {
   async deleteMachine(nom: string): Promise<void> {
     const etat = litEtat();
     etat.machines = (etat.machines ?? [...PARAMS_DEMO.machines]).filter((m) => m.nom !== nom);
+    ecritEtat(etat);
+  }
+
+  async getModelesMessages(): Promise<ModeleMessage[]> {
+    const liste = litEtat().modeles ?? MODELES_DEMO;
+    return [...liste].sort((a, b) => a.ordre - b.ordre || a.titre.localeCompare(b.titre));
+  }
+
+  async saveModeleMessage(m: ModeleMessage): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.modeles ?? [...MODELES_DEMO];
+    const complet: ModeleMessage = { ...m, id: m.id || `modele-${Date.now()}` };
+    const index = liste.findIndex((x) => x.id === complet.id);
+    if (index >= 0) liste[index] = complet;
+    else liste.push(complet);
+    etat.modeles = liste;
+    ecritEtat(etat);
+  }
+
+  async deleteModeleMessage(id: string): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.modeles ?? [...MODELES_DEMO];
+    if (!liste.some((m) => m.id === id)) throw new Error(`Modèle ${id} introuvable`);
+    etat.modeles = liste.filter((m) => m.id !== id);
     ecritEtat(etat);
   }
 

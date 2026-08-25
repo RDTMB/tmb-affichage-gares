@@ -389,7 +389,10 @@ function rendre(gare: GareId): void {
     <img class="logo-fin" src="${__LOGO_ROND_BLANC__}" alt="" />`);
     $('arrivee').innerHTML =
       '<span class="lbl">Prochaine arrivée / Next arrival</span><span>— voir calendrier / see timetable</span>';
-    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()));
+    majTicker(
+      messagesVisibles(messages, gare, [], heure.maintenantMs()),
+      params?.vitesse_ticker_px_s,
+    );
     return;
   }
 
@@ -408,7 +411,10 @@ function rendre(gare: GareId): void {
   else gereMedias(departs, maintenant);
 
   rendsArrivee(gare, maintenant);
-  majTicker(messagesVisibles(messages, gare, passages, heure.maintenantMs()));
+  majTicker(
+    messagesVisibles(messages, gare, passages, heure.maintenantMs()),
+    params?.vitesse_ticker_px_s,
+  );
 }
 
 async function demarre(): Promise<void> {

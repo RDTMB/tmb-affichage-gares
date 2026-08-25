@@ -104,6 +104,11 @@ connue du repli, le champ anglais reste VIDE et la supervision affiche un
 avertissement explicite (« Traduction automatique indisponible — saisissez
 l'anglais, sinon le message ne sera diffusé qu'en français ») sans bloquer la
 publication.
+**Bibliothèque de messages préenregistrés** (`modeles_messages` : titre,
+texte_fr, texte_en, catégorie, ordre, actif) : un sélecteur « Modèle… » en
+tête du formulaire remplit le français ET l'anglais, qui restent modifiables
+avant publication ; la cible, la priorité et l'expiration se choisissent
+normalement ensuite. La bibliothèque est gérée dans Paramètres (admin).
 
 ### 2.5 Médias
 
@@ -155,8 +160,12 @@ Reproduit `maquettes/ecran-gare.html` :
 3. **Prochaine arrivée** : « HH:MM — <Rame en SA couleur> (train n° X), en
    provenance de … ». Marguerite (blanche) : léger halo rouge pour rester
    lisible.
-4. **Pied rouge** : messages défilants lents (~80 s/boucle) FR • EN ;
-   pavé météo sommet (température + ciel, saisi en supervision).
+4. **Pied rouge** : messages défilants FR • EN — la durée d'un tour est
+   CALCULÉE (durée = largeur du texte ÷ `vitesse_ticker_px_s`), de sorte que
+   la vitesse de lecture reste constante quelle que soit la longueur du
+   bandeau ; un message sans traduction s'affiche en français seul, sans
+   séparateur. Un bandeau de priorité « importante » est fixe, donc non
+   concerné. Pavé météo sommet (température + ciel, saisi en supervision).
 5. **États spéciaux** (plein tableau, logo blanc affiché dessous) :
    - Fin de service : « Service terminé — premier départ demain à HH:MM »
      bilingue (premier départ lu dans la grille du lendemain) — affiché dès
@@ -261,8 +270,13 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    / Supervision / Caisse ; le détail fin des droits par catégorie et la
    création de nouvelles catégories — Gestionnaire, Lecteur… — sont prévus
    dans le modèle mais seront précisés plus tard avec l'exploitant) ;
+   **Bibliothèque de messages** (ajouter, modifier, supprimer, réordonner,
+   activer/désactiver ; la saisie du français propose la traduction anglaise
+   automatique, modifiable — un modèle sans anglais est signalé) ;
    Saisons et services (grilles chargées + périodes, veille nuit
-   HH:MM→HH:MM) ; météo sommet (température + ciel FR/EN).
+   HH:MM→HH:MM) ; **vitesse du bandeau de messages** (Lent 60 · Normal 90 ·
+   Rapide 130 · Très rapide 180 px/s, avec aperçu en direct ; appliquée aux
+   écrans sans rechargement) ; météo sommet (température + ciel FR/EN).
 6. **Publication** : les modifications s'appliquent immédiatement ; le
    bouton « Publier » journalise un résumé horodaté (auteur + contenu) dans
    l'historique ; compteur de modifications de la session ; « Aperçu
