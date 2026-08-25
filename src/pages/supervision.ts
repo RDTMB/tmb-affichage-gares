@@ -28,6 +28,13 @@ import type {
 } from '../core/types';
 import { creeProvider } from '../data';
 import { echapper } from './affichage-commun';
+import {
+  datetimeLocalVersIso,
+  isoVersDatetimeLocal,
+  messageDepuisFormulaire,
+  valeursFormulaireMessage,
+  type FormulaireMessage,
+} from './supervision-logique';
 
 const provider = creeProvider();
 
@@ -106,23 +113,35 @@ function erreurVersToast(erreur: unknown): void {
 // ---------------------------------------------------------------------------
 
 async function chargeTout(): Promise<void> {
-  [grilles, params, messages, medias, jour] = await Promise.all([
+  const demande = dateSel;
+  const [g, p, msg, med, j] = await Promise.all([
     provider.getGrilles(),
     provider.getParams(),
     provider.getMessages('le-fayet'),
     provider.listMedias(), // TOUS les médias : un média désactivé doit rester gérable
-    provider.getJour(dateSel),
+    provider.getJour(demande),
   ]);
+  grilles = g;
+  params = p;
+  messages = msg;
+  medias = med;
+  // Garde de course : ne pas écraser l'affichage si l'agent a changé de date
+  // pendant le chargement (l'en-tête et le tableau seraient désynchronisés).
+  if (demande === dateSel) jour = j;
 }
 
 async function rechargeJour(): Promise<void> {
-  jour = await provider.getJour(dateSel);
+  const demande = dateSel;
+  const j = await provider.getJour(demande);
+  if (demande !== dateSel) return; // une navigation plus récente a pris le relais
+  jour = j;
   rendreCirculations();
 }
 
 function rendreTout(): void {
   rendreEnTete();
   rendreCirculations();
+  rendreCasesGares(); // noms de gares : les grilles sont chargées à ce stade
   rendreMessages();
   rendreMedias();
   void rendreEcrans();
@@ -173,14 +192,24 @@ async function apresConnexion(): Promise<void> {
   tag.textContent = (role ?? '').toUpperCase();
   tag.className = `role-tag role-${role}`;
   appliqueRole(role ?? 'caisse');
-  await chargeTout();
+  try {
+    await chargeTout();
+  } catch (erreur) {
+    // Jamais d'écran vide et muet : l'agent doit savoir pourquoi
+    erreurVersToast(erreur);
+    $('sous-titre-jour').textContent = '— données indisponibles';
+    toast('Chargement impossible — vérifiez la connexion, puis rechargez la page');
+    return;
+  }
   rendreTout();
 
   provider.onChange(() => {
     // Pas de re-rendu pendant une saisie (le rafraîchissement suivra)
     const actif = document.activeElement;
     if (actif && $('contenu').contains(actif) && actif.matches('input, select, textarea')) return;
-    void chargeTout().then(rendreTout);
+    void chargeTout()
+      .then(rendreTout)
+      .catch(() => {}); // l'affichage garde le dernier état connu
   });
   window.setInterval(() => void rendreEcrans(), 10_000);
 }
@@ -237,17 +266,40 @@ function ligneCirculation(
         machine.cercle ? `box-shadow:0 0 0 2px ${machine.cercle};` : ''
       }"></span>${echapper(rameEffective)}<small>(rotation)</small></span>`;
 
+  // Rotation limitée = colonne Terminus de la MONTÉE sur Bellevue (pour une
+  // montée, circMontee est la ligne elle-même). Un facultatif non activé ou
+  // un train supprimé ne circule pas : plus rien à traiter (sinon toute
+  // journée grand service afficherait le signalement par défaut).
+  const aTraiter = circMontee?.terminus === 'bellevue' && c.statut !== 'supprime' && !inactif;
   const terminus = montee
     ? train.express
-      ? c.terminus === 'bellevue'
-        ? '<span class="term-bv" title="Un express n\'est jamais tronqué : à supprimer ou requalifier">À traiter ⚠</span>'
-        : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
+      ? aTraiter
+        ? // Express dans une plage limitée : il n'est jamais tronqué (il ne
+          // dessert pas Bellevue) — l'agent tranche explicitement.
+          `<span class="term-bv" title="Un express ne dessert pas Bellevue : à supprimer, ou à maintenir jusqu'au Nid d'Aigle">À traiter ⚠</span>
+           <span class="a-traiter">
+             <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
+             <button class="leger" data-action="express-maintenir" data-numero="${n}"${verrou}>Maintenir</button>
+           </span>`
+        : c.terminus === 'bellevue'
+          ? '<span class="term-fixe">Rotation limitée</span>'
+          : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
       : `<select data-action="terminus" data-numero="${n}"${verrou}>
           <option value="nid-daigle" ${c.terminus === 'nid-daigle' ? 'selected' : ''}>Nid d'Aigle</option>
           <option value="bellevue" ${c.terminus === 'bellevue' ? 'selected' : ''}>Bellevue ⚠</option>
         </select>`
     : circMontee?.terminus === 'bellevue'
-      ? '<span class="term-bv">Départ de Bellevue</span>'
+      ? train.express
+        ? // Descente EXPRESS d'une rotation limitée : elle ne dessert pas
+          // Bellevue, elle partirait donc du Nid d'Aigle sur un tronçon fermé.
+          !aTraiter
+          ? '<span class="term-fixe">Rotation limitée</span>'
+          : `<span class="term-bv" title="Un express ne part pas de Bellevue : à supprimer, ou à maintenir depuis le Nid d'Aigle">À traiter ⚠</span>
+             <span class="a-traiter">
+               <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
+               <button class="leger" data-action="express-maintenir-descente" data-numero="${n}"${verrou}>Maintenir</button>
+             </span>`
+        : '<span class="term-bv">Départ de Bellevue</span>'
       : '<span class="term-fixe">Le Fayet</span>';
 
   const facultatif = c.facultatif
@@ -348,14 +400,29 @@ function rendreCirculations(): void {
     .join('');
 }
 
-async function sauveCirculation(c: Circulation, detail: string): Promise<void> {
+/**
+ * Enregistre une circulation. Retourne false si l'écriture a échoué : les
+ * appelants NE DOIVENT PAS annoncer de succès dans ce cas (un toast de
+ * succès effacerait le toast d'erreur — même famille de faux succès que le
+ * bug du 25/08).
+ */
+async function sauveCirculation(c: Circulation, detail: string): Promise<boolean> {
+  let ok = true;
   try {
     await provider.saveCirculation(c);
     bump(detail);
   } catch (erreur) {
     erreurVersToast(erreur);
+    ok = false;
   }
-  await rechargeJour();
+  // Le rechargement lui-même ne doit jamais échouer en silence
+  try {
+    await rechargeJour();
+  } catch (erreur) {
+    erreurVersToast(erreur);
+    ok = false;
+  }
+  return ok;
 }
 
 function initCirculations(): void {
@@ -406,6 +473,26 @@ function initCirculations(): void {
     if (($('chk-terminus') as HTMLInputElement).checked) terminusChange();
   });
 
+  /**
+   * Suppression d'une MONTÉE : propose la suppression de sa descente
+   * appariée (par défaut Oui, dérogeable — rame de remplacement), docs/01 §5.1.
+   */
+  const proposeSuppressionDescente = (montee: Circulation): void => {
+    const descente = circulationDe(montee.numero + 1);
+    if (!descente || descente.statut === 'supprime') return;
+    if (
+      !window.confirm(
+        `Supprimer aussi la descente appariée (TRAIN ${descente.numero}) ?\n` +
+          'La rame ne redescendra pas : cliquez Annuler seulement si une rame de remplacement assure la descente.',
+      )
+    )
+      return;
+    descente.statut = 'supprime';
+    descente.retard_min = 0;
+    descente.motif = montee.motif;
+    void sauveCirculation(descente, `statut TRAIN ${descente.numero} → supprime (rotation)`);
+  };
+
   // Délégation d'événements sur le tableau
   const tbody = document.querySelector('#tab-circ tbody');
   if (!tbody) return;
@@ -420,30 +507,32 @@ function initCirculations(): void {
 
     if (action === 'rame') {
       c.rame = (cible as HTMLSelectElement).value;
-      void sauveCirculation(c, `rame TRAIN ${numero} → ${c.rame}`).then(() =>
-        toast('Rame changée : la descente de la même rotation suit automatiquement'),
-      );
+      void sauveCirculation(c, `rame TRAIN ${numero} → ${c.rame}`).then((ok) => {
+        if (ok) toast('Rame changée : la descente de la même rotation suit automatiquement');
+      });
     } else if (action === 'terminus') {
       c.terminus = (cible as HTMLSelectElement).value as Circulation['terminus'];
-      void sauveCirculation(c, `terminus TRAIN ${numero} → ${c.terminus}`).then(() =>
+      void sauveCirculation(c, `terminus TRAIN ${numero} → ${c.terminus}`).then((ok) => {
+        if (!ok) return;
         toast(
           c.terminus === 'bellevue'
             ? `TRAIN ${numero} limité à Bellevue : sa descente partira de Bellevue`
             : `TRAIN ${numero} rétabli jusqu'au Nid d'Aigle`,
-        ),
-      );
+        );
+      });
     } else if (action === 'actif') {
       c.facultatif_actif = (cible as HTMLInputElement).checked;
       void sauveCirculation(
         c,
         `facultatif TRAIN ${numero} ${c.facultatif_actif ? 'activé' : 'désactivé'}`,
-      ).then(() =>
+      ).then((ok) => {
+        if (!ok) return;
         toast(
           c.facultatif_actif
             ? 'Train facultatif activé : il apparaîtra sur les écrans'
             : 'Train facultatif désactivé : retiré des écrans',
-        ),
-      );
+        );
+      });
     } else if (action.startsWith('statut-')) {
       const statut = action.replace('statut-', '') as Circulation['statut'];
       if (statut === 'supprime') {
@@ -466,24 +555,48 @@ function initCirculations(): void {
       c.statut = statut;
       if (statut === 'retard' && c.retard_min < 5) c.retard_min = 5;
       if (statut !== 'retard') c.retard_min = 0;
-      void sauveCirculation(c, `statut TRAIN ${numero} → ${statut}`).then(() => {
-        // Suppression d'une MONTÉE : proposer la suppression de sa descente
-        // appariée (proposition par défaut Oui, dérogeable — docs/01 §5.1)
-        if (statut !== 'supprime' || c.sens !== 'montee') return;
-        const descente = circulationDe(numero + 1);
-        if (!descente || descente.statut === 'supprime') return;
-        if (
-          !window.confirm(
-            `Supprimer aussi la descente appariée (TRAIN ${descente.numero}) ?\n` +
-              'La rame ne redescendra pas : cliquez Annuler seulement si une rame de remplacement assure la descente.',
-          )
-        )
-          return;
-        descente.statut = 'supprime';
-        descente.retard_min = 0;
-        descente.motif = c.motif;
-        void sauveCirculation(descente, `statut TRAIN ${descente.numero} → supprime (rotation)`);
+      void sauveCirculation(c, `statut TRAIN ${numero} → ${statut}`).then((ok) => {
+        if (ok && statut === 'supprime' && c.sens === 'montee') proposeSuppressionDescente(c);
       });
+    } else if (action === 'express-supprimer') {
+      if (
+        !window.confirm(
+          `Supprimer l'express TRAIN ${numero} ?\n` +
+            'Il restera affiché barré jusqu’à son heure théorique.',
+        )
+      )
+        return;
+      c.statut = 'supprime';
+      c.retard_min = 0;
+      c.motif ??= params?.motifs[0]?.fr ?? null;
+      void sauveCirculation(c, `express TRAIN ${numero} supprimé (plage Bellevue)`).then((ok) => {
+        if (!ok) return;
+        toast(`Express TRAIN ${numero} supprimé — signalement levé`);
+        // Même règle que pour une montée normale (docs/01 §5.1)
+        if (c.sens === 'montee') proposeSuppressionDescente(c);
+      });
+    } else if (action === 'express-maintenir-descente') {
+      // Descente express maintenue : on lève la limitation de SA rotation
+      // (la montée repasse au Nid d'Aigle), sinon le signalement reviendrait.
+      const montee = circulationDe(numero - 1);
+      if (!montee) return;
+      montee.terminus = 'nid-daigle';
+      void sauveCirculation(
+        montee,
+        `rotation TRAIN ${montee.numero}/${numero} maintenue jusqu'au Nid d'Aigle`,
+      ).then((ok) => {
+        if (ok) toast(`Rotation express maintenue jusqu'au Nid d'Aigle — signalement levé`);
+      });
+    } else if (action === 'express-maintenir') {
+      // Lève le signalement : l'express circule jusqu'au Nid d'Aigle malgré
+      // la plage limitée (aucun horaire n'est inventé). Sa descente appariée,
+      // express elle aussi, redescend donc bien du Nid d'Aigle.
+      c.terminus = 'nid-daigle';
+      void sauveCirculation(c, `express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle`).then(
+        (ok) => {
+          if (ok) toast(`Express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle — signalement levé`);
+        },
+      );
     } else if (action === 'retard-plus' || action === 'retard-moins') {
       c.retard_min = Math.max(5, c.retard_min + (action === 'retard-plus' ? 5 : -5));
       void sauveCirculation(c, `retard TRAIN ${numero} → +${c.retard_min} min`);
@@ -504,15 +617,40 @@ function initCirculations(): void {
 }
 
 async function changeDate(decalage: number): Promise<void> {
-  const d = new Date(`${dateSel}T12:00:00`);
-  d.setDate(d.getDate() + decalage);
+  // Arithmétique en UTC pur (midi) : insensible au fuseau et aux
+  // changements d'heure d'été, contrairement à new Date('...T12:00:00').
+  const [a = 0, m = 1, j = 1] = dateSel.split('-').map(Number);
+  const d = new Date(Date.UTC(a, m - 1, j + decalage));
   await allerDate(d.toISOString().slice(0, 10));
 }
 
+/**
+ * Change de date SANS échec muet : la date affichée ne bouge que si le
+ * chargement a réussi — sinon les actions (suppression, terminus…)
+ * s'appliqueraient à une date différente de celle qui est à l'écran.
+ */
 async function allerDate(date: string): Promise<void> {
-  if (!date) return;
-  dateSel = date;
-  await rechargeJour();
+  if (!date) {
+    // Champ vidé : on ne bouge pas, mais on le dit et on remet la date réelle
+    ($('date-picker') as HTMLInputElement).value = dateSel;
+    toast('Date invalide — la journée affichée est inchangée');
+    return;
+  }
+  const precedente = dateSel;
+  try {
+    dateSel = date; // les chargements concurrents comparent à cette valeur
+    const nouveau = await provider.getJour(date);
+    if (dateSel !== date) return; // une navigation plus récente a pris le relais
+    jour = nouveau;
+    rendreCirculations();
+  } catch (erreur) {
+    if (dateSel === date) {
+      dateSel = precedente;
+      ($('date-picker') as HTMLInputElement).value = precedente;
+      rendreCirculations(); // remet en-tête, service et bascule sur la date réelle
+    }
+    erreurVersToast(erreur);
+  }
 }
 
 function exporteCsv(): void {
@@ -641,60 +779,122 @@ function rendreMessages(): void {
     .join('');
 }
 
-function expirationChoisie(): string | null {
+/** Les raccourcis d'expiration remplissent le champ date : ce qui est affiché est ce qui sera enregistré. */
+function appliqueRaccourciExpiration(): void {
   const choix = ($('msg-expire') as HTMLSelectElement).value;
-  const maintenant = new Date();
+  const champ = $('msg-expire-date') as HTMLInputElement;
+  champ.style.display = choix === '' ? 'none' : '';
+  if (choix === '' || choix === 'date') {
+    if (choix === '') champ.value = '';
+    return;
+  }
+  const quand = new Date();
   if (choix === 'soir') {
-    maintenant.setHours(21, 0, 0, 0);
-    return maintenant.toISOString();
+    quand.setHours(21, 0, 0, 0);
+    // Après 21:00, « ce soir » viserait une heure passée : le message
+    // n'apparaîtrait sur aucun écran. On bascule au soir suivant.
+    if (quand.getTime() <= Date.now()) quand.setDate(quand.getDate() + 1);
   }
-  if (choix === '1h') return new Date(Date.now() + 3_600_000).toISOString();
-  if (choix === '3h') return new Date(Date.now() + 3 * 3_600_000).toISOString();
-  if (choix === 'date') {
-    const v = ($('msg-expire-date') as HTMLInputElement).value;
-    return v ? new Date(v).toISOString() : null;
+  if (choix === '1h') quand.setTime(quand.getTime() + 3_600_000);
+  if (choix === '3h') quand.setTime(quand.getTime() + 3 * 3_600_000);
+  champ.value = isoVersDatetimeLocal(quand.toISOString());
+  ($('msg-expire') as HTMLSelectElement).value = 'date'; // la date fait foi
+}
+
+/** Lit l'état complet du formulaire (source de vérité unique à l'enregistrement). */
+function formulaireMessage(): FormulaireMessage {
+  return {
+    texte_fr: ($('msg-fr') as HTMLInputElement).value,
+    texte_en: ($('msg-en') as HTMLInputElement).value,
+    cible_type: ($('msg-cible') as HTMLSelectElement).value as Message['cible_type'],
+    gares: Array.from(document.querySelectorAll<HTMLInputElement>('#msg-gares input:checked')).map(
+      (i) => i.value as GareId,
+    ),
+    train_numero: Number(($('msg-train') as HTMLSelectElement).value) || null,
+    priorite: ($('msg-prio') as HTMLSelectElement).value as Message['priorite'],
+    expire_local: ($('msg-expire-date') as HTMLInputElement).value,
+  };
+}
+
+/** Remplit le formulaire depuis un message (édition) ou le vide (nouveau). */
+function remplitFormulaireMessage(f: FormulaireMessage | null): void {
+  const vide: FormulaireMessage = {
+    texte_fr: '',
+    texte_en: '',
+    cible_type: 'toutes',
+    gares: [],
+    train_numero: null,
+    priorite: 'normale',
+    expire_local: '',
+  };
+  const v = f ?? vide;
+  ($('msg-fr') as HTMLInputElement).value = v.texte_fr;
+  ($('msg-en') as HTMLInputElement).value = v.texte_en;
+  ($('msg-cible') as HTMLSelectElement).value = v.cible_type;
+  ($('msg-prio') as HTMLSelectElement).value = v.priorite;
+  ($('msg-expire-date') as HTMLInputElement).value = v.expire_local;
+  ($('msg-expire') as HTMLSelectElement).value = v.expire_local ? 'date' : '';
+  $('msg-expire-date').style.display = v.expire_local ? '' : 'none';
+  majChampsCible(v.cible_type, v.train_numero);
+  for (const case_ of document.querySelectorAll<HTMLInputElement>('#msg-gares input')) {
+    case_.checked = v.gares.includes(case_.value as GareId);
   }
-  return null;
+}
+
+/** Affiche les champs de la cible choisie et (re)construit la liste des trains. */
+function majChampsCible(cible: Message['cible_type'], trainSelectionne: number | null): void {
+  $('msg-gares').style.display = cible === 'gares' ? '' : 'none';
+  $('msg-train').style.display = cible === 'train' ? '' : 'none';
+  if (cible !== 'train') return;
+  // Trains de la grille du JOUR AFFICHÉ (et non toujours la première grille)
+  const g = grilleDuJour() ?? grilles[0] ?? null;
+  const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])].sort(
+    (a, b) => a.numero - b.numero,
+  );
+  const options = trains.map((t) => {
+    const heure = formatHeure(heureVersSecondes(t.passages[0]?.d ?? t.passages[0]?.a ?? '00:00'));
+    return `<option value="${t.numero}" ${t.numero === trainSelectionne ? 'selected' : ''}>TRAIN ${t.numero} — ${heure} ${t.numero % 2 === 1 ? '↗' : '↙'}${t.express ? ' (Express)' : ''}</option>`;
+  });
+  // Train du message absent de cette grille (autre service à cette date) :
+  // on le garde en tête, sinon le select retomberait sur le premier train et
+  // l'enregistrement recyclerait silencieusement la cible vers celui-ci.
+  if (trainSelectionne !== null && !trains.some((t) => t.numero === trainSelectionne)) {
+    options.unshift(
+      `<option value="${trainSelectionne}" selected>TRAIN ${trainSelectionne} — hors grille de cette date</option>`,
+    );
+  }
+  ($('msg-train') as HTMLSelectElement).innerHTML = options.join('');
 }
 
 function annuleEditionMessage(): void {
   editionMessageId = null;
   traductionManuelle = false;
-  ($('msg-fr') as HTMLInputElement).value = '';
-  ($('msg-en') as HTMLInputElement).value = '';
+  remplitFormulaireMessage(null);
   $('btn-msg').textContent = 'Ajouter';
   $('btn-msg-annuler').style.display = 'none';
   rendreMessages();
 }
 
-function initMessages(): void {
-  const grille = (): Grille | null => grilles[0] ?? null;
-  // Cases à cocher des gares cibles
+/** Cases à cocher des gares cibles, avec les noms de la charte (grilles chargées). */
+function rendreCasesGares(): void {
+  const cochees = new Set(
+    Array.from(document.querySelectorAll<HTMLInputElement>('#msg-gares input:checked')).map(
+      (i) => i.value,
+    ),
+  );
   $('msg-gares').innerHTML = ORDRE_GARES.map(
-    (g) => `<label><input type="checkbox" value="${g}" /> ${echapper(nomDeGare(g))}</label>`,
+    (g) =>
+      `<label><input type="checkbox" value="${g}" ${cochees.has(g) ? 'checked' : ''} /> ${echapper(nomDeGare(g))}</label>`,
   ).join('');
+}
+
+function initMessages(): void {
+  rendreCasesGares(); // reconstruites après chargement des grilles (rendreTout)
 
   $('msg-cible').addEventListener('change', () => {
-    const v = ($('msg-cible') as HTMLSelectElement).value;
-    $('msg-gares').style.display = v === 'gares' ? '' : 'none';
-    $('msg-train').style.display = v === 'train' ? '' : 'none';
-    if (v === 'train') {
-      const g = grille();
-      const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])].sort(
-        (a, b) => a.numero - b.numero,
-      );
-      ($('msg-train') as HTMLSelectElement).innerHTML = trains
-        .map((t) => {
-          const heure = formatHeure(heureVersSecondes(t.passages[0]?.d ?? '00:00'));
-          return `<option value="${t.numero}">TRAIN ${t.numero} — ${heure} ${t.numero % 2 === 1 ? '↗' : '↙'}${t.express ? ' (Express)' : ''}</option>`;
-        })
-        .join('');
-    }
+    majChampsCible(($('msg-cible') as HTMLSelectElement).value as Message['cible_type'], null);
   });
-  $('msg-expire').addEventListener('change', () => {
-    $('msg-expire-date').style.display =
-      ($('msg-expire') as HTMLSelectElement).value === 'date' ? '' : 'none';
-  });
+  $('msg-expire').addEventListener('change', appliqueRaccourciExpiration);
   $('msg-fr').addEventListener('input', lanceTraduction);
   $('msg-en').addEventListener('input', () => {
     traductionManuelle = ($('msg-en') as HTMLInputElement).value.trim() !== '';
@@ -702,32 +902,20 @@ function initMessages(): void {
   $('btn-msg-annuler').addEventListener('click', annuleEditionMessage);
 
   $('btn-msg').addEventListener('click', () => {
-    const fr = ($('msg-fr') as HTMLInputElement).value.trim();
-    const en = ($('msg-en') as HTMLInputElement).value.trim();
-    if (!fr) {
+    const f = formulaireMessage();
+    if (!f.texte_fr.trim()) {
       toast('Saisissez d’abord le message en français');
       return;
     }
-    const cible = ($('msg-cible') as HTMLSelectElement).value as Message['cible_type'];
-    const gares = Array.from(
-      document.querySelectorAll<HTMLInputElement>('#msg-gares input:checked'),
-    ).map((i) => i.value as GareId);
-    const existant = messages.find((m) => m.id === editionMessageId);
-    const message: Message = {
-      id: editionMessageId ?? '',
-      texte_fr: fr,
-      texte_en: en || traductionLocale(fr),
-      cible_type: existant ? existant.cible_type : cible,
-      gares: existant ? existant.gares : cible === 'gares' ? gares : null,
-      train_numero: existant
-        ? existant.train_numero
-        : cible === 'train'
-          ? Number(($('msg-train') as HTMLSelectElement).value)
-          : null,
-      priorite: ($('msg-prio') as HTMLSelectElement).value as Message['priorite'],
-      actif: true,
-      expire_at: expirationChoisie() ?? existant?.expire_at ?? null,
-    };
+    if (f.cible_type === 'gares' && f.gares.length === 0) {
+      toast('Cochez au moins une gare, sinon le message ne s’affichera nulle part');
+      return;
+    }
+    if (!f.texte_en.trim()) f.texte_en = traductionLocale(f.texte_fr);
+    // Le formulaire est la source de vérité : cible et expiration affichées
+    // sont exactement celles enregistrées (elles ont été restituées à
+    // l'ouverture de l'édition).
+    const message = messageDepuisFormulaire(f, editionMessageId ?? '');
     void provider
       .saveMessage(message)
       .then(() => provider.getMessages('le-fayet'))
@@ -749,9 +937,8 @@ function initMessages(): void {
       if (!m) return;
       editionMessageId = m.id;
       traductionManuelle = true; // ne pas écraser l'anglais existant
-      ($('msg-fr') as HTMLInputElement).value = m.texte_fr;
-      ($('msg-en') as HTMLInputElement).value = m.texte_en;
-      ($('msg-prio') as HTMLSelectElement).value = m.priorite;
+      // Restitution COMPLÈTE : textes, cible (gares/train) et expiration
+      remplitFormulaireMessage(valeursFormulaireMessage(m));
       $('btn-msg').textContent = 'Enregistrer';
       $('btn-msg-annuler').style.display = '';
       rendreMessages();
@@ -788,13 +975,26 @@ function rendreMedias(): void {
       }</div>
       <div class="infos">
         <div class="nom">${echapper(m.nom)}</div>
-        <div class="det">${m.type === 'video' ? 'Vidéo (muette)' : 'Image'} · gares : ${
-          m.gares?.length ? m.gares.map(nomDeGare).join(', ') : 'toutes'
-        } · expire : ${m.expire_at ? new Date(m.expire_at).toLocaleDateString('fr-FR') : '—'}</div>
+        <div class="det">${m.type === 'video' ? 'Vidéo (muette)' : 'Image'}</div>
         <div class="ligne">
           Durée : <input type="number" min="3" max="120" value="${m.duree_s}" data-duree="${m.id}" /> s
           <label class="switch" style="margin-left:auto"><input type="checkbox" ${m.actif ? 'checked' : ''} data-actif="${m.id}" />Actif</label>
           <button class="leger" data-suppr="${m.id}">Retirer</button>
+        </div>
+        <div class="ligne" style="margin-top:6px">
+          Expire :
+          <input type="datetime-local" value="${isoVersDatetimeLocal(m.expire_at)}" data-expire="${m.id}" />
+          <button class="leger" data-expire-jamais="${m.id}">Jamais</button>
+        </div>
+        <div class="ligne media-gares" style="margin-top:6px">
+          Gares :
+          <label><input type="checkbox" data-gare-toutes="${m.id}" ${m.gares?.length ? '' : 'checked'} /> toutes</label>
+          ${ORDRE_GARES.map(
+            (g) =>
+              `<label><input type="checkbox" data-gare="${m.id}" value="${g}" ${
+                m.gares?.includes(g) ? 'checked' : ''
+              } /> ${echapper(nomDeGare(g))}</label>`,
+          ).join('')}
         </div>
       </div>
     </div>`,
@@ -808,6 +1008,28 @@ async function rechargeMedias(): Promise<void> {
 }
 
 function initMedias(): void {
+  /**
+   * Enregistre une modification SANS muter l'état local avant l'écriture
+   * (une écriture refusée ne doit rien laisser en mémoire, sinon elle
+   * pourrait être publiée plus tard silencieusement) et ne re-dessine que
+   * lorsque c'est nécessaire.
+   */
+  const majMedia = (id: string, patch: Partial<Media>, reRendre: boolean): void => {
+    const media = medias.find((m) => m.id === id);
+    if (!media) return;
+    void provider
+      .saveMedia({ ...media, ...patch })
+      .then(() => {
+        Object.assign(media, patch); // aligné SEULEMENT après succès
+        bump(`média ${media.nom} mis à jour`);
+        if (reRendre) rendreMedias();
+      })
+      .catch((erreur: unknown) => {
+        erreurVersToast(erreur);
+        rendreMedias(); // rétablit les valeurs réellement enregistrées
+      });
+  };
+
   $('btn-media-ajout').addEventListener('click', () => $('media-fichier').click());
   $('media-fichier').addEventListener('change', () => {
     const fichier = ($('media-fichier') as HTMLInputElement).files?.[0];
@@ -839,18 +1061,37 @@ function initMedias(): void {
   });
   $('medias').addEventListener('change', (e) => {
     const cible = e.target as HTMLInputElement;
-    const media = medias.find((m) => m.id === (cible.dataset.duree ?? cible.dataset.actif));
-    if (!media) return;
-    if (cible.dataset.duree) media.duree_s = Math.min(120, Math.max(3, Number(cible.value) || 8));
-    if (cible.dataset.actif) media.actif = cible.checked;
-    void provider
-      .saveMedia(media)
-      .then(() => rechargeMedias())
-      .then(() => bump(`média ${media.nom} mis à jour`))
-      .catch(erreurVersToast);
+    if (cible.dataset.duree) {
+      majMedia(
+        cible.dataset.duree,
+        { duree_s: Math.min(120, Math.max(3, Number(cible.value) || 8)) },
+        false,
+      );
+    } else if (cible.dataset.actif) {
+      majMedia(cible.dataset.actif, { actif: cible.checked }, true);
+    } else if (cible.dataset.expire) {
+      // Pas de re-render : re-dessiner la carte pendant la saisie d'une date
+      // détruirait le champ à la première frappe.
+      majMedia(cible.dataset.expire, { expire_at: datetimeLocalVersIso(cible.value) }, false);
+    } else if (cible.dataset.gare || cible.dataset.gareToutes) {
+      const id = cible.dataset.gare ?? cible.dataset.gareToutes ?? '';
+      // « toutes » cochée = aucune gare précise ; sinon les gares cochées
+      // (aucune cochée revenant à « toutes », comme à la création).
+      const toutes = cible.dataset.gareToutes ? cible.checked : false;
+      const cochees = Array.from(
+        document.querySelectorAll<HTMLInputElement>(`#medias input[data-gare="${id}"]:checked`),
+      ).map((i) => i.value as GareId);
+      majMedia(id, { gares: toutes || cochees.length === 0 ? null : cochees }, true);
+    }
   });
   $('medias').addEventListener('click', (e) => {
-    const id = (e.target as HTMLElement).dataset.suppr;
+    const cible = e.target as HTMLElement;
+    const idJamais = cible.dataset.expireJamais;
+    if (idJamais) {
+      majMedia(idJamais, { expire_at: null }, true);
+      return;
+    }
+    const id = cible.dataset.suppr;
     if (!id) return;
     const media = medias.find((m) => m.id === id);
     if (!media || !window.confirm(`Retirer le média « ${media.nom} » ?`)) return;
@@ -893,7 +1134,8 @@ async function rendreEcrans(): Promise<void> {
         <div class="sub">${echapper(e.type ?? 'écran')} · vu il y a ${vu} · ${echapper(e.version_app ?? '—')}</div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
-          <button class="leger" data-voir="${echapper(e.gare)}">Voir</button>
+          <button class="leger" data-voir="${echapper(e.gare)}" data-type="${echapper(e.type ?? 'ecran')}">Voir</button>
+          ${ok ? '' : `<button class="leger" data-oublier="${echapper(e.id)}">Oublier</button>`}
         </div>
       </div>`;
         })
@@ -912,7 +1154,23 @@ function initEcrans(): void {
         )
         .catch(erreurVersToast);
     } else if (cible.dataset.voir) {
-      window.open(`ecran.html?gare=${cible.dataset.voir}`, '_blank');
+      // La bonne page selon le type, et ?apercu=1 pour ne PAS battre sous
+      // l'identifiant du poste réel (sinon sa dernière vue serait faussée et
+      // son ordre de rechargement consommé par cet onglet d'aperçu).
+      const page = cible.dataset.type === 'grille' ? 'grille.html' : 'ecran.html';
+      window.open(`${page}?gare=${cible.dataset.voir}&apercu=1`, '_blank');
+    } else if (cible.dataset.oublier) {
+      const id = cible.dataset.oublier;
+      if (!window.confirm(`Oublier l'écran « ${id} » ? Il réapparaîtra s'il redonne signe de vie.`))
+        return;
+      void provider
+        .oublierEcran(id)
+        .then(() => rendreEcrans())
+        .then(() => {
+          bump(`écran oublié : ${id}`);
+          toast(`Écran ${id} retiré de la liste`);
+        })
+        .catch(erreurVersToast);
     }
   });
 }

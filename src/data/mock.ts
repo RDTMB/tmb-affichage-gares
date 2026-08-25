@@ -28,6 +28,12 @@ import type {
 import type { DataProvider } from './provider';
 
 const CLE_ETAT = 'tmb-mock-etat';
+/**
+ * Les heartbeats vivent dans une clé SÉPARÉE : écrits dans CLE_ETAT, ils
+ * déclenchaient l'événement `storage` des autres onglets (6 écrans toutes
+ * les 30 s) et donc un rechargement complet en boucle.
+ */
+const CLE_ECRANS = 'tmb-mock-ecrans';
 const CLE_SESSION = 'tmb-mock-session';
 const EVENEMENT_LOCAL = 'tmb-mock-change';
 
@@ -139,6 +145,23 @@ function litEtat(): EtatMock {
 function ecritEtat(etat: EtatMock): void {
   localStorage.setItem(CLE_ETAT, JSON.stringify(etat));
   window.dispatchEvent(new Event(EVENEMENT_LOCAL)); // même onglet ; autres onglets : `storage`
+}
+
+type EcransMock = Record<string, EcranInfo & { recharger?: boolean }>;
+
+function litEcrans(): EcransMock {
+  try {
+    const brut = localStorage.getItem(CLE_ECRANS);
+    if (brut) return JSON.parse(brut) as EcransMock;
+  } catch {
+    // état corrompu : liste vide
+  }
+  return {};
+}
+
+/** Écriture SANS notification : un heartbeat ne doit réveiller personne. */
+function ecritEcrans(ecrans: EcransMock): void {
+  localStorage.setItem(CLE_ECRANS, JSON.stringify(ecrans));
 }
 
 export interface OptionsMock {
@@ -265,10 +288,10 @@ export class MockProvider implements DataProvider {
   }
 
   async heartbeat(e: EcranInfo): Promise<void> {
-    const etat = litEtat();
-    const existant = etat.ecrans[e.id];
-    etat.ecrans[e.id] = { ...e, derniere_vue: new Date().toISOString(), recharger: false };
-    localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // sans notification (bruit)
+    const ecrans = litEcrans();
+    const existant = ecrans[e.id];
+    ecrans[e.id] = { ...e, derniere_vue: new Date().toISOString(), recharger: false };
+    ecritEcrans(ecrans); // clé séparée : ne réveille aucun autre client
     if (existant?.recharger) window.location.reload();
   }
 
@@ -375,7 +398,9 @@ export class MockProvider implements DataProvider {
   async saveMedia(m: Media): Promise<void> {
     const etat = litEtat();
     const index = etat.medias.findIndex((x) => x.id === m.id);
-    if (index >= 0) etat.medias[index] = m;
+    // Échec bruyant, comme le provider Supabase (jamais de faux succès)
+    if (index < 0) throw new Error(`Média ${m.id} introuvable`);
+    etat.medias[index] = m;
     ecritEtat(etat);
   }
 
@@ -461,13 +486,21 @@ export class MockProvider implements DataProvider {
   }
 
   async listEcrans(): Promise<EcranInfo[]> {
-    return Object.values(litEtat().ecrans);
+    return Object.values(litEcrans());
   }
 
   async demanderRechargement(id: string): Promise<void> {
-    const etat = litEtat();
-    const ecran = etat.ecrans[id];
-    if (ecran) ecran.recharger = true;
-    ecritEtat(etat);
+    const ecrans = litEcrans();
+    const ecran = ecrans[id];
+    if (!ecran) throw new Error(`Écran ${id} inconnu (aucun signal de vie reçu)`);
+    ecran.recharger = true;
+    ecritEcrans(ecrans);
+  }
+
+  async oublierEcran(id: string): Promise<void> {
+    const ecrans = litEcrans();
+    if (!(id in ecrans)) throw new Error(`Écran ${id} inconnu`);
+    delete ecrans[id];
+    ecritEcrans(ecrans);
   }
 }

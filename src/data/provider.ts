@@ -63,4 +63,6 @@ export interface DataProvider {
   logPublication(resume: string): Promise<void>;
   listEcrans(): Promise<EcranInfo[]>;
   demanderRechargement(id: string): Promise<void>;
+  /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
+  oublierEcran(id: string): Promise<void>;
 }

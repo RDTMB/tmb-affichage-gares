@@ -196,23 +196,39 @@ export function appliqueTerminusBellevue(
 }
 
 /**
- * Rotations express « à traiter » en supervision : montées express (grille)
- * dont la colonne Terminus est sur Bellevue (posée par la bascule) et qui ne
- * sont pas supprimées. L'express circule normalement en attendant, mais sa
- * descente appariée non express part, elle, de Bellevue.
+ * Trains express « à traiter » en supervision : un express ne dessert pas
+ * Bellevue, il ne peut donc être ni tronqué (montée) ni fait partir de
+ * Bellevue (descente). Sont signalés, pour une rotation limitée (colonne
+ * Terminus de la montée sur Bellevue) et non supprimés :
+ * - la MONTÉE express elle-même ;
+ * - sa DESCENTE appariée si elle est express aussi (T9→T10, T17→T18) : elle
+ *   partirait du Nid d'Aigle alors que le tronçon supérieur est fermé.
+ * Une descente NON express, elle, part normalement de Bellevue : rien à traiter.
  */
 export function expressATraiter(grille: Grille, jour: Jour): number[] {
   const numeros: number[] = [];
+  const limitee = (numeroMontee: number): boolean => {
+    const c = jour.circulations.find((x) => x.numero === numeroMontee && x.sens === 'montee');
+    return c?.terminus === 'bellevue';
+  };
+  /** Circule vraiment : non supprimé, et facultatif seulement s'il est activé. */
+  const circule = (numero: number): boolean => {
+    const c = jour.circulations.find((x) => x.numero === numero);
+    if (!c || c.statut === 'supprime') return false;
+    return !c.facultatif || c.facultatif_actif;
+  };
+
   for (const montee of grille.montees) {
-    if (!montee.express) continue;
-    const circulation = jour.circulations.find(
-      (c) => c.numero === montee.numero && c.sens === 'montee',
-    );
-    if (circulation?.terminus === 'bellevue' && circulation.statut !== 'supprime') {
+    if (montee.express && limitee(montee.numero) && circule(montee.numero)) {
       numeros.push(montee.numero);
     }
   }
-  return numeros;
+  for (const descente of grille.descentes) {
+    if (descente.express && limitee(descente.numero - 1) && circule(descente.numero)) {
+      numeros.push(descente.numero);
+    }
+  }
+  return numeros.sort((a, b) => a - b);
 }
 
 /**

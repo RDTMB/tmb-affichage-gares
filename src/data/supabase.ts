@@ -24,6 +24,23 @@ import type {
 } from '../core/types';
 import type { DataProvider } from './provider';
 
+/**
+ * Tables dont un changement doit rafraîchir les données d'AFFICHAGE.
+ * `ecrans` en est volontairement EXCLUE : ses écritures sont des heartbeats
+ * (6 écrans toutes les 30 s) et provoqueraient un rechargement complet en
+ * boucle chez tous les clients. L'onglet Écrans de la supervision se
+ * rafraîchit, lui, par interrogation périodique.
+ */
+export const TABLES_AFFICHAGE = [
+  'jours',
+  'circulations',
+  'messages',
+  'medias',
+  'params',
+  'machines',
+  'motifs',
+] as const;
+
 interface LigneJour {
   date: string;
   grille_version: string;
@@ -233,11 +250,17 @@ export class SupabaseProvider implements DataProvider {
   onChange(cb: () => void): () => void {
     this.abonnes.add(cb);
     if (!this.canal) {
-      // Canal unique : tout changement déclenche un rafraîchissement complet.
-      this.canal = this.client
-        .channel('tmb')
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => this.notifie())
-        .subscribe();
+      // Canal unique : tout changement d'une table d'AFFICHAGE déclenche un
+      // rafraîchissement complet. La table `ecrans` en est exclue : ses
+      // écritures sont des heartbeats (6 écrans toutes les 30 s) et
+      // provoqueraient un rechargement en boucle chez tous les clients.
+      let canal = this.client.channel('tmb');
+      for (const table of TABLES_AFFICHAGE) {
+        canal = canal.on('postgres_changes', { event: '*', schema: 'public', table }, () =>
+          this.notifie(),
+        );
+      }
+      this.canal = canal.subscribe();
       // Repli polling 30 s si le temps réel est indisponible
       window.setInterval(() => this.notifie(), 30_000);
     }
@@ -513,6 +536,10 @@ export class SupabaseProvider implements DataProvider {
       await this.client.from('ecrans').update({ recharger: true }).eq('id', id).select(),
       'écran inconnu',
     );
+  }
+
+  async oublierEcran(id: string): Promise<void> {
+    exigeLignes(await this.client.from('ecrans').delete().eq('id', id).select(), 'écran inconnu');
   }
 }
 

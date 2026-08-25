@@ -6,12 +6,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
 import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import { ORDRE_GARES } from '../core/types';
 
 // --- Environnement navigateur minimal : MockProvider tourne ici sous Node
+// localStorage FIDÈLE : setItem émet un événement `storage` comme le fait un
+// navigateur pour les AUTRES onglets. Sans cela, le test « un heartbeat ne
+// notifie personne » passait même avec le code bogué (le bug était justement
+// inter-onglets, via `storage`).
 const stockage = new Map<string, string>();
 vi.stubGlobal('localStorage', {
   getItem: (cle: string) => stockage.get(cle) ?? null,
-  setItem: (cle: string, valeur: string) => void stockage.set(cle, valeur),
+  setItem: (cle: string, valeur: string) => {
+    stockage.set(cle, valeur);
+    globalThis.window.dispatchEvent({ type: 'storage', key: cle } as unknown as Event);
+  },
   removeItem: (cle: string) => void stockage.delete(cle),
   clear: () => stockage.clear(),
 });
@@ -22,15 +30,32 @@ vi.stubGlobal('sessionStorage', {
   removeItem: (cle: string) => void sessionStockage.delete(cle),
   clear: () => sessionStockage.clear(),
 });
+// Vrai bus d'événements : indispensable pour vérifier qui notifie qui
+const ecouteurs = new Map<string, Set<() => void>>();
 vi.stubGlobal('window', {
-  addEventListener: () => undefined,
-  removeEventListener: () => undefined,
-  dispatchEvent: () => true,
+  addEventListener: (type: string, cb: () => void) => {
+    const set = ecouteurs.get(type) ?? new Set();
+    set.add(cb);
+    ecouteurs.set(type, set);
+  },
+  removeEventListener: (type: string, cb: () => void) => {
+    ecouteurs.get(type)?.delete(cb);
+  },
+  dispatchEvent: (e: { type: string; key?: string }) => {
+    for (const cb of ecouteurs.get(e.type) ?? []) (cb as (ev: unknown) => void)(e);
+    return true;
+  },
   setInterval: () => 0,
   clearTimeout: () => undefined,
   setTimeout: () => 0,
   location: { reload: () => undefined },
 });
+vi.stubGlobal(
+  'Event',
+  class {
+    constructor(public readonly type: string) {}
+  },
+);
 // FileReader n'existe pas sous Node : substitut minimal pour uploadMedia
 class FileReaderStub {
   result: string | null = null;
@@ -220,6 +245,101 @@ describe('Résilience du cache de grilles (audit du 26/08/2026)', () => {
 
     expect(await provider.listMedias()).toHaveLength(1); // toujours gérable
     expect(await provider.getMedias('le-fayet')).toHaveLength(0); // retiré des écrans
+  });
+});
+
+describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('un heartbeat ne notifie AUCUN abonné (pas de resynchro en boucle)', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    let notifications = 0;
+    provider.onChange(() => {
+      notifications += 1;
+    });
+
+    // 6 écrans × 2 battements : aucune notification ne doit partir
+    for (let tour = 0; tour < 2; tour += 1) {
+      for (const gare of ORDRE_GARES) {
+        await provider.heartbeat({ id: `${gare}-ecran-1`, gare, type: 'ecran' });
+      }
+    }
+    expect(notifications).toBe(0);
+
+    // …alors qu'une écriture d'exploitation notifie bien
+    await provider.saveMessage({
+      id: '',
+      texte_fr: 'test',
+      texte_en: 'test',
+      cible_type: 'toutes',
+      priorite: 'normale',
+      actif: true,
+    });
+    expect(notifications).toBeGreaterThan(0);
+  });
+
+  it('les écrans restent distincts par type et « Recharger » vise le bon poste', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.heartbeat({ id: 'le-fayet-ecran-1', gare: 'le-fayet', type: 'ecran' });
+    await provider.heartbeat({ id: 'le-fayet-grille-1', gare: 'le-fayet', type: 'grille' });
+    const ecrans = await provider.listEcrans();
+    expect(ecrans).toHaveLength(2);
+    expect(ecrans.map((e) => e.id).sort()).toEqual(['le-fayet-ecran-1', 'le-fayet-grille-1']);
+
+    // La cible du rechargement est vérifiée : seul l'écran visé est marqué
+    await provider.demanderRechargement('le-fayet-grille-1');
+    const brut = JSON.parse(stockage.get('tmb-mock-ecrans') ?? '{}') as Record<
+      string,
+      { recharger?: boolean }
+    >;
+    expect(brut['le-fayet-grille-1']?.recharger).toBe(true);
+    expect(brut['le-fayet-ecran-1']?.recharger).not.toBe(true);
+    await expect(provider.demanderRechargement('inconnu-1')).rejects.toThrow(/inconnu/);
+  });
+
+  it('un écran obsolète peut être oublié (poste fantôme après changement d’identifiant)', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.heartbeat({ id: 'le-fayet-1', gare: 'le-fayet', type: 'ecran' }); // ancien format
+    expect(await provider.listEcrans()).toHaveLength(1);
+    await provider.oublierEcran('le-fayet-1');
+    expect(await provider.listEcrans()).toHaveLength(0);
+    await expect(provider.oublierEcran('le-fayet-1')).rejects.toThrow(/inconnu/);
+  });
+
+  it('saveMedia sur un identifiant inconnu échoue bruyamment (pas de faux succès)', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await expect(
+      provider.saveMedia({
+        id: 'fantome',
+        nom: 'x.png',
+        type: 'image',
+        url: '',
+        duree_s: 8,
+        actif: true,
+      }),
+    ).rejects.toThrow(/introuvable/);
+  });
+
+  it('gares ciblées et expiration d’un média sont modifiables après création', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const fichier = new File([new Uint8Array([1])], 'affiche.png', { type: 'image/png' });
+    await provider.uploadMedia(fichier, { nom: 'affiche.png', type: 'image', duree_s: 8 });
+
+    const media = (await provider.listMedias())[0];
+    if (!media) throw new Error('média absent');
+    const expire = new Date('2026-08-30T21:00:00Z').toISOString();
+    await provider.saveMedia({ ...media, gares: ['motivon'], expire_at: expire });
+
+    const maj = (await provider.listMedias())[0];
+    expect(maj?.gares).toEqual(['motivon']);
+    expect(maj?.expire_at).toBe(expire);
+    // Ciblage effectif côté écrans
+    expect(await provider.getMedias('motivon')).toHaveLength(1);
+    expect(await provider.getMedias('le-fayet')).toHaveLength(0);
   });
 });
 

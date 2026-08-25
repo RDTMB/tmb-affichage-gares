@@ -26,6 +26,7 @@ import type {
 import { creeProvider } from '../data';
 import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
+import { identifiantEcran } from './supervision-logique';
 import {
   creeSynchronisation,
   demarreAntiBurnIn,
@@ -57,9 +58,10 @@ const heure = creeSourceHeure(url.get('simule'));
 
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
-// Identifiant physique : défaut « <gare>-1 » (docs/01 §1) — plusieurs écrans
-// dans une même gare se distinguent via ?ecran=.
-const idEcran = url.get('ecran') ?? `${gareParam ?? 'grille'}-1`;
+// Identifiant physique : « <gare>-<type>-1 » (docs/01 §1) — l'écran grille
+// et l'écran des départs d'une même gare sont ainsi distincts ; plusieurs
+// écrans du même type se distinguent via ?ecran=.
+const idEcran = identifiantEcran('grille', gareParam, url.get('ecran'));
 document.body.dataset.ecran = idEcran;
 
 ($('logo') as HTMLImageElement).src = __LOGO_ROND__;
@@ -334,18 +336,17 @@ async function demarre(): Promise<void> {
   window.setInterval(() => sync?.resynchronise(), 30_000);
   window.addEventListener('online', () => sync?.resynchronise());
 
-  const bat = (): void => {
-    void provider
-      .heartbeat({
-        id: idEcran,
-        gare: gare ?? 'le-fayet',
-        type: 'grille',
-        version_app: import.meta.env.MODE,
-      })
-      .catch(() => {});
-  };
-  bat();
-  window.setInterval(bat, 30_000);
+  // Jamais de heartbeat en aperçu (?apercu=1) ni sans gare : un poste de
+  // bureau consultant la ligne entière n'est pas un écran de gare.
+  if (url.get('apercu') !== '1' && gare !== null) {
+    const bat = (): void => {
+      void provider
+        .heartbeat({ id: idEcran, gare, type: 'grille', version_app: import.meta.env.MODE })
+        .catch(() => {});
+    };
+    bat();
+    window.setInterval(bat, 30_000);
+  }
 
   rendre();
   window.setInterval(() => {

@@ -187,6 +187,9 @@ create policy "gerer profils" on profils for all to authenticated
 -- la demande de rechargement reste possible pour l'exploitation.
 create policy "heartbeat insert" on ecrans for insert with check (true);
 create policy "heartbeat update" on ecrans for update using (true) with check (true);
+-- Retrait d'un poste obsolète : exploitation authentifiée uniquement
+create policy "oublier ecran" on ecrans for delete to authenticated
+  using (role_courant() in ('admin','supervision'));
 
 -- Publications : journal — écrit par tout rôle actif, lu par les connectés
 create policy "journal insert" on publications for insert to authenticated

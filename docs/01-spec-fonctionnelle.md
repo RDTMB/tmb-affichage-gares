@@ -13,7 +13,10 @@ horaires : `public/grilles/*.json` (officiels été 2026).
 | `supervision.html`      | Pilotage (onglets)                         | Agents authentifiés                  |
 
 Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant physique,
-défaut `<gare>-1`), `simule=HH:MM` (démo/tests), `zoom=`.
+défaut `<gare>-<type>-1` où type = `ecran` ou `grille` — les deux pages
+d'une même gare sont ainsi deux postes distincts dans « État des écrans » ;
+plusieurs écrans du même type se distinguent par `ecran=`),
+`simule=HH:MM` (démo/tests), `zoom=`.
 
 ## 2. Données métier
 
@@ -38,8 +41,10 @@ permanent). Le service actif se déduit de la date via `periodes`.
 
 Générées pour une date depuis la grille active (bouton + génération auto à
 la première consultation d'une date) : `date, numero, sens, express,
-facultatif, velos, rame, terminus ('nid-daigle'|'bellevue', montées non
-express uniquement), facultatif_actif (défaut false), statut
+facultatif, velos, rame, terminus ('nid-daigle'|'bellevue', porté par la
+MONTÉE — y compris une montée express, dont la valeur « bellevue » sert
+alors à produire le signalement « à traiter » de sa rotation),
+facultatif_actif (défaut false), statut
 ok|retard|supprime, retard_min, motif`. La supervision peut préparer
 n'importe quelle date future (calendrier).
 
@@ -51,9 +56,19 @@ descente appariée part de Bellevue. Une montée EXPRESS n'est JAMAIS
 tronquée (elle ne dessert pas Bellevue) : la limitation manuelle est
 interdite dans l'interface ; si la bascule de plage (§2.3) positionne sa
 colonne sur Bellevue, l'express circule normalement et est signalé
-« à traiter » en supervision (à supprimer ou à requalifier manuellement en
-omnibus limité à Bellevue — traitement outillé à l'étape 6) ; sa descente
-appariée non express part, elle, de Bellevue.
+« à traiter » en supervision, avec deux actions explicites : **Supprimer**
+(il reste affiché barré jusqu'à son heure théorique ; la suppression de sa
+descente appariée est proposée, comme pour toute montée) ou **Maintenir**
+jusqu'au Nid d'Aigle (le signalement est levé et la rotation entière repasse
+au Nid d'Aigle : la descente n'est donc PAS reportée à Bellevue, ce qui est
+correct puisque la rame s'y trouve). Si la descente appariée est elle-même
+un express (T9/T10, T17/T18), elle est signalée « à traiter » séparément :
+ne desservant pas Bellevue, elle partirait du Nid d'Aigle alors que le
+tronçon supérieur est fermé. Une descente NON express, en revanche, part
+normalement de Bellevue. La requalification en omnibus limité à Bellevue reste à définir
+avec l'exploitant : elle exigerait une heure d'arrivée à Bellevue absente
+du document d'exploitation pour un express, et aucune heure ne doit être
+inventée sur un affichage voyageur.
 _(Correctif validé par l'exploitant le 24/08/2026.)_
 
 ### 2.3 Jour d'exploitation (drapeaux du jour)
@@ -185,9 +200,10 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    date) ; bascule « ⚠ Terminus Bellevue » (journée entière = à partir du
    TRAIN 1, ou « à partir du TRAIN N » — sélecteur proposant uniquement les
    MONTÉES ; la bascule PRÉ-REMPLIT la colonne Terminus des rotations
-   concernées, ajustable ensuite train par train, et signale « à traiter »
-   les express de la plage — à supprimer ou requalifier manuellement,
-   traitement outillé à l'étape 6) ; **ordre apparié** : chaque montée est suivie de sa descente
+   concernées, ajustable ensuite train par train, LIBÈRE les rotations qui
+   sortent de la plage — décocher ou rétrécir rétablit le service jusqu'au
+   Nid d'Aigle — et signale « à traiter » les express de la plage, avec les
+   boutons Supprimer / Maintenir) ; **ordre apparié** : chaque montée est suivie de sa descente
    (même rotation), séparées visuellement par paires ; par ligne : « TRAIN
    X », heure, sens, badges express/vélos, rame (liste des machines —
    uniquement sur la montée ; la descente affiche la rame héritée avec la
@@ -200,9 +216,8 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    suppression — **la suppression d'une MONTÉE propose aussi la suppression
    de sa descente appariée** (proposition par défaut : Oui, dérogeable par
    la supervision, ex. rame de remplacement) ; pour un express
-   « à traiter » : requalification en omnibus limité à Bellevue (sa
-   descente part alors de Bellevue) ou suppression (avec la même
-   proposition pour la descente appariée) — outillage à l'étape 6 ;
+   « à traiter » : boutons **Supprimer** (avec la même proposition pour la
+   descente appariée) ou **Maintenir** jusqu'au Nid d'Aigle ;
    **ouverture d'une date** : si un service circule et que la date n'est pas
    passée, la journée est créée automatiquement en base (jours +
    circulations depuis la grille de la période, idempotent) — aucune action
@@ -219,10 +234,16 @@ détermine les onglets accessibles (§ docs/02 sécurité).
 2. **Messages** : liste + formulaire (FR requis ; EN **généré
    automatiquement à la saisie** puis modifiable ; cible toutes/gares/
    train, priorité, expiration) ; **bouton Modifier** sur chaque message
-   (édition en place) ; retrait en un clic.
+   (édition en place) : le formulaire RESTITUE la cible et l'expiration du
+   message édité — une correction de texte ne peut donc jamais transformer
+   un message ciblé en message diffusé partout ; le formulaire affiché est
+   exactement ce qui sera enregistré (l'expiration peut être retirée en
+   choisissant « jamais ») ; retrait en un clic.
 3. **Médias** : réglage `duree_horaires_s` ; envoi de fichier (taille max
-   20 Mo, formats §2.5) ; par média : durée, gares, actif, expiration,
-   aperçu, suppression.
+   20 Mo, formats §2.5) ; par média : durée, **gares ciblées et expiration
+   modifiables après création** (aucune gare cochée = toutes), actif,
+   aperçu, suppression. La liste montre TOUS les médias, y compris ceux
+   désactivés (sinon ils ne seraient plus réactivables).
 4. **Écrans** : cartes (gare, type, en ligne/hors ligne — silence > 90 s,
    réseau fibre/5G, mention alimentation solaire pour le Nid d'Aigle,
    dernière vue, version) ; bouton « Recharger l'écran ».

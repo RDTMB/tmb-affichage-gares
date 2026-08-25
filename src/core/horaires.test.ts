@@ -406,9 +406,12 @@ describe('terminus Bellevue — journée entière (à partir du TRAIN 1)', () =>
 
   it('ne retire plus les express : ils circulent normalement et sont signalés « à traiter »', () => {
     const base = jourGrand();
-    circ(base, 9).facultatif_actif = true;
+    circ(base, 9).facultatif_actif = true; // montée express
+    circ(base, 10).facultatif_actif = true; // sa descente, express aussi
     const { jour, aTraiter } = appliqueTerminusBellevue(GRAND, base, 1);
-    expect(aTraiter).toEqual([9, 17, 23]); // toutes les montées express de la grille
+    // Seuls les express qui CIRCULENT sont signalés (T17/T23 sont facultatifs
+    // non activés) — montée ET descente express de la rotation 9/10.
+    expect(aTraiter).toEqual([9, 10]);
     const t9 = passagesPourGare(GRAND, jour, 'nid-daigle').find((p) => p.numero === 9);
     expect(t9?.arrivee_s).toBe(h('11:30:30')); // jamais tronqué
     expect(t9?.destination).toBe('nid-daigle');
@@ -487,10 +490,29 @@ describe('terminus Bellevue — à partir du TRAIN N (par rotation)', () => {
     expect(numeros(nid)).not.toContain(24);
   });
 
-  it('un express supprimé n’est plus signalé « à traiter »', () => {
+  it('un express supprimé ou non activé n’est plus signalé « à traiter »', () => {
     const { jour } = appliqueTerminusBellevue(GRAND, jourGrand(), 19);
+    // T23/T24 sont facultatifs et non activés : ils ne circulent pas
+    expect(expressATraiter(GRAND, jour)).toEqual([]);
+
+    circ(jour, 23).facultatif_actif = true;
+    expect(expressATraiter(GRAND, jour)).toEqual([23]);
     Object.assign(circ(jour, 23), { statut: 'supprime' });
     expect(expressATraiter(GRAND, jour)).toEqual([]);
+  });
+
+  it('la DESCENTE express d’une rotation limitée est aussi signalée (elle partirait du Nid d’Aigle)', () => {
+    const base = jourGrand();
+    circ(base, 17).facultatif_actif = true; // montée express
+    circ(base, 18).facultatif_actif = true; // descente express appariée
+    const { jour, aTraiter } = appliqueTerminusBellevue(GRAND, base, 15);
+    // T17 (montée express) ET T18 (descente express) doivent être signalés :
+    // aucun des deux ne dessert Bellevue.
+    expect(aTraiter).toContain(17);
+    expect(aTraiter).toContain(18);
+    // T18 part toujours du Nid d'Aigle : c'est bien le train à traiter
+    const nid = passagesPourGare(GRAND, jour, 'nid-daigle');
+    expect(nid.find((p) => p.numero === 18)?.depart_s).toBe(h('14:48:30'));
   });
 
   it('normalise un numéro PAIR vers la montée de sa rotation (T20 → T19)', () => {

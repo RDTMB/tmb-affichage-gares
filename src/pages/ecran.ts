@@ -37,6 +37,7 @@ import type {
 import { creeProvider } from '../data';
 import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
+import { identifiantEcran } from './supervision-logique';
 import {
   creeSynchronisation,
   demarreAntiBurnIn,
@@ -79,8 +80,10 @@ const heure = creeSourceHeure(url.get('simule'));
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 
-// Identifiant physique de l'écran (heartbeat)
-const idEcran = url.get('ecran') ?? `${gareParam ?? 'ecran'}-1`;
+// Identifiant physique de l'écran (heartbeat) : le type de page en fait
+// partie, sinon l'écran des départs et l'écran grille d'une même gare
+// s'écrasent dans « État des écrans ».
+const idEcran = identifiantEcran('ecran', gareParam, url.get('ecran'));
 document.body.dataset.ecran = idEcran;
 
 ($('logo') as HTMLImageElement).src = __LOGO_ROND__;
@@ -468,14 +471,18 @@ async function demarre(): Promise<void> {
   window.addEventListener('online', () => sync?.resynchronise());
 
   // Heartbeat 30 s (id écran, gare, version) — la commande « recharger »
-  // est honorée par le provider.
-  const bat = (): void => {
-    void provider
-      .heartbeat({ id: idEcran, gare, type: 'ecran', version_app: import.meta.env.MODE })
-      .catch(() => {});
-  };
-  bat();
-  window.setInterval(bat, 30_000);
+  // est honorée par le provider. JAMAIS en mode aperçu (?apercu=1) : un
+  // onglet de supervision battrait sous l'identifiant du Raspberry Pi,
+  // fausserait sa dernière vue et consommerait son ordre de rechargement.
+  if (url.get('apercu') !== '1') {
+    const bat = (): void => {
+      void provider
+        .heartbeat({ id: idEcran, gare, type: 'ecran', version_app: import.meta.env.MODE })
+        .catch(() => {});
+    };
+    bat();
+    window.setInterval(bat, 30_000);
+  }
 
   rendre(gare);
   window.setInterval(() => {
