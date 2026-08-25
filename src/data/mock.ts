@@ -236,6 +236,11 @@ export class MockProvider implements DataProvider {
     return litEtat().medias.filter((m) => m.actif && (!m.gares || m.gares.includes(gare)));
   }
 
+  /** Supervision : TOUS les médias, y compris désactivés. */
+  async listMedias(): Promise<Media[]> {
+    return litEtat().medias;
+  }
+
   async getParams(): Promise<Params> {
     const etat = litEtat();
     return {
@@ -314,20 +319,23 @@ export class MockProvider implements DataProvider {
     etat.jours[date] ??= { terminus: null, circulations: {} };
     const etatJour = etat.jours[date];
     if (!etatJour || !grille) return;
-    if (v === false) {
-      etatJour.terminus = null;
-    } else {
-      const seuil = Math.max(
-        1,
-        v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
-      );
-      etatJour.terminus = seuil;
-      // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable ensuite
-      for (const montee of grille.montees) {
-        if (montee.numero < seuil) continue;
-        const cle = String(montee.numero);
-        etatJour.circulations[cle] = { ...etatJour.circulations[cle], terminus: 'bellevue' };
-      }
+    const seuil =
+      v === false
+        ? Number.POSITIVE_INFINITY
+        : Math.max(
+            1,
+            v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
+          );
+    etatJour.terminus = v === false ? null : seuil;
+    // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable
+    // ensuite ; les montées hors plage sont LIBÉRÉES (décocher ou rétrécir
+    // rétablit le service jusqu'au Nid d'Aigle).
+    for (const montee of grille.montees) {
+      const cle = String(montee.numero);
+      etatJour.circulations[cle] = {
+        ...etatJour.circulations[cle],
+        terminus: montee.numero >= seuil ? 'bellevue' : 'nid-daigle',
+      };
     }
     ecritEtat(etat);
   }

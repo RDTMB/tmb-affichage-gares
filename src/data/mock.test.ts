@@ -31,6 +31,18 @@ vi.stubGlobal('window', {
   setTimeout: () => 0,
   location: { reload: () => undefined },
 });
+// FileReader n'existe pas sous Node : substitut minimal pour uploadMedia
+class FileReaderStub {
+  result: string | null = null;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readAsDataURL(): void {
+    this.result = 'data:image/png;base64,AQID';
+    this.onload?.();
+  }
+}
+vi.stubGlobal('FileReader', FileReaderStub);
+
 vi.stubGlobal(
   'fetch',
   async (url: string | URL) =>
@@ -147,6 +159,67 @@ describe('Ouverture d’une date en supervision (amélioration exploitant du 25/
       statut: 'ok',
       motif: null,
     });
+  });
+});
+
+describe('Résilience du cache de grilles (audit du 26/08/2026)', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('un échec réseau n’est pas mémorisé : la synchro suivante retente et réussit', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const fetchOk = globalThis.fetch;
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('réseau indisponible');
+    });
+    await expect(provider.getGrilles()).rejects.toThrow('réseau indisponible');
+
+    // Retour du réseau : une promesse rejetée mémorisée figerait l'écran neutre
+    vi.stubGlobal('fetch', fetchOk);
+    const grilles = await provider.getGrilles();
+    expect(grilles).toHaveLength(2);
+  });
+
+  it('la libération du terminus rétablit le Nid d’Aigle quand on décoche la bascule', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 19 });
+    expect(
+      (await provider.getJour('2026-08-28')).circulations.find((c) => c.numero === 19)?.terminus,
+    ).toBe('bellevue');
+
+    await provider.setTerminusBellevue('2026-08-28', false);
+    const apres = await provider.getJour('2026-08-28');
+    expect(apres.terminus_bellevue).toBe(false);
+    for (const c of apres.circulations.filter((x) => x.sens === 'montee')) {
+      expect(c.terminus).toBe('nid-daigle');
+    }
+  });
+
+  it('rétrécir la plage libère les rotations qui en sortent', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 11 });
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 21 });
+    const jour = await provider.getJour('2026-08-28');
+    expect(jour.circulations.find((c) => c.numero === 11)?.terminus).toBe('nid-daigle');
+    expect(jour.circulations.find((c) => c.numero === 21)?.terminus).toBe('bellevue');
+  });
+
+  it('un média désactivé reste visible en supervision (listMedias) mais disparaît des écrans', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const fichier = new File([new Uint8Array([1, 2, 3])], 'affiche.png', { type: 'image/png' });
+    await provider.uploadMedia(fichier, { nom: 'affiche.png', type: 'image', duree_s: 8 });
+
+    const media = (await provider.listMedias())[0];
+    if (!media) throw new Error('média absent');
+    await provider.saveMedia({ ...media, actif: false });
+
+    expect(await provider.listMedias()).toHaveLength(1); // toujours gérable
+    expect(await provider.getMedias('le-fayet')).toHaveLength(0); // retiré des écrans
   });
 });
 

@@ -73,7 +73,13 @@ export class SupabaseProvider implements DataProvider {
         if (!reponse.ok) throw new Error(`Grille ${nom} introuvable (${reponse.status})`);
         return (await reponse.json()) as Grille;
       }),
-    );
+    ).catch((erreur: unknown) => {
+      // Sans cet oubli du cache, une promesse REJETÉE (démarrage hors ligne)
+      // resterait mémorisée : plus aucune tentative au retour du réseau et
+      // l'écran resterait figé sur l'écran neutre toute la journée.
+      this.grilles = null;
+      throw erreur;
+    });
     return this.grilles;
   }
 
@@ -103,10 +109,11 @@ export class SupabaseProvider implements DataProvider {
     }
 
     if (!ligne || circulations.length === 0) {
-      // Ouverture d'une date à venir en supervision (session authentifiée) :
-      // la journée est créée immédiatement en base (idempotent) — plus aucune
-      // action manuelle requise avant de modifier les trains.
-      if (date >= dateAujourdhuiParis() && (await this.sessionActive())) {
+      // Ouverture d'une date à venir en supervision par un rôle qui a le
+      // DROIT d'écrire l'exploitation : la journée est créée immédiatement
+      // (idempotent). Un compte « caisse » ou un écran anonyme ne déclenche
+      // aucune écriture (elle serait refusée par RLS).
+      if (date >= dateAujourdhuiParis() && (await this.peutEcrireExploitation())) {
         await this.genererJour(date);
         this.joursAssures.add(date);
         const cree = generationJour(grille, date);
@@ -137,9 +144,19 @@ export class SupabaseProvider implements DataProvider {
    */
   private readonly joursAssures = new Set<string>();
 
-  private async sessionActive(): Promise<boolean> {
+  /** Rôle mémorisé pour éviter une requête à chaque getJour. */
+  private roleCache: Role | null = null;
+
+  /** true si une session ouverte peut écrire l'exploitation (admin ou supervision). */
+  private async peutEcrireExploitation(): Promise<boolean> {
     const { data } = await this.client.auth.getSession(); // lecture locale, pas d'appel réseau
-    return data.session !== null;
+    if (!data.session) return false;
+    try {
+      this.roleCache ??= await this.getRole();
+    } catch {
+      return false; // profil absent ou inactif
+    }
+    return this.roleCache === 'admin' || this.roleCache === 'supervision';
   }
 
   private async assureJour(date: string): Promise<void> {
@@ -161,18 +178,27 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async getMedias(gare: GareId): Promise<Media[]> {
-    const { data, error } = await this.client.from('medias').select('*').eq('actif', true);
+    return (await this.tousLesMedias()).filter(
+      (m) => m.actif && (!m.gares || m.gares.includes(gare)),
+    );
+  }
+
+  /** Supervision : TOUS les médias, y compris désactivés (sinon ils disparaissent de la liste). */
+  async listMedias(): Promise<Media[]> {
+    return this.tousLesMedias();
+  }
+
+  private async tousLesMedias(): Promise<Media[]> {
+    const { data, error } = await this.client.from('medias').select('*').order('cree_le');
     verifie(error);
     interface LigneMedia extends Omit<Media, 'url'> {
       chemin: string;
       gares: GareId[] | null;
     }
-    return ((data ?? []) as LigneMedia[])
-      .filter((m) => !m.gares || m.gares.includes(gare))
-      .map((m) => ({
-        ...m,
-        url: this.client.storage.from('medias').getPublicUrl(m.chemin).data.publicUrl,
-      }));
+    return ((data ?? []) as LigneMedia[]).map((m) => ({
+      ...m,
+      url: this.client.storage.from('medias').getPublicUrl(m.chemin).data.publicUrl,
+    }));
   }
 
   async getParams(): Promise<Params> {
@@ -308,6 +334,12 @@ export class SupabaseProvider implements DataProvider {
     exigeLignes(resultat, 'journée absente en base');
   }
 
+  /**
+   * Bascule de plage : pré-remplit la colonne Terminus des rotations
+   * concernées et LIBÈRE celles qui sortent de la plage (décocher ou
+   * rétrécir doit rétablir le service jusqu'au Nid d'Aigle — sinon
+   * l'exploitant décoche et rien ne change à l'écran).
+   */
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     await this.assureJour(date);
     const resultat = await this.client
@@ -318,16 +350,33 @@ export class SupabaseProvider implements DataProvider {
       .eq('date', date)
       .select();
     exigeLignes(resultat, 'journée absente en base');
+
+    const seuil =
+      v === false
+        ? Number.POSITIVE_INFINITY // tout est libéré
+        : Math.max(
+            1,
+            v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
+          );
+
+    // Libération des montées hors plage (retour au Nid d'Aigle)
+    const liberation = await this.client
+      .from('circulations')
+      .update({ terminus: 'nid-daigle' })
+      .eq('date', date)
+      .eq('sens', 'montee')
+      .eq('terminus', 'bellevue');
+    verifie(liberation.error); // 0 ligne est normal ici : rien n'était limité
+
     if (v !== false) {
       // Pré-remplissage de la colonne Terminus des rotations concernées
       // (docs/01 §2.3) — la colonne reste ajustable ensuite.
-      const seuil = v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train;
       const maj = await this.client
         .from('circulations')
         .update({ terminus: 'bellevue' })
         .eq('date', date)
         .eq('sens', 'montee')
-        .gte('numero', Math.max(1, seuil))
+        .gte('numero', seuil)
         .select();
       exigeLignes(maj, 'journée absente en base');
     }

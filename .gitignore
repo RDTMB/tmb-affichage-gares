@@ -1,5 +1,9 @@
 node_modules/
 dist/
+
+# Généré au déploiement depuis les variables de dépôt : ne JAMAIS committer
+# (contient l'URL et la clé Supabase du projet)
+public/config.js
 .env
 .env.local
 .env.*.local

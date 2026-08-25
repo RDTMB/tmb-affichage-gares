@@ -107,7 +107,8 @@ const majTicker = creeTicker($('ticker'));
 // Cycle médias (étape 7)
 let mediaCourant: Media | null = null;
 let mediaFinMs = 0;
-let prochaineBasculeMs = Date.now() + 20_000;
+/** Fixée à la première synchro, avec la vraie valeur de duree_horaires_s. */
+let prochaineBasculeMs: number | null = null;
 let indexMedia = 0;
 
 function nomGare(id: GareId): string {
@@ -307,6 +308,7 @@ function gereMedias(departs: PassageGare[], maintenant_s: number): void {
     if (departProche || Date.now() >= mediaFinMs || !mediaCourant.actif) quitteMedia();
     return;
   }
+  prochaineBasculeMs ??= Date.now() + (params?.duree_horaires_s ?? 20) * 1000;
   const liste = mediasAffichables();
   if (liste.length > 0 && !departProche && Date.now() >= prochaineBasculeMs) {
     entreMedia(liste);
@@ -345,6 +347,16 @@ function rendre(gare: GareId): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
+  // Badge d'âge des données calculé AVANT toute sortie : sinon il resterait
+  // peint par-dessus l'écran neutre ou la veille nuit (z-index supérieur).
+  const age = sync?.ageMs() ?? null;
+  const degrade = age !== null && age > SEUIL_BADGE_MS && age <= dureeCacheMs();
+  document.body.classList.toggle('mode-degrade', degrade);
+  if (degrade) {
+    const quand = sync?.heureSync() ?? '--:--';
+    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
+  }
+
   // 1. Veille nuit (écran noir + horloge discrète)
   const veille = enVeille(maintenant);
   document.body.classList.toggle('mode-veille', veille);
@@ -354,21 +366,13 @@ function rendre(gare: GareId): void {
     return;
   }
 
-  // 2. Mode dégradé : badge après 2 min sans synchro, écran neutre au-delà
-  //    de duree_cache_min — JAMAIS d'horaires potentiellement périmés.
-  const age = sync?.ageMs() ?? null;
+  // 2. Écran neutre au-delà de duree_cache_min — JAMAIS d'horaires périmés.
   const neutre = age === null || age > dureeCacheMs();
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
     quitteMedia();
     return;
-  }
-  const degrade = age > SEUIL_BADGE_MS;
-  document.body.classList.toggle('mode-degrade', degrade);
-  if (degrade) {
-    const quand = sync?.heureSync() ?? '--:--';
-    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
   }
 
   if (!grille || !jour) return;
@@ -389,15 +393,16 @@ function rendre(gare: GareId): void {
   const passages = passagesPourGare(grille, jour, gare, maintenant);
   const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
 
-  gereMedias(departs, maintenant);
+  const tronconFerme = etatTronconFerme(grille, jour, gare, maintenant);
+  const fin = tronconFerme ? null : finDeService(grille, jour, gare, maintenant, grilleDemain);
+  if (tronconFerme) afficheEtatSpecial(htmlTronconFerme());
+  else if (fin) afficheEtatSpecial(htmlFinDeService(fin));
+  else afficheTableau(departs.map((p) => ligneHtml(p, maintenant)));
 
-  if (etatTronconFerme(grille, jour, gare, maintenant)) {
-    afficheEtatSpecial(htmlTronconFerme());
-  } else {
-    const fin = finDeService(grille, jour, gare, maintenant, grilleDemain);
-    if (fin) afficheEtatSpecial(htmlFinDeService(fin));
-    else afficheTableau(departs.map((p) => ligneHtml(p, maintenant)));
-  }
+  // Les médias ne recouvrent JAMAIS un état spécial (tronçon fermé, fin de
+  // service) : l'information voyageur prime.
+  if (tronconFerme || fin) quitteMedia();
+  else gereMedias(departs, maintenant);
 
   rendsArrivee(gare, maintenant);
   majTicker(messagesVisibles(messages, gare, passages, heure.maintenantMs()));

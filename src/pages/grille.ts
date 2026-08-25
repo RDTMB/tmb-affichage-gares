@@ -244,19 +244,20 @@ function rendre(): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
-  // Mode dégradé : badge après 2 min sans synchro, écran neutre au-delà
+  // Badge calculé AVANT toute sortie (sinon il resterait peint par-dessus
+  // l'écran neutre), puis écran neutre au-delà de duree_cache_min.
   const age = sync?.ageMs() ?? null;
+  const degrade = age !== null && age > SEUIL_BADGE_MS && age <= dureeCacheMs();
+  document.body.classList.toggle('mode-degrade', degrade);
+  if (degrade) {
+    const quand = sync?.heureSync() ?? '--:--';
+    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
+  }
   const neutre = age === null || age > dureeCacheMs();
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
     return;
-  }
-  const degrade = age > SEUIL_BADGE_MS;
-  document.body.classList.toggle('mode-degrade', degrade);
-  if (degrade) {
-    const quand = sync?.heureSync() ?? '--:--';
-    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
   }
 
   if (!grille || !jour) return;

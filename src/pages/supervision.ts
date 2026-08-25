@@ -110,7 +110,7 @@ async function chargeTout(): Promise<void> {
     provider.getGrilles(),
     provider.getParams(),
     provider.getMessages('le-fayet'),
-    provider.getMedias('le-fayet'),
+    provider.listMedias(), // TOUS les médias : un média désactivé doit rester gérable
     provider.getJour(dateSel),
   ]);
 }
@@ -221,7 +221,13 @@ function ligneCirculation(
   const n = c.numero;
 
   const rame = montee
-    ? `<select data-action="rame" data-numero="${n}"${verrou}>${(params?.machines ?? [])
+    ? `<select data-action="rame" data-numero="${n}"${verrou}>${
+        // Rame absente des machines (renommée ou retirée) : on la garde en
+        // tête pour ne pas afficher silencieusement une autre rame.
+        (params?.machines ?? []).some((m) => m.nom === rameEffective)
+          ? ''
+          : `<option selected>${echapper(rameEffective)}</option>`
+      }${(params?.machines ?? [])
         .filter((m) => m.en_service || m.nom === rameEffective)
         .map(
           (m) => `<option ${m.nom === rameEffective ? 'selected' : ''}>${echapper(m.nom)}</option>`,
@@ -460,7 +466,24 @@ function initCirculations(): void {
       c.statut = statut;
       if (statut === 'retard' && c.retard_min < 5) c.retard_min = 5;
       if (statut !== 'retard') c.retard_min = 0;
-      void sauveCirculation(c, `statut TRAIN ${numero} → ${statut}`);
+      void sauveCirculation(c, `statut TRAIN ${numero} → ${statut}`).then(() => {
+        // Suppression d'une MONTÉE : proposer la suppression de sa descente
+        // appariée (proposition par défaut Oui, dérogeable — docs/01 §5.1)
+        if (statut !== 'supprime' || c.sens !== 'montee') return;
+        const descente = circulationDe(numero + 1);
+        if (!descente || descente.statut === 'supprime') return;
+        if (
+          !window.confirm(
+            `Supprimer aussi la descente appariée (TRAIN ${descente.numero}) ?\n` +
+              'La rame ne redescendra pas : cliquez Annuler seulement si une rame de remplacement assure la descente.',
+          )
+        )
+          return;
+        descente.statut = 'supprime';
+        descente.retard_min = 0;
+        descente.motif = c.motif;
+        void sauveCirculation(descente, `statut TRAIN ${descente.numero} → supprime (rotation)`);
+      });
     } else if (action === 'retard-plus' || action === 'retard-moins') {
       c.retard_min = Math.max(5, c.retard_min + (action === 'retard-plus' ? 5 : -5));
       void sauveCirculation(c, `retard TRAIN ${numero} → +${c.retard_min} min`);
@@ -780,7 +803,7 @@ function rendreMedias(): void {
 }
 
 async function rechargeMedias(): Promise<void> {
-  medias = await provider.getMedias('le-fayet');
+  medias = await provider.listMedias();
   rendreMedias();
 }
 

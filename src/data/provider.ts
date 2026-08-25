@@ -25,8 +25,10 @@ export interface DataProvider {
   /** Circulations + drapeaux du jour (terminus…). */
   getJour(date: string): Promise<Jour>;
   getMessages(gare: GareId): Promise<Message[]>;
-  /** URLs + durées des médias ciblant la gare. */
+  /** URLs + durées des médias ACTIFS ciblant la gare (écrans). */
   getMedias(gare: GareId): Promise<Media[]>;
+  /** TOUS les médias, y compris désactivés (supervision). */
+  listMedias(): Promise<Media[]>;
   /** Météo, veille nuit, durées, motifs, machines. */
   getParams(): Promise<Params>;
   /** Temps réel : rappelé à chaque changement ; retourne la désinscription. */

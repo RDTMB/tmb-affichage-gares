@@ -33,6 +33,8 @@ gare : `le-fayet`, `saint-gervais`, `motivon`, `col-de-voza`, `bellevue` ou
 #!/bin/bash
 GARE=$(tr -d ' \r\n' < /boot/firmware/gare.txt)
 URL="https://<organisation>.github.io/tmb-affichage-gares/ecran.html?gare=${GARE}"
+# Écran de gare : ni extinction, ni économiseur, ni curseur
+xset s off -dpms s noblank
 unclutter -idle 1 &
 exec chromium-browser --kiosk --noerrdialogs --disable-infobars \
   --disable-session-crashed-bubble --check-for-update-interval=31536000 \
@@ -44,10 +46,15 @@ exec chromium-browser --kiosk --noerrdialogs --disable-infobars \
 ```ini
 [Unit]
 Description=Écran voyageurs TMB
+# Wants= est indispensable : sans lui, After= n'attend rien (la cible
+# network-online n'est pas activée d'office par systemd).
+Wants=network-online.target
 After=network-online.target
 
 [Service]
 User=tmb
+PAMName=login
+TTYPath=/dev/tty1
 ExecStart=/usr/bin/startx /home/tmb/kiosque.sh -- -nocursor
 Restart=always
 RestartSec=5
@@ -55,6 +62,11 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 ```
+
+`PAMName=login` et `TTYPath=/dev/tty1` sont nécessaires : sans eux, `startx`
+lancé par un service système n'obtient pas de session et le service boucle.
+Vérifier après installation : `systemctl status kiosque` doit rester
+« active (running) » (et non « activating » en boucle).
 
 ```bash
 chmod +x /home/tmb/kiosque.sh
