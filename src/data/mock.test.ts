@@ -15,11 +15,12 @@ vi.stubGlobal('localStorage', {
   removeItem: (cle: string) => void stockage.delete(cle),
   clear: () => stockage.clear(),
 });
+const sessionStockage = new Map<string, string>();
 vi.stubGlobal('sessionStorage', {
-  getItem: () => null,
-  setItem: () => undefined,
-  removeItem: () => undefined,
-  clear: () => undefined,
+  getItem: (cle: string) => sessionStockage.get(cle) ?? null,
+  setItem: (cle: string, valeur: string) => void sessionStockage.set(cle, valeur),
+  removeItem: (cle: string) => void sessionStockage.delete(cle),
+  clear: () => sessionStockage.clear(),
 });
 vi.stubGlobal('window', {
   addEventListener: () => undefined,
@@ -73,6 +74,79 @@ describe('MockProvider — écritures sur une date non générée', () => {
     expect(jour.terminus_bellevue).toEqual({ a_partir_du_train: 19 });
     expect(jour.circulations.find((c) => c.numero === 19)?.terminus).toBe('bellevue');
     expect(jour.circulations.find((c) => c.numero === 15)?.terminus).toBe('nid-daigle');
+  });
+});
+
+describe('Ouverture d’une date en supervision (amélioration exploitant du 25/08/2026)', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('date à venir en grand service : 26 trains créés d’emblée, modification immédiate', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x'); // session supervision
+    const jour = await provider.getJour('2026-08-28');
+    expect(jour.enregistre).toBe(true); // créé à l'ouverture, sans action manuelle
+    expect(jour.hors_saison).toBeUndefined();
+    expect(jour.circulations).toHaveLength(26);
+
+    const t5 = jour.circulations.find((c) => c.numero === 5);
+    if (!t5) throw new Error('TRAIN 5 absent');
+    await provider.saveCirculation({ ...t5, terminus: 'bellevue' });
+    expect(
+      (await provider.getJour('2026-08-28')).circulations.find((c) => c.numero === 5)?.terminus,
+    ).toBe('bellevue');
+  });
+
+  it('date à venir en petit service : 16 trains créés', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('supervision@demo', 'x');
+    const jour = await provider.getJour('2026-09-05');
+    expect(jour.enregistre).toBe(true);
+    expect(jour.circulations).toHaveLength(16);
+  });
+
+  it('hors saison : aucune circulation, aucune écriture, pas de repli sur une autre grille', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-10-15');
+    expect(jour.hors_saison).toBe(true);
+    expect(jour.circulations).toHaveLength(0);
+    expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-10-15');
+  });
+
+  it('date passée sans données : aperçu théorique, aucun historique fabriqué', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-08-01');
+    expect(jour.enregistre).toBe(false); // lecture seule côté supervision
+    expect(jour.circulations).toHaveLength(26); // aperçu théorique complet
+    expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-08-01');
+  });
+
+  it('écran anonyme (sans session) : pas de création automatique', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const jour = await provider.getJour('2026-08-28');
+    expect(jour.enregistre).toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-08-28');
+  });
+
+  it('réinitialisation : retour à l’horaire théorique de la grille en vigueur', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-08-28');
+    const t5 = jour.circulations.find((c) => c.numero === 5);
+    if (!t5) throw new Error('TRAIN 5 absent');
+    await provider.saveCirculation({ ...t5, statut: 'supprime', motif: 'Technique' });
+
+    await provider.reinitialiseJour('2026-08-28');
+    const apres = await provider.getJour('2026-08-28');
+    expect(apres.enregistre).toBe(true);
+    expect(apres.circulations.find((c) => c.numero === 5)).toMatchObject({
+      statut: 'ok',
+      motif: null,
+    });
   });
 });
 

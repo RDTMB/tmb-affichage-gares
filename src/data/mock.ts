@@ -144,6 +144,12 @@ function ecritEtat(etat: EtatMock): void {
 export interface OptionsMock {
   /** Bascule Terminus Bellevue « à partir du TRAIN N » appliquée à l'affichage (démo écrans). */
   terminusAPartirDuTrain?: number;
+  /** Date « du jour » figée (« YYYY-MM-DD ») — tests uniquement. */
+  aujourdhui?: string;
+}
+
+function dateAujourdhuiParis(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
 }
 
 export class MockProvider implements DataProvider {
@@ -171,8 +177,18 @@ export class MockProvider implements DataProvider {
 
   async getJour(date: string): Promise<Jour> {
     const grilles = await this.getGrilles();
-    const grille = serviceActif(grilles, date) ?? grilles[0]; // démo : grand service hors saison
-    if (!grille) throw new Error('Aucune grille disponible');
+    const grille = serviceActif(grilles, date);
+    if (!grille) {
+      // Hors saison : aucun service, aucune circulation, aucune écriture.
+      return {
+        date,
+        grille_version: '',
+        terminus_bellevue: false,
+        circulations: [],
+        enregistre: false,
+        hors_saison: true,
+      };
+    }
 
     const jour = generationJour(grille, date);
     // Perturbations de démonstration (état du jour de la maquette validée)
@@ -185,8 +201,17 @@ export class MockProvider implements DataProvider {
     const t16 = jour.circulations.find((x) => x.numero === 16);
     if (t16) Object.assign(t16, { statut: 'supprime', motif: 'Météo' });
 
-    // Modifications de supervision (prioritaires sur la démo)
-    const etatJour = litEtat().jours[date];
+    // Ouverture en supervision d'une date non passée : la journée est créée
+    // d'emblée (idempotent) — plus aucune action manuelle requise. Une date
+    // PASSÉE sans données reste un aperçu théorique (pas d'historique inventé).
+    let etatJour = litEtat().jours[date];
+    const aujourdhui = this.options.aujourdhui ?? dateAujourdhuiParis();
+    if (!etatJour && date >= aujourdhui && sessionStorage.getItem(CLE_SESSION) !== null) {
+      const etat = litEtat();
+      etat.jours[date] = { terminus: null, circulations: {} };
+      localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // simple lecture : pas de notification
+      etatJour = etat.jours[date];
+    }
     jour.enregistre = etatJour !== undefined; // false = aperçu théorique
     if (etatJour) {
       for (const c of jour.circulations) {
@@ -264,6 +289,13 @@ export class MockProvider implements DataProvider {
     const etat = litEtat();
     // Idempotent : n'écrase jamais les modifications déjà enregistrées
     etat.jours[date] ??= { terminus: null, circulations: {} };
+    ecritEtat(etat);
+  }
+
+  async reinitialiseJour(date: string): Promise<void> {
+    const etat = litEtat();
+    // Retour à l'horaire théorique : toutes les modifications du jour sont perdues
+    etat.jours[date] = { terminus: null, circulations: {} };
     ecritEtat(etat);
   }
 

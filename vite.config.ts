@@ -20,12 +20,20 @@ export default defineConfig({
     __MOTRICE_MARINE__: logoDataUri('motrice-direct_marine_213B57.svg'),
   },
   build: {
+    // Les logos officiels sont inlinés en base64 dans le JS (démarrage hors
+    // ligne) : le budget du projet est en GZIPPÉ (< 400 Ko, largement tenu),
+    // le seuil d'avertissement Vite (500 Ko bruts) est donc relevé.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       input: {
         index: fileURLToPath(new URL('index.html', import.meta.url)),
         ecran: fileURLToPath(new URL('ecran.html', import.meta.url)),
         grille: fileURLToPath(new URL('grille.html', import.meta.url)),
         supervision: fileURLToPath(new URL('supervision.html', import.meta.url)),
+      },
+      output: {
+        // supabase-js partagé entre les trois pages (cache commun des écrans)
+        manualChunks: { supabase: ['@supabase/supabase-js'] },
       },
     },
   },

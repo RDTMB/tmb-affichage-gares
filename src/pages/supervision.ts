@@ -203,9 +203,14 @@ function optionsMotifs(selection: string | null): string {
     .join('');
 }
 
-function ligneCirculation(train: TrainGrille, sens: 'montee' | 'descente'): string {
+function ligneCirculation(
+  train: TrainGrille,
+  sens: 'montee' | 'descente',
+  lectureSeule = false,
+): string {
   const c = circulationDe(train.numero);
   if (!c) return '';
+  const verrou = lectureSeule ? ' disabled' : '';
   const montee = sens === 'montee';
   const circMontee = montee ? c : circulationDe(train.numero - 1);
   const rameEffective = circMontee?.rame ?? c.rame;
@@ -216,7 +221,7 @@ function ligneCirculation(train: TrainGrille, sens: 'montee' | 'descente'): stri
   const n = c.numero;
 
   const rame = montee
-    ? `<select data-action="rame" data-numero="${n}">${(params?.machines ?? [])
+    ? `<select data-action="rame" data-numero="${n}"${verrou}>${(params?.machines ?? [])
         .filter((m) => m.en_service || m.nom === rameEffective)
         .map(
           (m) => `<option ${m.nom === rameEffective ? 'selected' : ''}>${echapper(m.nom)}</option>`,
@@ -231,7 +236,7 @@ function ligneCirculation(train: TrainGrille, sens: 'montee' | 'descente'): stri
       ? c.terminus === 'bellevue'
         ? '<span class="term-bv" title="Un express n\'est jamais tronqué : à supprimer ou requalifier">À traiter ⚠</span>'
         : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
-      : `<select data-action="terminus" data-numero="${n}">
+      : `<select data-action="terminus" data-numero="${n}"${verrou}>
           <option value="nid-daigle" ${c.terminus === 'nid-daigle' ? 'selected' : ''}>Nid d'Aigle</option>
           <option value="bellevue" ${c.terminus === 'bellevue' ? 'selected' : ''}>Bellevue ⚠</option>
         </select>`
@@ -242,18 +247,18 @@ function ligneCirculation(train: TrainGrille, sens: 'montee' | 'descente'): stri
   const facultatif = c.facultatif
     ? `<label class="switch"><input type="checkbox" data-action="actif" data-numero="${n}" ${
         c.facultatif_actif ? 'checked' : ''
-      } />${c.facultatif_actif ? 'Activé' : 'Non activé'}</label>`
+      }${verrou} />${c.facultatif_actif ? 'Activé' : 'Non activé'}</label>`
     : '<span style="color:#B4C4D4">—</span>';
 
   const statut = inactif
     ? '<span style="color:#B4C4D4;font-weight:700">Ne circule pas — absent des écrans</span>'
     : `<span class="seg">
-        <button class="${c.statut === 'ok' ? 'on-ok' : ''}" data-action="statut-ok" data-numero="${n}">À l'heure</button>
-        <button class="${c.statut === 'retard' ? 'on-retard' : ''}" data-action="statut-retard" data-numero="${n}">Retard</button>
-        <button class="${c.statut === 'supprime' ? 'on-supp' : ''}" data-action="statut-supprime" data-numero="${n}">Supprimé</button>
+        <button class="${c.statut === 'ok' ? 'on-ok' : ''}" data-action="statut-ok" data-numero="${n}"${verrou}>À l'heure</button>
+        <button class="${c.statut === 'retard' ? 'on-retard' : ''}" data-action="statut-retard" data-numero="${n}"${verrou}>Retard</button>
+        <button class="${c.statut === 'supprime' ? 'on-supp' : ''}" data-action="statut-supprime" data-numero="${n}"${verrou}>Supprimé</button>
       </span>${
         c.statut === 'retard'
-          ? `<span class="retard-ctrl"><button data-action="retard-moins" data-numero="${n}">−</button><span class="val">+${c.retard_min} min</span><button data-action="retard-plus" data-numero="${n}">+</button></span>`
+          ? `<span class="retard-ctrl"><button data-action="retard-moins" data-numero="${n}"${verrou}>−</button><span class="val">+${c.retard_min} min</span><button data-action="retard-plus" data-numero="${n}"${verrou}>+</button></span>`
           : ''
       }`;
 
@@ -270,7 +275,7 @@ function ligneCirculation(train: TrainGrille, sens: 'montee' | 'descente'): stri
     <td>${terminus}</td>
     <td>${facultatif}</td>
     <td>${statut}</td>
-    <td><select data-action="motif" data-numero="${n}" ${inactif ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
+    <td><select data-action="motif" data-numero="${n}" ${inactif || lectureSeule ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
   </tr>`;
 }
 
@@ -286,9 +291,17 @@ function rendreCirculations(): void {
   $('sous-titre-jour').textContent = `du ${dateAffichee}`;
   $('chip-auj').classList.toggle('on', dateSel === dateISO(0));
   $('chip-dem').classList.toggle('on', dateSel === dateISO(1));
-  // Journée pas encore enregistrée : bandeau discret (la première
-  // modification l'enregistre automatiquement — assureJour côté provider)
-  $('bandeau-apercu').style.display = jour.enregistre === false ? '' : 'none';
+  // Hors saison : aucun train, contrôles désactivés. Date passée jamais
+  // exploitée : aperçu théorique en LECTURE SEULE (pas d'historique inventé).
+  // Les dates à venir sont créées automatiquement à l'ouverture (provider).
+  const horsSaison = jour.hors_saison === true;
+  const lectureSeule = !horsSaison && jour.enregistre === false;
+  const bandeau = $('bandeau-apercu');
+  bandeau.style.display = lectureSeule ? '' : 'none';
+  bandeau.textContent = '👁 Aperçu théorique — journée non exploitée (lecture seule).';
+  ($('chk-terminus') as HTMLInputElement).disabled = horsSaison || lectureSeule;
+  ($('sel-terminus-train') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
+  ($('btn-reinitialiser') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
 
   const service = serviceActif(grilles, dateSel);
   $('service-tag').textContent = service
@@ -313,12 +326,17 @@ function rendreCirculations(): void {
   // Ordre APPARIÉ : chaque montée suivie de sa descente (même rotation)
   const tbody = document.querySelector('#tab-circ tbody');
   if (!tbody) return;
+  if (horsSaison) {
+    tbody.innerHTML =
+      '<tr><td colspan="7" style="padding:22px;color:var(--sec);font-weight:700">Aucun service ne circule à cette date.</td></tr>';
+    return;
+  }
   tbody.innerHTML = grille.montees
     .map((montee) => {
       const descente = grille.descentes.find((d) => d.numero === montee.numero + 1);
       return (
-        ligneCirculation(montee, 'montee') +
-        (descente ? ligneCirculation(descente, 'descente') : '')
+        ligneCirculation(montee, 'montee', lectureSeule) +
+        (descente ? ligneCirculation(descente, 'descente', lectureSeule) : '')
       );
     })
     .join('');
@@ -342,19 +360,20 @@ function initCirculations(): void {
   $('date-picker').addEventListener('change', (e) => {
     void allerDate((e.target as HTMLInputElement).value);
   });
-  $('btn-generer').addEventListener('click', () => {
+  $('btn-reinitialiser').addEventListener('click', () => {
     if (
       !window.confirm(
-        'Générer la journée depuis la grille ? Les lignes déjà modifiées sont conservées.',
+        `Réinitialiser la journée du ${dateSel} depuis la grille en vigueur ?\n` +
+          'TOUTES les modifications du jour seront perdues (retour à l’horaire théorique).',
       )
     )
       return;
     void provider
-      .genererJour(dateSel)
+      .reinitialiseJour(dateSel)
       .then(() => rechargeJour())
       .then(() => {
-        bump(`génération du ${dateSel}`);
-        toast('Journée générée depuis la grille (lignes existantes conservées)');
+        bump(`journée ${dateSel} réinitialisée`);
+        toast('Journée réinitialisée depuis la grille en vigueur');
       })
       .catch(erreurVersToast);
   });
@@ -385,6 +404,8 @@ function initCirculations(): void {
   const tbody = document.querySelector('#tab-circ tbody');
   if (!tbody) return;
   const surAction = (cible: HTMLElement): void => {
+    // Garde-fou : hors saison ou journée passée non exploitée = lecture seule
+    if (jour?.hors_saison || jour?.enregistre === false) return;
     const action = cible.dataset.action;
     const numero = Number(cible.dataset.numero);
     if (!action || !numero) return;

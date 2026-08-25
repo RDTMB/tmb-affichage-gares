@@ -88,11 +88,34 @@ export class SupabaseProvider implements DataProvider {
     const ligne = jourRes.data as LigneJour | null;
     const circulations = (circRes.data ?? []) as Circulation[];
 
+    const grille = serviceActif(grilles, date);
+    if (!grille) {
+      // Hors saison : AUCUN service — jamais de repli sur une autre grille,
+      // aucune circulation, aucune écriture (bug exploitant du 25/08/2026).
+      return {
+        date,
+        grille_version: '',
+        terminus_bellevue: ligne ? versFlag(ligne) : false,
+        circulations: [],
+        enregistre: ligne !== null,
+        hors_saison: true,
+      };
+    }
+
     if (!ligne || circulations.length === 0) {
-      // Jour pas encore généré : aperçu théorique à la volée (rien n'est
-      // écrit en base ici — la première écriture l'enregistrera).
-      const grille = serviceActif(grilles, date) ?? grilles[0];
-      if (!grille) throw new Error('Aucune grille disponible');
+      // Ouverture d'une date à venir en supervision (session authentifiée) :
+      // la journée est créée immédiatement en base (idempotent) — plus aucune
+      // action manuelle requise avant de modifier les trains.
+      if (date >= dateAujourdhuiParis() && (await this.sessionActive())) {
+        await this.genererJour(date);
+        this.joursAssures.add(date);
+        const cree = generationJour(grille, date);
+        if (ligne) cree.terminus_bellevue = versFlag(ligne);
+        cree.enregistre = true;
+        return cree;
+      }
+      // Date passée jamais exploitée (ou écran anonyme) : aperçu théorique,
+      // rien n'est fabriqué en base (pas d'historique inventé).
       const defaut = generationJour(grille, date);
       if (ligne) defaut.terminus_bellevue = versFlag(ligne);
       defaut.enregistre = false;
@@ -113,6 +136,11 @@ export class SupabaseProvider implements DataProvider {
    * cliquer « Générer depuis la grille » pour que ses modifications tiennent.
    */
   private readonly joursAssures = new Set<string>();
+
+  private async sessionActive(): Promise<boolean> {
+    const { data } = await this.client.auth.getSession(); // lecture locale, pas d'appel réseau
+    return data.session !== null;
+  }
 
   private async assureJour(date: string): Promise<void> {
     if (this.joursAssures.has(date)) return;
@@ -260,6 +288,15 @@ export class SupabaseProvider implements DataProvider {
       .from('circulations')
       .upsert(jour.circulations, { onConflict: 'date,numero', ignoreDuplicates: true });
     verifie(circulations.error);
+  }
+
+  async reinitialiseJour(date: string): Promise<void> {
+    // Retour à l'horaire théorique : suppression de la journée (les
+    // circulations suivent par cascade) puis régénération depuis la grille.
+    verifie((await this.client.from('jours').delete().eq('date', date)).error);
+    this.joursAssures.delete(date);
+    await this.genererJour(date);
+    this.joursAssures.add(date);
   }
 
   async saveCirculation(c: Circulation): Promise<void> {
@@ -428,6 +465,10 @@ export class SupabaseProvider implements DataProvider {
       'écran inconnu',
     );
   }
+}
+
+function dateAujourdhuiParis(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
 }
 
 function versFlag(ligne: LigneJour): TerminusFlag {

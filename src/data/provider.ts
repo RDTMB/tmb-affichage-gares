@@ -37,6 +37,8 @@ export interface DataProvider {
   signIn(email: string, mdp: string): Promise<Session>;
   getRole(): Promise<Role>;
   genererJour(date: string): Promise<void>;
+  /** Supprime les circulations de la date et régénère depuis la grille en vigueur. */
+  reinitialiseJour(date: string): Promise<void>;
   saveCirculation(c: Circulation): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   saveMessage(m: Message): Promise<void>;

@@ -113,10 +113,14 @@ export interface Jour {
   terminus_bellevue: TerminusFlag;
   circulations: Circulation[];
   /**
-   * false = journée pas encore enregistrée côté données (aperçu théorique
-   * généré à la volée) ; la première écriture l'enregistre automatiquement.
+   * false = journée pas encore enregistrée côté données (aperçu théorique) :
+   * n'arrive plus que pour une date PASSÉE jamais exploitée (lecture seule)
+   * ou côté écrans anonymes — en supervision, l'ouverture d'une date à venir
+   * crée la journée immédiatement.
    */
   enregistre?: boolean;
+  /** true = aucun service ne circule à cette date (aucune circulation, aucune écriture). */
+  hors_saison?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -195,8 +195,19 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    « à traiter » : requalification en omnibus limité à Bellevue (sa
    descente part alors de Bellevue) ou suppression (avec la même
    proposition pour la descente appariée) — outillage à l'étape 6 ;
-   « Générer depuis la grille » (n'écrase pas les lignes déjà
-   modifiées, confirmation) ; export CSV.
+   **ouverture d'une date** : si un service circule et que la date n'est pas
+   passée, la journée est créée automatiquement en base (jours +
+   circulations depuis la grille de la période, idempotent) — aucune action
+   manuelle avant de modifier trains, facultatifs, rames ou terminus ; une
+   date PASSÉE sans données reste un aperçu théorique en LECTURE SEULE
+   (« journée non exploitée », pas d'historique fabriqué) ; hors saison :
+   aucune circulation, message « Aucun service ne circule à cette date »,
+   contrôles désactivés, aucune écriture ; action discrète « Réinitialiser
+   la journée depuis la grille » (confirmation explicite : toutes les
+   modifications du jour sont perdues, retour à l'horaire théorique — utile
+   si la grille officielle est corrigée ou après une fausse manœuvre) ;
+   export CSV.
+   _(Amélioration validée par l'exploitant le 25/08/2026.)_
 2. **Messages** : liste + formulaire (FR requis ; EN **généré
    automatiquement à la saisie** puis modifiable ; cible toutes/gares/
    train, priorité, expiration) ; **bouton Modifier** sur chaque message

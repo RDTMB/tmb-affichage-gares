@@ -76,7 +76,6 @@
           <h2>
             Circulations <span class="sous" id="sous-titre-jour"></span>
             <div class="actions">
-              <button class="leger" id="btn-generer">⟳ Générer depuis la grille</button>
               <button class="leger" id="btn-csv">Exporter CSV</button>
             </div>
           </h2>
@@ -100,7 +99,11 @@
             automatiquement à la descente. La colonne Terminus limite un train précis à Bellevue ;
             la bascule « ⚠ Terminus Bellevue à partir du TRAIN N » pré-remplit la colonne des
             rotations concernées (N = montée ; TRAIN 1 = journée entière) — un express n'est jamais
-            tronqué : il est signalé « à traiter » (à supprimer ou requalifier).
+            tronqué : il est signalé « à traiter » (à supprimer ou requalifier). La journée est
+            créée automatiquement à l'ouverture d'une date à venir.
+            <button class="leger" id="btn-reinitialiser" style="margin-left: 8px">
+              Réinitialiser la journée depuis la grille…
+            </button>
           </div>
         </div>
       </section>

@@ -219,7 +219,7 @@ function rendsLegende(): void {
 function rendsEntetesEtPied(): void {
   if (!grille || !params) return;
   // « Today's timetable · Grand service » — libellé du service depuis la grille
-  const service = grille.libelle.split('—')[0]?.trim() ?? '';
+  const service = jour?.hors_saison ? 'Hors saison' : (grille.libelle.split('—')[0]?.trim() ?? '');
   $('sous-titre').textContent = service ? `Today's timetable · ${service}` : "Today's timetable";
   rendsLegende();
   $('meteo').innerHTML = meteoHtml(params, grille);
@@ -260,6 +260,16 @@ function rendre(): void {
   }
 
   if (!grille || !jour) return;
+
+  if (jour.hors_saison) {
+    // Hors saison : aucun service ne circule — jamais de repli sur une autre grille
+    const message =
+      '<tbody><tr><td style="padding:2vh;border:none;color:var(--texte-sec);font-weight:700">Aucun service ne circule à cette date / No service on this date</td></tr></tbody>';
+    $('tab-montee').innerHTML = message;
+    $('tab-descente').innerHTML = message;
+    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()));
+    return;
+  }
 
   const positions = new Map(
     positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p.gare]),

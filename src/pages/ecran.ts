@@ -373,6 +373,19 @@ function rendre(gare: GareId): void {
 
   if (!grille || !jour) return;
 
+  if (jour.hors_saison) {
+    // Hors saison : aucun service ne circule — jamais de repli sur une autre grille
+    quitteMedia();
+    afficheEtatSpecial(`<h2>Aucun service aujourd'hui</h2>
+    <p>Reprise selon le calendrier saisonnier<br>
+    <span class="en">No service today — see seasonal timetable</span></p>
+    <img class="logo-fin" src="${__LOGO_ROND_BLANC__}" alt="" />`);
+    $('arrivee').innerHTML =
+      '<span class="lbl">Prochaine arrivée / Next arrival</span><span>— voir calendrier / see timetable</span>';
+    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()));
+    return;
+  }
+
   const passages = passagesPourGare(grille, jour, gare, maintenant);
   const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
 
