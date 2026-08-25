@@ -154,7 +154,8 @@ lendemain), `positionsTrains`, `appliqueTerminusBellevue` (« à partir du
 TRAIN N », docs/01 §2.3), `expressATraiter`, `generationJour(grille,date)`.
 
 Tests Vitest exigés : passages réels (T9 express absent à Voza/Bellevue,
-présent à Motivon 10:57), arrivée = départ − 60 s et « — » à l'origine,
+présent à Motivon 10:57), arrivées réelles du document d'exploitation
+(repli arret_intermediaire_s si une arrivée manque) et « — » à l'origine,
 facultatif masqué/affiché selon `facultatif_actif`, retard décalant tous
 les passages, suppression visible puis retirée, terminus Bellevue PAR
 ROTATION (« à partir du T19 » : rotations ≥ 19 limitées — montées tronquées,

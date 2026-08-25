@@ -22,7 +22,7 @@ import {
   prochaineArrivee,
   serviceActif,
 } from './horaires';
-import type { Circulation, Grille, Jour } from './types';
+import type { Circulation, Grille, Jour, TrainGrille } from './types';
 
 const GRAND = grandServiceJson as unknown as Grille;
 const PETIT = petitServiceJson as unknown as Grille;
@@ -148,9 +148,28 @@ describe('passagesPourGare — horaires réels', () => {
     expect(formatHeure(p?.arrivee_s ?? null)).toBe('11:30');
   });
 
-  it('arrivée intermédiaire = départ − 60 s (T1 à Saint-Gervais : 07:14:00)', () => {
+  it('arrivée = heure réelle du document d’exploitation (T1 à Saint-Gervais : 07:10:00)', () => {
+    // Arrêt de 5 min à Saint-Gervais en montée (a 07:10:00, d 07:15:00)
     const p = passagesPourGare(GRAND, jourGrand(), 'saint-gervais').find((x) => x.numero === 1);
     expect(p?.depart_s).toBe(h('07:15:00'));
+    expect(p?.arrivee_s).toBe(h('07:10:00'));
+  });
+
+  it('repli : arrivée = départ − arret_intermediaire_s si le document ne donne pas d’arrivée', () => {
+    const monteeSansArrivee: TrainGrille = {
+      numero: 1,
+      express: false,
+      facultatif: false,
+      velos: false,
+      passages: [
+        { gare: 'le-fayet', d: '07:00:00' },
+        { gare: 'saint-gervais', d: '07:15:00' }, // pas de « a » : repli 60 s
+        { gare: 'nid-daigle', a: '08:05:30' },
+      ],
+    };
+    const grilleMinimale: Grille = { ...GRAND, montees: [monteeSansArrivee], descentes: [] };
+    const jour = generationJour(grilleMinimale, DATE);
+    const p = passagesPourGare(grilleMinimale, jour, 'saint-gervais').find((x) => x.numero === 1);
     expect(p?.arrivee_s).toBe(h('07:15:00') - GRAND.arret_intermediaire_s);
   });
 
@@ -206,7 +225,7 @@ describe('retard', () => {
     const sg = passagesPourGare(GRAND, jour, 'saint-gervais').find((p) => p.numero === 11);
     expect(sg?.depart_s).toBe(h('11:25:00'));
     expect(sg?.depart_theorique_s).toBe(h('11:15:00'));
-    expect(sg?.arrivee_s).toBe(h('11:24:00'));
+    expect(sg?.arrivee_s).toBe(h('11:20:00')); // arrivée réelle 11:10:00 + 10 min
     expect(sg?.motif).toBe('Météo');
 
     const motivon = passagesPourGare(GRAND, jour, 'motivon').find((p) => p.numero === 11);
@@ -246,10 +265,11 @@ describe('suppression', () => {
   it('est exclu de la prochaine arrivée', () => {
     const jour = jourGrand();
     Object.assign(circ(jour, 16), { statut: 'supprime' });
-    // Sans suppression, T16 (arrivée 15:12:30) précéderait T21 (arrivée 15:14:00)
-    const prochaine = prochaineArrivee(GRAND, jour, 'saint-gervais', h('15:00'));
-    expect(prochaine?.numero).toBe(21);
-    expect(prochaine?.heure_s).toBe(h('15:14:00'));
+    // Au Fayet à 15:00, T16 (arrivée théorique 15:24:30) serait la prochaine :
+    // supprimé, c'est T20 (16:24:30) qui prend sa place
+    const prochaine = prochaineArrivee(GRAND, jour, 'le-fayet', h('15:00'));
+    expect(prochaine?.numero).toBe(20);
+    expect(prochaine?.heure_s).toBe(h('16:24:30'));
   });
 });
 
@@ -290,8 +310,8 @@ describe('prochaineArrivee', () => {
   it('donne le prochain train arrivant en gare avec rame et provenance', () => {
     const jour = jourGrand();
     const prochaine = prochaineArrivee(GRAND, jour, 'saint-gervais', h('10:00'));
-    expect(prochaine?.numero).toBe(7); // arrivée 10:14:00, avant T6 (11:12:30)
-    expect(prochaine?.heure_s).toBe(h('10:14:00'));
+    expect(prochaine?.numero).toBe(7); // arrivée réelle 10:10:00, avant T6 (11:11:30)
+    expect(prochaine?.heure_s).toBe(h('10:10:00'));
     expect(prochaine?.provenance).toBe('le-fayet');
     expect(prochaine?.rame).toBe(circ(jour, 7).rame);
   });
@@ -299,10 +319,11 @@ describe('prochaineArrivee', () => {
   it('bascule sur le train suivant si le prochain est supprimé', () => {
     const jour = jourGrand();
     Object.assign(circ(jour, 7), { statut: 'supprime' });
+    // Les arrivées réelles resserrent l'ordre : T11 (11:10:00) devance T6 (11:11:30)
     const prochaine = prochaineArrivee(GRAND, jour, 'saint-gervais', h('10:00'));
-    expect(prochaine?.numero).toBe(6);
-    expect(prochaine?.heure_s).toBe(h('11:12:30'));
-    expect(prochaine?.provenance).toBe('nid-daigle');
+    expect(prochaine?.numero).toBe(11);
+    expect(prochaine?.heure_s).toBe(h('11:10:00'));
+    expect(prochaine?.provenance).toBe('le-fayet');
   });
 });
 
@@ -366,7 +387,7 @@ describe('terminus Bellevue — journée entière (à partir du TRAIN 1)', () =>
   it('tronque les montées : Bellevue devient le terminus (arrivée seule)', () => {
     const jour = jourTerminus();
     const bellevue = passagesPourGare(GRAND, jour, 'bellevue').find((p) => p.numero === 1);
-    expect(bellevue?.arrivee_s).toBe(h('07:48:30'));
+    expect(bellevue?.arrivee_s).toBe(h('07:47:30')); // arrivée réelle (document d'exploitation)
     expect(bellevue?.depart_s).toBeNull();
     expect(bellevue?.destination).toBe('bellevue');
     expect(bellevue?.terminusExceptionnel).toBe(true);
@@ -425,7 +446,7 @@ describe('terminus Bellevue — à partir du TRAIN N (par rotation)', () => {
     // Rotations T19/T20, T21/T22 et T25/T26 limitées
     const bellevue = passagesPourGare(GRAND, jour, 'bellevue');
     const t19 = bellevue.find((p) => p.numero === 19);
-    expect(t19?.arrivee_s).toBe(h('14:48:30'));
+    expect(t19?.arrivee_s).toBe(h('14:47:30')); // arrivée réelle (document d'exploitation)
     expect(t19?.depart_s).toBeNull();
     expect(t19?.destination).toBe('bellevue');
     const t20 = bellevue.find((p) => p.numero === 20);
@@ -513,7 +534,7 @@ describe('terminus Bellevue — par train (colonne Terminus)', () => {
 
     const bellevue = passagesPourGare(GRAND, jour, 'bellevue');
     const t5 = bellevue.find((p) => p.numero === 5);
-    expect(t5?.arrivee_s).toBe(h('09:48:30'));
+    expect(t5?.arrivee_s).toBe(h('09:47:30')); // arrivée réelle (document d'exploitation)
     expect(t5?.depart_s).toBeNull();
     expect(t5?.terminusExceptionnel).toBe(true);
 

@@ -31,9 +31,11 @@ export interface GareGrille {
 }
 
 /**
- * Passage d'un train à une gare : `d` = heure de départ, `a` = heure d'arrivée
- * (uniquement au terminus). Format « HH:MM:SS » — les secondes sont tronquées à
- * l'affichage mais conservées dans les calculs.
+ * Passage d'un train à une gare : `a` = arrivée RÉELLE (document
+ * d'exploitation — absente au point d'origine), `d` = départ (absent au
+ * terminus). Format « HH:MM:SS » — les secondes sont tronquées à l'affichage
+ * mais conservées dans les calculs. Si `a` manque, le moteur replie sur
+ * « départ − arret_intermediaire_s ».
  */
 export interface PassageGrille {
   gare: GareId;
@@ -62,7 +64,7 @@ export interface Grille {
   source?: string;
   periodes: Periode[];
   gares: GareGrille[];
-  /** Durée d'arrêt en gare intermédiaire : arrivée = départ − cette valeur. */
+  /** REPLI uniquement : arrivée = départ − cette valeur si le document ne donne pas d'arrivée. */
   arret_intermediaire_s: number;
   regles?: Record<string, string>;
   montees: TrainGrille[];

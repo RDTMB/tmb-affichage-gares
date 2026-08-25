@@ -82,9 +82,10 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   exceptionnel », express signalés « à traiter » (jamais retirés
   automatiquement), écran du Nid d'Aigle → état « tronçon fermé » bilingue
   avec logo dès qu'il n'a plus aucun passage à afficher.
-- **Arrivée + départ** affichés pour chaque passage ; arrivée intermédiaire
-  = départ − `arret_intermediaire_s` (60 s, dans la grille JSON) ; « — » au
-  point d'origine.
+- **Arrivée + départ** affichés pour chaque passage ; les arrivées sont les
+  heures RÉELLES du document d'exploitation (dans les grilles JSON) ;
+  `arret_intermediaire_s` (60 s) n'est qu'un REPLI si une arrivée manque ;
+  « — » au point d'origine.
 - **Suppression** : le train reste affiché barré avec motif jusqu'à son
   heure théorique, puis disparaît.
 - **Mode dégradé** : cache ≤ 15 min avec badge « données de HH:MM », puis

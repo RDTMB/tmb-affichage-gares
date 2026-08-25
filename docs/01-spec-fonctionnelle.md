@@ -21,9 +21,16 @@ défaut `<gare>-1`), `simule=HH:MM` (démo/tests), `zoom=`.
 
 `2026-ete-grand-service.json` (04/07→30/08) et
 `2026-ete-petit-service.json` (13/06→03/07 et 31/08→27/09) — générées
-depuis l'Excel officiel : trains numérotés (impairs = montées), liste
-ordonnée de passages `{gare, d|a: "HH:MM:SS"}` (les express n'ont pas de
-passage à col-de-voza/bellevue), drapeaux `express`, `facultatif`, `velos`.
+depuis le document d'EXPLOITATION des horaires été 2026 : trains numérotés
+(impairs = montées), liste ordonnée de passages `{gare, a?, d?: "HH:MM:SS"}`
+avec l'arrivée ET le départ RÉELS à chaque gare (ex. arrêt de 5 min à
+Saint-Gervais en montée ; « a » absent au point d'origine, « d » absent au
+terminus ; les express n'ont pas de passage à col-de-voza/bellevue),
+drapeaux `express`, `facultatif`, `velos`. `arret_intermediaire_s` (60 s)
+ne sert plus que de REPLI si une arrivée manque dans le document. La halte
+de SERVICE de Mont Lachat (entre Bellevue et le Nid d'Aigle) n'est pas
+desservie : volontairement absente des grilles, elle ne doit JAMAIS
+apparaître sur les écrans.
 Une grille « 2026-2027-hiver » sera créée plus tard (terminus Bellevue
 permanent). Le service actif se déduit de la date via `periodes`.
 
@@ -99,7 +106,8 @@ Reproduit `maquettes/ecran-gare.html` :
    HH:MM:SS + date à droite ; liseré rouge.
 2. **Tableau marine** — colonnes strictement alignées :
    Arrivée (discrète) · Départ (grosse) · Destination · Train · Départ dans · Statut.
-   - Arrivée = départ − 60 s (« — » à l'origine du train) ;
+   - Arrivée = heure réelle du document d'exploitation (« — » à l'origine
+     du train ; repli départ − `arret_intermediaire_s` si l'arrivée manque) ;
    - Destination : flèche oblique ↗ (montée) / ↙ (descente) dans un carré ;
      terminus (« Nid d'Aigle », « Le Fayet », ou « Bellevue » si terminus
      exceptionnel) ; pour un express, GRAND picto motrice blanc (~7 % de la

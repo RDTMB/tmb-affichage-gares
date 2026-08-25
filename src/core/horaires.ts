@@ -125,7 +125,10 @@ function decalageSecondes(train: { statut: string; retard_min: number }): number
   return train.statut === 'retard' ? train.retard_min * 60 : 0;
 }
 
-/** Résout les passages théoriques : arrivée intermédiaire = départ − arret_intermediaire_s. */
+/**
+ * Résout les passages théoriques : l'arrivée est l'heure RÉELLE du document
+ * d'exploitation (`a`) ; à défaut, repli « départ − arret_intermediaire_s ».
+ */
 function resoudPassages(train: TrainGrille, arretIntermediaireS: number): PassageTrain[] {
   return train.passages.map((passage, index) => {
     const depart = passage.d !== undefined ? heureVersSecondes(passage.d) : null;

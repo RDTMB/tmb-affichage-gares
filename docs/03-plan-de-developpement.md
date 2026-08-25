@@ -19,8 +19,8 @@ les deux grilles public/grilles/*.json. Initialise le projet Vite +
 TypeScript vanilla strict, multi-pages (index, ecran, grille, supervision —
 squelettes avec bandeau charte), Prettier, Vitest. Crée src/core/types.ts
 et src/core/horaires.ts : moteur PUR (heure injectée, jamais Date.now())
-implémentant serviceActif(date), generationJour, passagesPourGare (arrivée
-= départ − arret_intermediaire_s, « — » à l'origine), prochaineArrivee,
+implémentant serviceActif(date), generationJour, passagesPourGare (arrivées
+réelles des grilles, repli arret_intermediaire_s, « — » à l'origine), prochaineArrivee,
 compteARebours, finDeService (grille du lendemain), positionsTrains,
 appliqueTerminusBellevue (à partir du TRAIN N, journée entière = T1, pair
 normalisé N−1) + expressATraiter. Tests Vitest

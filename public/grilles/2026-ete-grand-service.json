@@ -1,7 +1,7 @@
 {
  "version": "2026-ete-grand-service",
  "libelle": "Grand service — été 2026",
- "source": "Horaires été 2026 publics — mise à jour du 05/06/2026",
+ "source": "Horaires été 2026 — version EXPLOITATION (arrivées et départs), mise à jour du 05/06/2026",
  "periodes": [
   {
    "du": "2026-07-04",
@@ -41,11 +41,12 @@
   }
  ],
  "arret_intermediaire_s": 60,
+ "note_arrets": "Les arrivées viennent désormais du document d'exploitation. arret_intermediaire_s ne sert que de repli si une arrivée manque.",
  "regles": {
-  "express": "ne dessert pas col-de-voza ni bellevue (passages absents) ; picto motrice + mention bilingue",
+  "express": "ne dessert ni col-de-voza ni bellevue (passages absents) ; picto motrice + mention bilingue",
   "facultatif": "opéré selon météo et affluence, confirmé au plus tard la veille au soir ; n'apparaît sur les écrans que s'il est activé en supervision",
-  "velos": "train accessible aux vélos (limite 5, selon affluence)",
-  "rotation": "la rame de la montée n assure la descente qui suit son arrivée (train n+1)"
+  "velos": "train accessible aux vélos (5 max, selon affluence)",
+  "mont-lachat": "halte de SERVICE non desservie : volontairement absente des grilles et des écrans"
  },
  "montees": [
   {
@@ -60,18 +61,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "07:10:00",
      "d": "07:15:00"
     },
     {
      "gare": "motivon",
+     "a": "07:26:30",
      "d": "07:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "07:40:30",
      "d": "07:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "07:47:30",
      "d": "07:49:30"
     },
     {
@@ -92,18 +97,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "08:10:00",
      "d": "08:15:00"
     },
     {
      "gare": "motivon",
+     "a": "08:26:30",
      "d": "08:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "08:40:30",
      "d": "08:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "08:47:30",
      "d": "08:49:30"
     },
     {
@@ -124,18 +133,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "09:10:00",
      "d": "09:15:00"
     },
     {
      "gare": "motivon",
+     "a": "09:26:30",
      "d": "09:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "09:40:30",
      "d": "09:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "09:47:30",
      "d": "09:49:30"
     },
     {
@@ -156,18 +169,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "10:10:00",
      "d": "10:15:00"
     },
     {
      "gare": "motivon",
+     "a": "10:26:30",
      "d": "10:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "10:40:30",
      "d": "10:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "10:47:30",
      "d": "10:49:30"
     },
     {
@@ -188,10 +205,12 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "10:40:00",
      "d": "10:45:00"
     },
     {
      "gare": "motivon",
+     "a": "10:56:30",
      "d": "10:57:30"
     },
     {
@@ -212,18 +231,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "11:10:00",
      "d": "11:15:00"
     },
     {
      "gare": "motivon",
+     "a": "11:26:30",
      "d": "11:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "11:40:30",
      "d": "11:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "11:47:30",
      "d": "11:49:30"
     },
     {
@@ -244,18 +267,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "12:10:00",
      "d": "12:15:00"
     },
     {
      "gare": "motivon",
+     "a": "12:26:30",
      "d": "12:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "12:40:30",
      "d": "12:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "12:47:30",
      "d": "12:49:30"
     },
     {
@@ -276,18 +303,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "13:10:00",
      "d": "13:15:00"
     },
     {
      "gare": "motivon",
+     "a": "13:26:30",
      "d": "13:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "13:40:30",
      "d": "13:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "13:47:30",
      "d": "13:49:30"
     },
     {
@@ -308,10 +339,12 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "13:40:00",
      "d": "13:45:00"
     },
     {
      "gare": "motivon",
+     "a": "13:56:30",
      "d": "13:57:30"
     },
     {
@@ -332,18 +365,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "14:10:00",
      "d": "14:15:00"
     },
     {
      "gare": "motivon",
+     "a": "14:26:30",
      "d": "14:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "14:40:30",
      "d": "14:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "14:47:30",
      "d": "14:49:30"
     },
     {
@@ -364,18 +401,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "15:10:00",
      "d": "15:15:00"
     },
     {
      "gare": "motivon",
+     "a": "15:26:30",
      "d": "15:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "15:40:30",
      "d": "15:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "15:47:30",
      "d": "15:49:30"
     },
     {
@@ -396,10 +437,12 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "15:40:00",
      "d": "15:45:00"
     },
     {
      "gare": "motivon",
+     "a": "15:56:30",
      "d": "15:57:30"
     },
     {
@@ -420,18 +463,22 @@
     },
     {
      "gare": "saint-gervais",
+     "a": "16:10:00",
      "d": "16:15:00"
     },
     {
      "gare": "motivon",
+     "a": "16:26:30",
      "d": "16:27:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "16:40:30",
      "d": "16:42:30"
     },
     {
      "gare": "bellevue",
+     "a": "16:47:30",
      "d": "16:49:30"
     },
     {
@@ -454,18 +501,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "08:31:30",
      "d": "08:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "08:39:30",
      "d": "08:41:30"
     },
     {
      "gare": "motivon",
+     "a": "08:56:30",
      "d": "08:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "09:11:30",
      "d": "09:13:30"
     },
     {
@@ -486,18 +537,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "09:31:30",
      "d": "09:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "09:39:30",
      "d": "09:41:30"
     },
     {
      "gare": "motivon",
+     "a": "09:56:30",
      "d": "09:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "10:11:30",
      "d": "10:13:30"
     },
     {
@@ -518,18 +573,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "10:31:30",
      "d": "10:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "10:39:30",
      "d": "10:41:30"
     },
     {
      "gare": "motivon",
+     "a": "10:56:30",
      "d": "10:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "11:11:30",
      "d": "11:13:30"
     },
     {
@@ -550,18 +609,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "11:31:30",
      "d": "11:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "11:39:30",
      "d": "11:41:30"
     },
     {
      "gare": "motivon",
+     "a": "11:56:30",
      "d": "11:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "12:11:30",
      "d": "12:13:30"
     },
     {
@@ -582,10 +645,12 @@
     },
     {
      "gare": "motivon",
+     "a": "12:27:30",
      "d": "12:28:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "12:42:30",
      "d": "12:44:30"
     },
     {
@@ -606,18 +671,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "12:31:30",
      "d": "12:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "12:39:30",
      "d": "12:41:30"
     },
     {
      "gare": "motivon",
+     "a": "12:56:30",
      "d": "12:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "13:11:30",
      "d": "13:13:30"
     },
     {
@@ -638,18 +707,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "13:31:30",
      "d": "13:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "13:39:30",
      "d": "13:41:30"
     },
     {
      "gare": "motivon",
+     "a": "13:56:30",
      "d": "13:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "14:11:30",
      "d": "14:13:30"
     },
     {
@@ -670,18 +743,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "14:31:30",
      "d": "14:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "14:39:30",
      "d": "14:41:30"
     },
     {
      "gare": "motivon",
+     "a": "14:56:30",
      "d": "14:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "15:11:30",
      "d": "15:13:30"
     },
     {
@@ -702,10 +779,12 @@
     },
     {
      "gare": "motivon",
+     "a": "15:27:30",
      "d": "15:28:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "15:42:30",
      "d": "15:44:30"
     },
     {
@@ -726,18 +805,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "15:31:30",
      "d": "15:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "15:39:30",
      "d": "15:41:30"
     },
     {
      "gare": "motivon",
+     "a": "15:56:30",
      "d": "15:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "16:11:30",
      "d": "16:13:30"
     },
     {
@@ -758,18 +841,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "16:31:30",
      "d": "16:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "16:39:30",
      "d": "16:41:30"
     },
     {
      "gare": "motivon",
+     "a": "16:56:30",
      "d": "16:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "17:11:30",
      "d": "17:13:30"
     },
     {
@@ -790,18 +877,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "17:06:30",
      "d": "17:08:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "17:14:30",
      "d": "17:16:30"
     },
     {
      "gare": "motivon",
+     "a": "17:31:30",
      "d": "17:32:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "17:46:30",
      "d": "17:48:30"
     },
     {
@@ -822,18 +913,22 @@
     },
     {
      "gare": "bellevue",
+     "a": "17:31:30",
      "d": "17:33:30"
     },
     {
      "gare": "col-de-voza",
+     "a": "17:39:30",
      "d": "17:41:30"
     },
     {
      "gare": "motivon",
+     "a": "17:56:30",
      "d": "17:57:30"
     },
     {
      "gare": "saint-gervais",
+     "a": "18:11:30",
      "d": "18:13:30"
     },
     {
