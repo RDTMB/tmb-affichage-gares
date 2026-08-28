@@ -23,6 +23,7 @@ export interface DataProvider {
   getRole(): Promise<"admin"|"supervision"|"caisse">;
   genererJour(date: string): Promise<void>;
   saveCirculation(c: Circulation): Promise<void>;
+  saveCirculations(cs: Circulation[]): Promise<void>;     // action groupée : 1 écriture, lignes écrites contrôlées
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   saveMessage(m: Message): Promise<void>; deleteMessage(id: string): Promise<void>;
   uploadMedia(file: File, meta: MediaMeta): Promise<void>; saveMedia(m: Media): Promise<void>; deleteMedia(id: string): Promise<void>;
@@ -64,6 +65,10 @@ create table circulations (
                                   -- (pré-rempli par la bascule, prioritaire et ajustable) ;
                                   -- descente appariée : départ de Bellevue ; montée express :
                                   -- jamais tronquée, signalée « à traiter » (docs/01 §2.2)
+  sans_voyageurs boolean not null default false,
+                                  -- course à vide : le train reste piloté en
+                                  -- supervision (rame, rotation, terminus) mais
+                                  -- n'apparaît sur AUCUN écran (docs/01 §2.2)
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,

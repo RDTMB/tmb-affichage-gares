@@ -44,7 +44,7 @@ la première consultation d'une date) : `date, numero, sens, express,
 facultatif, velos, rame, terminus ('nid-daigle'|'bellevue', porté par la
 MONTÉE — y compris une montée express, dont la valeur « bellevue » sert
 alors à produire le signalement « à traiter » de sa rotation),
-facultatif_actif (défaut false), statut
+facultatif_actif (défaut false), sans_voyageurs (défaut false), statut
 ok|retard|supprime, retard_min, motif`. La supervision peut préparer
 n'importe quelle date future (calendrier).
 
@@ -70,6 +70,19 @@ avec l'exploitant : elle exigerait une heure d'arrivée à Bellevue absente
 du document d'exploitation pour un express, et aucune heure ne doit être
 inventée sur un affichage voyageur.
 _(Correctif validé par l'exploitant le 24/08/2026.)_
+
+**Trains sans voyageurs (courses à vide)** : `sans_voyageurs` marque une
+circulation assurée pour les seuls besoins de l'exploitation
+(repositionnement d'une rame, essai, service). Une MONTÉE comme une
+DESCENTE peut l'être. Le train reste entier en supervision — il garde sa
+rame, sa rotation et son terminus, et continue d'être piloté comme les
+autres — mais il est **totalement absent des écrans voyageurs** : aucune
+ligne dans les prochains départs, aucune colonne dans la grille du jour,
+jamais de « prochaine arrivée », jamais de position en ligne. Le drapeau
+n'a aucun effet sur le calcul des retards, sur le terminus Bellevue ni sur
+le signalement des express, et l'action groupée sur les facultatifs (§5.1)
+ne le modifie jamais.
+_(Évolution validée par l'exploitant le 28/08/2026.)_
 
 ### 2.3 Jour d'exploitation (drapeaux du jour)
 
@@ -248,6 +261,50 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    si la grille officielle est corrigée ou après une fausse manœuvre) ;
    export CSV.
    _(Amélioration validée par l'exploitant le 25/08/2026.)_
+
+   **Action groupée sur les facultatifs** : un bouton dans la barre du haut,
+   à GAUCHE de la bascule « Terminus Bellevue », bascule d'un geste tous les
+   trains facultatifs de la date affichée. Son libellé annonce le nombre de
+   trains que le clic changera RÉELLEMENT : « Activer les N trains
+   facultatifs » s'il en reste d'inactifs, « Désactiver les N trains
+   facultatifs » quand tous le sont ; s'il n'y en a aucun ce jour-là, le
+   bouton est grisé et porte la mention « Aucun train facultatif ce jour ».
+   Une confirmation rappelle le compte et la date (« Activer les 8 trains
+   facultatifs du mardi 25 août ? Ils apparaîtront immédiatement sur les
+   écrans. »). L'écriture emprunte le MÊME chemin que les modifications
+   unitaires — création de la journée si besoin, contrôle du nombre de
+   lignes réellement écrites : une écriture partielle échoue bruyamment,
+   jamais de succès silencieux. Elle ne touche que `facultatif_actif` :
+   le drapeau « sans voyageurs » reste tel quel — et si l'un des trains
+   activés le porte, la confirmation ET le toast le disent (« TRAIN 23 :
+   sans voyageurs, donc il restera invisible sur les écrans »), plutôt que
+   de promettre une apparition qui n'aura pas lieu. Le bouton est ignoré
+   tant que la journée affichée n'est pas celle qui est chargée (changement
+   de date en cours). Toast récapitulatif et entrée dans l'historique des
+   publications.
+
+   **Rotations appariées à l'activation unitaire** : activer ou désactiver
+   un facultatif propose la même opération sur son train apparié (montée n ↔
+   descente n+1 : 3/4, 9/10, 17/18, 23/24), proposition par défaut Oui,
+   dérogeable — même principe que la suppression d'une montée. Le motif est
+   rappelé dans la question : activer une montée sans sa descente
+   reviendrait à monter des voyageurs sans train pour les redescendre.
+   **Exception** : aucune proposition si le train apparié est marqué « sans
+   voyageurs » — la rotation est assurée, simplement à vide. Aucune
+   proposition non plus si l'apparié est déjà dans l'état visé.
+
+   **Garde-fou de rotation** : si une montée ouverte aux voyageurs n'est
+   suivie d'AUCUNE descente ouverte aux voyageurs dans la journée (« ouverte
+   aux voyageurs » = ni supprimée, ni facultative non activée, ni course à
+   vide ; « ensuite » se juge sur l'horaire réel : la descente doit partir au
+   plus tôt à l'arrivée de la montée), un avertissement orange s'affiche en
+   tête de l'onglet : « TRAIN 23 monte des voyageurs sans descente voyageurs
+   ensuite ». C'est un avertissement, JAMAIS un blocage.
+
+   **Colonne « Sans voyageurs »** : une case par train, montée comme
+   descente. La ligne cochée est distinguée visuellement et porte la mention
+   « ne circule pas pour les voyageurs — absent des écrans » (§2.2).
+   _(Évolutions validées par l'exploitant le 28/08/2026.)_
 2. **Messages** : liste + formulaire (FR requis ; EN **généré
    automatiquement à la saisie** puis modifiable ; cible toutes/gares/
    train, priorité, expiration) ; **bouton Modifier** sur chaque message

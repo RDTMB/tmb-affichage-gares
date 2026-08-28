@@ -364,6 +364,24 @@ export class SupabaseProvider implements DataProvider {
     exigeLignes(resultat, 'journée absente en base');
   }
 
+  async saveCirculations(cs: Circulation[]): Promise<void> {
+    if (cs.length === 0) return;
+    for (const date of new Set(cs.map((c) => c.date))) await this.assureJour(date);
+    const resultat = await this.client
+      .from('circulations')
+      .upsert(cs, { onConflict: 'date,numero' })
+      .select();
+    exigeLignes(resultat, 'journée absente en base');
+    // Une écriture partielle (RLS, ligne disparue) ne doit JAMAIS passer pour
+    // un succès : l'agent croirait la journée entière traitée.
+    const ecrites = resultat.data?.length ?? 0;
+    if (ecrites !== cs.length) {
+      throw new Error(
+        `Modification incomplète — ${ecrites} train(s) enregistré(s) sur ${cs.length} : rechargez la page et vérifiez`,
+      );
+    }
+  }
+
   /**
    * Bascule de plage : pré-remplit la colonne Terminus des rotations
    * concernées et LIBÈRE celles qui sortent de la plage (décocher ou

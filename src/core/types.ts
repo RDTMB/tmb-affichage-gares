@@ -107,6 +107,13 @@ export interface Circulation {
   statut: Statut;
   retard_min: number;
   motif: string | null;
+  /**
+   * Course à vide : le train circule pour l'exploitation (rame, rotation,
+   * terminus conservés) mais ne prend AUCUN voyageur. Il est donc totalement
+   * absent des écrans — départs, grille du jour, prochaine arrivée, position
+   * en ligne. Une montée comme une descente peut l'être.
+   */
+  sans_voyageurs: boolean;
 }
 
 export interface Jour {

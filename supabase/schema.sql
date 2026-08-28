@@ -32,6 +32,9 @@ create table if not exists circulations (
                                   -- (montée express : jamais tronquée, signalée « à traiter »)
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
+  sans_voyageurs boolean not null default false,
+                                  -- course à vide : conservée en exploitation,
+                                  -- JAMAIS affichée aux voyageurs
   motif text,
   maj timestamptz not null default now(),
   unique (date, numero)

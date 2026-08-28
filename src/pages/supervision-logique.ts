@@ -2,7 +2,7 @@
 // aller-retour entre un message et son formulaire (la cible et l'expiration
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
-import type { EcranInfo, GareId, Message } from '../core/types';
+import type { Circulation, EcranInfo, GareId, Message } from '../core/types';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
 export interface FormulaireMessage {
@@ -212,4 +212,143 @@ export function resumeApplication(
       ? `Appliqué sur ${aJour}/${total} écrans`
       : `Appliqué sur ${aJour}/${total} écrans — en attente sur : ${[...new Set(enAttente)].join(', ')}`;
   return { total, aJour, enAttente, libelle };
+}
+
+// ============================================================================
+// Trains facultatifs : action groupée et rotations appariées (docs/01 §5.1)
+// ============================================================================
+
+/** « 2026-08-25 » → « mardi 25 août » (midi UTC : insensible au fuseau). */
+export function dateEnToutesLettres(dateISO: string): string {
+  return new Date(`${dateISO}T12:00:00Z`).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+  });
+}
+
+export interface ActionGroupeeFacultatifs {
+  /** true = le clic ACTIVE, false = il désactive. */
+  activer: boolean;
+  /** false = aucun train facultatif ce jour : bouton grisé. */
+  disponible: boolean;
+  /** Trains que le clic changera réellement. */
+  numeros: number[];
+  /** Parmi eux, ceux qui resteront invisibles car marqués « sans voyageurs ». */
+  aVide: number[];
+  libelle: string;
+  confirmation: string;
+}
+
+/**
+ * Bouton d'action groupée sur les facultatifs de la journée affichée.
+ * Le nombre annoncé est celui des trains que le clic changera VRAIMENT —
+ * jamais un total flatteur incluant des trains déjà dans l'état visé.
+ * Le drapeau « sans voyageurs » n'est jamais touché par cette action.
+ */
+export function actionGroupeeFacultatifs(
+  circulations: Pick<
+    Circulation,
+    'numero' | 'facultatif' | 'facultatif_actif' | 'sans_voyageurs'
+  >[],
+  dateISO: string,
+): ActionGroupeeFacultatifs {
+  const facultatifs = circulations.filter((c) => c.facultatif);
+  if (facultatifs.length === 0) {
+    return {
+      activer: true,
+      disponible: false,
+      numeros: [],
+      aVide: [],
+      libelle: 'Aucun train facultatif ce jour',
+      confirmation: '',
+    };
+  }
+  const inactifs = facultatifs.filter((c) => !c.facultatif_actif);
+  // Tous activés → le bouton désactive ; sinon il active ce qui reste.
+  const activer = inactifs.length > 0;
+  const cibles = activer ? inactifs : facultatifs;
+  const numeros = cibles.map((c) => c.numero).sort((a, b) => a - b);
+  const n = numeros.length;
+  const verbe = activer ? 'Activer' : 'Désactiver';
+  const groupe = n === 1 ? 'le train facultatif' : `les ${n} trains facultatifs`;
+  // Un facultatif marqué « sans voyageurs » reste invisible même activé :
+  // l'annoncer, plutôt que promettre une apparition qui n'aura pas lieu.
+  const aVide = cibles.filter((c) => c.sans_voyageurs).map((c) => c.numero);
+  const reserve =
+    !activer || aVide.length === 0
+      ? ''
+      : `\nTRAIN ${aVide.join(', TRAIN ')} : sans voyageurs, donc ${
+          aVide.length === 1 ? 'il restera invisible' : 'ils resteront invisibles'
+        } sur les écrans.`;
+  return {
+    activer,
+    disponible: true,
+    numeros,
+    aVide,
+    libelle: `${verbe} ${groupe}`,
+    confirmation:
+      `${verbe} ${groupe} du ${dateEnToutesLettres(dateISO)} ?\n` +
+      (activer
+        ? 'Ils apparaîtront immédiatement sur les écrans.'
+        : 'Ils disparaîtront immédiatement des écrans.') +
+      reserve,
+  };
+}
+
+export interface PropositionAppariement {
+  /** Train apparié à basculer avec celui sur lequel l'agent vient d'agir. */
+  numero: number;
+  /** État visé pour ce train apparié (le même que celui qui vient d'être posé). */
+  actif: boolean;
+  question: string;
+}
+
+/**
+ * Activer ou désactiver un facultatif propose la même opération sur son train
+ * apparié (montée n ↔ descente n+1) — même principe que la suppression d'une
+ * montée. Aucune proposition si l'apparié est déjà dans l'état visé, s'il
+ * n'est pas facultatif, ou s'il est SANS VOYAGEURS : la rotation est alors
+ * assurée, simplement à vide.
+ */
+export function propositionAppariementFacultatif(
+  circulations: Pick<
+    Circulation,
+    'numero' | 'sens' | 'facultatif' | 'facultatif_actif' | 'sans_voyageurs'
+  >[],
+  numero: number,
+  actif: boolean,
+): PropositionAppariement | null {
+  const train = circulations.find((c) => c.numero === numero);
+  if (!train || !train.facultatif) return null;
+  const estMontee = train.sens === 'montee';
+  const numeroApparie = estMontee ? numero + 1 : numero - 1;
+  const apparie = circulations.find((c) => c.numero === numeroApparie);
+  if (!apparie || !apparie.facultatif) return null;
+  if (apparie.sans_voyageurs) return null; // rotation assurée à vide
+  if (apparie.facultatif_actif === actif) return null; // déjà dans l'état visé
+
+  const quoi = estMontee ? 'la descente appariée' : 'la montée appariée';
+  // Si le train sur lequel on agit roule lui-même à vide, l'enjeu est la rame,
+  // pas les voyageurs : le dire autrement plutôt qu'affirmer un faux.
+  const aVide = train.sans_voyageurs === true;
+  const motif = actif
+    ? estMontee
+      ? aVide
+        ? `Sans elle, la rame du TRAIN ${numero} resterait en haut de la ligne.`
+        : `Sans elle, le TRAIN ${numero} monterait des voyageurs sans train pour les redescendre.`
+      : `Sans elle, aucune rame ne serait montée pour assurer le TRAIN ${numero}.`
+    : estMontee
+      ? `Maintenue seule, elle redescendrait une rame qui n'est pas montée.`
+      : aVide
+        ? `Maintenue seule, la montée laisserait sa rame en haut de la ligne.`
+        : `Maintenue seule, la montée porterait des voyageurs sans train pour les redescendre.`;
+  return {
+    numero: numeroApparie,
+    actif,
+    question:
+      `${actif ? 'Activer' : 'Désactiver'} aussi ${quoi} (TRAIN ${numeroApparie}) ?\n` +
+      `${motif}\nCliquez Annuler pour ne changer que le TRAIN ${numero}.`,
+  };
 }

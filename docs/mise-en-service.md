@@ -20,16 +20,18 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
    motifs, paramètres, jour de démonstration).
 4. Nouvelle requête → coller `supabase/ajout-preuve-maj.sql` → **Run**
    (colonnes de preuve de fraîcheur des écrans — idempotent).
-5. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
+5. Nouvelle requête → coller `supabase/ajout-sans-voyageurs.sql` → **Run**
+   (drapeau des courses à vide — idempotent).
+6. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
    (bibliothèque de messages préenregistrés). Ce script est **idempotent** :
    il peut aussi être exécuté seul, plus tard, sur une base déjà en service,
    sans rejouer le reste ni écraser les modèles retouchés en supervision.
-6. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
+7. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
    schéma), public, limite 20 Mo.
-7. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
+8. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
    publication `supabase_realtime` contient bien les tables (fait par le
    schéma).
-8. Menu **Project Settings → API keys** : noter
+9. Menu **Project Settings → API keys** : noter
    - l'**URL du projet** (https://xxxx.supabase.co) ;
    - la clé **publishable** (`sb_publishable_…`) — PUBLIQUE par conception,
      la sécurité repose sur RLS ;

@@ -91,6 +91,7 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       statut: 'ok',
       retard_min: 0,
       motif: null,
+      sans_voyageurs: false,
     });
   });
 
@@ -109,6 +110,7 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       statut: 'ok',
       retard_min: 0,
       motif: null,
+      sans_voyageurs: false,
     });
   }
 
@@ -251,6 +253,10 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
     for (const trainGrille of liste) {
       const circulation = circulationParNumero.get(trainGrille.numero);
       if (trainGrille.facultatif && !(circulation?.facultatif_actif ?? false)) continue;
+      // Course à vide : elle existe pour l'exploitation, jamais pour les
+      // voyageurs. L'exclure ICI la retire de TOUT ce qui est affiché
+      // (départs, grille du jour, prochaine arrivée, position en ligne).
+      if (circulation?.sans_voyageurs === true) continue;
 
       let rame = circulation?.rame ?? '';
       if (sens === 'descente') {
@@ -306,6 +312,45 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
  * affichables — retirées 2 min après le départ réel, et dès l'heure théorique
  * pour un supprimé (affiché barré jusque-là).
  */
+/**
+ * Montées ouvertes aux voyageurs qu'AUCUNE descente ouverte aux voyageurs ne
+ * suit dans la journée : on ferait monter des voyageurs sans train pour les
+ * redescendre. « Ouvert aux voyageurs » = ni supprimé, ni facultatif non
+ * activé, ni course à vide. « Ensuite » se juge sur l'horaire réel : la
+ * descente doit partir au plus tôt à l'arrivée de la montée.
+ *
+ * Simple avertissement destiné à l'exploitation : cette fonction ne retire
+ * jamais rien de l'affichage.
+ */
+export function monteesSansRetour(grille: Grille, jour: Jour): number[] {
+  // On raisonne sur les trains TELS QU'ILS CIRCULENT (trainsDuJour applique
+  // déjà les facultatifs non activés, les courses à vide et la troncature à
+  // Bellevue) : comparer les heures brutes de la grille donnerait un faux
+  // avertissement dès qu'une rotation est limitée à Bellevue.
+  const circulants = trainsDuJour(grille, jour).filter((t) => t.statut !== 'supprime');
+  const heureFin = (train: TrainJour): number | null => {
+    const p = train.passages[train.passages.length - 1];
+    return p ? (p.arrivee_s ?? p.depart_s) : null;
+  };
+  const heureDebut = (train: TrainJour): number | null => {
+    const p = train.passages[0];
+    return p ? (p.depart_s ?? p.arrivee_s) : null;
+  };
+
+  const departsDescentes = circulants
+    .filter((t) => t.sens === 'descente')
+    .map(heureDebut)
+    .filter((s): s is number => s !== null);
+
+  const sansRetour: number[] = [];
+  for (const montee of circulants) {
+    if (montee.sens !== 'montee') continue;
+    const arrivee = heureFin(montee);
+    if (arrivee === null) continue;
+    if (!departsDescentes.some((depart) => depart >= arrivee)) sansRetour.push(montee.numero);
+  }
+  return sansRetour.sort((a, b) => a - b);
+}
 export function passagesPourGare(
   grille: Grille,
   jour: Jour,

@@ -430,6 +430,17 @@ export class MockProvider implements DataProvider {
     ecritEtat(etat);
   }
 
+  async saveCirculations(cs: Circulation[]): Promise<void> {
+    if (cs.length === 0) return;
+    const etat = litEtat();
+    for (const c of cs) {
+      etat.jours[c.date] ??= { terminus: null, circulations: {} };
+      const jour = etat.jours[c.date];
+      if (jour) jour.circulations[String(c.numero)] = c;
+    }
+    ecritEtat(etat); // une seule notification pour toute l'action groupée
+  }
+
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     const grilles = await this.getGrilles();
     const grille = serviceActif(grilles, date) ?? grilles[0];

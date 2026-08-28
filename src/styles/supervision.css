@@ -1156,3 +1156,47 @@ tr.paire-fin td {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* Courses à vide : présentes en exploitation, absentes de tous les écrans */
+tr.a-vide td {
+  background: #fbf7ff;
+}
+
+tr.a-vide .h-dep,
+tr.a-vide .sens-tag {
+  opacity: 0.55;
+}
+
+.a-vide-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--sec);
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+/* Avertissement de rotation : jamais bloquant, seulement signalé */
+.note.avert-rotation {
+  background: #fdf3e0;
+  color: #7a6017;
+  font-weight: 700;
+}
+
+/* Contrôles désactivés : sans cette règle, les styles d’auteur ci-dessus
+   écrasent le grisage du navigateur et un bouton inerte reste engageant. */
+button:disabled,
+button:disabled:hover {
+  background: #f2f5f8;
+  color: #9fb0c0;
+  border-color: var(--bord);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.switch input:disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

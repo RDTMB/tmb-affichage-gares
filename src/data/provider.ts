@@ -43,6 +43,12 @@ export interface DataProvider {
   /** Supprime les circulations de la date et régénère depuis la grille en vigueur. */
   reinitialiseJour(date: string): Promise<void>;
   saveCirculation(c: Circulation): Promise<void>;
+  /**
+   * Écriture groupée (action de masse sur les facultatifs) : même chemin que
+   * l'écriture unitaire — création de la journée si besoin — et échec bruyant
+   * si le nombre de lignes réellement écrites ne correspond pas.
+   */
+  saveCirculations(cs: Circulation[]): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   saveMessage(m: Message): Promise<void>;
   deleteMessage(id: string): Promise<void>;

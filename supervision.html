@@ -59,6 +59,7 @@
               <button class="chip-btn" id="chip-dem">Demain</button>
             </div>
             <span class="service-tag" id="service-tag">—</span>
+            <button class="leger" id="btn-facultatifs">Trains facultatifs</button>
             <label class="terminus">
               <input type="checkbox" id="chk-terminus" />
               ⚠ Terminus Bellevue à partir du
@@ -73,6 +74,7 @@
             👁 Aperçu théorique — journée pas encore enregistrée en base : votre première
             modification l'enregistrera automatiquement.
           </div>
+          <div class="note avert-rotation" id="avert-rotation" style="display: none"></div>
           <h2>
             Circulations <span class="sous" id="sous-titre-jour"></span>
             <div class="actions">
@@ -87,6 +89,7 @@
                 <th style="width: 150px">Rame</th>
                 <th style="width: 150px">Terminus</th>
                 <th style="width: 140px">Facultatif</th>
+                <th style="width: 132px">Sans voyageurs</th>
                 <th>Statut</th>
                 <th style="width: 160px">Motif</th>
               </tr>
@@ -101,7 +104,9 @@
             rotations concernées (N = montée ; TRAIN 1 = journée entière) et libère celles qui en
             sortent — un express n'est jamais tronqué : il est signalé « à traiter », à
             <b>supprimer</b> ou à <b>maintenir</b> jusqu'au Nid d'Aigle. La journée est créée
-            automatiquement à l'ouverture d'une date à venir.
+            automatiquement à l'ouverture d'une date à venir. Un train coché
+            <b>Sans voyageurs</b> circule à vide : il garde sa rame, sa rotation et son terminus en
+            supervision, mais n'apparaît sur <b>aucun</b> écran voyageurs.
             <button class="leger" id="btn-reinitialiser" style="margin-left: 8px">
               Réinitialiser la journée depuis la grille…
             </button>

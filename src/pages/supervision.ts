@@ -11,7 +11,7 @@ import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
 import '../styles/supervision.css';
 
-import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
+import { formatHeure, heureVersSecondes, monteesSansRetour, serviceActif } from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
   Circulation,
@@ -32,8 +32,10 @@ import { creeProvider } from '../data';
 import { echapper } from './affichage-commun';
 import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
 import {
+  actionGroupeeFacultatifs,
   datetimeLocalVersIso,
   etatFraicheurEcran,
+  propositionAppariementFacultatif,
   resumeApplication,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
@@ -224,7 +226,11 @@ async function apresConnexion(): Promise<void> {
     // Jamais d'écran vide et muet : l'agent doit savoir pourquoi
     erreurVersToast(erreur);
     $('sous-titre-jour').textContent = '— données indisponibles';
-    toast('Chargement impossible — vérifiez la connexion, puis rechargez la page');
+    // Ne PAS écraser le message précis déjà affiché par erreurVersToast (par
+    // exemple « Could not find the 'sans_voyageurs' column » quand une
+    // migration SQL n'a pas été passée) : on l'enrichit au lieu de le perdre.
+    const $t = $('toast');
+    $t.textContent = `${$t.textContent} — chargement impossible, vérifiez la connexion ou les migrations SQL, puis rechargez la page`;
     return;
   }
   rendreTout();
@@ -334,6 +340,13 @@ function ligneCirculation(
       }${verrou} />${c.facultatif_actif ? 'Activé' : 'Non activé'}</label>`
     : '<span style="color:#B4C4D4">—</span>';
 
+  // Course à vide : elle reste pilotable en exploitation (rame, rotation,
+  // terminus) mais n'est proposée ni au statut ni au motif voyageurs.
+  const aVide = c.sans_voyageurs === true;
+  const sansVoyageurs = `<label class="switch"><input type="checkbox" data-action="sans-voyageurs" data-numero="${n}" ${
+    aVide ? 'checked' : ''
+  }${verrou} />${aVide ? 'À vide' : 'Voyageurs'}</label>`;
+
   const statut = inactif
     ? '<span style="color:#B4C4D4;font-weight:700">Ne circule pas — absent des écrans</span>'
     : `<span class="seg">
@@ -347,8 +360,8 @@ function ligneCirculation(
       }`;
 
   return `<tr class="${heurePassee(depart) ? 'passe' : ''} ${inactif ? 'inactif' : ''} ${
-    montee ? '' : 'paire-fin'
-  }">
+    aVide ? 'a-vide' : ''
+  } ${montee ? '' : 'paire-fin'}">
     <td class="h-dep">${heure}<small>TRAIN ${n}</small></td>
     <td><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
       train.express
@@ -358,6 +371,11 @@ function ligneCirculation(
     <td>${rame}</td>
     <td>${terminus}</td>
     <td>${facultatif}</td>
+    <td>${sansVoyageurs}${
+      aVide
+        ? '<small class="a-vide-note">ne circule pas pour les voyageurs — absent des écrans</small>'
+        : ''
+    }</td>
     <td>${statut}</td>
     <td><select data-action="motif" data-numero="${n}" ${inactif || lectureSeule ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
   </tr>`;
@@ -407,12 +425,30 @@ function rendreCirculations(): void {
     )
     .join('');
 
+  // Action groupée sur les facultatifs + avertissement de rotation
+  const btnFac = $('btn-facultatifs') as HTMLButtonElement;
+  const groupe = actionGroupeeFacultatifs(jour.circulations, dateSel);
+  btnFac.textContent = groupe.libelle;
+  btnFac.disabled = horsSaison || lectureSeule || !groupe.disponible;
+  btnFac.title = groupe.disponible
+    ? 'Bascule en une fois tous les trains facultatifs de la journée affichée'
+    : 'Aucun train facultatif ce jour';
+
+  const avert = $('avert-rotation');
+  const sansRetour = horsSaison ? [] : monteesSansRetour(grille, jour);
+  avert.style.display = sansRetour.length === 0 ? 'none' : '';
+  avert.innerHTML = sansRetour
+    .map(
+      (numero) => `⚠ <b>TRAIN ${numero}</b> monte des voyageurs sans descente voyageurs ensuite.`,
+    )
+    .join('<br />');
+
   // Ordre APPARIÉ : chaque montée suivie de sa descente (même rotation)
   const tbody = document.querySelector('#tab-circ tbody');
   if (!tbody) return;
   if (horsSaison) {
     tbody.innerHTML =
-      '<tr><td colspan="7" style="padding:22px;color:var(--sec);font-weight:700">Aucun service ne circule à cette date.</td></tr>';
+      '<tr><td colspan="8" style="padding:22px;color:var(--sec);font-weight:700">Aucun service ne circule à cette date.</td></tr>';
     return;
   }
   tbody.innerHTML = grille.montees
@@ -458,6 +494,60 @@ function initCirculations(): void {
   $('chip-dem').addEventListener('click', () => void allerDate(dateISO(1)));
   $('date-picker').addEventListener('change', (e) => {
     void allerDate((e.target as HTMLInputElement).value);
+  });
+  // Action groupée sur les trains facultatifs de la journée affichée.
+  // Même chemin d'écriture que les modifications unitaires : la journée est
+  // créée si besoin et le nombre de lignes réellement écrites est contrôlé.
+  $('btn-facultatifs').addEventListener('click', () => {
+    if (!jour || jour.hors_saison || jour.enregistre === false) return;
+    // `dateSel` change dès le clic sur une autre date, `jour` seulement au
+    // retour du réseau : sans ce contrôle, une action groupée lancée pendant
+    // ce laps écrirait sur la journée PRÉCÉDENTE en annonçant la nouvelle.
+    if (jour.date !== dateSel) {
+      toast('Chargement de la journée en cours — réessayez dans un instant');
+      return;
+    }
+    const groupe = actionGroupeeFacultatifs(jour.circulations, dateSel);
+    if (!groupe.disponible) return;
+    if (!window.confirm(groupe.confirmation)) return;
+
+    // Copies : le drapeau « sans voyageurs » et tout le reste sont conservés
+    // tels quels — cette action ne touche QUE facultatif_actif.
+    const cibles = groupe.numeros
+      .map((numero) => jour?.circulations.find((c) => c.numero === numero))
+      .filter((c): c is Circulation => c !== undefined)
+      .map((c) => ({ ...c, facultatif_actif: groupe.activer }));
+
+    void provider
+      .saveCirculations(cibles)
+      .then(() => {
+        // Journalisé DÈS l'écriture réussie : un rechargement en échec ne doit
+        // pas effacer la trace d'une modification bel et bien enregistrée.
+        bump(
+          `${cibles.length} train(s) facultatif(s) ${groupe.activer ? 'activé(s)' : 'désactivé(s)'}`,
+        );
+        return rechargeJour();
+      })
+      .then(() => {
+        const invisibles = groupe.aVide.length;
+        toast(
+          groupe.activer
+            ? `${cibles.length} train(s) facultatif(s) activé(s)${
+                invisibles > 0
+                  ? ` — dont ${invisibles} sans voyageurs, qui ${
+                      invisibles === 1 ? 'reste invisible' : 'restent invisibles'
+                    }`
+                  : ' — visibles sur les écrans'
+              }`
+            : `${cibles.length} train(s) facultatif(s) désactivé(s) — retirés des écrans`,
+        );
+      })
+      .catch((erreur) => {
+        erreurVersToast(erreur);
+        // Une écriture PARTIELLE a pu passer avant l'échec : on resynchronise,
+        // sinon le tableau afficherait un état que la base ne contient pas.
+        void rechargeJour().catch(erreurVersToast);
+      });
   });
   $('btn-reinitialiser').addEventListener('click', () => {
     if (
@@ -519,6 +609,24 @@ function initCirculations(): void {
     void sauveCirculation(descente, `statut TRAIN ${descente.numero} → supprime (rotation)`);
   };
 
+  /**
+   * Activer/désactiver un facultatif propose la même opération sur son train
+   * apparié — sauf si celui-ci roule à vide (rotation déjà assurée).
+   */
+  const proposeAppariementFacultatif = (numero: number, actif: boolean): void => {
+    if (!jour) return;
+    const proposition = propositionAppariementFacultatif(jour.circulations, numero, actif);
+    if (!proposition) return;
+    if (!window.confirm(proposition.question)) return;
+    const apparie = circulationDe(proposition.numero);
+    if (!apparie) return;
+    apparie.facultatif_actif = proposition.actif;
+    void sauveCirculation(
+      apparie,
+      `facultatif TRAIN ${apparie.numero} ${proposition.actif ? 'activé' : 'désactivé'} (rotation)`,
+    );
+  };
+
   // Délégation d'événements sur le tableau
   const tbody = document.querySelector('#tab-circ tbody');
   if (!tbody) return;
@@ -547,16 +655,36 @@ function initCirculations(): void {
         );
       });
     } else if (action === 'actif') {
-      c.facultatif_actif = (cible as HTMLInputElement).checked;
+      const actif = (cible as HTMLInputElement).checked;
+      c.facultatif_actif = actif;
+      void sauveCirculation(c, `facultatif TRAIN ${numero} ${actif ? 'activé' : 'désactivé'}`).then(
+        (ok) => {
+          if (!ok) return;
+          toast(
+            actif
+              ? 'Train facultatif activé : il apparaîtra sur les écrans'
+              : 'Train facultatif désactivé : retiré des écrans',
+          );
+          proposeAppariementFacultatif(numero, actif);
+        },
+      );
+    } else if (action === 'sans-voyageurs') {
+      // COPIE volontaire : retirer un train de tous les écrans est trop lourd
+      // pour laisser le drapeau dans l'état mémoire si l'écriture échoue —
+      // une action ultérieure sur le même train le committerait au passage.
+      const aVide = (cible as HTMLInputElement).checked;
       void sauveCirculation(
-        c,
-        `facultatif TRAIN ${numero} ${c.facultatif_actif ? 'activé' : 'désactivé'}`,
+        { ...c, sans_voyageurs: aVide },
+        `TRAIN ${numero} ${aVide ? 'passé sans voyageurs' : 'rouvert aux voyageurs'}`,
       ).then((ok) => {
-        if (!ok) return;
+        if (!ok) {
+          rendreCirculations(); // la case revient à l'état réellement enregistré
+          return;
+        }
         toast(
-          c.facultatif_actif
-            ? 'Train facultatif activé : il apparaîtra sur les écrans'
-            : 'Train facultatif désactivé : retiré des écrans',
+          aVide
+            ? `TRAIN ${numero} sans voyageurs : retiré de tous les écrans, conservé en exploitation`
+            : `TRAIN ${numero} rouvert aux voyageurs`,
         );
       });
     } else if (action.startsWith('statut-')) {
@@ -691,6 +819,7 @@ function exporteCsv(): void {
       'express',
       'facultatif',
       'actif',
+      'sans_voyageurs',
       'rame',
       'terminus',
       'statut',
@@ -713,6 +842,7 @@ function exporteCsv(): void {
           t.express ? 'oui' : '',
           c.facultatif ? 'oui' : '',
           c.facultatif ? (c.facultatif_actif ? 'oui' : 'non') : '',
+          c.sans_voyageurs ? 'oui' : '',
           circMontee?.rame ?? c.rame,
           c.terminus,
           c.statut,

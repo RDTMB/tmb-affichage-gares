@@ -435,3 +435,80 @@ describe('exigeLignes — échec bruyant des écritures sans effet', () => {
     expect(() => exigeLignes({ data: [{}], error: null }, 'x')).not.toThrow();
   });
 });
+
+describe('Écriture groupée des facultatifs et courses à vide', () => {
+  beforeEach(() => stockage.clear());
+
+  it('saveCirculations crée la journée et persiste TOUS les trains d’un coup', async () => {
+    const provider = new MockProvider();
+    const date = '2026-07-22';
+    const avant = await provider.getJour(date);
+    expect(avant.enregistre).toBe(false);
+
+    const facultatifs = avant.circulations.filter((c) => c.facultatif);
+    expect(facultatifs.length).toBeGreaterThan(1);
+    await provider.saveCirculations(facultatifs.map((c) => ({ ...c, facultatif_actif: true })));
+
+    const apres = await provider.getJour(date);
+    expect(apres.enregistre).toBe(true);
+    for (const c of facultatifs) {
+      expect(apres.circulations.find((x) => x.numero === c.numero)?.facultatif_actif).toBe(true);
+    }
+  });
+
+  it('une écriture groupée coûte UNE écriture, pas une par train', async () => {
+    // Le stub localStorage émet `storage` dans le même contexte (fidélité
+    // voulue ailleurs) : on compare donc au coût d'une écriture UNITAIRE
+    // plutôt qu'à un nombre absolu.
+    const provider = new MockProvider();
+    const jour = await provider.getJour('2026-07-23');
+    const t1 = jour.circulations[0];
+    if (!t1) throw new Error('journée vide');
+
+    let unitaire = 0;
+    let stop = provider.onChange(() => (unitaire += 1));
+    await provider.saveCirculation({ ...t1, motif: 'Météo' });
+    stop();
+
+    const facultatifs = jour.circulations.filter((c) => c.facultatif);
+    expect(facultatifs.length).toBeGreaterThan(1);
+    let groupee = 0;
+    stop = provider.onChange(() => (groupee += 1));
+    await provider.saveCirculations(facultatifs.map((c) => ({ ...c, facultatif_actif: true })));
+    stop();
+
+    expect(unitaire).toBeGreaterThan(0);
+    expect(groupee).toBe(unitaire); // et surtout PAS unitaire × facultatifs.length
+  });
+
+  it('le drapeau « sans voyageurs » persiste et n’est pas emporté par l’action groupée', async () => {
+    const provider = new MockProvider();
+    const date = '2026-07-24';
+    const jour = await provider.getJour(date);
+    const facultatifs = jour.circulations.filter((c) => c.facultatif);
+    const cible = facultatifs[0];
+    if (!cible) throw new Error('aucun facultatif');
+
+    await provider.saveCirculation({ ...cible, sans_voyageurs: true });
+    // Action groupée : elle ne réécrit que facultatif_actif, à partir de l'état relu
+    const relu = await provider.getJour(date);
+    expect(relu.circulations.find((c) => c.numero === cible.numero)?.sans_voyageurs).toBe(true);
+    await provider.saveCirculations(
+      relu.circulations.filter((c) => c.facultatif).map((c) => ({ ...c, facultatif_actif: true })),
+    );
+
+    const apres = await provider.getJour(date);
+    const apresCible = apres.circulations.find((c) => c.numero === cible.numero);
+    expect(apresCible?.sans_voyageurs).toBe(true);
+    expect(apresCible?.facultatif_actif).toBe(true);
+  });
+
+  it('saveCirculations sur une liste vide n’écrit rien et ne notifie personne', async () => {
+    const provider = new MockProvider();
+    let notifications = 0;
+    const stop = provider.onChange(() => (notifications += 1));
+    await provider.saveCirculations([]);
+    stop();
+    expect(notifications).toBe(0);
+  });
+});
