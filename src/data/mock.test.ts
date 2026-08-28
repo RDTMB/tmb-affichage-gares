@@ -300,6 +300,22 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
     await expect(provider.demanderRechargement('inconnu-1')).rejects.toThrow(/inconnu/);
   });
 
+  it('le heartbeat conserve la preuve de fraîcheur (donnees_maj, date_affichee)', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const maj = new Date('2026-08-25T09:30:00Z').toISOString();
+    await provider.heartbeat({
+      id: 'motivon-ecran-1',
+      gare: 'motivon',
+      type: 'ecran',
+      donnees_maj: maj,
+      date_affichee: '2026-08-25',
+    });
+    const ecran = (await provider.listEcrans()).find((e) => e.id === 'motivon-ecran-1');
+    expect(ecran?.donnees_maj).toBe(maj);
+    expect(ecran?.date_affichee).toBe('2026-08-25');
+    expect(ecran?.derniere_vue).toBeTruthy(); // horodaté par le provider
+  });
+
   it('un écran obsolète peut être oublié (poste fantôme après changement d’identifiant)', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.heartbeat({ id: 'le-fayet-1', gare: 'le-fayet', type: 'ecran' }); // ancien format

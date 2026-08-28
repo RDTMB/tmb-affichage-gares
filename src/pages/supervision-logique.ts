@@ -2,7 +2,7 @@
 // aller-retour entre un message et son formulaire (la cible et l'expiration
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
-import type { GareId, Message } from '../core/types';
+import type { EcranInfo, GareId, Message } from '../core/types';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
 export interface FormulaireMessage {
@@ -131,4 +131,85 @@ export function identifiantEcran(
 ): string {
   if (parametre) return parametre; // ?ecran= reste prioritaire
   return `${gare ?? 'sans-gare'}-${type}-1`;
+}
+
+// ---------------------------------------------------------------------------
+// Preuve de mise à jour par écran
+// ---------------------------------------------------------------------------
+
+/** Silence toléré avant de déclarer un écran hors ligne (docs/01 §5.4). */
+export const SEUIL_HORS_LIGNE_MS = 90_000;
+
+/**
+ * Les écrans se resynchronisent toutes les 30 s : juste après une
+ * modification, un écran qui ne l'a pas encore reçue n'est pas « en retard »,
+ * il est en cours de rattrapage. Sans cette fenêtre, TOUS les écrans
+ * passeraient à l'orange pendant 30 s après chaque clic — du bruit permanent.
+ */
+export const DELAI_PROPAGATION_MS = 35_000;
+
+export interface EtatFraicheur {
+  /**
+   * hors-ligne : plus de signal de vie depuis 90 s (la machine ne répond plus) ;
+   * a-jour : ses données sont postérieures à la dernière publication ;
+   * en-retard : la machine tourne, mais elle affiche encore d'anciennes données.
+   */
+  statut: 'a-jour' | 'en-retard' | 'hors-ligne';
+  /** Écart en minutes entre la dernière publication et les données de l'écran. */
+  retard_min: number;
+  libelle: string;
+}
+
+/**
+ * État de fraîcheur d'un écran : « à jour » ne veut PAS dire « allumé ». Un
+ * Raspberry Pi peut très bien être en ligne tout en affichant un instantané
+ * périmé (réseau coupé côté données) : c'est `donnees_maj` qui le prouve, pas
+ * `derniere_vue`.
+ */
+export function etatFraicheurEcran(
+  ecran: Pick<EcranInfo, 'derniere_vue' | 'donnees_maj'>,
+  publicationMs: number | null,
+  maintenantMs: number,
+): EtatFraicheur {
+  const vuMs = ecran.derniere_vue ? new Date(ecran.derniere_vue).getTime() : Number.NaN;
+  if (!Number.isFinite(vuMs) || maintenantMs - vuMs >= SEUIL_HORS_LIGNE_MS) {
+    return { statut: 'hors-ligne', retard_min: 0, libelle: 'hors ligne' };
+  }
+
+  const majMs = ecran.donnees_maj ? new Date(ecran.donnees_maj).getTime() : Number.NaN;
+  // Aucune publication de référence, ou écran qui ne sait pas dater ses
+  // données (version antérieure) : on ne prétend pas qu'il est en retard.
+  if (publicationMs === null || !Number.isFinite(majMs)) {
+    return { statut: 'a-jour', retard_min: 0, libelle: 'à jour' };
+  }
+  if (majMs >= publicationMs) return { statut: 'a-jour', retard_min: 0, libelle: 'à jour' };
+
+  const retard_min = Math.max(1, Math.round((publicationMs - majMs) / 60_000));
+  if (maintenantMs - publicationMs < DELAI_PROPAGATION_MS) {
+    // Propagation normale en cours (prochaine synchro dans ≤ 30 s)
+    return { statut: 'en-retard', retard_min, libelle: 'application en cours…' };
+  }
+  return { statut: 'en-retard', retard_min, libelle: `en retard de ${retard_min} min` };
+}
+
+/** Synthèse pour le bandeau de publication : « Appliqué sur N/N écrans ». */
+export function resumeApplication(
+  ecrans: (Pick<EcranInfo, 'derniere_vue' | 'donnees_maj'> & { gare: string })[],
+  publicationMs: number | null,
+  maintenantMs: number,
+  nomGare: (gare: string) => string = (g) => g,
+): { total: number; aJour: number; enAttente: string[]; libelle: string } {
+  const etats = ecrans.map((e) => ({
+    gare: e.gare,
+    etat: etatFraicheurEcran(e, publicationMs, maintenantMs),
+  }));
+  const aJour = etats.filter((e) => e.etat.statut === 'a-jour').length;
+  const enAttente = etats.filter((e) => e.etat.statut !== 'a-jour').map((e) => nomGare(e.gare));
+  const total = etats.length;
+  if (total === 0) return { total, aJour, enAttente, libelle: 'aucun écran connecté' };
+  const libelle =
+    enAttente.length === 0
+      ? `Appliqué sur ${aJour}/${total} écrans`
+      : `Appliqué sur ${aJour}/${total} écrans — en attente sur : ${[...new Set(enAttente)].join(', ')}`;
+  return { total, aJour, enAttente, libelle };
 }

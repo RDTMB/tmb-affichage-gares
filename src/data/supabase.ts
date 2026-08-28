@@ -288,6 +288,8 @@ export class SupabaseProvider implements DataProvider {
       gare: e.gare,
       type: e.type ?? null,
       derniere_vue: new Date().toISOString(),
+      donnees_maj: e.donnees_maj ?? null,
+      date_affichee: e.date_affichee ?? null,
       version_app: e.version_app ?? null,
       reseau: e.reseau ?? null,
     });

@@ -15,6 +15,7 @@ import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
   Circulation,
+  EcranInfo,
   GareId,
   Grille,
   Jour,
@@ -32,6 +33,8 @@ import { echapper } from './affichage-commun';
 import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
 import {
   datetimeLocalVersIso,
+  etatFraicheurEcran,
+  resumeApplication,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
   traductionLocale,
@@ -70,6 +73,12 @@ let modeles: ModeleMessage[] = [];
 let editionModeleId: string | null = null;
 let traductionModeleManuelle = false;
 let modifs = 0;
+/**
+ * Instant de la dernière écriture (ou publication) : référence pour juger si
+ * un écran affiche bien l'état courant. null tant que rien n'a été modifié
+ * depuis l'ouverture de la supervision.
+ */
+let referenceMajMs: number | null = null;
 const journal: string[] = [];
 let editionMessageId: string | null = null;
 let traductionManuelle = false;
@@ -105,7 +114,9 @@ function toast(texte: string): void {
 
 function bump(detail: string): void {
   modifs += 1;
+  referenceMajMs = Date.now(); // les écrans doivent désormais rattraper cet instant
   journal.push(detail);
+  void rendreEcrans(); // met à jour les pastilles « à jour » / « en retard »
   $('etat-pub').innerHTML =
     `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
 }
@@ -1156,23 +1167,43 @@ async function rendreEcrans(): Promise<void> {
     return;
   }
   const maintenant = Date.now();
-  const enLigne = (vu?: string | null): boolean =>
-    !!vu && maintenant - new Date(vu).getTime() < 90_000;
-  const actifs = liste.filter((e) => enLigne(e.derniere_vue)).length;
+  const etats = new Map(
+    liste.map((e) => [e.id, etatFraicheurEcran(e, referenceMajMs, maintenant)]),
+  );
+  const enLigne = (id: string): boolean => etats.get(id)?.statut !== 'hors-ligne';
+  const actifs = liste.filter((e) => enLigne(e.id)).length;
   $('pill-ecrans').innerHTML =
     `<span class="dot ${actifs === liste.length ? '' : 'rouge'}"></span> ${actifs}/${liste.length || '—'} écrans en ligne`;
+
+  // Bandeau de publication : synthèse « Appliqué sur N/N écrans »
+  majResumeApplication(liste, maintenant);
+
   $('ecrans').innerHTML = liste.length
     ? liste
         .map((e) => {
-          const ok = enLigne(e.derniere_vue);
+          const etat = etats.get(e.id) ?? {
+            statut: 'hors-ligne' as const,
+            retard_min: 0,
+            libelle: 'hors ligne',
+          };
+          const ok = etat.statut !== 'hors-ligne';
           const vu = e.derniere_vue
             ? `${Math.max(0, Math.round((maintenant - new Date(e.derniere_vue).getTime()) / 1000))} s`
+            : '—';
+          const donnees = e.donnees_maj
+            ? new Date(e.donnees_maj).toLocaleTimeString('fr-FR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
             : '—';
           return `
       <div class="ecran">
         <div class="haut"><span class="dot ${ok ? '' : 'rouge'}"></span>${echapper(nomDeGare(e.gare))} · ${echapper(e.id)}
           <span class="net">${echapper(e.reseau ?? (e.gare === 'nid-daigle' ? '5G · solaire' : 'Fibre'))}</span></div>
-        <div class="sub">${echapper(e.type ?? 'écran')} · vu il y a ${vu} · ${echapper(e.version_app ?? '—')}</div>
+        <div class="fraicheur ${etat.statut}">${echapper(etat.libelle)}</div>
+        <div class="sub">${echapper(e.type ?? 'écran')} · vu il y a ${vu} · données de ${donnees}${
+          e.date_affichee ? ` · journée ${echapper(e.date_affichee)}` : ''
+        } · ${echapper(e.version_app ?? '—')}</div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
           <button class="leger" data-voir="${echapper(e.gare)}" data-type="${echapper(e.type ?? 'ecran')}">Voir</button>
@@ -1182,6 +1213,28 @@ async function rendreEcrans(): Promise<void> {
         })
         .join('')
     : '<div class="note">Aucun écran ne s’est encore signalé (heartbeat 30 s).</div>';
+}
+
+let resumeId = 0;
+/**
+ * Bandeau de publication : « Appliqué sur N/N écrans » (ou la liste des gares
+ * en attente), calculé à partir des horodatages `donnees_maj` remontés par
+ * les écrans. Affiché quelques secondes quand tout est appliqué, maintenu
+ * tant que des écrans restent en retard.
+ */
+function majResumeApplication(liste: EcranInfo[], maintenantMs: number): void {
+  if (referenceMajMs === null) return; // rien n'a encore été modifié
+  const resume = resumeApplication(liste, referenceMajMs, maintenantMs, nomDeGare);
+  const bloc = $('resume-application');
+  bloc.textContent = resume.libelle;
+  bloc.className = 'resume-application ' + (resume.enAttente.length === 0 ? 'ok' : 'attente');
+  bloc.style.display = '';
+  window.clearTimeout(resumeId);
+  if (resume.enAttente.length === 0) {
+    resumeId = window.setTimeout(() => {
+      bloc.style.display = 'none';
+    }, 6000);
+  }
 }
 
 function initEcrans(): void {
@@ -1653,6 +1706,8 @@ function initPublication(): void {
       .then(() => {
         modifs = 0;
         journal.length = 0;
+        referenceMajMs = Date.now(); // nouvelle référence de fraîcheur des écrans
+        void rendreEcrans();
         $('etat-pub').textContent = 'Tout est publié ✓';
         toast('✓ Publié — les 6 gares sont synchronisées · consigné dans l’historique');
       })

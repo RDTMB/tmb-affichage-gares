@@ -135,9 +135,13 @@ create table profils (
 
 create table ecrans (
   id text primary key, gare text not null, type text,
-  derniere_vue timestamptz, version_app text, reseau text,
+  derniere_vue timestamptz,        -- signal de vie : la MACHINE répond
+  donnees_maj timestamptz,         -- dernière synchro RÉUSSIE : les DONNÉES affichées sont fraîches
+  date_affichee date,              -- journée d'exploitation montrée
+  version_app text, reseau text,
   recharger boolean not null default false
 );
+-- Ajout sur base existante : supabase/ajout-preuve-maj.sql (idempotent).
 
 create table publications (
   id bigint generated always as identity primary key,

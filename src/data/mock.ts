@@ -379,7 +379,13 @@ export class MockProvider implements DataProvider {
   async heartbeat(e: EcranInfo): Promise<void> {
     const ecrans = litEcrans();
     const existant = ecrans[e.id];
-    ecrans[e.id] = { ...e, derniere_vue: new Date().toISOString(), recharger: false };
+    ecrans[e.id] = {
+      ...e,
+      derniere_vue: new Date().toISOString(),
+      donnees_maj: e.donnees_maj ?? null,
+      date_affichee: e.date_affichee ?? null,
+      recharger: false,
+    };
     ecritEcrans(ecrans); // clé séparée : ne réveille aucun autre client
     if (existant?.recharger) window.location.reload();
   }

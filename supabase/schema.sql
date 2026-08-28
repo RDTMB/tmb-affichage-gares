@@ -108,7 +108,9 @@ create table if not exists ecrans (
   id text primary key,
   gare text not null,
   type text,
-  derniere_vue timestamptz,
+  derniere_vue timestamptz,               -- signal de vie : la MACHINE tourne
+  donnees_maj timestamptz,                -- dernière synchro RÉUSSIE : les DONNÉES sont fraîches
+  date_affichee date,                     -- journée d'exploitation affichée
   version_app text,
   reseau text,
   recharger boolean not null default false

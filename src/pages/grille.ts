@@ -347,7 +347,14 @@ async function demarre(): Promise<void> {
   if (url.get('apercu') !== '1' && gare !== null) {
     const bat = (): void => {
       void provider
-        .heartbeat({ id: idEcran, gare, type: 'grille', version_app: import.meta.env.MODE })
+        .heartbeat({
+          id: idEcran,
+          gare,
+          type: 'grille',
+          version_app: import.meta.env.MODE,
+          donnees_maj: sync?.derniereSyncISO() ?? null,
+          date_affichee: jour?.date ?? null,
+        })
         .catch(() => {});
     };
     bat();

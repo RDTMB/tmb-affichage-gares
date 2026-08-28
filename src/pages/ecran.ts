@@ -483,7 +483,16 @@ async function demarre(): Promise<void> {
   if (url.get('apercu') !== '1') {
     const bat = (): void => {
       void provider
-        .heartbeat({ id: idEcran, gare, type: 'ecran', version_app: import.meta.env.MODE })
+        .heartbeat({
+          id: idEcran,
+          gare,
+          type: 'ecran',
+          version_app: import.meta.env.MODE,
+          // Preuve de FRAÎCHEUR : l'écran peut tourner en affichant un
+          // instantané périmé — la supervision doit pouvoir le voir.
+          donnees_maj: sync?.derniereSyncISO() ?? null,
+          date_affichee: jour?.date ?? null,
+        })
         .catch(() => {});
     };
     bat();

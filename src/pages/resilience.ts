@@ -21,6 +21,8 @@ export interface Synchronisation {
   ageMs(): number | null;
   /** « HH:MM » (Europe/Paris) de la dernière synchro réussie. */
   heureSync(): string | null;
+  /** Horodatage ISO de la dernière synchro réussie (preuve de fraîcheur envoyée au heartbeat). */
+  derniereSyncISO(): string | null;
 }
 
 export function creeSynchronisation<T>(options: {
@@ -79,6 +81,8 @@ export function creeSynchronisation<T>(options: {
     ageMs: () => (derniereSynchroMs === null ? null : Date.now() - derniereSynchroMs),
     heureSync: () =>
       derniereSynchroMs === null ? null : FORMAT_HM.format(new Date(derniereSynchroMs)),
+    derniereSyncISO: () =>
+      derniereSynchroMs === null ? null : new Date(derniereSynchroMs).toISOString(),
   };
 }
 

@@ -720,6 +720,45 @@ tr.paire-fin td {
   margin-right: 8px;
 }
 
+/* Preuve de mise à jour : pastille par écran + synthèse de publication */
+.fraicheur {
+  display: inline-block;
+  margin: 4px 0 2px;
+  font-size: 11.5px;
+  font-weight: 900;
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+.fraicheur.a-jour {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.fraicheur.en-retard {
+  background: var(--retard-bg);
+  color: var(--retard);
+}
+
+.fraicheur.hors-ligne {
+  background: var(--alerte-bg);
+  color: var(--alerte);
+}
+
+.resume-application {
+  margin-top: 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.resume-application.ok {
+  color: var(--ok);
+}
+
+.resume-application.attente {
+  color: var(--retard);
+}
+
 /* Aperçu en direct du bandeau défilant (réglage de vitesse) */
 .apercu-ticker {
   flex: 1 1 260px;

@@ -261,7 +261,15 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    modifiables après création** (aucune gare cochée = toutes), actif,
    aperçu, suppression. La liste montre TOUS les médias, y compris ceux
    désactivés (sinon ils ne seraient plus réactivables).
-4. **Écrans** : cartes (gare, type, en ligne/hors ligne — silence > 90 s,
+4. **Écrans** : PREUVE DE MISE À JOUR par écran — une pastille dit si ce qui
+   est AFFICHÉ est frais, et non seulement si la machine répond : « à jour »
+   (vert : les données de l'écran sont postérieures à la dernière
+   publication), « en retard de X min » (orange : la machine tourne mais
+   affiche encore d'anciennes données — réseau coupé côté données), « hors
+   ligne » (rouge : plus de signal de vie depuis 90 s). Chaque carte indique
+   l'heure des données affichées et la journée montrée. Le bandeau de
+   publication affiche, après un enregistrement, « Appliqué sur N/N écrans »
+   ou la liste des gares en attente. Cartes (gare, type, en ligne/hors ligne — silence > 90 s,
    réseau fibre/5G, mention alimentation solaire pour le Nid d'Aigle,
    dernière vue, version) ; bouton « Recharger l'écran ».
 5. **Paramètres** (admin) : Machines (ajouter/renommer/couleur/en service/

@@ -317,7 +317,16 @@ export interface EcranInfo {
   id: string;
   gare: GareId;
   type?: string | null;
+  /** Dernier signal de vie : prouve que la MACHINE tourne. */
   derniere_vue?: string | null;
+  /**
+   * Dernière synchronisation RÉUSSIE des données affichées : prouve que ce
+   * qui est à l'écran est FRAIS. Une machine allumée peut très bien afficher
+   * un instantané périmé — seule cette colonne le révèle.
+   */
+  donnees_maj?: string | null;
+  /** Date de la journée d'exploitation affichée (« YYYY-MM-DD »). */
+  date_affichee?: string | null;
   version_app?: string | null;
   reseau?: string | null;
 }
