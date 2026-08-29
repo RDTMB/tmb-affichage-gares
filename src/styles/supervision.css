@@ -1051,6 +1051,13 @@ tr.paire-fin td {
   font-weight: 900;
   border-radius: 5px;
   padding: 3px 8px;
+  display: inline-block;
+  box-sizing: border-box;
+  /* Largeur fixe : « SUPERVISION » est bien plus long qu'« ADMIN »/« CAISSE »,
+     ce qui décalait le select et les boutons des lignes utilisateur les uns
+     par rapport aux autres selon le rôle affiché. */
+  width: 108px;
+  text-align: center;
 }
 
 .role-admin {
