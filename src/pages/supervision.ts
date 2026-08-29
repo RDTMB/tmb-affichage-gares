@@ -35,6 +35,18 @@ import type {
   User,
 } from '../core/types';
 import { creeProvider } from '../data';
+import {
+  appliqueBrouillonJour,
+  appliqueBrouillonMessages,
+  appliqueBrouillonParams,
+  estIdMessageBrouillon,
+  nouvelIdMessageBrouillon,
+  stageCirculation,
+  videDate,
+  type BrouillonCirculations,
+  type BrouillonMessages,
+  type BrouillonTerminus,
+} from './brouillon';
 import { echapper } from './affichage-commun';
 import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
 import {
@@ -93,6 +105,40 @@ const journal: string[] = [];
 let editionMessageId: string | null = null;
 let traductionManuelle = false;
 
+// Brouillon de publication (docs/01 §5.6 révisé le 29/08/2026) : rien de ce
+// qui suit n'atteint la base tant que « Publier » n'a pas été cliqué.
+// `messagesBase`/`paramsBase` gardent le DERNIER ÉTAT RÉEL (celui de la base) ;
+// `messages`/`params` restent la vue EFFECTIVE (base + brouillon), déjà lue
+// partout ailleurs dans ce fichier pour l'affichage.
+let messagesBase: Message[] = [];
+let paramsBase: Params | null = null;
+const brouillonCirc: BrouillonCirculations = new Map();
+const brouillonTerminus: BrouillonTerminus = new Map();
+const brouillonMessages: BrouillonMessages = new Map();
+let brouillonParams: Partial<Params> = {};
+
+function rafraichitMessagesEffectifs(): void {
+  messages = appliqueBrouillonMessages(messagesBase, brouillonMessages);
+}
+
+function rafraichitParamsEffectifs(): void {
+  params = paramsBase ? appliqueBrouillonParams(paramsBase, brouillonParams) : paramsBase;
+}
+
+function rafraichitJourEffectif(): void {
+  if (jour) jour = appliqueBrouillonJour(jour, brouillonCirc, brouillonTerminus);
+}
+
+/** Reste-t-il des modifications non publiées (toutes catégories confondues) ? */
+function rienEnAttente(): boolean {
+  return (
+    brouillonCirc.size === 0 &&
+    brouillonTerminus.size === 0 &&
+    brouillonMessages.size === 0 &&
+    Object.keys(brouillonParams).length === 0
+  );
+}
+
 function dateISO(decalageJours: number): string {
   const d = new Date();
   d.setDate(d.getDate() + decalageJours);
@@ -122,11 +168,24 @@ function toast(texte: string): void {
   toastId = window.setTimeout(() => t.classList.remove('on'), 3600);
 }
 
+/** Écriture IMMÉDIATE (Paramètres, Médias, Écrans...) : déjà en base. */
 function bump(detail: string): void {
   modifs += 1;
   referenceMajMs = Date.now(); // les écrans doivent désormais rattraper cet instant
   journal.push(detail);
   void rendreEcrans(); // met à jour les pastilles « à jour » / « en retard »
+  $('etat-pub').innerHTML =
+    `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+}
+
+/**
+ * Modification mise EN ATTENTE (Bandeau, Circulations — docs/01 §5.6) :
+ * rien n'est encore en base, donc contrairement à `bump()`, la fraîcheur des
+ * écrans (`referenceMajMs`) ne doit PAS avancer avant la vraie publication.
+ */
+function bumpEnAttente(detail: string): void {
+  modifs += 1;
+  journal.push(detail);
   $('etat-pub').innerHTML =
     `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
 }
@@ -150,13 +209,18 @@ async function chargeTout(): Promise<void> {
     provider.getJour(demande),
   ]);
   grilles = g;
-  params = p;
-  messages = msg;
+  paramsBase = p;
+  rafraichitParamsEffectifs();
+  messagesBase = msg;
+  rafraichitMessagesEffectifs();
   medias = med;
   modeles = mod;
   // Garde de course : ne pas écraser l'affichage si l'agent a changé de date
-  // pendant le chargement (l'en-tête et le tableau seraient désynchronisés).
-  if (demande === dateSel) jour = j;
+  // pendant le chargement (l'en-tête et le tableau seraient désynchronisées).
+  if (demande === dateSel) {
+    jour = j;
+    rafraichitJourEffectif(); // réapplique les circulations/terminus en attente pour cette date
+  }
 }
 
 async function rechargeJour(): Promise<void> {
@@ -164,6 +228,7 @@ async function rechargeJour(): Promise<void> {
   const j = await provider.getJour(demande);
   if (demande !== dateSel) return; // une navigation plus récente a pris le relais
   jour = j;
+  rafraichitJourEffectif();
   rendreCirculations();
 }
 
@@ -475,28 +540,17 @@ function rendreCirculations(): void {
 }
 
 /**
- * Enregistre une circulation. Retourne false si l'écriture a échoué : les
- * appelants NE DOIVENT PAS annoncer de succès dans ce cas (un toast de
- * succès effacerait le toast d'erreur — même famille de faux succès que le
- * bug du 25/08).
+ * Met une circulation en attente de publication (docs/01 §5.6) : plus
+ * aucune écriture réseau ici — juste le brouillon et le rendu local. Ne
+ * peut pas échouer, donc plus besoin de valeur de retour à vérifier par
+ * les appelants (l'ancien risque de « faux succès » du 25/08 ne s'applique
+ * qu'à une écriture réelle, qui n'a lieu qu'à la publication).
  */
-async function sauveCirculation(c: Circulation, detail: string): Promise<boolean> {
-  let ok = true;
-  try {
-    await provider.saveCirculation(c);
-    bump(detail);
-  } catch (erreur) {
-    erreurVersToast(erreur);
-    ok = false;
-  }
-  // Le rechargement lui-même ne doit jamais échouer en silence
-  try {
-    await rechargeJour();
-  } catch (erreur) {
-    erreurVersToast(erreur);
-    ok = false;
-  }
-  return ok;
+function stageCirculationEtRafraichit(c: Circulation, detail: string): void {
+  stageCirculation(brouillonCirc, c);
+  rafraichitJourEffectif();
+  bumpEnAttente(detail);
+  rendreCirculations();
 }
 
 function initCirculations(): void {
@@ -524,54 +578,54 @@ function initCirculations(): void {
     if (!window.confirm(groupe.confirmation)) return;
 
     // Copies : le drapeau « sans voyageurs » et tout le reste sont conservés
-    // tels quels — cette action ne touche QUE facultatif_actif.
+    // tels quels — cette action ne touche QUE facultatif_actif. Mise EN
+    // ATTENTE comme les modifications unitaires (docs/01 §5.6) : aucune
+    // écriture ici, juste le brouillon — donc plus de risque d'écriture
+    // partielle à ce stade (elle ne peut plus survenir qu'à la publication).
     const cibles = groupe.numeros
       .map((numero) => jour?.circulations.find((c) => c.numero === numero))
       .filter((c): c is Circulation => c !== undefined)
       .map((c) => ({ ...c, facultatif_actif: groupe.activer }));
 
-    void provider
-      .saveCirculations(cibles)
-      .then(() => {
-        // Journalisé DÈS l'écriture réussie : un rechargement en échec ne doit
-        // pas effacer la trace d'une modification bel et bien enregistrée.
-        bump(
-          `${cibles.length} train(s) facultatif(s) ${groupe.activer ? 'activé(s)' : 'désactivé(s)'}`,
-        );
-        return rechargeJour();
-      })
-      .then(() => {
-        const invisibles = groupe.aVide.length;
-        toast(
-          groupe.activer
-            ? `${cibles.length} train(s) facultatif(s) activé(s)${
-                invisibles > 0
-                  ? ` — dont ${invisibles} sans voyageurs, qui ${
-                      invisibles === 1 ? 'reste invisible' : 'restent invisibles'
-                    }`
-                  : ' — visibles sur les écrans'
-              }`
-            : `${cibles.length} train(s) facultatif(s) désactivé(s) — retirés des écrans`,
-        );
-      })
-      .catch((erreur) => {
-        erreurVersToast(erreur);
-        // Une écriture PARTIELLE a pu passer avant l'échec : on resynchronise,
-        // sinon le tableau afficherait un état que la base ne contient pas.
-        void rechargeJour().catch(erreurVersToast);
-      });
+    for (const cible of cibles) stageCirculation(brouillonCirc, cible);
+    rafraichitJourEffectif();
+    bumpEnAttente(
+      `${cibles.length} train(s) facultatif(s) ${groupe.activer ? 'activé(s)' : 'désactivé(s)'} (en attente)`,
+    );
+    rendreCirculations();
+    const invisibles = groupe.aVide.length;
+    toast(
+      groupe.activer
+        ? `${cibles.length} train(s) facultatif(s) activé(s), en attente de publication${
+            invisibles > 0
+              ? ` — dont ${invisibles} sans voyageurs, qui ${
+                  invisibles === 1 ? 'restera invisible' : 'resteront invisibles'
+                }`
+              : ''
+          }`
+        : `${cibles.length} train(s) facultatif(s) désactivé(s), en attente de publication`,
+    );
   });
   $('btn-reinitialiser').addEventListener('click', () => {
+    // Seule action de l'onglet Circulations à rester IMMÉDIATE (docs/01 §5.6) :
+    // c'est un retour à zéro déjà protégé par sa propre confirmation explicite,
+    // pas une modification à composer avant publication.
     if (
       !window.confirm(
-        `Réinitialiser la journée du ${dateSel} depuis la grille en vigueur ?\n` +
-          'TOUTES les modifications du jour seront perdues (retour à l’horaire théorique).',
+        `Réinitialiser IMMÉDIATEMENT la journée du ${dateSel} depuis la grille en vigueur ?\n` +
+          'TOUTES les modifications du jour (publiées ou en attente) seront perdues (retour à l’horaire théorique).',
       )
     )
       return;
     void provider
       .reinitialiseJour(dateSel)
-      .then(() => rechargeJour())
+      .then(() => {
+        // Le retour à zéro serveur a réussi : les modifications en attente de cette
+        // date n'ont plus de sens. On les purge seulement maintenant (pas avant l'appel
+        // réseau) pour ne pas perdre le brouillon local si reinitialiseJour échoue.
+        videDate(brouillonCirc, brouillonTerminus, dateSel);
+        return rechargeJour();
+      })
       .then(() => {
         bump(`journée ${dateSel} réinitialisée`);
         toast('Journée réinitialisée depuis la grille en vigueur');
@@ -583,18 +637,19 @@ function initCirculations(): void {
   const terminusChange = (): void => {
     const coche = ($('chk-terminus') as HTMLInputElement).checked;
     const n = Number(($('sel-terminus-train') as HTMLSelectElement).value) || 1;
-    void provider
-      .setTerminusBellevue(dateSel, coche ? { a_partir_du_train: n } : false)
-      .then(() => rechargeJour())
-      .then(() => {
-        bump(coche ? `terminus Bellevue à partir du TRAIN ${n}` : 'terminus Bellevue désactivé');
-        toast(
-          coche
-            ? `Terminus Bellevue à partir du TRAIN ${n} : colonne Terminus pré-remplie, express signalés « à traiter », Nid d'Aigle en « tronçon fermé » quand plus aucun passage`
-            : 'Retour au service normal jusqu’au Nid d’Aigle',
-        );
-      })
-      .catch(erreurVersToast);
+    brouillonTerminus.set(dateSel, coche ? { a_partir_du_train: n } : false);
+    rafraichitJourEffectif();
+    bumpEnAttente(
+      coche
+        ? `terminus Bellevue à partir du TRAIN ${n} (en attente)`
+        : 'terminus Bellevue désactivé (en attente)',
+    );
+    rendreCirculations();
+    toast(
+      coche
+        ? `Terminus Bellevue à partir du TRAIN ${n} en attente de publication : colonne Terminus pré-remplie, express signalés « à traiter »`
+        : 'Retour au service normal jusqu’au Nid d’Aigle, en attente de publication',
+    );
   };
   $('chk-terminus').addEventListener('change', terminusChange);
   $('sel-terminus-train').addEventListener('change', () => {
@@ -618,7 +673,7 @@ function initCirculations(): void {
     descente.statut = 'supprime';
     descente.retard_min = 0;
     descente.motif = montee.motif;
-    void sauveCirculation(descente, `statut TRAIN ${descente.numero} → supprime (rotation)`);
+    stageCirculationEtRafraichit(descente, `statut TRAIN ${descente.numero} → supprime (rotation, en attente)`);
   };
 
   /**
@@ -633,9 +688,9 @@ function initCirculations(): void {
     const apparie = circulationDe(proposition.numero);
     if (!apparie) return;
     apparie.facultatif_actif = proposition.actif;
-    void sauveCirculation(
+    stageCirculationEtRafraichit(
       apparie,
-      `facultatif TRAIN ${apparie.numero} ${proposition.actif ? 'activé' : 'désactivé'} (rotation)`,
+      `facultatif TRAIN ${apparie.numero} ${proposition.actif ? 'activé' : 'désactivé'} (rotation, en attente)`,
     );
   };
 
@@ -651,54 +706,43 @@ function initCirculations(): void {
     const c = circulationDe(numero);
     if (!c) return;
 
+    // Toutes les modifications ci-dessous sont mises EN ATTENTE (docs/01 §5.6) :
+    // elles n'atteignent la base — et donc les écrans — qu'au clic sur « Publier ».
     if (action === 'rame') {
       c.rame = (cible as HTMLSelectElement).value;
-      void sauveCirculation(c, `rame TRAIN ${numero} → ${c.rame}`).then((ok) => {
-        if (ok) toast('Rame changée : la descente de la même rotation suit automatiquement');
-      });
+      stageCirculationEtRafraichit(c, `rame TRAIN ${numero} → ${c.rame}`);
+      toast('Rame en attente de publication (la descente de la même rotation suivra)');
     } else if (action === 'terminus') {
       c.terminus = (cible as HTMLSelectElement).value as Circulation['terminus'];
-      void sauveCirculation(c, `terminus TRAIN ${numero} → ${c.terminus}`).then((ok) => {
-        if (!ok) return;
-        toast(
-          c.terminus === 'bellevue'
-            ? `TRAIN ${numero} limité à Bellevue : sa descente partira de Bellevue`
-            : `TRAIN ${numero} rétabli jusqu'au Nid d'Aigle`,
-        );
-      });
+      stageCirculationEtRafraichit(c, `terminus TRAIN ${numero} → ${c.terminus}`);
+      toast(
+        c.terminus === 'bellevue'
+          ? `TRAIN ${numero} limité à Bellevue en attente de publication (sa descente partira de Bellevue)`
+          : `TRAIN ${numero} en attente de publication (rétabli jusqu'au Nid d'Aigle)`,
+      );
     } else if (action === 'actif') {
       const actif = (cible as HTMLInputElement).checked;
       c.facultatif_actif = actif;
-      void sauveCirculation(c, `facultatif TRAIN ${numero} ${actif ? 'activé' : 'désactivé'}`).then(
-        (ok) => {
-          if (!ok) return;
-          toast(
-            actif
-              ? 'Train facultatif activé : il apparaîtra sur les écrans'
-              : 'Train facultatif désactivé : retiré des écrans',
-          );
-          proposeAppariementFacultatif(numero, actif);
-        },
+      stageCirculationEtRafraichit(c, `facultatif TRAIN ${numero} ${actif ? 'activé' : 'désactivé'}`);
+      toast(
+        actif
+          ? 'Train facultatif activé, en attente de publication'
+          : 'Train facultatif désactivé, en attente de publication',
       );
+      proposeAppariementFacultatif(numero, actif);
     } else if (action === 'sans-voyageurs') {
-      // COPIE volontaire : retirer un train de tous les écrans est trop lourd
-      // pour laisser le drapeau dans l'état mémoire si l'écriture échoue —
-      // une action ultérieure sur le même train le committerait au passage.
+      // COPIE volontaire (conservée) : le brouillon garde son propre objet,
+      // distinct de `c`, pour ne jamais dépendre d'une mutation partagée.
       const aVide = (cible as HTMLInputElement).checked;
-      void sauveCirculation(
+      stageCirculationEtRafraichit(
         { ...c, sans_voyageurs: aVide },
         `TRAIN ${numero} ${aVide ? 'passé sans voyageurs' : 'rouvert aux voyageurs'}`,
-      ).then((ok) => {
-        if (!ok) {
-          rendreCirculations(); // la case revient à l'état réellement enregistré
-          return;
-        }
-        toast(
-          aVide
-            ? `TRAIN ${numero} sans voyageurs : retiré de tous les écrans, conservé en exploitation`
-            : `TRAIN ${numero} rouvert aux voyageurs`,
-        );
-      });
+      );
+      toast(
+        aVide
+          ? `TRAIN ${numero} sans voyageurs en attente de publication`
+          : `TRAIN ${numero} rouvert aux voyageurs, en attente de publication`,
+      );
     } else if (action.startsWith('statut-')) {
       const statut = action.replace('statut-', '') as Circulation['statut'];
       if (statut === 'supprime') {
@@ -721,9 +765,8 @@ function initCirculations(): void {
       c.statut = statut;
       if (statut === 'retard' && c.retard_min < 5) c.retard_min = 5;
       if (statut !== 'retard') c.retard_min = 0;
-      void sauveCirculation(c, `statut TRAIN ${numero} → ${statut}`).then((ok) => {
-        if (ok && statut === 'supprime' && c.sens === 'montee') proposeSuppressionDescente(c);
-      });
+      stageCirculationEtRafraichit(c, `statut TRAIN ${numero} → ${statut}`);
+      if (statut === 'supprime' && c.sens === 'montee') proposeSuppressionDescente(c);
     } else if (action === 'express-supprimer') {
       if (
         !window.confirm(
@@ -735,41 +778,35 @@ function initCirculations(): void {
       c.statut = 'supprime';
       c.retard_min = 0;
       c.motif ??= params?.motifs[0]?.fr ?? null;
-      void sauveCirculation(c, `express TRAIN ${numero} supprimé (plage Bellevue)`).then((ok) => {
-        if (!ok) return;
-        toast(`Express TRAIN ${numero} supprimé — signalement levé`);
-        // Même règle que pour une montée normale (docs/01 §5.1)
-        if (c.sens === 'montee') proposeSuppressionDescente(c);
-      });
+      stageCirculationEtRafraichit(c, `express TRAIN ${numero} supprimé (plage Bellevue)`);
+      toast(`Express TRAIN ${numero} en attente de publication (signalement levé)`);
+      // Même règle que pour une montée normale (docs/01 §5.1)
+      if (c.sens === 'montee') proposeSuppressionDescente(c);
     } else if (action === 'express-maintenir-descente') {
       // Descente express maintenue : on lève la limitation de SA rotation
       // (la montée repasse au Nid d'Aigle), sinon le signalement reviendrait.
       const montee = circulationDe(numero - 1);
       if (!montee) return;
       montee.terminus = 'nid-daigle';
-      void sauveCirculation(
+      stageCirculationEtRafraichit(
         montee,
         `rotation TRAIN ${montee.numero}/${numero} maintenue jusqu'au Nid d'Aigle`,
-      ).then((ok) => {
-        if (ok) toast(`Rotation express maintenue jusqu'au Nid d'Aigle — signalement levé`);
-      });
+      );
+      toast(`Rotation express maintenue jusqu'au Nid d'Aigle, en attente de publication`);
     } else if (action === 'express-maintenir') {
       // Lève le signalement : l'express circule jusqu'au Nid d'Aigle malgré
       // la plage limitée (aucun horaire n'est inventé). Sa descente appariée,
       // express elle aussi, redescend donc bien du Nid d'Aigle.
       c.terminus = 'nid-daigle';
-      void sauveCirculation(c, `express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle`).then(
-        (ok) => {
-          if (ok) toast(`Express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle — signalement levé`);
-        },
-      );
+      stageCirculationEtRafraichit(c, `express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle`);
+      toast(`Express TRAIN ${numero} maintenu jusqu'au Nid d'Aigle, en attente de publication`);
     } else if (action === 'retard-plus' || action === 'retard-moins') {
       c.retard_min = Math.max(5, c.retard_min + (action === 'retard-plus' ? 5 : -5));
-      void sauveCirculation(c, `retard TRAIN ${numero} → +${c.retard_min} min`);
+      stageCirculationEtRafraichit(c, `retard TRAIN ${numero} → +${c.retard_min} min`);
     } else if (action === 'motif') {
       const v = (cible as HTMLSelectElement).value;
       c.motif = v === '—' ? null : v;
-      void sauveCirculation(c, `motif TRAIN ${numero} → ${v}`);
+      stageCirculationEtRafraichit(c, `motif TRAIN ${numero} → ${v}`);
     }
   };
   tbody.addEventListener('click', (e) => {
@@ -808,6 +845,7 @@ async function allerDate(date: string): Promise<void> {
     const nouveau = await provider.getJour(date);
     if (dateSel !== date) return; // une navigation plus récente a pris le relais
     jour = nouveau;
+    rafraichitJourEffectif(); // les modifications en attente pour CETTE date réapparaissent
     rendreCirculations();
   } catch (erreur) {
     if (dateSel === date) {
@@ -1108,18 +1146,17 @@ function initMessages(): void {
     if (!f.texte_en.trim()) f.texte_en = traductionLocale(f.texte_fr);
     // Le formulaire est la source de vérité : cible et expiration affichées
     // sont exactement celles enregistrées (elles ont été restituées à
-    // l'ouverture de l'édition).
-    const message = messageDepuisFormulaire(f, editionMessageId ?? '');
-    void provider
-      .saveMessage(message)
-      .then(() => provider.getMessages('le-fayet'))
-      .then((liste) => {
-        messages = liste;
-        bump(editionMessageId ? 'message modifié' : 'message ajouté');
-        toast(editionMessageId ? 'Message modifié' : 'Message publié sur les écrans ciblés');
-        annuleEditionMessage();
-      })
-      .catch(erreurVersToast);
+    // l'ouverture de l'édition). Mis EN ATTENTE (docs/01 §5.6) : id réel si
+    // on modifie un message déjà publié, sinon un id de brouillon temporaire
+    // (remplacé par un id définitif à la publication, lors de l'insertion).
+    const idCourant = editionMessageId ?? nouvelIdMessageBrouillon();
+    const message = messageDepuisFormulaire(f, idCourant);
+    brouillonMessages.set(idCourant, message);
+    rafraichitMessagesEffectifs();
+    bumpEnAttente(editionMessageId ? 'message modifié (en attente)' : 'message ajouté (en attente)');
+    toast(editionMessageId ? 'Message modifié, en attente de publication' : 'Message en attente de publication');
+    annuleEditionMessage();
+    rendreMessages();
   });
 
   $('liste-msgs').addEventListener('click', (e) => {
@@ -1138,16 +1175,16 @@ function initMessages(): void {
       rendreMessages();
       ($('msg-fr') as HTMLInputElement).focus();
     } else if (idRetrait) {
-      void provider
-        .deleteMessage(idRetrait)
-        .then(() => provider.getMessages('le-fayet'))
-        .then((liste) => {
-          messages = liste;
-          if (editionMessageId === idRetrait) annuleEditionMessage();
-          bump('message retiré');
-          rendreMessages();
-        })
-        .catch(erreurVersToast);
+      if (estIdMessageBrouillon(idRetrait)) {
+        // Jamais publié : simple retrait du brouillon, aucune écriture prévue.
+        brouillonMessages.delete(idRetrait);
+      } else {
+        brouillonMessages.set(idRetrait, null); // suppression en attente de publication
+      }
+      rafraichitMessagesEffectifs();
+      if (editionMessageId === idRetrait) annuleEditionMessage();
+      bumpEnAttente('message retiré (en attente)');
+      rendreMessages();
     }
   });
 }
@@ -1801,7 +1838,8 @@ function majApercuTicker(vitessePxS: number): void {
 }
 
 async function rechargeParams(): Promise<void> {
-  params = await provider.getParams();
+  paramsBase = await provider.getParams();
+  rafraichitParamsEffectifs();
   rendreParametres();
 }
 
@@ -1814,34 +1852,24 @@ async function rechargeParams(): Promise<void> {
 function initBandeau(): void {
   $('vitesse-ticker').addEventListener('change', () => {
     const v = vitesseTickerValide(($('vitesse-ticker') as HTMLSelectElement).value);
-    majApercuTicker(v); // aperçu immédiat, avant même l'enregistrement
-    void provider
-      .saveParams({ vitesse_ticker_px_s: v })
-      .then(() => {
-        if (params) params.vitesse_ticker_px_s = v;
-        bump(`vitesse du bandeau → ${v} px/s`);
-        toast('Vitesse du bandeau appliquée aux écrans (sans rechargement)');
-      })
-      .catch(erreurVersToast);
+    majApercuTicker(v); // aperçu immédiat, avant même la publication
+    brouillonParams.vitesse_ticker_px_s = v;
+    rafraichitParamsEffectifs();
+    bumpEnAttente(`vitesse du bandeau → ${v} px/s (en attente)`);
+    toast('Vitesse du bandeau en attente de publication');
   });
 
   const champMeteo = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
   const sauveMeteo = (): void => {
-    void provider
-      .saveParams({
-        meteo_sommet: {
-          t: Number(champMeteo('meteo-t').value) || 0,
-          ciel_fr: champMeteo('meteo-fr').value.trim() || '—',
-          ciel_en: champMeteo('meteo-en').value.trim() || '—',
-          heure_releve: champMeteo('meteo-heure').value || undefined,
-        },
-      })
-      .then(() => rechargeParams())
-      .then(() => {
-        bump('météo du sommet mise à jour');
-        toast('Météo du sommet appliquée aux écrans');
-      })
-      .catch(erreurVersToast);
+    brouillonParams.meteo_sommet = {
+      t: Number(champMeteo('meteo-t').value) || 0,
+      ciel_fr: champMeteo('meteo-fr').value.trim() || '—',
+      ciel_en: champMeteo('meteo-en').value.trim() || '—',
+      heure_releve: champMeteo('meteo-heure').value || undefined,
+    };
+    rafraichitParamsEffectifs();
+    bumpEnAttente('météo du sommet modifiée (en attente)');
+    toast('Météo en attente de publication');
   };
   const sauveMeteoDifferee = antiRebond(sauveMeteo);
 
@@ -2026,6 +2054,83 @@ function initParametres(): void {
 // Publication
 // ---------------------------------------------------------------------------
 
+/**
+ * Publie le brouillon : c'est ICI, et seulement ici, que les écritures
+ * réseau des onglets Bandeau et Circulations ont lieu (docs/01 §5.6 révisé
+ * le 29/08/2026). Chaque catégorie (météo/vitesse, messages, circulations,
+ * bascule Terminus) est écrite indépendamment : l'échec d'une catégorie ne
+ * doit ni bloquer les autres, ni être annoncé comme un succès (même
+ * principe que « jamais de succès silencieux » déjà en vigueur ailleurs).
+ * Seules les catégories qui ont RÉUSSI sont vidées de leur brouillon.
+ */
+async function publieLeBrouillon(): Promise<boolean> {
+  const echecs: string[] = [];
+
+  if (Object.keys(brouillonParams).length > 0) {
+    try {
+      await provider.saveParams(brouillonParams);
+      brouillonParams = {};
+    } catch (erreur) {
+      echecs.push('météo/vitesse');
+      erreurVersToast(erreur);
+    }
+  }
+
+  if (brouillonMessages.size > 0) {
+    const entrees = [...brouillonMessages.entries()];
+    let ok = true;
+    for (const [id, message] of entrees) {
+      try {
+        if (message === null) {
+          await provider.deleteMessage(id);
+        } else if (estIdMessageBrouillon(id)) {
+          await provider.saveMessage({ ...message, id: '' }); // création : id attribué par la base
+        } else {
+          await provider.saveMessage(message);
+        }
+        brouillonMessages.delete(id);
+      } catch (erreur) {
+        ok = false;
+        erreurVersToast(erreur);
+      }
+    }
+    if (!ok) echecs.push('messages');
+  }
+
+  for (const [date, parNumero] of [...brouillonCirc.entries()]) {
+    try {
+      await provider.saveCirculations([...parNumero.values()]);
+      brouillonCirc.delete(date);
+    } catch (erreur) {
+      echecs.push(`circulations du ${date}`);
+      erreurVersToast(erreur);
+    }
+  }
+
+  for (const [date, flag] of [...brouillonTerminus.entries()]) {
+    try {
+      await provider.setTerminusBellevue(date, flag);
+      brouillonTerminus.delete(date);
+    } catch (erreur) {
+      echecs.push(`terminus Bellevue du ${date}`);
+      erreurVersToast(erreur);
+    }
+  }
+
+  rafraichitMessagesEffectifs();
+  rafraichitParamsEffectifs();
+  rafraichitJourEffectif();
+
+  if (echecs.length > 0) {
+    toast(
+      `⚠ Publication incomplète — resté(e) en attente : ${echecs.join(', ')}. Réessayez « Publier ».`,
+    );
+    $('etat-pub').innerHTML = `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+    return false;
+  }
+  return true;
+}
+
 function initPublication(): void {
   $('btn-apercu').addEventListener('click', () =>
     window.open('ecran.html?gare=saint-gervais', '_blank'),
@@ -2035,15 +2140,22 @@ function initPublication(): void {
       modifs > 0
         ? `${modifs} modification(s) : ${journal.slice(-10).join(' · ')}`
         : 'publication sans modification';
-    void provider
-      .logPublication(resume)
-      .then(() => {
+    void publieLeBrouillon()
+      .then((succes) => {
+        if (!succes) return; // les catégories en échec restent en attente, rien n'est journalisé
         modifs = 0;
         journal.length = 0;
-        referenceMajMs = Date.now(); // nouvelle référence de fraîcheur des écrans
-        void rendreEcrans();
-        $('etat-pub').textContent = 'Tout est publié ✓';
-        toast('✓ Publié — les 6 gares sont synchronisées · consigné dans l’historique');
+        referenceMajMs = Date.now(); // nouvelle référence de fraîcheur des écrans : les écrans reçoivent seulement maintenant
+        return chargeTout()
+          .then(() => {
+            rendreTout();
+            return provider.logPublication(resume);
+          })
+          .then(() => {
+            void rendreEcrans();
+            $('etat-pub').textContent = 'Tout est publié ✓';
+            toast('✓ Publié — les 6 gares sont synchronisées · consigné dans l’historique');
+          });
       })
       .catch(erreurVersToast);
   });
@@ -2066,8 +2178,21 @@ async function demarre(): Promise<void> {
   initPublication();
 
   $('btn-deconnexion').addEventListener('click', () => {
+    // Le brouillon (Bandeau, Circulations) ne vit qu'en mémoire : se
+    // déconnecter sans publier le perdrait silencieusement.
+    if (!rienEnAttente() && !window.confirm(
+      `${modifs} modification(s) en attente de publication seront perdues. Se déconnecter quand même ?`,
+    )) {
+      return;
+    }
     sessionStorage.clear();
     window.location.reload();
+  });
+
+  // Même risque en cas de fermeture d'onglet ou de rechargement accidentel.
+  window.addEventListener('beforeunload', (e) => {
+    if (rienEnAttente()) return;
+    e.preventDefault();
   });
 
   // Session déjà ouverte (Supabase persiste, mock via sessionStorage)
