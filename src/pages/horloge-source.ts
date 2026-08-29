@@ -44,9 +44,11 @@ function secondesParis(): number {
 export function creeSourceHeure(simule: string | null): SourceHeure {
   let decalage = 0;
   let simulee = false;
-  if (simule && /^\d{1,2}:\d{2}$/.test(simule)) {
-    const [h = 0, m = 0] = simule.split(':').map(Number);
-    decalage = h * 3600 + m * 60 - secondesParis();
+  // Les secondes sont acceptées : les états « À QUAI » / « DÉPART IMMINENT »
+  // se jouent sur une fenêtre de 30 s, impossible à viser à la minute près.
+  if (simule && /^\d{1,2}:\d{2}(:\d{2})?$/.test(simule)) {
+    const [h = 0, m = 0, s = 0] = simule.split(':').map(Number);
+    decalage = h * 3600 + m * 60 + s - secondesParis();
     simulee = true;
   }
   return {

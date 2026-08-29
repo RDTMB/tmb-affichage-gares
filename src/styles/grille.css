@@ -523,3 +523,13 @@ body.mode-erreur .erreur-config {
   font-size: 1.9vh;
   color: #fff;
 }
+
+/* Heure du relevé météo (même règle que l'écran des départs) */
+.releve {
+  display: inline-block;
+  margin-left: 0.8vw;
+  font-size: 1.5vh;
+  font-weight: 700;
+  opacity: 0.7;
+  vertical-align: middle;
+}

@@ -10,3 +10,6 @@ public/config.js
 *.log
 .DS_Store
 Thumbs.db
+
+# Etat local de la CLI Supabase (refs de projet, versions) : jamais dans le depot
+supabase/.temp/

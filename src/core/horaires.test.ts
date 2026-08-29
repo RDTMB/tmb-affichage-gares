@@ -273,36 +273,40 @@ describe('suppression', () => {
   });
 });
 
-describe('compteARebours', () => {
+describe('compteARebours — formats numériques', () => {
+  // Les états nommés (à quai / imminent / parti) sont couverts bout en bout
+  // sur les horaires réels dans quai.test.ts. Ici : le formatage des nombres.
+  // On passe une heure d’ARRIVÉE encore à venir pour rester dans la phase de
+  // décompte ; sans elle, la fonction applique la règle des gares d’origine.
   it('affiche « n min » sous l’heure', () => {
-    expect(compteARebours(h('10:45'), h('10:00'))).toMatchObject({
+    expect(compteARebours(h('10:45'), h('10:00'), h('10:40'))).toMatchObject({
       type: 'minutes',
       libelle: '45 min',
     });
-    expect(compteARebours(h('10:02'), h('10:00'))).toMatchObject({ libelle: '2 min' });
+    expect(compteARebours(h('10:02'), h('10:00'), h('10:01'))).toMatchObject({
+      libelle: '2 min',
+    });
   });
 
   it('affiche « n h mm » à partir de 60 min', () => {
-    expect(compteARebours(h('11:30'), h('10:00'))).toMatchObject({
+    expect(compteARebours(h('11:30'), h('10:00'), h('11:25'))).toMatchObject({
       type: 'heures',
       libelle: '1 h 30',
     });
-    expect(compteARebours(h('11:00'), h('10:00'))).toMatchObject({ libelle: '1 h 00' });
-  });
-
-  it('affiche « < 1 min » clignotant de T − 1 min au départ (maquette)', () => {
-    expect(compteARebours(h('10:00'), h('09:59:00'))).toMatchObject({ libelle: '1 min' });
-    expect(compteARebours(h('10:00'), h('09:59:01')).type).toBe('imminent');
-    expect(compteARebours(h('10:00'), h('09:59:30'))).toMatchObject({
-      type: 'imminent',
-      libelle: '< 1 min',
+    expect(compteARebours(h('11:00'), h('10:00'), h('10:55'))).toMatchObject({
+      libelle: '1 h 00',
     });
   });
 
-  it('affiche « À QUAI » du départ jusqu’au retrait de la ligne', () => {
-    expect(compteARebours(h('10:00'), h('10:00:00')).type).toBe('quai');
-    expect(compteARebours(h('10:00'), h('10:00:30')).type).toBe('quai');
-    expect(compteARebours(h('10:00'), h('10:01:59')).type).toBe('quai');
+  it('bascule sur « DÉPART IMMINENT » 30 s avant le départ, pas 60', () => {
+    expect(compteARebours(h('10:00'), h('09:59:29'), h('09:58')).type).toBe('quai');
+    expect(compteARebours(h('10:00'), h('09:59:30'), h('09:58')).type).toBe('imminent');
+  });
+
+  it('« PARTI » seulement APRÈS l’heure de départ', () => {
+    expect(compteARebours(h('10:00'), h('10:00:00'), h('09:58')).type).toBe('imminent');
+    expect(compteARebours(h('10:00'), h('10:00:01'), h('09:58')).type).toBe('parti');
+    expect(compteARebours(h('10:00'), h('10:01:59'), h('09:58')).type).toBe('parti');
   });
 });
 

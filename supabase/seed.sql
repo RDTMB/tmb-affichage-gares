@@ -21,11 +21,13 @@ insert into motifs (fr, en) values
 on conflict (fr) do nothing;
 
 insert into params (cle, valeur) values
-  ('meteo_sommet', '{"t": 9, "ciel_fr": "Dégagé", "ciel_en": "Clear"}'),
+  ('meteo_sommet', '{"t": 9, "ciel_fr": "Dégagé", "ciel_en": "Clear", "heure_releve": "08:00"}'),
   ('veille_nuit',  '{"debut": "21:00", "fin": "06:00"}'),
   ('duree_horaires_s', '20'),
   ('duree_cache_min',  '15'),
-  ('vitesse_ticker_px_s', '90')   -- Lent 60 · Normal 90 · Rapide 130 · Très rapide 180
+  ('vitesse_ticker_px_s', '90'),  -- Lent 60 · Normal 90 · Rapide 130 · Très rapide 180
+  -- Gares d'origine (pas d'heure d'arrivée) : « À QUAI » ce délai avant le départ
+  ('a_quai_origine_s', '300')
 on conflict (cle) do nothing;
 
 -- ⚠ Bibliothèque de messages préenregistrés : exécuter ENSUITE le script

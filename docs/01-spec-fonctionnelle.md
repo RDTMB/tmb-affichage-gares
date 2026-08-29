@@ -158,12 +158,29 @@ Reproduit `maquettes/ecran-gare.html` :
      Bellevue » (taille réduite pour tenir sur une ligne) ; « Vélos
      acceptés / Bikes allowed » si train vélos ; motif en orange si retard.
    - Train : pastille couleur rame + nom + « TRAIN X » (majuscules, sans n°).
-   - Compte à rebours (rendu exact de la maquette) : « n min » (mis en
-     évidence à 5 min ou moins) ; « n h mm » si ≥ 60 min ; « < 1 min »
-     clignotant de T−1 min au départ, puis « À QUAI » clignotant jusqu'au
-     retrait ; ligne retirée 2 min après départ (immédiatement à l'heure
-     théorique pour un supprimé). Les cases du compte à rebours ont TOUTES
-     la même taille (largeur fixe, centré).
+   - Compte à rebours et états de quai. Le nombre affiché est toujours celui
+     du DÉPART, cohérent avec l'heure imprimée à côté : « n min » (mis en
+     évidence à 5 min ou moins), « n h mm » si ≥ 60 min. L'heure d'ARRIVÉE
+     (réelle, retard compris) commande ensuite l'enchaînement :
+     - de l'ARRIVÉE jusqu'à 30 s avant le départ : **« À QUAI / AT
+       PLATFORM »**, fond vert plein, FIXE ;
+     - des 30 dernières secondes jusqu'à l'heure de départ incluse :
+       **« DÉPART IMMINENT / DEPARTING »**, fond rouge charte `#E52A23`,
+       clignotement lent (1 s) — la différence d'animation interdit de le
+       confondre avec l'état précédent ;
+     - après le départ, pendant les 2 min où la ligne reste affichée :
+       **« PARTI / DEPARTED »** en gris éteint.
+
+     En gare d'ORIGINE (Le Fayet en montée, Nid d'Aigle en descente) il n'y a
+     pas d'heure d'arrivée : « À QUAI » commence `a_quai_origine_s` avant le
+     départ (défaut 5 min, réglable dans Paramètres). Un retard décale tout
+     l'enchaînement, puisqu'il s'applique aux heures réelles.
+
+     Ligne retirée 2 min après le départ (immédiatement à l'heure théorique
+     pour un supprimé). Les cases ont TOUTES la même taille — largeur ET
+     hauteur fixes, quel qu'en soit le contenu.
+     _(Correctif validé par l'exploitant le 29/08/2026 : « À QUAI »
+     n'apparaissait qu'APRÈS le départ, donc trop tard pour être utile.)_
    - Statut : À l'heure/On time (vert) · Retard +n min/Delayed (orange,
      heure réelle affichée + « théorique HH:MM ») · Supprimé/Cancelled
      (rouge, heure et destination barrées).
@@ -305,14 +322,33 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    descente. La ligne cochée est distinguée visuellement et porte la mention
    « ne circule pas pour les voyageurs — absent des écrans » (§2.2).
    _(Évolutions validées par l'exploitant le 28/08/2026.)_
-2. **Messages** : liste + formulaire (FR requis ; EN **généré
+2. **Bandeau** (ex-« Messages »), ouvert à TOUS les rôles connectés, caisse
+   comprise — c'est le quotidien de la caisse, elle ne doit pas dépendre
+   d'un administrateur pour corriger une température. Trois blocs dans cet
+   ordre : messages voyageurs, vitesse de défilement, météo au sommet.
+   **Tout s'enregistre à la saisie** (anti-rebond ~800 ms sur les champs
+   texte et numériques), avec le toast habituel et l'entrée à l'historique :
+   l'application ne comporte plus aucun bouton « Enregistrer ».
+   - **Messages** : liste + formulaire (FR requis ; EN **généré
    automatiquement à la saisie** puis modifiable ; cible toutes/gares/
    train, priorité, expiration) ; **bouton Modifier** sur chaque message
    (édition en place) : le formulaire RESTITUE la cible et l'expiration du
    message édité — une correction de texte ne peut donc jamais transformer
    un message ciblé en message diffusé partout ; le formulaire affiché est
-   exactement ce qui sera enregistré (l'expiration peut être retirée en
-   choisissant « jamais ») ; retrait en un clic.
+     exactement ce qui sera enregistré (l'expiration peut être retirée en
+     choisissant « jamais ») ; retrait en un clic. La **bibliothèque de
+     modèles** est proposée à la saisie pour tous les rôles ; son
+     administration (ajouter, modifier, réordonner, activer/désactiver)
+     reste réservée à l'administrateur et lui est seule visible.
+   - **Vitesse du bandeau** : Lent 60 · Normal 90 · Rapide 130 · Très rapide
+     180 px/s, avec aperçu en direct ; appliquée aux écrans sans
+     rechargement.
+   - **Météo au sommet** : température, ciel FR/EN et **heure du relevé**,
+     pré-remplie à l'heure de la modification et modifiable. Elle s'affiche
+     discrètement sur les écrans à côté de la température (« relevé 09:15 ») :
+     une température sans heure ne dit pas si elle date de dix minutes ou de
+     la veille.
+   _(Évolution validée par l'exploitant le 29/08/2026.)_
 3. **Médias** : réglage `duree_horaires_s` ; envoi de fichier (taille max
    20 Mo, formats §2.5) ; par média : durée, **gares ciblées et expiration
    modifiables après création** (aucune gare cochée = toutes), actif,
@@ -333,19 +369,27 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    enregistré nulle part. Cartes (gare, type, en ligne/hors ligne — silence > 150 s,
    réseau fibre/5G, mention alimentation solaire pour le Nid d'Aigle,
    dernière vue, version) ; bouton « Recharger l'écran ».
+   **Veille de nuit** (admin/supervision) : un réglage GLOBAL en tête de
+   l'onglet (heure de début / heure de fin), et sur chaque carte la
+   possibilité de lui donner son propre horaire. La carte indique clairement
+   « Suit le réglage global » ou « Réglage propre 19:00 → 06:30 », et un
+   bouton « Revenir au global » efface la surcharge. Les DEUX heures sont
+   requises pour qu'une surcharge compte — une seule ne décrit pas une
+   fenêtre, et l'écran resterait dans un état indécis. Chaque écran apprend
+   sa veille par son propre signal de vie : la modification est prise en
+   compte sans rechargement, au plus tard au cycle suivant (60 s).
+   _(Évolution validée par l'exploitant le 29/08/2026.)_
 5. **Paramètres** (admin) : Machines (ajouter/renommer/couleur/en service/
    retirer) ; Motifs (liste modifiable) ; Utilisateurs (créer, attribuer un
    rôle, réinitialiser mot de passe, désactiver — v1 : rôles Administrateur
    / Supervision / Caisse ; le détail fin des droits par catégorie et la
    création de nouvelles catégories — Gestionnaire, Lecteur… — sont prévus
    dans le modèle mais seront précisés plus tard avec l'exploitant) ;
-   **Bibliothèque de messages** (ajouter, modifier, supprimer, réordonner,
-   activer/désactiver ; la saisie du français propose la traduction anglaise
-   automatique, modifiable — un modèle sans anglais est signalé) ;
-   Saisons et services (grilles chargées + périodes, veille nuit
-   HH:MM→HH:MM) ; **vitesse du bandeau de messages** (Lent 60 · Normal 90 ·
-   Rapide 130 · Très rapide 180 px/s, avec aperçu en direct ; appliquée aux
-   écrans sans rechargement) ; météo sommet (température + ciel FR/EN).
+   Saisons et services (grilles chargées + périodes) ; délai
+   **« à quai » en gare d'origine** (`a_quai_origine_s`, défaut 5 min, §3).
+   La bibliothèque de modèles est passée dans l'onglet Bandeau, la veille de
+   nuit dans l'onglet Écrans, la vitesse du bandeau et la météo dans
+   l'onglet Bandeau.
 6. **Publication** : les modifications s'appliquent immédiatement ; le
    bouton « Publier » journalise un résumé horodaté (auteur + contenu) dans
    l'historique ; compteur de modifications de la session ; « Aperçu

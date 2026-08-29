@@ -109,7 +109,12 @@ export function meteoHtml(params: Params, grille: Grille): string {
   const meteo = params.meteo_sommet;
   const sommet = grille.gares.find((g) => g.id === 'nid-daigle');
   const lieu = sommet ? `${sommet.nom} · ${sommet.altitude_m.toLocaleString('fr-FR')} m` : '';
-  return `<div class="t">${meteo.t}°C</div>
+  // L'heure du relevé dit au voyageur si la température date de dix minutes
+  // ou de la veille. Discrète : elle ne concurrence pas le chiffre.
+  const releve = meteo.heure_releve
+    ? `<span class="releve">relevé ${echapper(meteo.heure_releve)}</span>`
+    : '';
+  return `<div class="t">${meteo.t}°C${releve}</div>
     <div>${echapper(lieu)}<small>${echapper(`${meteo.ciel_fr} / ${meteo.ciel_en}`)}</small></div>`;
 }
 

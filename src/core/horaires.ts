@@ -16,6 +16,7 @@ import type {
   ResultatTerminusBellevue,
   TrainGrille,
   TrainJour,
+  VeilleNuit,
 } from './types';
 
 /** Rames par défaut à la génération d'un jour (modifiables dans Paramètres → Machines). */
@@ -25,7 +26,15 @@ export const RAMES_DEFAUT = ['Marie', 'Anne', 'Jeanne', 'Marguerite'];
 const RETRAIT_APRES_DEPART_S = 120;
 
 /** « < 1 min » clignotant de T − 1 min au départ (puis « À QUAI » jusqu'au retrait). */
-const SEUIL_A_QUAI_S = 60;
+/** Bascule « DÉPART IMMINENT » : dernières secondes avant le départ. */
+export const SEUIL_IMMINENT_S = 30;
+
+/**
+ * Gare d'ORIGINE (aucune heure d'arrivée) : délai par défaut pendant lequel
+ * la rame est considérée à quai avant son départ. Surchargeable par le
+ * paramètre `a_quai_origine_s`.
+ */
+export const A_QUAI_ORIGINE_DEFAUT_S = 300;
 
 // ---------------------------------------------------------------------------
 // Heures et dates
@@ -436,14 +445,72 @@ export function prochaineArrivee(
  * « n h mm » si ≥ 60 min, « < 1 min » clignotant de T − 1 min au départ,
  * puis « À QUAI » clignotant jusqu'au retrait de la ligne.
  */
-export function compteARebours(depart_s: number, maintenant_s: number): CompteARebours {
+/**
+ * État de la case de compte à rebours pour un passage en gare.
+ *
+ * L'heure d'ARRIVÉE est décisive : sans elle, « À QUAI » ne pouvait
+ * s'afficher qu'APRÈS le départ, c'est-à-dire trop tard pour être utile au
+ * voyageur. Enchaînement :
+ *   avant l’arrivée         → compte à rebours (« n min », « n h mm »)
+ *   arrivée → D − 30 s      → À QUAI
+ *   D − 30 s → départ       → DÉPART IMMINENT
+ *   après le départ         → PARTI (le temps que la ligne reste affichée)
+ *
+ * En gare d'ORIGINE il n'y a pas d'arrivée : « À QUAI » commence
+ * `aQuaiOrigine_s` avant le départ.
+ *
+ * Les heures passées ici sont les heures RÉELLES (retard inclus) : le
+ * décalage est déjà appliqué par passagesPourGare.
+ */
+/**
+ * Fenêtre de veille de nuit. Elle enjambe minuit dans le cas courant
+ * (21:00 → 06:00) : le test doit alors être un OU, pas un ET.
+ */
+export function enVeille(debut: string, fin: string, maintenant_s: number): boolean {
+  const d = heureVersSecondes(debut);
+  const f = heureVersSecondes(fin);
+  if (d === f) return false; // fenêtre vide : jamais en veille
+  return d < f ? maintenant_s >= d && maintenant_s < f : maintenant_s >= d || maintenant_s < f;
+}
+
+/**
+ * Veille applicable à un écran : la sienne si elle est renseignée, sinon
+ * celle de la ligne. Les deux bornes doivent être présentes pour qu'une
+ * surcharge compte — une seule heure ne décrit pas une fenêtre.
+ */
+export function veilleEffective(
+  globale: VeilleNuit,
+  propre?: { debut?: string | null; fin?: string | null } | null,
+): { fenetre: VeilleNuit; propre: boolean } {
+  if (propre?.debut && propre.fin) {
+    return { fenetre: { debut: propre.debut, fin: propre.fin }, propre: true };
+  }
+  return { fenetre: globale, propre: false };
+}
+
+export function compteARebours(
+  depart_s: number,
+  maintenant_s: number,
+  arrivee_s: number | null = null,
+  aQuaiOrigine_s: number = A_QUAI_ORIGINE_DEFAUT_S,
+): CompteARebours {
   const restant = depart_s - maintenant_s;
-  if (restant <= 0) {
-    return { type: 'quai', libelle: 'À QUAI' };
+  // À l'instant exact du départ le train est encore « DÉPART IMMINENT » :
+  // « PARTI » ne commence qu'APRÈS l'heure de départ.
+  if (restant < 0) {
+    return { type: 'parti', libelle: 'PARTI', libelle_en: 'DEPARTED' };
   }
-  if (restant < SEUIL_A_QUAI_S) {
-    return { type: 'imminent', libelle: '< 1 min' };
+  if (restant <= SEUIL_IMMINENT_S) {
+    return { type: 'imminent', libelle: 'DÉPART IMMINENT', libelle_en: 'DEPARTING' };
   }
+  // Début du stationnement à quai : l'arrivée réelle, ou — à l'origine — un
+  // délai forfaitaire avant le départ.
+  const debutQuai = arrivee_s ?? depart_s - Math.max(0, aQuaiOrigine_s);
+  if (maintenant_s >= debutQuai) {
+    return { type: 'quai', libelle: 'À QUAI', libelle_en: 'AT PLATFORM' };
+  }
+  // Le nombre affiché reste celui du DÉPART, cohérent avec l'heure de départ
+  // imprimée juste à côté dans la ligne.
   const minutes = Math.ceil(restant / 60);
   if (minutes >= 60) {
     const heures = Math.floor(minutes / 60);
@@ -453,9 +520,10 @@ export function compteARebours(depart_s: number, maintenant_s: number): CompteAR
       heures,
       minutes: reste,
       libelle: `${heures} h ${String(reste).padStart(2, '0')}`,
+      libelle_en: '',
     };
   }
-  return { type: 'minutes', minutes, libelle: `${minutes} min` };
+  return { type: 'minutes', minutes, libelle: `${minutes} min`, libelle_en: '' };
 }
 
 /**

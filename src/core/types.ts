@@ -191,11 +191,17 @@ export interface ProchaineArrivee {
   provenance: GareId;
 }
 
+/**
+ * État affiché dans la case de compte à rebours. `libelle` est le français,
+ * `libelle_en` l'anglais (vide quand le libellé est un nombre, identique
+ * dans les deux langues) : l'écran compose lui-même les deux lignes.
+ */
 export type CompteARebours =
-  | { type: 'quai'; libelle: string }
-  | { type: 'imminent'; libelle: string }
-  | { type: 'minutes'; minutes: number; libelle: string }
-  | { type: 'heures'; heures: number; minutes: number; libelle: string };
+  | { type: 'quai'; libelle: string; libelle_en: string }
+  | { type: 'imminent'; libelle: string; libelle_en: string }
+  | { type: 'parti'; libelle: string; libelle_en: string }
+  | { type: 'minutes'; minutes: number; libelle: string; libelle_en: string }
+  | { type: 'heures'; heures: number; minutes: number; libelle: string; libelle_en: string };
 
 /** null côté appelant = le service n'est pas terminé ; premierDepart_s null = pas de service demain. */
 export interface FinDeService {
@@ -218,6 +224,12 @@ export interface MeteoSommet {
   t: number;
   ciel_fr: string;
   ciel_en: string;
+  /**
+   * Heure du relevé (« HH:MM »), pré-remplie à l'heure de la modification et
+   * modifiable : une température sans heure ne dit pas si elle date de dix
+   * minutes ou de la veille.
+   */
+  heure_releve?: string;
 }
 
 /** Plage de veille nuit « HH:MM » → « HH:MM » (peut franchir minuit). */
@@ -247,6 +259,12 @@ export interface Params {
   duree_horaires_s: number;
   /** Âge maximal du cache avant écran neutre (défaut 15 min). */
   duree_cache_min: number;
+  /**
+   * Gare d'ORIGINE seulement (Le Fayet en montée, Nid d'Aigle en descente) :
+   * il n'y a pas d'heure d'arrivée, la rame est à quai depuis ce délai avant
+   * le départ (défaut 5 min).
+   */
+  a_quai_origine_s: number;
   /**
    * Vitesse de défilement du bandeau de messages, en PIXELS PAR SECONDE :
    * la durée de l'animation est recalculée selon la longueur du texte, pour
@@ -343,6 +361,13 @@ export interface EcranInfo {
    * entrer dans une boucle de rechargement.
    */
   recharger_demande_at?: string | null;
+  /**
+   * Veille de nuit propre à ce poste (« HH:MM »). Nulles = l'écran suit le
+   * réglage global `params.veille_nuit`. Un écran de quai très exposé peut
+   * ainsi s'éteindre plus tôt que les autres.
+   */
+  veille_debut?: string | null;
+  veille_fin?: string | null;
 }
 
 /** Résultat de la bascule « Terminus Bellevue à partir du TRAIN N ». */

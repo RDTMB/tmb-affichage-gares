@@ -12,15 +12,17 @@ import '../styles/tokens.css';
 import '../styles/ecran.css';
 
 import {
+  A_QUAI_ORIGINE_DEFAUT_S,
   compteARebours,
+  enVeille,
   dateSuivante,
   etatTronconFerme,
   finDeService,
   formatHeure,
-  heureVersSecondes,
   passagesPourGare,
   prochaineArrivee,
   serviceActif,
+  veilleEffective,
 } from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
@@ -145,15 +147,27 @@ function dureeCacheMs(): number {
 // Rendu du tableau (port fidèle du gabarit de la maquette)
 // ---------------------------------------------------------------------------
 
-function chipHtml(depart_s: number, maintenant_s: number): string {
-  const c = compteARebours(depart_s, maintenant_s);
+function chipHtml(p: PassageGare, maintenant_s: number): string {
+  if (p.depart_s === null) return '';
+  const c = compteARebours(
+    p.depart_s,
+    maintenant_s,
+    // Heure d'arrivée RÉELLE (retard inclus) ; null au point d'origine.
+    p.arrivee_s,
+    params?.a_quai_origine_s ?? A_QUAI_ORIGINE_DEFAUT_S,
+  );
   const cls =
-    c.type === 'quai' || c.type === 'imminent'
-      ? ' quai'
+    c.type === 'quai' || c.type === 'imminent' || c.type === 'parti'
+      ? ` ${c.type}`
       : c.type === 'minutes' && c.minutes <= 5
         ? ' proche'
         : '';
-  return `<span class="chip${cls}">${c.libelle}</span>`;
+  // Les états nommés sont bilingues sur deux lignes ; les nombres, identiques
+  // dans les deux langues, restent sur une seule.
+  const contenu = c.libelle_en
+    ? `<b>${echapper(c.libelle)}</b><small>${echapper(c.libelle_en)}</small>`
+    : echapper(c.libelle);
+  return `<span class="chip${cls}">${contenu}</span>`;
 }
 
 function ligneHtml(p: PassageGare, maintenant_s: number): string {
@@ -204,7 +218,7 @@ function ligneHtml(p: PassageGare, maintenant_s: number): string {
       }">${note}</div></div>
     </div>
     <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span><span class="num">TRAIN ${p.numero}</span></div></div>
-    <div>${supprime || p.depart_s === null ? '' : chipHtml(p.depart_s, maintenant_s)}</div>
+    <div>${supprime ? '' : chipHtml(p, maintenant_s)}</div>
     <div class="r-statut">${statut}</div>
   </div>`;
 }
@@ -340,13 +354,16 @@ function majHorloge(maintenant_s: number): void {
   $('date-jour').textContent = heure.dateLongue();
 }
 
-function enVeille(maintenant_s: number): boolean {
+/**
+ * Veille propre à CE poste, rapportée par le signal de vie (donc rafraîchie
+ * au plus tard au cycle suivant, sans rechargement de page).
+ */
+let veillePoste: { debut?: string | null; fin?: string | null } | null = null;
+
+function estEnVeille(maintenant_s: number): boolean {
   if (!params) return false;
-  const debut = heureVersSecondes(params.veille_nuit.debut);
-  const fin = heureVersSecondes(params.veille_nuit.fin);
-  return debut <= fin
-    ? maintenant_s >= debut && maintenant_s < fin
-    : maintenant_s >= debut || maintenant_s < fin;
+  const { fenetre } = veilleEffective(params.veille_nuit, veillePoste);
+  return enVeille(fenetre.debut, fenetre.fin, maintenant_s);
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +385,7 @@ function rendre(gare: GareId): void {
   }
 
   // 1. Veille nuit (écran noir + horloge discrète)
-  const veille = enVeille(maintenant);
+  const veille = estEnVeille(maintenant);
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);
@@ -500,6 +517,11 @@ async function demarre(): Promise<void> {
           // instantané périmé — la supervision doit pouvoir le voir.
           donnees_maj: sync?.derniereSyncISO() ?? null,
           date_affichee: jour?.date ?? null,
+        })
+        .then((veille) => {
+          // Veille propre au poste : appliquée sans rechargement, au plus tard
+          // au cycle de signal de vie suivant.
+          veillePoste = veille;
         })
         .catch(journaliseHeartbeat);
     };

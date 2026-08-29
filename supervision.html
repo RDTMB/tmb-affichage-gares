@@ -38,7 +38,7 @@
 
     <nav class="tabs" id="tabs" style="display: none">
       <button data-t="circulations" class="on">Circulations</button>
-      <button data-t="messages">Messages <span class="badge" id="badge-msgs">0</span></button>
+      <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
       <button data-t="medias">Médias</button>
       <button data-t="ecrans">Écrans</button>
       <button data-t="parametres">Paramètres</button>
@@ -115,7 +115,7 @@
       </section>
 
       <!-- ================= MESSAGES ================= -->
-      <section class="onglet" id="t-messages">
+      <section class="onglet" id="t-bandeau">
         <div class="carte">
           <h2>
             Messages voyageurs
@@ -181,6 +181,91 @@
             </div>
           </div>
         </div>
+        <div class="carte" id="carte-modeles">
+          <h2>
+            Bibliothèque de messages
+            <span class="sous">messages préenregistrés bilingues, proposés à la saisie</span>
+            <div class="actions">
+              <button class="leger" id="btn-modele-ajout">+ Ajouter un modèle</button>
+            </div>
+          </h2>
+          <div class="ajout" id="form-modele" style="display: none">
+            <div class="ligne">
+              <input
+                type="text"
+                id="modele-titre"
+                placeholder="Titre (ex. Vent fort)"
+                style="width: 200px"
+              />
+              <input
+                type="text"
+                id="modele-categorie"
+                placeholder="Catégorie"
+                style="width: 140px"
+              />
+              <input type="number" id="modele-ordre" placeholder="Ordre" style="width: 80px" />
+            </div>
+            <input type="text" id="modele-fr" placeholder="Texte en français…" maxlength="200" />
+            <input
+              type="text"
+              id="modele-en"
+              placeholder="English — proposé automatiquement, modifiable"
+              maxlength="200"
+            />
+            <div class="avert-trad" id="modele-trad-avert" style="display: none">
+              ⚠ Traduction automatique indisponible — saisissez l'anglais, sinon ce modèle ne sera
+              diffusé qu'en français.
+            </div>
+            <div class="ligne">
+              <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
+              <button class="leger" id="btn-modele-annuler">Annuler</button>
+            </div>
+          </div>
+          <div id="modeles"></div>
+          <div class="note">
+            Un modèle désactivé n'est plus proposé à la saisie mais reste conservé. L'ordre
+            détermine la place dans la liste déroulante.
+          </div>
+        </div>
+        <div class="carte">
+          <h2>
+            Vitesse du bandeau
+            <span class="sous">appliquée aux écrans sans rechargement</span>
+          </h2>
+          <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap; align-items: center">
+            <label style="font-weight: 700; color: var(--texte)"
+              >Vitesse de défilement :
+              <select id="vitesse-ticker"></select>
+            </label>
+            <div class="apercu-ticker">
+              <div class="apercu-ticker-inner" id="apercu-ticker"></div>
+            </div>
+          </div>
+        </div>
+        <div class="carte">
+          <h2>
+            Météo au sommet
+            <span class="sous">affichée en haut des écrans, avec l'heure du relevé</span>
+          </h2>
+          <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap; align-items: center">
+            <label style="font-weight: 700; color: var(--texte)"
+              >Température : <input type="number" id="meteo-t" style="width: 68px" />°C</label
+            >
+            <label style="font-weight: 700; color: var(--texte)"
+              >Ciel :
+              <input type="text" id="meteo-fr" placeholder="Ciel (FR)" style="width: 130px" />
+              <input type="text" id="meteo-en" placeholder="Sky (EN)" style="width: 130px" />
+            </label>
+            <label style="font-weight: 700; color: var(--texte)"
+              >Heure du relevé : <input type="time" id="meteo-heure" />
+            </label>
+          </div>
+          <div class="note">
+            Tout s'enregistre à la saisie — aucun bouton à cliquer. L'heure du relevé est
+            pré-remplie à l'heure de la modification et reste modifiable : une température sans
+            heure ne dit pas si elle date de dix minutes ou de la veille.
+          </div>
+        </div>
       </section>
 
       <!-- ================= MÉDIAS ================= -->
@@ -222,6 +307,11 @@
             État des écrans
             <span class="sous">signal de vie toutes les 60 s · commandes à distance</span>
           </h2>
+          <div class="note veille-globale">
+            <b>Veille de nuit</b> — réglage commun à tous les écrans : de
+            <input type="time" id="veille-debut" /> à <input type="time" id="veille-fin" />. Chaque
+            poste peut recevoir son propre horaire sur sa carte ci-dessous.
+          </div>
           <div class="ecrans" id="ecrans"></div>
           <div class="note" id="declaration-ecran">
             <b>Déclarer un poste</b> — un écran ne s'inscrit plus tout seul : il doit être déclaré
@@ -310,72 +400,20 @@
             </div>
           </div>
           <div class="carte">
-            <h2>
-              Bibliothèque de messages
-              <span class="sous">messages préenregistrés bilingues, proposés à la saisie</span>
-              <div class="actions">
-                <button class="leger" id="btn-modele-ajout">+ Ajouter un modèle</button>
-              </div>
-            </h2>
-            <div class="ajout" id="form-modele" style="display: none">
-              <div class="ligne">
-                <input
-                  type="text"
-                  id="modele-titre"
-                  placeholder="Titre (ex. Vent fort)"
-                  style="width: 200px"
-                />
-                <input
-                  type="text"
-                  id="modele-categorie"
-                  placeholder="Catégorie"
-                  style="width: 140px"
-                />
-                <input type="number" id="modele-ordre" placeholder="Ordre" style="width: 80px" />
-              </div>
-              <input type="text" id="modele-fr" placeholder="Texte en français…" maxlength="200" />
-              <input
-                type="text"
-                id="modele-en"
-                placeholder="English — proposé automatiquement, modifiable"
-                maxlength="200"
-              />
-              <div class="avert-trad" id="modele-trad-avert" style="display: none">
-                ⚠ Traduction automatique indisponible — saisissez l'anglais, sinon ce modèle ne sera
-                diffusé qu'en français.
-              </div>
-              <div class="ligne">
-                <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
-                <button class="leger" id="btn-modele-annuler">Annuler</button>
-              </div>
-            </div>
-            <div id="modeles"></div>
-            <div class="note">
-              Un modèle désactivé n'est plus proposé à la saisie mais reste conservé. L'ordre
-              détermine la place dans la liste déroulante.
-            </div>
-          </div>
-          <div class="carte">
-            <h2>Saisons, veille et météo sommet</h2>
+            <h2>Saisons et durées d'affichage</h2>
             <div class="saisons" id="saisons"></div>
             <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
               <label style="font-weight: 700; color: var(--texte)"
-                >Vitesse du bandeau de messages :
-                <select id="vitesse-ticker"></select>
-              </label>
-              <div class="apercu-ticker">
-                <div class="apercu-ticker-inner" id="apercu-ticker"></div>
-              </div>
-              <label style="font-weight: 700; color: var(--texte)"
-                >Veille des écrans : de <input type="time" id="veille-debut" /> à
-                <input type="time" id="veille-fin"
-              /></label>
-              <label style="font-weight: 700; color: var(--texte)"
-                >Météo sommet : <input type="number" id="meteo-t" style="width: 60px" />°C
-                <input type="text" id="meteo-fr" placeholder="Ciel (FR)" style="width: 110px" />
-                <input type="text" id="meteo-en" placeholder="Sky (EN)" style="width: 110px" />
-                <button class="leger" id="btn-meteo">Enregistrer</button></label
+                >« À quai » en gare d'origine :
+                <input type="number" id="a-quai-origine" min="0" max="30" style="width: 62px" />
+                min avant le départ</label
               >
+            </div>
+            <div class="note">
+              Le Fayet en montée et le Nid d'Aigle en descente n'ont pas d'heure d'arrivée : la rame
+              y est annoncée « À QUAI » ce délai avant son départ. Ailleurs, c'est l'heure d'arrivée
+              réelle qui fait foi. La veille des écrans est réglée dans l'onglet Écrans, le bandeau
+              et la météo dans l'onglet Bandeau.
             </div>
           </div>
         </div>

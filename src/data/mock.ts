@@ -7,7 +7,12 @@
 // Paramètre d'URL écran : ?terminus=N (bascule « à partir du TRAIN N »).
 // Connexion mock : le début de l'email fixe le rôle (admin… → admin,
 // caisse… → caisse, sinon supervision) ; mot de passe libre.
-import { appliqueTerminusBellevue, generationJour, serviceActif } from '../core/horaires';
+import {
+  A_QUAI_ORIGINE_DEFAUT_S,
+  appliqueTerminusBellevue,
+  generationJour,
+  serviceActif,
+} from '../core/horaires';
 import type {
   Circulation,
   EcranInfo,
@@ -146,10 +151,11 @@ const MODELES_DEMO: ModeleMessage[] = [
 }));
 
 const PARAMS_DEMO: Params = {
-  meteo_sommet: { t: 9, ciel_fr: 'Dégagé', ciel_en: 'Clear' },
+  meteo_sommet: { t: 9, ciel_fr: 'Dégagé', ciel_en: 'Clear', heure_releve: '08:00' },
   veille_nuit: { debut: '21:00', fin: '06:00' },
   duree_horaires_s: 20,
   duree_cache_min: 15,
+  a_quai_origine_s: A_QUAI_ORIGINE_DEFAUT_S,
   vitesse_ticker_px_s: 90,
   machines: [
     { nom: 'Marie', couleur: '#2E74B5', en_service: true },
@@ -378,7 +384,7 @@ export class MockProvider implements DataProvider {
     };
   }
 
-  async heartbeat(e: EcranInfo): Promise<void> {
+  async heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null> {
     const ecrans = litEcrans();
     const existant = ecrans[e.id];
     // Fidèle à la production : un écran NON DÉCLARÉ ne s'inscrit pas tout
@@ -401,6 +407,10 @@ export class MockProvider implements DataProvider {
     ecritEcrans(ecrans); // clé séparée : ne réveille aucun autre client
     const demande = existant.recharger_demande_at;
     if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
+
+    return existant.veille_debut && existant.veille_fin
+      ? { debut: existant.veille_debut.slice(0, 5), fin: existant.veille_fin.slice(0, 5) }
+      : null;
   }
 
   async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
@@ -644,6 +654,15 @@ export class MockProvider implements DataProvider {
     const ecran = ecrans[id];
     if (!ecran) throw new Error(`Écran ${id} inconnu`);
     ecran.recharger_demande_at = new Date().toISOString();
+    ecritEcrans(ecrans);
+  }
+
+  async saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void> {
+    const ecrans = litEcrans();
+    const ecran = ecrans[id];
+    if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    ecran.veille_debut = debut;
+    ecran.veille_fin = fin;
     ecritEcrans(ecrans);
   }
 

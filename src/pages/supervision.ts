@@ -11,7 +11,13 @@ import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
 import '../styles/supervision.css';
 
-import { formatHeure, heureVersSecondes, monteesSansRetour, serviceActif } from '../core/horaires';
+import {
+  A_QUAI_ORIGINE_DEFAUT_S,
+  formatHeure,
+  heureVersSecondes,
+  monteesSansRetour,
+  serviceActif,
+} from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
   Circulation,
@@ -54,9 +60,10 @@ function $(id: string): HTMLElement {
 }
 
 const ONGLET_PAR_ROLE: Record<Role, string[]> = {
-  admin: ['circulations', 'messages', 'medias', 'ecrans', 'parametres'],
-  supervision: ['circulations', 'messages', 'medias', 'ecrans'],
-  caisse: ['messages'],
+  admin: ['circulations', 'bandeau', 'medias', 'ecrans', 'parametres'],
+  supervision: ['circulations', 'bandeau', 'medias', 'ecrans'],
+  // La caisse tient le bandeau voyageurs : messages, vitesse et météo.
+  caisse: ['bandeau'],
 };
 
 // ---------------------------------------------------------------------------
@@ -191,6 +198,10 @@ function appliqueRole(r: Role): void {
   document.querySelectorAll('.onglet').forEach((o) => {
     o.classList.toggle('on', o.id === `t-${visibles[0]}`);
   });
+  // L'onglet Bandeau est ouvert à tous les rôles, mais la BIBLIOTHÈQUE de
+  // modèles reste administrable par le seul admin (RLS sur modeles_messages) :
+  // mieux vaut masquer les commandes que de les laisser échouer.
+  $('carte-modeles').style.display = r === 'admin' ? '' : 'none';
 }
 
 function initOnglets(): void {
@@ -1318,6 +1329,9 @@ async function rendreEcrans(): Promise<void> {
             libelle: 'hors ligne',
           };
           const ok = etat.statut !== 'hors-ligne';
+          // Une seule des deux bornes ne décrit pas une fenêtre : on ne parle
+          // de réglage propre que si les DEUX sont posées (même règle que le moteur).
+          const propre = Boolean(e.veille_debut && e.veille_fin);
           const vu = e.derniere_vue
             ? `${Math.max(0, Math.round((maintenant - new Date(e.derniere_vue).getTime()) / 1000))} s`
             : '—';
@@ -1335,6 +1349,16 @@ async function rendreEcrans(): Promise<void> {
         <div class="sub">${echapper(e.type ?? 'écran')} · vu il y a ${vu} · données de ${donnees}${
           e.date_affichee ? ` · journée ${echapper(e.date_affichee)}` : ''
         } · ${echapper(e.version_app ?? '—')}</div>
+        <div class="veille-ecran">
+          ${
+            propre
+              ? `<span class="veille-propre">Réglage propre ${echapper(e.veille_debut?.slice(0, 5) ?? '')} → ${echapper(e.veille_fin?.slice(0, 5) ?? '')}</span>`
+              : '<span class="veille-suit">Suit le réglage global</span>'
+          }
+          <input type="time" data-veille-debut="${echapper(e.id)}" value="${echapper(e.veille_debut?.slice(0, 5) ?? '')}" />
+          <input type="time" data-veille-fin="${echapper(e.id)}" value="${echapper(e.veille_fin?.slice(0, 5) ?? '')}" />
+          ${propre ? `<button class="leger" data-veille-global="${echapper(e.id)}">Revenir au global</button>` : ''}
+        </div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
           <button class="leger" data-voir="${echapper(e.gare)}" data-type="${echapper(e.type ?? 'ecran')}">Voir</button>
@@ -1402,9 +1426,68 @@ function initEcrans(): void {
       .catch(erreurVersToast);
   });
 
+  // --- Veille de nuit : réglage global de la ligne ---
+  const sauveVeilleGlobale = (): void => {
+    void provider
+      .saveParams({
+        veille_nuit: {
+          debut: ($('veille-debut') as HTMLInputElement).value || '21:00',
+          fin: ($('veille-fin') as HTMLInputElement).value || '06:00',
+        },
+      })
+      .then(() => rechargeParams())
+      .then(() => {
+        bump('veille de nuit modifiée');
+        toast('Veille de nuit appliquée aux écrans qui suivent le réglage global');
+      })
+      .catch(erreurVersToast);
+  };
+  $('veille-debut').addEventListener('change', sauveVeilleGlobale);
+  $('veille-fin').addEventListener('change', sauveVeilleGlobale);
+
+  // --- Veille propre à un poste ---
+  $('ecrans').addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const id = champ.dataset.veilleDebut ?? champ.dataset.veilleFin;
+    if (!id) return;
+    const lire = (attribut: string): string =>
+      (document.querySelector(`[data-${attribut}="${CSS.escape(id)}"]`) as HTMLInputElement | null)
+        ?.value ?? '';
+    const debut = lire('veille-debut');
+    const fin = lire('veille-fin');
+    // Tant que les deux bornes ne sont pas posées, le poste suit le global :
+    // enregistrer une demi-fenêtre laisserait un écran dans un état indécis.
+    if ((debut && !fin) || (!debut && fin)) {
+      toast('Indiquez les DEUX heures pour donner à cet écran son propre horaire');
+      return;
+    }
+    void provider
+      .saveVeilleEcran(id, debut || null, fin || null)
+      .then(() => rendreEcrans())
+      .then(() => {
+        bump(debut ? `veille ${id} : ${debut} → ${fin}` : `veille ${id} : retour au global`);
+        toast(
+          debut
+            ? `${id} : veille propre ${debut} → ${fin}`
+            : `${id} suit de nouveau le réglage global`,
+        );
+      })
+      .catch(erreurVersToast);
+  });
+
   $('ecrans').addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
-    if (cible.dataset.recharger) {
+    if (cible.dataset.veilleGlobal) {
+      const id = cible.dataset.veilleGlobal;
+      void provider
+        .saveVeilleEcran(id, null, null)
+        .then(() => rendreEcrans())
+        .then(() => {
+          bump(`veille ${id} : retour au global`);
+          toast(`${id} suit de nouveau le réglage global`);
+        })
+        .catch(erreurVersToast);
+    } else if (cible.dataset.recharger) {
       void provider
         .demanderRechargement(cible.dataset.recharger)
         .then(() =>
@@ -1669,12 +1752,39 @@ function rendreParametres(): void {
   }
   majApercuTicker(vitesse);
 
-  // Veille + météo
-  ($('veille-debut') as HTMLInputElement).value = params.veille_nuit.debut;
-  ($('veille-fin') as HTMLInputElement).value = params.veille_nuit.fin;
-  ($('meteo-t') as HTMLInputElement).value = String(params.meteo_sommet.t);
-  ($('meteo-fr') as HTMLInputElement).value = params.meteo_sommet.ciel_fr;
-  ($('meteo-en') as HTMLInputElement).value = params.meteo_sommet.ciel_en;
+  // Veille (onglet Écrans) + météo et délai « à quai »
+  majChampSansGener($('veille-debut') as HTMLInputElement, params.veille_nuit.debut);
+  majChampSansGener($('veille-fin') as HTMLInputElement, params.veille_nuit.fin);
+  majChampSansGener($('meteo-t') as HTMLInputElement, String(params.meteo_sommet.t));
+  majChampSansGener($('meteo-fr') as HTMLInputElement, params.meteo_sommet.ciel_fr);
+  majChampSansGener($('meteo-en') as HTMLInputElement, params.meteo_sommet.ciel_en);
+  majChampSansGener($('meteo-heure') as HTMLInputElement, params.meteo_sommet.heure_releve ?? '');
+  majChampSansGener(
+    $('a-quai-origine') as HTMLInputElement,
+    String(Math.round((params.a_quai_origine_s ?? A_QUAI_ORIGINE_DEFAUT_S) / 60)),
+  );
+}
+
+/**
+ * Ne réécrit un champ que s'il n'est pas en cours de saisie : avec
+ * l'enregistrement automatique, un rafraîchissement pourrait sinon effacer
+ * les caractères que l'agent est en train de taper.
+ */
+function majChampSansGener(champ: HTMLInputElement, valeur: string): void {
+  if (document.activeElement === champ) return;
+  champ.value = valeur;
+}
+
+/**
+ * Anti-rebond : l'enregistrement part une fois la frappe retombée, pas à
+ * chaque caractère (sinon 20 écritures pour « Ensoleillé »).
+ */
+function antiRebond(action: () => void, delai = 800): () => void {
+  let minuteur: number | undefined;
+  return () => {
+    window.clearTimeout(minuteur);
+    minuteur = window.setTimeout(action, delai);
+  };
 }
 
 /** Aperçu en direct : même calcul durée = largeur / vitesse que les écrans. */
@@ -1692,6 +1802,69 @@ function majApercuTicker(vitessePxS: number): void {
 async function rechargeParams(): Promise<void> {
   params = await provider.getParams();
   rendreParametres();
+}
+
+/**
+ * Onglet Bandeau : messages voyageurs, bibliothèque de modèles, vitesse de
+ * défilement et météo du sommet. Tout s'enregistre à la saisie — c'est la
+ * règle du reste de la supervision, et l'unique bouton « Enregistrer » de
+ * l'application (celui de la météo) a disparu avec elle.
+ */
+function initBandeau(): void {
+  $('vitesse-ticker').addEventListener('change', () => {
+    const v = vitesseTickerValide(($('vitesse-ticker') as HTMLSelectElement).value);
+    majApercuTicker(v); // aperçu immédiat, avant même l'enregistrement
+    void provider
+      .saveParams({ vitesse_ticker_px_s: v })
+      .then(() => {
+        if (params) params.vitesse_ticker_px_s = v;
+        bump(`vitesse du bandeau → ${v} px/s`);
+        toast('Vitesse du bandeau appliquée aux écrans (sans rechargement)');
+      })
+      .catch(erreurVersToast);
+  });
+
+  const champMeteo = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
+  const sauveMeteo = (): void => {
+    void provider
+      .saveParams({
+        meteo_sommet: {
+          t: Number(champMeteo('meteo-t').value) || 0,
+          ciel_fr: champMeteo('meteo-fr').value.trim() || '—',
+          ciel_en: champMeteo('meteo-en').value.trim() || '—',
+          heure_releve: champMeteo('meteo-heure').value || undefined,
+        },
+      })
+      .then(() => rechargeParams())
+      .then(() => {
+        bump('météo du sommet mise à jour');
+        toast('Météo du sommet appliquée aux écrans');
+      })
+      .catch(erreurVersToast);
+  };
+  const sauveMeteoDifferee = antiRebond(sauveMeteo);
+
+  // Toute correction de la température ou du ciel horodate le relevé : une
+  // température sans heure ne dit pas si elle date de dix minutes ou de la
+  // veille. L'agent peut ensuite corriger cette heure à la main.
+  const horodateEtSauve = (): void => {
+    champMeteo('meteo-heure').value = heureCourante();
+    sauveMeteoDifferee();
+  };
+  for (const id of ['meteo-t', 'meteo-fr', 'meteo-en']) {
+    $(id).addEventListener('input', horodateEtSauve);
+  }
+  // Le champ d'heure lui-même : enregistrement direct, sans réhorodater.
+  $('meteo-heure').addEventListener('change', sauveMeteo);
+}
+
+/** « HH:MM » à l'instant présent, fuseau Europe/Paris. */
+function heureCourante(): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Paris',
+  }).format(new Date());
 }
 
 function initParametres(): void {
@@ -1814,47 +1987,25 @@ function initParametres(): void {
       .catch(erreurVersToast);
   });
 
-  $('vitesse-ticker').addEventListener('change', () => {
-    const v = vitesseTickerValide(($('vitesse-ticker') as HTMLSelectElement).value);
-    majApercuTicker(v); // aperçu immédiat, avant même l'enregistrement
-    void provider
-      .saveParams({ vitesse_ticker_px_s: v })
-      .then(() => {
-        if (params) params.vitesse_ticker_px_s = v;
-        bump(`vitesse du bandeau → ${v} px/s`);
-        toast('Vitesse du bandeau appliquée aux écrans (sans rechargement)');
-      })
-      .catch(erreurVersToast);
-  });
-
-  const sauveVeille = (): void => {
-    void provider
-      .saveParams({
-        veille_nuit: {
-          debut: ($('veille-debut') as HTMLInputElement).value || '21:00',
-          fin: ($('veille-fin') as HTMLInputElement).value || '06:00',
-        },
-      })
-      .then(() => bump('veille nuit modifiée'))
-      .catch(erreurVersToast);
-  };
-  $('veille-debut').addEventListener('change', sauveVeille);
-  $('veille-fin').addEventListener('change', sauveVeille);
-  $('btn-meteo').addEventListener('click', () => {
-    void provider
-      .saveParams({
-        meteo_sommet: {
-          t: Number(($('meteo-t') as HTMLInputElement).value) || 0,
-          ciel_fr: ($('meteo-fr') as HTMLInputElement).value.trim() || '—',
-          ciel_en: ($('meteo-en') as HTMLInputElement).value.trim() || '—',
-        },
-      })
-      .then(() => {
-        bump('météo sommet mise à jour');
-        toast('Météo sommet mise à jour sur tous les écrans');
-      })
-      .catch(erreurVersToast);
-  });
+  // « À quai » en gare d'origine : exprimé en MINUTES à la saisie, stocké en
+  // secondes comme le reste du moteur.
+  $('a-quai-origine').addEventListener(
+    'input',
+    antiRebond(() => {
+      const minutes = Math.min(
+        30,
+        Math.max(0, Number(($('a-quai-origine') as HTMLInputElement).value) || 0),
+      );
+      void provider
+        .saveParams({ a_quai_origine_s: minutes * 60 })
+        .then(() => rechargeParams())
+        .then(() => {
+          bump(`« à quai » en gare d'origine → ${minutes} min`);
+          toast(`Les gares d'origine annoncent « À QUAI » ${minutes} min avant le départ`);
+        })
+        .catch(erreurVersToast);
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1896,6 +2047,7 @@ async function demarre(): Promise<void> {
   initMedias();
   initEcrans();
   initBibliotheque();
+  initBandeau();
   initParametres();
   initPublication();
 

@@ -4,7 +4,7 @@
 // complet, repli polling 30 s.
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 
-import { generationJour, serviceActif } from '../core/horaires';
+import { A_QUAI_ORIGINE_DEFAUT_S, generationJour, serviceActif } from '../core/horaires';
 import type {
   Circulation,
   EcranInfo,
@@ -247,6 +247,7 @@ export class SupabaseProvider implements DataProvider {
       },
       duree_horaires_s: (valeurs.get('duree_horaires_s') as number) ?? 20,
       duree_cache_min: (valeurs.get('duree_cache_min') as number) ?? 15,
+      a_quai_origine_s: (valeurs.get('a_quai_origine_s') as number) ?? A_QUAI_ORIGINE_DEFAUT_S,
       // Repli et bornes appliqués à l'affichage par vitesseTickerValide()
       vitesse_ticker_px_s: (valeurs.get('vitesse_ticker_px_s') as number) ?? VITESSE_TICKER_DEFAUT,
       machines: (machinesRes.data ?? []) as Machine[],
@@ -284,7 +285,7 @@ export class SupabaseProvider implements DataProvider {
     }, 300);
   }
 
-  async heartbeat(e: EcranInfo): Promise<void> {
+  async heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null> {
     // UPDATE seulement : l'INSERT anonyme est interdit (les postes sont
     // pré-déclarés). Seules les colonnes du signal de vie sont envoyées —
     // les autres sont refusées par les GRANT de colonnes.
@@ -298,9 +299,13 @@ export class SupabaseProvider implements DataProvider {
         reseau: e.reseau ?? null,
       })
       .eq('id', e.id)
-      .select('recharger_demande_at');
+      .select('recharger_demande_at, veille_debut, veille_fin');
     verifie(error);
-    const lignes = (data ?? []) as { recharger_demande_at: string | null }[];
+    const lignes = (data ?? []) as {
+      recharger_demande_at: string | null;
+      veille_debut: string | null;
+      veille_fin: string | null;
+    }[];
     if (lignes.length === 0) {
       throw new Error(
         `Écran « ${e.id} » non déclaré en supervision : son signal de vie n'est enregistré nulle part`,
@@ -310,6 +315,11 @@ export class SupabaseProvider implements DataProvider {
     // fois. Rien à réécrire, donc aucune boucle possible.
     const demande = lignes[0]?.recharger_demande_at;
     if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
+
+    const ligne = lignes[0];
+    return ligne?.veille_debut && ligne.veille_fin
+      ? { debut: ligne.veille_debut.slice(0, 5), fin: ligne.veille_fin.slice(0, 5) }
+      : null;
   }
 
   async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
@@ -603,6 +613,17 @@ export class SupabaseProvider implements DataProvider {
       await this.client
         .from('ecrans')
         .update({ recharger_demande_at: new Date().toISOString() })
+        .eq('id', id)
+        .select(),
+      'écran inconnu',
+    );
+  }
+
+  async saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void> {
+    exigeLignes(
+      await this.client
+        .from('ecrans')
+        .update({ veille_debut: debut, veille_fin: fin })
         .eq('id', id)
         .select(),
       'écran inconnu',

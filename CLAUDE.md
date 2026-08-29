@@ -52,7 +52,9 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   `col-de-voza`, `bellevue`, `nid-daigle`.
 - Toute logique horaire vit dans `src/core/horaires.ts`, PURE et testée
   (Vitest) ; l'heure y est toujours injectée (jamais `Date.now()` dans
-  `src/core/`) pour permettre l'heure simulée `?simule=HH:MM`.
+  `src/core/`) pour permettre l'heure simulée `?simule=HH:MM[:SS]`
+  (les secondes servent aux états « À QUAI » / « DÉPART IMMINENT », qui se
+  jouent sur une fenêtre de 30 s).
 
 ## Règles métier qui piègent (ne pas improviser)
 

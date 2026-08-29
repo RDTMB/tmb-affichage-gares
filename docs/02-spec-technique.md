@@ -144,7 +144,8 @@ create table ecrans (
   donnees_maj timestamptz,         -- dernière synchro RÉUSSIE : les DONNÉES affichées sont fraîches
   date_affichee date,              -- journée d'exploitation montrée
   version_app text, reseau text,
-  recharger_demande_at timestamptz -- ordre de rechargement : un HORODATAGE
+  recharger_demande_at timestamptz, -- ordre de rechargement : un HORODATAGE
+  veille_debut time, veille_fin time -- nulles = suit params.veille_nuit
 );
 -- Postes PRÉ-DÉCLARÉS par un admin (id, gare, type) : plus d'INSERT anonyme.
 -- L'écran ne fait qu'UPDATE, et seulement sur les colonnes du signal de vie :
@@ -180,6 +181,11 @@ create table publications (
   les policies évaluent la fonction AU NOM de l'utilisateur connecté, sans ce
   GRANT toutes les écritures seraient refusées. La fonction de trigger n'a
   besoin d'aucun GRANT (EXECUTE est vérifié à la création du trigger).
+- `params` : DEUX politiques permissives, qui se cumulent en OU. Les clés
+  d'AFFICHAGE (`meteo_sommet`, `vitesse_ticker_px_s` — onglet Bandeau) sont
+  écrivables par admin, supervision ET caisse ; toutes les autres
+  (`veille_nuit`, durées, `a_quai_origine_s`…) restent réservées à l'admin.
+  Ajout sur base existante : `supabase/ajout-bandeau-veille.sql`.
 - `ecrans` : plus aucune écriture anonyme non restreinte. INSERT réservé à
   l'admin (déclaration préalable depuis l'onglet Écrans) ; UPDATE anonyme
   possible mais borné aux colonnes du signal de vie par des GRANT de

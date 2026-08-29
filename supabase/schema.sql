@@ -119,7 +119,10 @@ create table if not exists ecrans (
   -- Ordre de rechargement : un HORODATAGE, pas un booléen. L'écran compare
   -- la demande à sa propre heure de chargement — il n'a donc rien à
   -- réécrire (l'écriture anonyme lui est refusée) et ne boucle jamais.
-  recharger_demande_at timestamptz
+  recharger_demande_at timestamptz,
+  -- Veille de nuit propre à ce poste ; nulles = suit params.veille_nuit
+  veille_debut time,
+  veille_fin time
 );
 
 create table if not exists publications (
@@ -210,7 +213,19 @@ create policy "admin" on machines for all to authenticated
   using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 create policy "admin" on motifs for all to authenticated
   using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
-create policy "admin" on params for all to authenticated
+-- Params : les clés d'AFFICHAGE (onglet Bandeau) sont le quotidien de la
+-- caisse — elle doit pouvoir changer une température sans un administrateur.
+-- Les deux politiques permissives se cumulent en OU.
+create policy "affichage tous roles" on params for all to authenticated
+  using (
+    cle in ('meteo_sommet', 'vitesse_ticker_px_s')
+    and private.role_courant() in ('admin', 'supervision', 'caisse')
+  )
+  with check (
+    cle in ('meteo_sommet', 'vitesse_ticker_px_s')
+    and private.role_courant() in ('admin', 'supervision', 'caisse')
+  );
+create policy "params admin" on params for all to authenticated
   using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 
 -- Bibliothèque de messages : lecture pour tout compte connecté (le

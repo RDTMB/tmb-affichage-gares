@@ -584,3 +584,65 @@ describe('Écrans pré-déclarés (correctifs Security Advisors)', () => {
     expect(await provider.listEcrans()).toHaveLength(0);
   });
 });
+
+describe('Veille propre à un écran et heure du relevé météo', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('un écran neuf suit le réglage global : le signal de vie ne renvoie rien', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
+    const veille = await provider.heartbeat({
+      id: 'bellevue-ecran-1',
+      gare: 'bellevue',
+      type: 'ecran',
+    });
+    expect(veille).toBeNull();
+  });
+
+  it('une veille propre est rendue au poste par son signal de vie', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
+    await provider.saveVeilleEcran('bellevue-ecran-1', '19:00', '06:30');
+
+    const veille = await provider.heartbeat({
+      id: 'bellevue-ecran-1',
+      gare: 'bellevue',
+      type: 'ecran',
+    });
+    expect(veille).toEqual({ debut: '19:00', fin: '06:30' });
+    // …et les autres postes ne sont pas touchés
+    await provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' });
+    expect(
+      await provider.heartbeat({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' }),
+    ).toBeNull();
+  });
+
+  it('le retour au réglage global efface les deux bornes', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'voza-ecran-1', gare: 'col-de-voza', type: 'ecran' });
+    await provider.saveVeilleEcran('voza-ecran-1', '19:00', '06:30');
+    await provider.saveVeilleEcran('voza-ecran-1', null, null);
+    const ecran = (await provider.listEcrans())[0];
+    expect(ecran?.veille_debut).toBeNull();
+    expect(ecran?.veille_fin).toBeNull();
+  });
+
+  it('la veille d’un écran inconnu échoue bruyamment', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await expect(provider.saveVeilleEcran('fantome-1', '19:00', '06:30')).rejects.toThrow(
+      /inconnu/,
+    );
+  });
+
+  it('l’heure du relevé météo est enregistrée et relue', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.saveParams({
+      meteo_sommet: { t: -3, ciel_fr: 'Neige', ciel_en: 'Snow', heure_releve: '09:15' },
+    });
+    const params = await provider.getParams();
+    expect(params.meteo_sommet).toMatchObject({ t: -3, heure_releve: '09:15' });
+  });
+});

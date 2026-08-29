@@ -1224,3 +1224,39 @@ input:disabled {
   border-radius: 6px;
   padding: 5px 9px;
 }
+
+/* Veille de nuit : réglage global en tête de l'onglet Écrans */
+.note.veille-globale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #fbfcfe;
+}
+
+/* Veille propre à un poste, sur sa carte */
+.veille-ecran {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--bord);
+  font-size: 12px;
+}
+
+.veille-ecran input[type='time'] {
+  font-size: 12px;
+  padding: 3px 5px;
+}
+
+.veille-suit {
+  color: var(--sec);
+  font-weight: 700;
+}
+
+.veille-propre {
+  color: #7a6017;
+  font-weight: 900;
+}

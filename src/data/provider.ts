@@ -34,7 +34,11 @@ export interface DataProvider {
   getParams(): Promise<Params>;
   /** Temps réel : rappelé à chaque changement ; retourne la désinscription. */
   onChange(cb: () => void): () => void;
-  heartbeat(e: EcranInfo): Promise<void>;
+  /**
+   * Signal de vie. Retourne la veille propre au poste (null = il suit le
+   * réglage global) : l'écran l'applique sans rechargement.
+   */
+  heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null>;
 
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
@@ -81,6 +85,8 @@ export interface DataProvider {
    */
   declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void>;
   demanderRechargement(id: string): Promise<void>;
+  /** Veille propre à un écran ; `null, null` = retour au réglage global. */
+  saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void>;
   /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
   oublierEcran(id: string): Promise<void>;
 }
