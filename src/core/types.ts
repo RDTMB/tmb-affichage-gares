@@ -261,6 +261,8 @@ export interface PositionTrain {
 // Données d'exploitation hors horaires (messages, médias, paramètres, comptes)
 // ---------------------------------------------------------------------------
 
+export type ModeMedias = 'alterne' | 'serie';
+
 export interface MeteoSommet {
   t: number;
   ciel_fr: string;
@@ -300,6 +302,12 @@ export interface Params {
   duree_horaires_s: number;
   /** Âge maximal du cache avant écran neutre (défaut 15 min). */
   duree_cache_min: number;
+  /**
+   * Enchaînement des médias sur les écrans (défaut 'alterne') :
+   * 'alterne' = retour aux horaires entre chaque média (comportement
+   * historique) ; 'serie' = tous les médias à la suite, puis horaires.
+   */
+  mode_medias: ModeMedias;
   /**
    * Gare d'ORIGINE seulement (Le Fayet en montée, Nid d'Aigle en descente) :
    * il n'y a pas d'heure d'arrivée, la rame est à quai depuis ce délai avant
@@ -350,6 +358,8 @@ export interface Media {
   type: 'image' | 'video';
   url: string;
   duree_s: number;
+  /** Ordre de passage croissant ; `cree_le` départage les égalités. */
+  ordre: number;
   /** null = toutes les gares. */
   gares?: GareId[] | null;
   actif: boolean;
@@ -360,6 +370,12 @@ export interface MediaMeta {
   nom: string;
   type: 'image' | 'video';
   duree_s: number;
+  /**
+   * Optionnel à l'envoi : `uploadMedia()` place d'office un nouveau média en
+   * DERNIER (max des ordres + 10). Ne le renseigner que pour imposer une
+   * position précise.
+   */
+  ordre?: number;
   gares?: GareId[] | null;
   expire_at?: string | null;
 }

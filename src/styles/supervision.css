@@ -1341,3 +1341,67 @@ input:disabled {
   gap: 10px;
   flex-wrap: wrap;
 }
+
+/* Cycle des médias : choix du mode, récapitulatif et ordre de passage */
+.modes-medias {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.modes-medias label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 400;
+  color: var(--sec);
+  cursor: pointer;
+}
+
+.modes-medias b {
+  color: var(--texte);
+}
+
+.media-reglage .ligne-duree {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.recap-cycle {
+  margin-top: 8px;
+  padding: 7px 10px;
+  background: #f2f5f8;
+  border: 1px solid var(--bord);
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sec);
+}
+
+.media .nom .rang {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-right: 7px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--marine);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.ordre-boutons {
+  margin-left: 8px;
+}
+
+.ordre-boutons button {
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+}

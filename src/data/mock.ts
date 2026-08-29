@@ -164,6 +164,7 @@ const PARAMS_DEMO: Params = {
   veille_nuit: { debut: '21:00', fin: '06:00' },
   duree_horaires_s: 20,
   duree_cache_min: 15,
+  mode_medias: 'alterne',
   a_quai_origine_s: A_QUAI_ORIGINE_DEFAUT_S,
   vitesse_ticker_px_s: 90,
   machines: [
@@ -321,6 +322,11 @@ function trace(
   }
 }
 
+/** Médias triés comme en production : ordre de passage, puis ancienneté. */
+function tousLesMedias(): Media[] {
+  return [...litEtat().medias].sort((a, b) => (a.ordre ?? 100) - (b.ordre ?? 100));
+}
+
 function ecritEtat(etat: EtatMock): void {
   localStorage.setItem(CLE_ETAT, JSON.stringify(etat));
   window.dispatchEvent(new Event(EVENEMENT_LOCAL)); // même onglet ; autres onglets : `storage`
@@ -437,12 +443,12 @@ export class MockProvider implements DataProvider {
   }
 
   async getMedias(gare: GareId): Promise<Media[]> {
-    return litEtat().medias.filter((m) => m.actif && (!m.gares || m.gares.includes(gare)));
+    return tousLesMedias().filter((m) => m.actif && (!m.gares || m.gares.includes(gare)));
   }
 
   /** Supervision : TOUS les médias, y compris désactivés. */
   async listMedias(): Promise<Media[]> {
-    return litEtat().medias;
+    return tousLesMedias();
   }
 
   async getParams(): Promise<Params> {
@@ -693,7 +699,15 @@ export class MockProvider implements DataProvider {
       lecteur.readAsDataURL(file);
     });
     const etat = litEtat();
-    etat.medias.push({ ...meta, id: `media-${Date.now()}`, url, actif: true });
+    // Comme en production : un nouveau média passe en DERNIER.
+    const maximum = etat.medias.reduce((haut, m) => Math.max(haut, m.ordre ?? 0), 90);
+    etat.medias.push({
+      ...meta,
+      ordre: meta.ordre ?? maximum + 10,
+      id: `media-${Date.now()}`,
+      url,
+      actif: true,
+    });
     ecritEtat(etat);
   }
 

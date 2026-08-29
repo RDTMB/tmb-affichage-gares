@@ -284,12 +284,24 @@
             </div>
           </h2>
           <div class="media-reglage">
-            Durée d'affichage de l'écran horaires entre deux médias :
-            <input type="number" id="duree-horaires" min="5" max="600" /> secondes
-            <span style="font-weight: 400; color: var(--sec)"
-              >— chaque média a ensuite sa propre durée. Les écrans enchaînent : horaires → média →
-              horaires → média suivant…</span
-            >
+            <div class="modes-medias">
+              <label>
+                <input type="radio" name="mode-medias" id="mode-alterne" value="alterne" />
+                <b>Alterné</b> — horaires → 1 média → horaires → média suivant
+              </label>
+              <label>
+                <input type="radio" name="mode-medias" id="mode-serie" value="serie" />
+                <b>Série</b> — horaires → tous les médias à la suite → horaires
+              </label>
+            </div>
+            <div class="ligne-duree">
+              Durée d'affichage de l'écran horaires :
+              <input type="number" id="duree-horaires" min="5" max="600" /> secondes
+              <span style="font-weight: 400; color: var(--sec)"
+                >— chaque média garde sa propre durée.</span
+              >
+            </div>
+            <div class="recap-cycle" id="recap-cycle">—</div>
           </div>
           <div class="medias" id="medias"></div>
           <div class="note">

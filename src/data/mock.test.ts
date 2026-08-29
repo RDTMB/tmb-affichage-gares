@@ -342,6 +342,7 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
         type: 'image',
         url: '',
         duree_s: 8,
+        ordre: 100,
         actif: true,
       }),
     ).rejects.toThrow(/introuvable/);

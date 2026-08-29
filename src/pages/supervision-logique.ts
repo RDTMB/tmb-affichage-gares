@@ -2,7 +2,9 @@
 // aller-retour entre un message et son formulaire (la cible et l'expiration
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
-import type { Circulation, EcranInfo, GareId, Message, Profil } from '../core/types';
+import { dureeCycleS } from '../core/cycle-medias';
+import type { ModeMedias } from '../core/cycle-medias';
+import type { Circulation, EcranInfo, GareId, Media, Message, Profil } from '../core/types';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
@@ -406,4 +408,36 @@ export function initiales(profil: Pick<Profil, 'nom' | 'email'> | null): string 
   const email = (profil?.email ?? '').trim();
   if (email) return majuscules(email.slice(0, 2));
   return 'AG';
+}
+
+// ============================================================================
+// Récapitulatif du cycle des médias (onglet Médias)
+// ============================================================================
+
+/**
+ * Phrase récapitulative du cycle, recalculée en direct sous le choix de mode.
+ * PURE : elle décrit exactement ce que fera l'écran, durées comprises.
+ */
+export function recapCycle(
+  liste: Pick<Media, 'duree_s'>[],
+  mode: ModeMedias,
+  dureeHorairesS: number,
+): string {
+  if (liste.length === 0) {
+    return `Cycle actuel : horaires en continu — aucun média actif.`;
+  }
+  const etapes: string[] = [`horaires ${dureeHorairesS} s`];
+  if (mode === 'serie') {
+    liste.forEach((m, i) => etapes.push(`média ${i + 1} (${m.duree_s} s)`));
+    etapes.push('horaires');
+  } else {
+    // Alterné : un retour aux horaires entre chaque média.
+    liste.forEach((m, i) => {
+      etapes.push(`média ${i + 1} (${m.duree_s} s)`);
+      if (i < liste.length - 1) etapes.push(`horaires ${dureeHorairesS} s`);
+    });
+    etapes.push('horaires');
+  }
+  const total = dureeCycleS(liste as Media[], mode, dureeHorairesS);
+  return `Cycle actuel : ${etapes.join(' → ')} — ${total} s au total`;
 }

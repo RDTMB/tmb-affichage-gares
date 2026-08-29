@@ -215,7 +215,12 @@ export class SupabaseProvider implements DataProvider {
   }
 
   private async tousLesMedias(): Promise<Media[]> {
-    const { data, error } = await this.client.from('medias').select('*').order('cree_le');
+    // Ordre de passage choisi en supervision ; `cree_le` départage.
+    const { data, error } = await this.client
+      .from('medias')
+      .select('*')
+      .order('ordre')
+      .order('cree_le');
     verifie(error);
     interface LigneMedia extends Omit<Media, 'url'> {
       chemin: string;
@@ -251,6 +256,7 @@ export class SupabaseProvider implements DataProvider {
       },
       duree_horaires_s: (valeurs.get('duree_horaires_s') as number) ?? 20,
       duree_cache_min: (valeurs.get('duree_cache_min') as number) ?? 15,
+      mode_medias: (valeurs.get('mode_medias') as Params['mode_medias']) ?? 'alterne',
       a_quai_origine_s: (valeurs.get('a_quai_origine_s') as number) ?? A_QUAI_ORIGINE_DEFAUT_S,
       // Repli et bornes appliqués à l'affichage par vitesseTickerValide()
       vitesse_ticker_px_s: (valeurs.get('vitesse_ticker_px_s') as number) ?? VITESSE_TICKER_DEFAUT,
@@ -491,7 +497,14 @@ export class SupabaseProvider implements DataProvider {
     const chemin = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
     const stockage = await this.client.storage.from('medias').upload(chemin, file);
     if (stockage.error) throw new Error(stockage.error.message);
-    const { error } = await this.client.from('medias').insert({ ...meta, chemin, actif: true });
+    // Un média fraîchement envoyé passe en DERNIER : l'exploitant remonte
+    // ensuite ce qu'il veut, plutôt que de voir un nouvel arrivant s'insérer
+    // au milieu d'une série réglée.
+    const existants = await this.tousLesMedias();
+    const maximum = existants.reduce((haut, m) => Math.max(haut, m.ordre ?? 0), 90);
+    const { error } = await this.client
+      .from('medias')
+      .insert({ ...meta, ordre: maximum + 10, chemin, actif: true });
     verifie(error);
   }
 

@@ -11,6 +11,8 @@ import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
 import '../styles/ecran.css';
 
+import type { EtatCycle } from '../core/cycle-medias';
+import { etatInitial, prochainEtat } from '../core/cycle-medias';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   compteARebours,
@@ -116,12 +118,11 @@ let dernierEtatSpecial = '';
 let sync: Synchronisation | null = null;
 const majTicker = creeTicker($('ticker'));
 
-// Cycle médias (étape 7)
-let mediaCourant: Media | null = null;
-let mediaFinMs = 0;
-/** Fixée à la première synchro, avec la vraie valeur de duree_horaires_s. */
-let prochaineBasculeMs: number | null = null;
-let indexMedia = 0;
+// Cycle médias : la décision vit dans src/core/cycle-medias.ts (PURE et
+// testée). Ici, uniquement l'état courant et le rendu.
+let etatCycle: EtatCycle | null = null;
+/** Média réellement à l'écran : sert à ne re-rendre que sur changement. */
+let mediaAffiche: Media | null = null;
 
 function nomGare(id: GareId): string {
   return grille?.gares.find((g) => g.id === id)?.nom ?? id;
@@ -296,46 +297,57 @@ function mediasAffichables(): Media[] {
   );
 }
 
-function quitteMedia(): void {
-  if (!mediaCourant) return;
-  mediaCourant = null;
-  document.body.classList.remove('mode-media');
-  $('media-plein').innerHTML = '';
-  indexMedia += 1;
-  prochaineBasculeMs = Date.now() + (params?.duree_horaires_s ?? 20) * 1000;
+/** Veille ou écran neutre : plus de média, et le cycle repart des horaires. */
+function arreteCycleMedias(): void {
+  etatCycle = null;
+  rendMedia(null, null);
 }
 
-function entreMedia(liste: Media[]): void {
-  const media = liste[indexMedia % liste.length];
-  if (!media) return;
-  mediaCourant = media;
-  mediaFinMs = Date.now() + media.duree_s * 1000;
+/** Affiche (ou retire) le média voulu. Rendu seulement : aucune décision. */
+function rendMedia(media: Media | null, suivant: Media | null): void {
+  if (media === mediaAffiche) return; // rien n’a changé
+  mediaAffiche = media;
   const conteneur = $('media-plein');
+  if (!media) {
+    document.body.classList.remove('mode-media');
+    conteneur.innerHTML = '';
+    return;
+  }
   conteneur.innerHTML =
     media.type === 'video'
       ? `<video src="${echapper(media.url)}" muted playsinline autoplay></video>`
       : `<img src="${echapper(media.url)}" alt="" />`;
   document.body.classList.add('mode-media');
-  conteneur.querySelector('video')?.addEventListener('ended', () => quitteMedia());
-  // Préchargement du média suivant (les vidéos sont mises en cache par le SW)
-  const suivant = liste[(indexMedia + 1) % liste.length];
-  if (suivant && suivant.type === 'image') new Image().src = suivant.url;
+  // Une vidéo plus courte que sa durée annoncée rend la main tout de suite.
+  conteneur.querySelector('video')?.addEventListener('ended', () => {
+    if (etatCycle) etatCycle = { ...etatCycle, finMs: heure.maintenantMs() };
+  });
+  // Préchargement du suivant (les vidéos sont mises en cache par le SW)
+  if (suivant?.type === 'image') new Image().src = suivant.url;
 }
 
-/** JAMAIS de média pendant un « À QUAI » ni dans les 2 min avant un départ. */
 function gereMedias(departs: PassageGare[], maintenant_s: number): void {
+  const nowMs = heure.maintenantMs();
+  const dureeHoraires = params?.duree_horaires_s ?? 20;
+  // Règle métier inchangée : jamais de média à quai ni dans les 2 min avant
+  // un départ (docs/01 §3).
   const departProche = departs.some(
     (p) => p.statut !== 'supprime' && p.depart_s !== null && p.depart_s - maintenant_s <= 120,
   );
-  if (mediaCourant) {
-    if (departProche || Date.now() >= mediaFinMs || !mediaCourant.actif) quitteMedia();
-    return;
-  }
-  prochaineBasculeMs ??= Date.now() + (params?.duree_horaires_s ?? 20) * 1000;
   const liste = mediasAffichables();
-  if (liste.length > 0 && !departProche && Date.now() >= prochaineBasculeMs) {
-    entreMedia(liste);
-  }
+  etatCycle ??= etatInitial(dureeHoraires, nowMs);
+  etatCycle = prochainEtat(
+    etatCycle,
+    liste,
+    params?.mode_medias ?? 'alterne',
+    dureeHoraires,
+    departProche,
+    nowMs,
+  );
+  const vue = etatCycle.vue;
+  const courant = vue.vue === 'media' ? (liste[vue.index] ?? null) : null;
+  const suivant = vue.vue === 'media' ? (liste[vue.index + 1] ?? liste[0] ?? null) : null;
+  rendMedia(courant, suivant);
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +400,7 @@ function rendre(gare: GareId): void {
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);
-    quitteMedia();
+    arreteCycleMedias();
     return;
   }
 
@@ -397,7 +409,7 @@ function rendre(gare: GareId): void {
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
-    quitteMedia();
+    arreteCycleMedias();
     return;
   }
 
@@ -405,7 +417,7 @@ function rendre(gare: GareId): void {
 
   if (jour.hors_saison) {
     // Hors saison : aucun service ne circule — jamais de repli sur une autre grille
-    quitteMedia();
+    arreteCycleMedias();
     afficheEtatSpecial(`<h2>Aucun service aujourd'hui</h2>
     <p>Reprise selon le calendrier saisonnier<br>
     <span class="en">No service today — see seasonal timetable</span></p>
@@ -430,7 +442,7 @@ function rendre(gare: GareId): void {
 
   // Les médias ne recouvrent JAMAIS un état spécial (tronçon fermé, fin de
   // service) : l'information voyageur prime.
-  if (tronconFerme || fin) quitteMedia();
+  if (tronconFerme || fin) arreteCycleMedias();
   else gereMedias(departs, maintenant);
 
   rendsArrivee(gare, maintenant);

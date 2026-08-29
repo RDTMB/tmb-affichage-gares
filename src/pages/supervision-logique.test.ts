@@ -13,6 +13,7 @@ import {
   valeursFormulaireMessage,
   initiales,
   libelleUtilisateur,
+  recapCycle,
 } from './supervision-logique';
 
 /** Message ciblé « Motivon », expirant ce soir à 21:00 (heure locale). */
@@ -193,5 +194,31 @@ describe('Identité de l’agent connecté dans l’en-tête', () => {
   it('les espaces superflus ne trompent ni le libellé ni les initiales', () => {
     expect(libelleUtilisateur(profil('   ', 'agent@tmb.fr'))).toBe('agent@tmb.fr');
     expect(initiales(profil('  Thomas   Musset  '))).toBe('TM');
+  });
+});
+
+describe('Récapitulatif du cycle des médias', () => {
+  const m = (duree_s: number) => ({ duree_s });
+
+  it('mode série : horaires, puis les médias à la suite, puis horaires', () => {
+    expect(recapCycle([m(8), m(8), m(12)], 'serie', 20)).toBe(
+      'Cycle actuel : horaires 20 s → média 1 (8 s) → média 2 (8 s) → média 3 (12 s) → horaires — 48 s au total',
+    );
+  });
+
+  it('mode alterné : un retour aux horaires entre chaque média', () => {
+    expect(recapCycle([m(8), m(12)], 'alterne', 20)).toBe(
+      'Cycle actuel : horaires 20 s → média 1 (8 s) → horaires 20 s → média 2 (12 s) → horaires — 60 s au total',
+    );
+  });
+
+  it('un seul média : les deux modes décrivent le même cycle', () => {
+    expect(recapCycle([m(8)], 'serie', 20)).toBe(recapCycle([m(8)], 'alterne', 20));
+  });
+
+  it('aucun média actif : on le dit, plutôt qu’un cycle vide', () => {
+    expect(recapCycle([], 'serie', 20)).toBe(
+      'Cycle actuel : horaires en continu — aucun média actif.',
+    );
   });
 });

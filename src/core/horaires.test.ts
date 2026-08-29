@@ -646,8 +646,8 @@ describe('positionsTrains', () => {
 });
 
 describe('pureté du moteur (aucun accès réseau ni horloge dans src/core/)', () => {
-  it('horaires.ts et types.ts n’utilisent ni Date.now, ni fetch, ni WebSocket', () => {
-    for (const fichier of ['./horaires.ts', './types.ts']) {
+  it('aucun module de src/core/ n’utilise Date.now, fetch ni WebSocket', () => {
+    for (const fichier of ['./horaires.ts', './types.ts', './cycle-medias.ts']) {
       const source = readFileSync(fileURLToPath(new URL(fichier, import.meta.url)), 'utf-8');
       const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       expect(code).not.toMatch(/Date\.now|fetch\(|XMLHttpRequest|WebSocket|navigator\./);

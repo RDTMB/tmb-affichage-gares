@@ -26,6 +26,7 @@ function params(t: number, extra: Partial<Params> = {}): Params {
     veille_nuit: { debut: '21:00', fin: '06:00' },
     duree_horaires_s: 20,
     duree_cache_min: 15,
+    mode_medias: 'alterne',
     vitesse_ticker_px_s: 90,
     a_quai_origine_s: 300,
     machines: [{ nom: 'Marie', couleur: '#2E74B5', en_service: true }],

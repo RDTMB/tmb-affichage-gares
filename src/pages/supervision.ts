@@ -51,6 +51,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
+import type { ModeMedias } from '../core/cycle-medias';
 import type { Ecart, EntreesPubliables, Instantane, JourPubliable } from './etat-publiable';
 import {
   ecartsPublies,
@@ -66,6 +67,7 @@ import {
   actionGroupeeFacultatifs,
   datetimeLocalVersIso,
   identifiantEcranDeclare,
+  recapCycle,
   initiales,
   libelleUtilisateur,
   etatFraicheurEcran,
@@ -1355,9 +1357,20 @@ function initMessages(): void {
 
 function rendreMedias(): void {
   ($('duree-horaires') as HTMLInputElement).value = String(params?.duree_horaires_s ?? 20);
+  const mode = params?.mode_medias ?? 'alterne';
+  ($('mode-alterne') as HTMLInputElement).checked = mode === 'alterne';
+  ($('mode-serie') as HTMLInputElement).checked = mode === 'serie';
+  // Le récapitulatif décrit ce que verront les écrans : seuls les médias
+  // ACTIFS y figurent, dans leur ordre de passage.
+  $('recap-cycle').textContent = recapCycle(
+    medias.filter((m) => m.actif),
+    mode,
+    params?.duree_horaires_s ?? 20,
+  );
+
   $('medias').innerHTML = medias
     .map(
-      (m) => `
+      (m, index) => `
     <div class="media">
       <div class="apercu">${
         m.type === 'video'
@@ -1365,8 +1378,13 @@ function rendreMedias(): void {
           : `<img src="${echapper(m.url)}" alt="" />`
       }</div>
       <div class="infos">
-        <div class="nom">${echapper(m.nom)}</div>
-        <div class="det">${m.type === 'video' ? 'Vidéo (muette)' : 'Image'}</div>
+        <div class="nom"><span class="rang">${index + 1}</span>${echapper(m.nom)}</div>
+        <div class="det">${m.type === 'video' ? 'Vidéo (muette)' : 'Image'}
+          <span class="ordre-boutons">
+            <button class="leger" data-monter="${m.id}" ${index === 0 ? 'disabled' : ''} title="Passer plus tôt dans le cycle">▲</button>
+            <button class="leger" data-descendre="${m.id}" ${index === medias.length - 1 ? 'disabled' : ''} title="Passer plus tard dans le cycle">▼</button>
+          </span>
+        </div>
         <div class="ligne">
           Durée : <input type="number" min="3" max="120" value="${m.duree_s}" data-duree="${m.id}" /> s
           <label class="switch" style="margin-left:auto"><input type="checkbox" ${m.actif ? 'checked' : ''} data-actif="${m.id}" />Actif</label>
@@ -1440,6 +1458,26 @@ function initMedias(): void {
       .catch(erreurVersToast);
     ($('media-fichier') as HTMLInputElement).value = '';
   });
+  // Mode du cycle : même chemin d'enregistrement que la durée horaires.
+  for (const id of ['mode-alterne', 'mode-serie']) {
+    $(id).addEventListener('change', () => {
+      const mode: ModeMedias = ($('mode-serie') as HTMLInputElement).checked ? 'serie' : 'alterne';
+      void provider
+        .saveParams({ mode_medias: mode })
+        .then(() => {
+          if (params) params.mode_medias = mode;
+          rendreMedias(); // le récapitulatif suit immédiatement
+          bumpEnAttente(`mode des médias → ${mode}`);
+          toast(
+            mode === 'serie'
+              ? 'Mode série : les médias s’enchaîneront, puis retour aux horaires'
+              : 'Mode alterné : retour aux horaires entre chaque média',
+          );
+        })
+        .catch(erreurVersToast);
+    });
+  }
+
   $('duree-horaires').addEventListener('change', () => {
     const v = Number(($('duree-horaires') as HTMLInputElement).value) || 20;
     void provider
@@ -1475,11 +1513,41 @@ function initMedias(): void {
       majMedia(id, { gares: toutes || cochees.length === 0 ? null : cochees }, true);
     }
   });
+  /**
+   * Monte ou descend un média : on ÉCHANGE son ordre avec celui du voisin.
+   * Échanger plutôt que renuméroter évite de réécrire toute la liste, donc
+   * de polluer le journal d'exploitation à chaque clic.
+   */
+  const deplaceMedia = (id: string, sens: -1 | 1): void => {
+    const index = medias.findIndex((m) => m.id === id);
+    const courant = medias[index];
+    const voisin = medias[index + sens];
+    if (!courant || !voisin) return; // haut ou bas de liste
+    void Promise.all([
+      provider.saveMedia({ ...courant, ordre: voisin.ordre }),
+      provider.saveMedia({ ...voisin, ordre: courant.ordre }),
+    ])
+      .then(() => rechargeMedias())
+      .then(() => {
+        bump(`ordre des médias : « ${courant.nom} » ${sens < 0 ? 'monté' : 'descendu'}`);
+        toast(`« ${courant.nom} » passe en position ${index + 1 + sens}`);
+      })
+      .catch(erreurVersToast);
+  };
+
   $('medias').addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
     const idJamais = cible.dataset.expireJamais;
     if (idJamais) {
       majMedia(idJamais, { expire_at: null }, true);
+      return;
+    }
+    if (cible.dataset.monter) {
+      deplaceMedia(cible.dataset.monter, -1);
+      return;
+    }
+    if (cible.dataset.descendre) {
+      deplaceMedia(cible.dataset.descendre, 1);
       return;
     }
     const id = cible.dataset.suppr;

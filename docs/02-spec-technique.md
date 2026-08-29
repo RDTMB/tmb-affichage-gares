@@ -116,6 +116,8 @@ create table motifs (
 create table params (cle text primary key, valeur jsonb not null, maj timestamptz default now());
 -- clés : meteo_sommet {t,ciel_fr,ciel_en}, veille_nuit {debut,fin},
 --        duree_horaires_s, duree_cache_min,
+--        mode_medias ("alterne" | "serie" — enchaînement des médias sur les
+--        écrans ; défaut "alterne", cf. docs/01 §2.5),
 --        vitesse_ticker_px_s (défilement des messages, en px/s — la durée de
 --        l'animation vaut largeur du texte / vitesse ; repli 90 si absente
 --        ou aberrante ; niveaux proposés : 60 / 90 / 130 / 180)
@@ -279,7 +281,9 @@ service, passage de minuit, tri multi-sens.
   `public/logos/` (inline base64 au build via Vite pour l'affichage
   hors-ligne).
 - Cycle médias : machine à états horaires⇄média pilotée par `getMedias` +
-  `duree_horaires_s` ; `<video muted playsinline>` ; jamais pendant un
+  `duree_horaires_s` et `mode_medias` ; la DÉCISION vit dans
+  `src/core/cycle-medias.ts` (PUR, heure injectée, testé) — la page ne fait
+  que rendre ; `<video muted playsinline>` ; jamais pendant un
   « À QUAI » ≤ 2 min avant départ ; préchargement du média suivant.
 - Cache hors-ligne : service worker (précache app + logos + polices,
   network-first pour config.js) ; snapshot données en localStorage ; règle

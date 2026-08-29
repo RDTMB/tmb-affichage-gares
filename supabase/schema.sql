@@ -60,6 +60,7 @@ create table if not exists medias (
   type text not null check (type in ('image','video')),
   chemin text not null,                          -- clé Supabase Storage (bucket 'medias')
   duree_s int not null default 8 check (duree_s between 3 and 120),
+  ordre int not null default 100,                -- ordre de passage croissant, cree_le à égalité
   gares text[],                                  -- null = toutes
   actif boolean not null default true,
   expire_at timestamptz,

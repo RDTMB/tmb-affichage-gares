@@ -126,11 +126,29 @@ normalement ensuite. La bibliothèque est gérée dans Paramètres (admin).
 ### 2.5 Médias
 
 Fichiers image (JPG/PNG) ou vidéo muette (MP4 H.264, 16:9 1920×1080
-conseillé). Champs : nom, type, `duree_s`, gares cibles, `actif`,
-`expire_at`. Réglage global : `duree_horaires_s` (temps d'affichage de la
-page horaires entre deux médias, défaut 20 s). Cycle sur les écrans :
-horaires → média 1 → horaires → média 2 → … (uniquement les médias actifs,
-non expirés, ciblant la gare). Sans média actif : horaires en continu.
+conseillé). Champs : nom, type, `duree_s`, `ordre`, gares cibles, `actif`,
+`expire_at`. Réglages globaux : `duree_horaires_s` (temps d'affichage de la
+page horaires, défaut 20 s) et `mode_medias`.
+
+**Deux modes**, au choix de l'exploitant (onglet Médias) :
+- **alterné** (défaut) — horaires → média 1 → horaires → média 2 → … ;
+- **série** — horaires → TOUS les médias à la suite, chacun avec sa propre
+  durée → horaires. Exemple : horaires 20 s → média 1 (8 s) → média 2 (8 s)
+  → média 3 (12 s) → horaires, soit 48 s le tour.
+
+**Ordre de passage** : colonne `ordre` (croissante, `cree_le` départageant),
+réglable par les flèches ▲ / ▼ de l'onglet Médias, qui échangent l'ordre de
+deux voisins. Un média fraîchement envoyé passe en DERNIER, pour ne pas
+s'insérer au milieu d'une série réglée.
+
+Seuls les médias actifs, non expirés et ciblant la gare entrent dans le
+cycle. Sans média actif : horaires en continu.
+
+**Règle prioritaire, inchangée** : un média ne s'affiche JAMAIS pendant un
+« À QUAI » ni dans les 2 minutes avant un départ. Si un départ approche au
+milieu d'une série, l'écran revient immédiatement aux horaires ; la série
+reprend ensuite au média SUIVANT, jamais au premier — sans quoi un média
+placé juste avant un départ serait systématiquement sauté.
 
 ### 2.6 Machines (rames) et motifs
 
@@ -367,7 +385,9 @@ détermine les onglets accessibles (§ docs/02 sécurité).
      une température sans heure ne dit pas si elle date de dix minutes ou de
      la veille.
    _(Évolution validée par l'exploitant le 29/08/2026.)_
-3. **Médias** : réglage `duree_horaires_s` ; envoi de fichier (taille max
+3. **Médias** : choix du mode (alterné / série) et réglage
+   `duree_horaires_s`, avec une ligne récapitulative du cycle recalculée en
+   direct ; ordre de passage réglable par média (▲ / ▼, rang affiché) ; envoi de fichier (taille max
    20 Mo, formats §2.5) ; par média : durée, **gares ciblées et expiration
    modifiables après création** (aucune gare cochée = toutes), actif,
    aperçu, suppression. La liste montre TOUS les médias, y compris ceux

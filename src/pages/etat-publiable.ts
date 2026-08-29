@@ -135,6 +135,7 @@ export function instantanePubliable(e: EntreesPubliables): Instantane {
   for (const m of e.medias) {
     pose(`media|${m.id}|actif`, m.actif);
     pose(`media|${m.id}|duree_s`, m.duree_s);
+    pose(`media|${m.id}|ordre`, m.ordre);
     pose(`media|${m.id}|gares`, [...(m.gares ?? [])].sort().join(','));
     pose(`media|${m.id}|expire_at`, m.expire_at);
   }
@@ -150,6 +151,7 @@ export function instantanePubliable(e: EntreesPubliables): Instantane {
     // température, et « 1 » après un retour à la valeur d'origine.
     pose('params|vitesse_ticker_px_s', e.params.vitesse_ticker_px_s);
     pose('params|duree_horaires_s', e.params.duree_horaires_s);
+    pose('params|mode_medias', e.params.mode_medias);
     pose('params|veille|debut', e.params.veille_nuit.debut);
     pose('params|veille|fin', e.params.veille_nuit.fin);
   }
