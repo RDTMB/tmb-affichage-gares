@@ -533,6 +533,36 @@ export function compteARebours(
  * départ du LENDEMAIN à cette gare (lu dans la grille du lendemain — null si
  * pas de service demain, ex. fin de saison).
  */
+/**
+ * Un train occupe-t-il le quai ? Tant que c'est le cas, l'écran reste sur
+ * les horaires : aucun média ne doit recouvrir l'information voyageur.
+ *
+ * SOURCE UNIQUE de la règle : la fonction appelle compteARebours(), la même
+ * qui décide du libellé de la case. Le cycle médias avait sa propre règle
+ * (« départ dans ≤ 2 min »), ce qui laissait passer les médias pendant les
+ * arrêts longs : à Saint-Gervais, arrivée 09:10 et départ 09:15, l'écran
+ * affichait « À QUAI » ET des médias de 09:10 à 09:13.
+ *
+ * @param preavis_s filet de sécurité pour un passage dont l’heure d’arrivée
+                   est inconnue : on couvre malgré tout les dernières minutes.
+ */
+export function quaiOccupe(
+  passages: PassageGare[],
+  maintenant_s: number,
+  aQuaiOrigine_s: number = A_QUAI_ORIGINE_DEFAUT_S,
+  preavis_s = 120,
+): boolean {
+  return passages.some((p) => {
+    if (p.statut === 'supprime' || p.depart_s === null) return false;
+    const etat = compteARebours(p.depart_s, maintenant_s, p.arrivee_s, aQuaiOrigine_s);
+    if (etat.type === 'quai' || etat.type === 'imminent') return true;
+    // « parti » vaut tant que la ligne reste affichée. La borne évite qu'une
+    // liste non filtrée (train d’il y a trois heures) ne bloque les médias
+    // toute la journée.
+    if (etat.type === 'parti') return maintenant_s - p.depart_s <= RETRAIT_APRES_DEPART_S;
+    return p.depart_s - maintenant_s <= preavis_s;
+  });
+}
 export function finDeService(
   grille: Grille,
   jour: Jour,

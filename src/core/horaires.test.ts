@@ -20,9 +20,10 @@ import {
   passagesPourGare,
   positionsTrains,
   prochaineArrivee,
+  quaiOccupe,
   serviceActif,
 } from './horaires';
-import type { Circulation, Grille, Jour, TrainGrille } from './types';
+import type { Circulation, Grille, Jour, PassageGare, TrainGrille } from './types';
 
 const GRAND = grandServiceJson as unknown as Grille;
 const PETIT = petitServiceJson as unknown as Grille;
@@ -663,5 +664,79 @@ describe('pureté du moteur (aucun accès réseau ni horloge dans src/core/)', (
     appliqueTerminusBellevue(GRAND, jour, 19);
     expect(JSON.stringify(jour)).toBe(jourAvant);
     expect(JSON.stringify(GRAND)).toBe(grilleAvant);
+  });
+});
+
+describe('quaiOccupe — source unique de la règle « pas de média à quai »', () => {
+  // Cas réel de Saint-Gervais : le TRAIN 5 arrive à 09:10:00 et repart à
+  // 09:15:00. L'ancien garde-fou du cycle médias (« départ dans ≤ 2 min »)
+  // ne se déclenchait qu'à 09:13 : de 09:10 à 09:13, l'écran affichait
+  // « À QUAI » ET des médias par-dessus (bug production du 29/08/2026).
+  const jour = jourGrand();
+  const passages = passagesPourGare(GRAND, jour, 'saint-gervais');
+  const t5 = passages.filter((p) => p.numero === 5);
+
+  it('les horaires officiels sont bien ceux du scénario', () => {
+    expect(t5[0]?.arrivee_s).toBe(h('09:10:00'));
+    expect(t5[0]?.depart_s).toBe(h('09:15:00'));
+  });
+
+  it('avant l’arrivée, le quai est libre : les médias peuvent passer', () => {
+    expect(quaiOccupe(t5, h('09:09:00'))).toBe(false);
+  });
+
+  it('DÈS l’heure d’arrivée, le quai est occupé — le cas qui échouait', () => {
+    expect(quaiOccupe(t5, h('09:10:00'))).toBe(true);
+    // …et l'ancienne règle, elle, laissait passer les médias :
+    const ancienneRegle = (t5[0]?.depart_s ?? 0) - h('09:10:00') <= 120;
+    expect(ancienneRegle).toBe(false);
+  });
+
+  it('reste occupé pendant tout l’arrêt, jusqu’au retrait de la ligne', () => {
+    expect(quaiOccupe(t5, h('09:12:00'))).toBe(true); // À QUAI
+    expect(quaiOccupe(t5, h('09:14:45'))).toBe(true); // DÉPART IMMINENT
+    expect(quaiOccupe(t5, h('09:15:30'))).toBe(true); // PARTI, encore affiché
+  });
+
+  it('une fois le train retiré de l’affichage, les médias reprennent', () => {
+    const restants = passagesPourGare(GRAND, jour, 'saint-gervais', h('09:17:30'));
+    expect(restants.some((p) => p.numero === 5)).toBe(false);
+    expect(
+      quaiOccupe(
+        restants.filter((p) => p.numero === 5),
+        h('09:17:30'),
+      ),
+    ).toBe(false);
+  });
+
+  it('gare d’origine (aucune arrivée) : occupé dès D − 5 min', () => {
+    const auFayet = passagesPourGare(GRAND, jour, 'le-fayet').filter((p) => p.numero === 5);
+    expect(auFayet[0]?.arrivee_s).toBeNull();
+    expect(auFayet[0]?.depart_s).toBe(h('09:00:00'));
+    expect(quaiOccupe(auFayet, h('08:54:59'))).toBe(false);
+    expect(quaiOccupe(auFayet, h('08:55:00'))).toBe(true);
+    // Le délai est celui du paramètre, pas une constante figée
+    expect(quaiOccupe(auFayet, h('08:50:00'), 600)).toBe(true);
+  });
+
+  it('un train supprimé n’occupe jamais le quai', () => {
+    const supprime = t5.map((p) => ({ ...p, statut: 'supprime' as const }));
+    expect(quaiOccupe(supprime, h('09:12:00'))).toBe(false);
+  });
+
+  it('aucun passage : quai libre', () => {
+    expect(quaiOccupe([], h('09:12:00'))).toBe(false);
+  });
+
+  it('le préavis couvre un passage dont l’heure d’arrivée est inconnue', () => {
+    const sansArrivee = [{ ...(t5[0] as PassageGare), arrivee_s: null }];
+    // Sans arrivée ET sans délai d'origine, seul le préavis joue
+    expect(quaiOccupe(sansArrivee, h('09:12:00'), 0)).toBe(false);
+    expect(quaiOccupe(sansArrivee, h('09:13:00'), 0)).toBe(true); // D − 2 min
+  });
+
+  it('un train parti depuis longtemps ne bloque pas les médias', () => {
+    // Liste non filtrée : le garde-fou borne « parti » au retrait de la ligne
+    expect(quaiOccupe(t5, h('11:00:00'))).toBe(false);
   });
 });

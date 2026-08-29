@@ -144,8 +144,15 @@ s'insérer au milieu d'une série réglée.
 Seuls les médias actifs, non expirés et ciblant la gare entrent dans le
 cycle. Sans média actif : horaires en continu.
 
-**Règle prioritaire, inchangée** : un média ne s'affiche JAMAIS pendant un
-« À QUAI » ni dans les 2 minutes avant un départ. Si un départ approche au
+**Règle prioritaire** : un média ne s'affiche JAMAIS tant qu'un train
+occupe le quai — de son heure d'ARRIVÉE jusqu'à son retrait de l'affichage —
+ni dans les 2 minutes avant un départ. Cette règle et le libellé de la case
+de compte à rebours partagent la MÊME fonction du moteur (`quaiOccupe`,
+qui appelle `compteARebours`) : le cycle médias avait sa propre règle
+(« départ dans ≤ 2 min »), qui laissait passer les médias pendant les arrêts
+longs — à Saint-Gervais, arrêt de 5 min, l'écran affichait « À QUAI » ET des
+médias de 09:10 à 09:13.
+_(Bug de production corrigé le 29/08/2026.)_ Si un départ approche au
 milieu d'une série, l'écran revient immédiatement aux horaires ; la série
 reprend ensuite au média SUIVANT, jamais au premier — sans quoi un média
 placé juste avant un départ serait systématiquement sauté.

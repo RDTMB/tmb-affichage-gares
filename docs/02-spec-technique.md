@@ -283,7 +283,9 @@ service, passage de minuit, tri multi-sens.
 - Cycle médias : machine à états horaires⇄média pilotée par `getMedias` +
   `duree_horaires_s` et `mode_medias` ; la DÉCISION vit dans
   `src/core/cycle-medias.ts` (PUR, heure injectée, testé) — la page ne fait
-  que rendre ; `<video muted playsinline>` ; jamais pendant un
+  que rendre ; `<video muted playsinline>` ; la condition de blocage est
+  `quaiOccupe()` (src/core/horaires.ts), partagee avec la case de compte a
+  rebours — jamais deux regles concurrentes ; jamais pendant un
   « À QUAI » ≤ 2 min avant départ ; préchargement du média suivant.
 - Cache hors-ligne : service worker (précache app + logos + polices,
   network-first pour config.js) ; snapshot données en localStorage ; règle

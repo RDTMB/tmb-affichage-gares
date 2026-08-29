@@ -25,6 +25,7 @@ import {
   prochaineArrivee,
   serviceActif,
   veilleEffective,
+  quaiOccupe,
 } from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
@@ -329,10 +330,15 @@ function rendMedia(media: Media | null, suivant: Media | null): void {
 function gereMedias(departs: PassageGare[], maintenant_s: number): void {
   const nowMs = heure.maintenantMs();
   const dureeHoraires = params?.duree_horaires_s ?? 20;
-  // Règle métier inchangée : jamais de média à quai ni dans les 2 min avant
-  // un départ (docs/01 §3).
-  const departProche = departs.some(
-    (p) => p.statut !== 'supprime' && p.depart_s !== null && p.depart_s - maintenant_s <= 120,
+  // JAMAIS de média tant qu'un train occupe le quai (de son arrivée jusqu'à
+  // son retrait de l'affichage), ni dans les 2 min avant un départ
+  // (docs/01 §3). La règle vit dans le moteur, avec celle de la case de
+  // compte à rebours : deux sources divergentes laissaient passer les médias
+  // pendant les arrêts longs.
+  const departProche = quaiOccupe(
+    departs,
+    maintenant_s,
+    params?.a_quai_origine_s ?? A_QUAI_ORIGINE_DEFAUT_S,
   );
   const liste = mediasAffichables();
   etatCycle ??= etatInitial(dureeHoraires, nowMs);
