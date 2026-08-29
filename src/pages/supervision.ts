@@ -30,6 +30,7 @@ import type {
   Message,
   ModeleMessage,
   Params,
+  Profil,
   Role,
   TrainGrille,
   User,
@@ -65,6 +66,8 @@ import {
   actionGroupeeFacultatifs,
   datetimeLocalVersIso,
   identifiantEcranDeclare,
+  initiales,
+  libelleUtilisateur,
   etatFraicheurEcran,
   propositionAppariementFacultatif,
   resumeApplication,
@@ -95,7 +98,8 @@ const ONGLET_PAR_ROLE: Record<Role, string[]> = {
 // ---------------------------------------------------------------------------
 
 let role: Role | null = null;
-let emailConnecte = '';
+/** Profil de l'agent connecté, lu en base : survit à la réouverture d'un onglet. */
+let profilConnecte: Profil | null = null;
 let grilles: Grille[] = [];
 let jour: Jour | null = null;
 let dateSel = dateISO(0);
@@ -429,8 +433,9 @@ async function apresConnexion(): Promise<void> {
   $('contenu').style.display = '';
   $('barre-publier').style.display = '';
   $('bloc-user').style.display = '';
-  $('user-nom').textContent = emailConnecte;
-  $('avatar').textContent = emailConnecte.slice(0, 2).toUpperCase();
+  $('user-nom').textContent = libelleUtilisateur(profilConnecte);
+  $('user-nom').title = profilConnecte?.email ?? '';
+  $('avatar').textContent = initiales(profilConnecte);
   const tag = $('user-role');
   tag.textContent = (role ?? '').toUpperCase();
   tag.className = `role-tag role-${role}`;
@@ -2482,8 +2487,10 @@ async function demarre(): Promise<void> {
 
   // Session déjà ouverte (Supabase persiste, mock via sessionStorage)
   try {
-    role = await provider.getRole();
-    emailConnecte = sessionStorage.getItem('tmb-email') ?? 'agent connecté';
+    // Le profil vient de la base, pas de l'onglet : un onglet rouvert
+    // affichait « agent connecté » puisque la clé de session lui manquait.
+    profilConnecte = await provider.getProfil();
+    role = profilConnecte.role;
     if (role === 'admin' || role === 'supervision' || role === 'caisse') {
       utilisateurs = await provider.listUsers().catch(() => []);
       await apresConnexion();
@@ -2500,10 +2507,9 @@ async function demarre(): Promise<void> {
     $('login-erreur').textContent = '';
     void provider
       .signIn(email, mdp)
-      .then(async (session) => {
-        emailConnecte = session.email;
-        sessionStorage.setItem('tmb-email', session.email);
-        role = await provider.getRole();
+      .then(async () => {
+        profilConnecte = await provider.getProfil();
+        role = profilConnecte.role;
         utilisateurs = await provider.listUsers().catch(() => []);
         await apresConnexion();
       })

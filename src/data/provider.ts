@@ -15,6 +15,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  Profil,
   Params,
   Role,
   Session,
@@ -45,6 +46,8 @@ export interface DataProvider {
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
   getRole(): Promise<Role>;
+  /** Profil complet de l'agent connecté ; lève si la session ou le profil manque. */
+  getProfil(): Promise<Profil>;
   genererJour(date: string): Promise<void>;
   /** Supprime les circulations de la date et régénère depuis la grille en vigueur. */
   reinitialiseJour(date: string): Promise<void>;

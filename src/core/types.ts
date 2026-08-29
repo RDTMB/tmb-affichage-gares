@@ -232,6 +232,18 @@ export interface FiltreJournal {
   depuis?: number;
 }
 
+/**
+ * Profil de l'agent connecté. Le NOM vient de la table `profils` : c'est
+ * lui qu'affiche l'en-tête de la supervision, jamais un repli déduit de
+ * l'onglet courant.
+ */
+export interface Profil {
+  user_id: string;
+  nom: string;
+  email: string;
+  role: Role;
+}
+
 /** null côté appelant = le service n'est pas terminé ; premierDepart_s null = pas de service demain. */
 export interface FinDeService {
   premierDepart_s: number | null;

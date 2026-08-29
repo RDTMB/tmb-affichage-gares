@@ -2,7 +2,7 @@
 // aller-retour entre un message et son formulaire (la cible et l'expiration
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
-import type { Circulation, EcranInfo, GareId, Message } from '../core/types';
+import type { Circulation, EcranInfo, GareId, Message, Profil } from '../core/types';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
@@ -371,4 +371,39 @@ export function propositionAppariementFacultatif(
       `${actif ? 'Activer' : 'Désactiver'} aussi ${quoi} (TRAIN ${numeroApparie}) ?\n` +
       `${motif}\nCliquez Annuler pour ne changer que le TRAIN ${numero}.`,
   };
+}
+
+// ============================================================================
+// Identité de l'agent connecté (en-tête de la supervision)
+// ============================================================================
+
+/**
+ * Ce qu'affiche l'en-tête : le nom du profil, à défaut l'e-mail, à défaut une
+ * mention neutre. Jamais de repli déduit de l'onglet courant — c'est ce qui
+ * faisait afficher « agent connecté » dès qu'un onglet était rouvert.
+ */
+export function libelleUtilisateur(profil: Pick<Profil, 'nom' | 'email'> | null): string {
+  const nom = profil?.nom?.trim();
+  if (nom) return nom;
+  const email = profil?.email?.trim();
+  if (email) return email;
+  return 'Agent connecté';
+}
+
+/**
+ * Initiales de la pastille : les premières lettres des deux premiers mots du
+ * nom (« Thomas Musset » → « TM »), sinon les deux premières lettres du seul
+ * mot, sinon celles de l'e-mail, sinon « AG ». Majuscules, accents conservés
+ * (« Élodie Perrin » → « ÉP »).
+ */
+export function initiales(profil: Pick<Profil, 'nom' | 'email'> | null): string {
+  const majuscules = (texte: string): string => texte.toLocaleUpperCase('fr');
+  const mots = (profil?.nom ?? '').trim().split(/\s+/).filter(Boolean);
+  if (mots.length >= 2) {
+    return majuscules((mots[0]?.charAt(0) ?? '') + (mots[1]?.charAt(0) ?? ''));
+  }
+  if (mots.length === 1) return majuscules((mots[0] ?? '').slice(0, 2));
+  const email = (profil?.email ?? '').trim();
+  if (email) return majuscules(email.slice(0, 2));
+  return 'AG';
 }

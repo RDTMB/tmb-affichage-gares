@@ -25,6 +25,7 @@ import type {
   MediaMeta,
   ModeleMessage,
   Motif,
+  Profil,
   Params,
   Role,
   Session,
@@ -519,9 +520,25 @@ export class MockProvider implements DataProvider {
   }
 
   async getRole(): Promise<Role> {
+    return (await this.getProfil()).role;
+  }
+
+  async getProfil(): Promise<Profil> {
     const brut = sessionStorage.getItem(CLE_SESSION);
     if (!brut) throw new Error('Non connecté');
-    return (JSON.parse(brut) as { role: Role }).role;
+    const session = JSON.parse(brut) as { email: string; role: Role };
+    return {
+      user_id: `mock-${session.role}`,
+      // Faute d'annuaire, la démo déduit un nom présentable de l'e-mail :
+      // « marie-claire.dupond@… » → « Marie Claire Dupond ».
+      nom: (session.email.split('@')[0] ?? '')
+        .split(/[.-_]+/)
+        .filter(Boolean)
+        .map((mot) => mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1))
+        .join(' '),
+      email: session.email,
+      role: session.role,
+    };
   }
 
   async genererJour(date: string): Promise<void> {

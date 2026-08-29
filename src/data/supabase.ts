@@ -17,6 +17,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  Profil,
   Params,
   Role,
   Session,
@@ -170,6 +171,7 @@ export class SupabaseProvider implements DataProvider {
 
   /** Rôle mémorisé pour éviter une requête à chaque getJour. */
   private roleCache: Role | null = null;
+  private profilCache: Profil | null = null;
 
   /** true si une session ouverte peut écrire l'exploitation (admin ou supervision). */
   private async peutEcrireExploitation(): Promise<boolean> {
@@ -339,21 +341,35 @@ export class SupabaseProvider implements DataProvider {
   async signIn(email: string, mdp: string): Promise<Session> {
     const { data, error } = await this.client.auth.signInWithPassword({ email, password: mdp });
     if (error || !data.user) throw new Error(error?.message ?? 'Connexion refusée');
+    this.profilCache = null; // le profil du compte précédent ne vaut plus rien
     return { user_id: data.user.id, email: data.user.email ?? email };
   }
 
-  async getRole(): Promise<Role> {
+  async getProfil(): Promise<Profil> {
+    if (this.profilCache) return this.profilCache;
     const { data: auth } = await this.client.auth.getUser();
     if (!auth.user) throw new Error('Session expirée');
     const { data, error } = await this.client
       .from('profils')
-      .select('role, actif')
+      .select('nom, email, role, actif')
       .eq('user_id', auth.user.id)
       .maybeSingle();
     verifie(error);
-    const profil = data as { role: Role; actif: boolean } | null;
+    const profil = data as { nom: string; email: string; role: Role; actif: boolean } | null;
     if (!profil?.actif) throw new Error('Profil inactif ou absent');
-    return profil.role;
+    this.profilCache = {
+      user_id: auth.user.id,
+      nom: profil.nom,
+      // L'e-mail du profil fait foi ; celui du compte Auth n'est qu'un repli.
+      email: profil.email ?? auth.user.email ?? '',
+      role: profil.role,
+    };
+    return this.profilCache;
+  }
+
+  /** Le rôle vient du profil : une seule requête, une seule source de vérité. */
+  async getRole(): Promise<Role> {
+    return (await this.getProfil()).role;
   }
 
   async genererJour(date: string): Promise<void> {

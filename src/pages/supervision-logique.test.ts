@@ -11,6 +11,8 @@ import {
   messageDepuisFormulaire,
   traductionLocale,
   valeursFormulaireMessage,
+  initiales,
+  libelleUtilisateur,
 } from './supervision-logique';
 
 /** Message ciblé « Motivon », expirant ce soir à 21:00 (heure locale). */
@@ -154,5 +156,42 @@ describe('Identifiant d’écran : le type de page en fait partie', () => {
 
   it('le paramètre ?ecran= reste prioritaire', () => {
     expect(identifiantEcran('ecran', 'le-fayet', 'fayet-quai-nord')).toBe('fayet-quai-nord');
+  });
+});
+
+describe('Identité de l’agent connecté dans l’en-tête', () => {
+  const profil = (nom: string, email = ''): { nom: string; email: string } => ({ nom, email });
+
+  it('affiche le nom du profil quand il existe', () => {
+    expect(libelleUtilisateur(profil('Thomas Musset', 'thomas@tmb.fr'))).toBe('Thomas Musset');
+    expect(initiales(profil('Thomas Musset', 'thomas@tmb.fr'))).toBe('TM');
+  });
+
+  it('un nom d’un seul mot donne ses deux premières lettres', () => {
+    expect(libelleUtilisateur(profil('Marie'))).toBe('Marie');
+    expect(initiales(profil('Marie'))).toBe('MA');
+  });
+
+  it('sans nom, l’e-mail sert de libellé et d’initiales', () => {
+    const p = profil('', 'caisse@tramwaydumontblanc.fr');
+    expect(libelleUtilisateur(p)).toBe('caisse@tramwaydumontblanc.fr');
+    expect(initiales(p)).toBe('CA');
+  });
+
+  it('ni nom ni e-mail : mention neutre plutôt qu’une chaîne vide', () => {
+    expect(libelleUtilisateur(profil('', ''))).toBe('Agent connecté');
+    expect(initiales(profil('', ''))).toBe('AG');
+    expect(libelleUtilisateur(null)).toBe('Agent connecté');
+    expect(initiales(null)).toBe('AG');
+  });
+
+  it('les accents sont conservés à la mise en majuscules', () => {
+    expect(initiales(profil('Élodie Perrin'))).toBe('ÉP');
+    expect(initiales(profil('Éric'))).toBe('ÉR');
+  });
+
+  it('les espaces superflus ne trompent ni le libellé ni les initiales', () => {
+    expect(libelleUtilisateur(profil('   ', 'agent@tmb.fr'))).toBe('agent@tmb.fr');
+    expect(initiales(profil('  Thomas   Musset  '))).toBe('TM');
   });
 });
