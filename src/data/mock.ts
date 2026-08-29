@@ -205,7 +205,7 @@ interface EtatMock {
   motifs: Motif[] | null;
   modeles: ModeleMessage[] | null;
   medias: Media[];
-  ecrans: Record<string, EcranInfo & { recharger?: boolean }>;
+  ecrans: Record<string, EcranInfo>;
   publications: { quand: string; qui: string; resume: string }[];
   utilisateurs: User[] | null;
 }
@@ -236,7 +236,7 @@ function ecritEtat(etat: EtatMock): void {
   window.dispatchEvent(new Event(EVENEMENT_LOCAL)); // même onglet ; autres onglets : `storage`
 }
 
-type EcransMock = Record<string, EcranInfo & { recharger?: boolean }>;
+type EcransMock = Record<string, EcranInfo>;
 
 function litEcrans(): EcransMock {
   try {
@@ -265,6 +265,8 @@ function dateAujourdhuiParis(): string {
 }
 
 export class MockProvider implements DataProvider {
+  /** Heure de chargement de CETTE page : référence de l’ordre de rechargement. */
+  private readonly chargeeA = Date.now();
   private grilles: Promise<Grille[]> | null = null;
 
   constructor(private readonly options: OptionsMock = {}) {}
@@ -379,15 +381,33 @@ export class MockProvider implements DataProvider {
   async heartbeat(e: EcranInfo): Promise<void> {
     const ecrans = litEcrans();
     const existant = ecrans[e.id];
+    // Fidèle à la production : un écran NON DÉCLARÉ ne s'inscrit pas tout
+    // seul, son signal de vie ne touche aucune ligne.
+    if (!existant) {
+      throw new Error(
+        `Écran « ${e.id} » non déclaré en supervision : son signal de vie n'est enregistré nulle part`,
+      );
+    }
     ecrans[e.id] = {
-      ...e,
+      ...existant,
+      // Seules les colonnes du signal de vie : id, gare et type viennent de
+      // la déclaration et ne sont pas réécrits par l'écran.
       derniere_vue: new Date().toISOString(),
       donnees_maj: e.donnees_maj ?? null,
       date_affichee: e.date_affichee ?? null,
-      recharger: false,
+      version_app: e.version_app ?? null,
+      reseau: e.reseau ?? null,
     };
     ecritEcrans(ecrans); // clé séparée : ne réveille aucun autre client
-    if (existant?.recharger) window.location.reload();
+    const demande = existant.recharger_demande_at;
+    if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
+  }
+
+  async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
+    const ecrans = litEcrans();
+    if (ecrans[e.id]) throw new Error(`Écran ${e.id} déjà déclaré`);
+    ecrans[e.id] = { id: e.id, gare: e.gare, type: e.type ?? null };
+    ecritEcrans(ecrans);
   }
 
   // -------------------------------------------------------------- supervision
@@ -622,8 +642,8 @@ export class MockProvider implements DataProvider {
   async demanderRechargement(id: string): Promise<void> {
     const ecrans = litEcrans();
     const ecran = ecrans[id];
-    if (!ecran) throw new Error(`Écran ${id} inconnu (aucun signal de vie reçu)`);
-    ecran.recharger = true;
+    if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    ecran.recharger_demande_at = new Date().toISOString();
     ecritEcrans(ecrans);
   }
 

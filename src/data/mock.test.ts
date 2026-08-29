@@ -262,6 +262,10 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
     });
 
     // 6 écrans × 2 battements : aucune notification ne doit partir
+    for (const gare of ORDRE_GARES) {
+      await provider.declareEcran({ id: `${gare}-ecran-1`, gare, type: 'ecran' });
+    }
+    notifications = 0; // la déclaration, elle, est une écriture d'exploitation
     for (let tour = 0; tour < 2; tour += 1) {
       for (const gare of ORDRE_GARES) {
         await provider.heartbeat({ id: `${gare}-ecran-1`, gare, type: 'ecran' });
@@ -283,6 +287,8 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
 
   it('les écrans restent distincts par type et « Recharger » vise le bon poste', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'le-fayet-ecran-1', gare: 'le-fayet', type: 'ecran' });
+    await provider.declareEcran({ id: 'le-fayet-grille-1', gare: 'le-fayet', type: 'grille' });
     await provider.heartbeat({ id: 'le-fayet-ecran-1', gare: 'le-fayet', type: 'ecran' });
     await provider.heartbeat({ id: 'le-fayet-grille-1', gare: 'le-fayet', type: 'grille' });
     const ecrans = await provider.listEcrans();
@@ -293,16 +299,17 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
     await provider.demanderRechargement('le-fayet-grille-1');
     const brut = JSON.parse(stockage.get('tmb-mock-ecrans') ?? '{}') as Record<
       string,
-      { recharger?: boolean }
+      { recharger_demande_at?: string | null }
     >;
-    expect(brut['le-fayet-grille-1']?.recharger).toBe(true);
-    expect(brut['le-fayet-ecran-1']?.recharger).not.toBe(true);
+    expect(brut['le-fayet-grille-1']?.recharger_demande_at).toBeTruthy();
+    expect(brut['le-fayet-ecran-1']?.recharger_demande_at).toBeFalsy();
     await expect(provider.demanderRechargement('inconnu-1')).rejects.toThrow(/inconnu/);
   });
 
   it('le heartbeat conserve la preuve de fraîcheur (donnees_maj, date_affichee)', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     const maj = new Date('2026-08-25T09:30:00Z').toISOString();
+    await provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' });
     await provider.heartbeat({
       id: 'motivon-ecran-1',
       gare: 'motivon',
@@ -318,7 +325,8 @@ describe('Heartbeats et médias (reliquat d’audit du 26/08/2026)', () => {
 
   it('un écran obsolète peut être oublié (poste fantôme après changement d’identifiant)', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
-    await provider.heartbeat({ id: 'le-fayet-1', gare: 'le-fayet', type: 'ecran' }); // ancien format
+    await provider.declareEcran({ id: 'le-fayet-1', gare: 'le-fayet', type: 'ecran' }); // ancien format
+    await provider.heartbeat({ id: 'le-fayet-1', gare: 'le-fayet', type: 'ecran' });
     expect(await provider.listEcrans()).toHaveLength(1);
     await provider.oublierEcran('le-fayet-1');
     expect(await provider.listEcrans()).toHaveLength(0);
@@ -510,5 +518,69 @@ describe('Écriture groupée des facultatifs et courses à vide', () => {
     await provider.saveCirculations([]);
     stop();
     expect(notifications).toBe(0);
+  });
+});
+
+describe('Écrans pré-déclarés (correctifs Security Advisors)', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('un écran NON déclaré ne s’inscrit pas tout seul et le dit', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await expect(
+      provider.heartbeat({ id: 'pirate-1', gare: 'le-fayet', type: 'ecran' }),
+    ).rejects.toThrow(/non déclaré/);
+    expect(await provider.listEcrans()).toHaveLength(0);
+  });
+
+  it('une fois déclaré, le même écran met à jour sa dernière vue', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
+    const avant = (await provider.listEcrans())[0];
+    expect(avant?.derniere_vue).toBeFalsy(); // déclaré, pas encore vu
+
+    await provider.heartbeat({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
+    const apres = (await provider.listEcrans())[0];
+    expect(apres?.derniere_vue).toBeTruthy();
+    expect(apres?.gare).toBe('bellevue');
+  });
+
+  it('une déclaration en double est refusée', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' });
+    await expect(
+      provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' }),
+    ).rejects.toThrow(/déjà déclaré/);
+  });
+
+  it('le signal de vie ne touche PAS l’ordre de rechargement ni l’identité du poste', async () => {
+    // Reflet applicatif des GRANT de colonnes : anon n'a la main que sur
+    // derniere_vue / donnees_maj / date_affichee / version_app / reseau.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'voza-ecran-1', gare: 'col-de-voza', type: 'ecran' });
+    await provider.demanderRechargement('voza-ecran-1');
+    const ordre = (await provider.listEcrans())[0]?.recharger_demande_at;
+    expect(ordre).toBeTruthy();
+
+    // Un écran qui tenterait de se réattribuer une autre gare/type échoue :
+    // ces champs viennent de la déclaration, pas du battement.
+    await provider.heartbeat({ id: 'voza-ecran-1', gare: 'le-fayet', type: 'grille' });
+    const apres = (await provider.listEcrans())[0];
+    expect(apres?.gare).toBe('col-de-voza');
+    expect(apres?.type).toBe('ecran');
+    // …et l'ordre de rechargement est intact : l'écran ne peut pas l'effacer.
+    expect(apres?.recharger_demande_at).toBe(ordre);
+  });
+
+  it('un écran oublié ne réapparaît pas de lui-même', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'nid-daigle-ecran-1', gare: 'nid-daigle', type: 'ecran' });
+    await provider.oublierEcran('nid-daigle-ecran-1');
+    await expect(
+      provider.heartbeat({ id: 'nid-daigle-ecran-1', gare: 'nid-daigle', type: 'ecran' }),
+    ).rejects.toThrow(/non déclaré/);
+    expect(await provider.listEcrans()).toHaveLength(0);
   });
 });

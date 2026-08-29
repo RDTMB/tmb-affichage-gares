@@ -220,11 +220,26 @@
         <div class="carte">
           <h2>
             État des écrans
-            <span class="sous">signal de vie toutes les 30 s · commandes à distance</span>
+            <span class="sous">signal de vie toutes les 60 s · commandes à distance</span>
           </h2>
           <div class="ecrans" id="ecrans"></div>
+          <div class="note" id="declaration-ecran">
+            <b>Déclarer un poste</b> — un écran ne s'inscrit plus tout seul : il doit être déclaré
+            ici avant d'être installé, sinon son signal de vie n'est enregistré nulle part.
+            <div class="ligne-declaration">
+              <select id="decl-gare"></select>
+              <select id="decl-type">
+                <option value="ecran">Écran des départs</option>
+                <option value="grille">Grille horaire</option>
+              </select>
+              <input id="decl-numero" type="number" min="1" max="9" value="1" />
+              <code id="decl-apercu">—</code>
+              <button class="leger" id="btn-declarer">+ Déclarer</button>
+            </div>
+          </div>
           <div class="note">
-            Un écran est « en ligne » s'il a donné signe de vie il y a moins de 90 secondes.
+            Un écran est « en ligne » s'il a donné signe de vie il y a moins de 150 secondes (deux
+            cycles et demi : un cycle manqué ne le fait pas passer au rouge).
           </div>
         </div>
       </section>

@@ -336,6 +336,13 @@ export interface EcranInfo {
   date_affichee?: string | null;
   version_app?: string | null;
   reseau?: string | null;
+  /**
+   * Ordre de rechargement à distance : un HORODATAGE, pas un booléen.
+   * L'écran le compare à sa propre heure de chargement — il n'a donc rien à
+   * réécrire (l'écriture lui est refusée sur cette colonne) et ne peut pas
+   * entrer dans une boucle de rechargement.
+   */
+  recharger_demande_at?: string | null;
 }
 
 /** Résultat de la bascule « Terminus Bellevue à partir du TRAIN N ». */

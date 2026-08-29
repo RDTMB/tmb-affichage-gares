@@ -74,6 +74,12 @@ export interface DataProvider {
   traduire(texteFr: string): Promise<string | null>;
   logPublication(resume: string): Promise<void>;
   listEcrans(): Promise<EcranInfo[]>;
+  /**
+   * Déclaration préalable d'un poste (administrateur). Un écran ne peut plus
+   * s'inscrire lui-même : l'INSERT anonyme est interdit par RLS. Sans
+   * déclaration, son signal de vie ne touche aucune ligne.
+   */
+  declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void>;
   demanderRechargement(id: string): Promise<void>;
   /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
   oublierEcran(id: string): Promise<void>;

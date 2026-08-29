@@ -101,3 +101,19 @@ sudo crontab -e
 - [ ] Heure exacte (NTP) et date française dans le bandeau
 - [ ] Écran visible « en ligne » en supervision ; test du bouton « Recharger »
 - [ ] Coupure réseau 3 min : badge « données de HH:MM » puis retour normal
+
+## Déclarer le poste AVANT de le mettre en service
+
+Depuis la mise en conformité des Security Advisors, un écran ne s'inscrit
+plus tout seul : Supervision → onglet **Écrans** → choisir la gare, le type
+(écran des départs / grille horaire) et le numéro, puis **+ Déclarer**.
+L'identifiant proposé (`le-fayet-ecran-1`) est exactement celui que la page
+calculera pour elle-même — inutile de le saisir sur le Raspberry Pi.
+
+Un poste non déclaré affiche correctement les horaires (l'échec du signal
+de vie n'interrompt JAMAIS l'affichage voyageurs) mais reste invisible en
+supervision : la console du navigateur porte alors un avertissement
+`[TMB] signal de vie non enregistré…`.
+
+Pour un deuxième écran dans la même gare, déclarer le numéro 2 et lancer la
+page avec `?ecran=le-fayet-ecran-2`.

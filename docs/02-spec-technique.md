@@ -144,9 +144,18 @@ create table ecrans (
   donnees_maj timestamptz,         -- dernière synchro RÉUSSIE : les DONNÉES affichées sont fraîches
   date_affichee date,              -- journée d'exploitation montrée
   version_app text, reseau text,
-  recharger boolean not null default false
+  recharger_demande_at timestamptz -- ordre de rechargement : un HORODATAGE
 );
--- Ajout sur base existante : supabase/ajout-preuve-maj.sql (idempotent).
+-- Postes PRÉ-DÉCLARÉS par un admin (id, gare, type) : plus d'INSERT anonyme.
+-- L'écran ne fait qu'UPDATE, et seulement sur les colonnes du signal de vie :
+--   revoke insert, update, delete, truncate on ecrans from anon;
+--   grant update (derniere_vue, donnees_maj, date_affichee, version_app, reseau)
+--     on ecrans to anon;
+-- Pourquoi un horodatage et non un booléen : un booléen devait être remis à
+-- false PAR L'ÉCRAN — écriture désormais refusée, donc rechargement en
+-- boucle. L'écran compare la demande à sa propre heure de chargement.
+-- Ajouts sur base existante : supabase/ajout-preuve-maj.sql puis
+-- supabase/securite-advisors.sql (tous deux rejouables).
 
 create table publications (
   id bigint generated always as identity primary key,
@@ -161,11 +170,26 @@ create table publications (
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
   le rôle — `caisse` : messages uniquement ; `supervision` : tout sauf
   machines/motifs/params/profils ; `admin` : tout. Implémentation par
-  fonction SQL `role_courant()` (lit `profils`) utilisée dans les policies.
-- `ecrans` : insert/update anon autorisés (heartbeat) — risque accepté,
-  limité à cette table, disparaît en phase 2.
-- Storage : bucket `medias` en lecture publique, écriture authentifiée
-  (supervision/admin), taille max 20 Mo.
+  fonction SQL `private.role_courant()` (lit `profils`) utilisée dans les
+  policies.
+- **Schéma `private`** : les fonctions SECURITY DEFINER
+  (`role_courant()`, `sync_rame_descente()`) y vivent, hors des schémas
+  exposés par PostgREST — elles ne sont donc PAS appelables en RPC depuis le
+  front. `search_path` verrouillé à vide + noms pleinement qualifiés.
+  `revoke all … from public`, mais `grant execute … to authenticated` :
+  les policies évaluent la fonction AU NOM de l'utilisateur connecté, sans ce
+  GRANT toutes les écritures seraient refusées. La fonction de trigger n'a
+  besoin d'aucun GRANT (EXECUTE est vérifié à la création du trigger).
+- `ecrans` : plus aucune écriture anonyme non restreinte. INSERT réservé à
+  l'admin (déclaration préalable depuis l'onglet Écrans) ; UPDATE anonyme
+  possible mais borné aux colonnes du signal de vie par des GRANT de
+  colonnes — `recharger_demande_at`, `id`, `gare` et `type` sont hors
+  d'atteinte. Un écran non déclaré n'écrit nulle part.
+- Storage : bucket `medias` public (les écrans passent par l'URL publique,
+  qui ne traverse pas RLS) ; sur `storage.objects`, plus de policy SELECT
+  ouverte à tous — SELECT/INSERT/DELETE réservés à l'exploitation
+  authentifiée (la lecture RLS reste nécessaire à la suppression de
+  fichier). Taille max 20 Mo.
 - Realtime activé sur jours, circulations, messages, medias, params,
   machines, motifs, ecrans ; côté client : un canal + rafraîchissement
   complet, repli polling 30 s.
@@ -203,7 +227,10 @@ service, passage de minuit, tri multi-sens.
 - Cache hors-ligne : service worker (précache app + logos + polices,
   network-first pour config.js) ; snapshot données en localStorage ; règle
   des 15 min → écran neutre (docs/01 §7).
-- Heartbeat 30 s ; `recharger=true` → reload puis remise à false.
+- Heartbeat 60 s, et un échec n'interrompt JAMAIS l'affichage : trace
+  discrète en console (une fois par cause) et réessai au cycle suivant.
+  Rechargement à distance : l'écran compare `recharger_demande_at` à sa
+  propre heure de chargement — rien à réécrire, donc aucune boucle.
 - Veille nuit ; anti-burn-in 1 px/h ; curseur masqué.
 
 ## 5. Supervision

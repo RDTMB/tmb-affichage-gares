@@ -22,16 +22,20 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
    (colonnes de preuve de fraîcheur des écrans — idempotent).
 5. Nouvelle requête → coller `supabase/ajout-sans-voyageurs.sql` → **Run**
    (drapeau des courses à vide — idempotent).
-6. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
+6. Nouvelle requête → coller `supabase/securite-advisors.sql` → **Run**
+   (correctifs des Security Advisors : schéma `private`, écrans
+   pré-déclarés, bucket `medias` refermé — rejouable). Enchaîner avec le
+   bloc **VÉRIFICATION** en fin de fichier.
+7. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
    (bibliothèque de messages préenregistrés). Ce script est **idempotent** :
    il peut aussi être exécuté seul, plus tard, sur une base déjà en service,
    sans rejouer le reste ni écraser les modèles retouchés en supervision.
-7. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
+8. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
    schéma), public, limite 20 Mo.
-8. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
+9. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
    publication `supabase_realtime` contient bien les tables (fait par le
    schéma).
-9. Menu **Project Settings → API keys** : noter
+10. Menu **Project Settings → API keys** : noter
    - l'**URL du projet** (https://xxxx.supabase.co) ;
    - la clé **publishable** (`sb_publishable_…`) — PUBLIQUE par conception,
      la sécurité repose sur RLS ;
@@ -97,6 +101,11 @@ depuis le tableau de bord Supabase (étape C).
       `curl -X POST "https://xxxx.supabase.co/rest/v1/messages" -H "apikey: sb_publishable_…" -H "Content-Type: application/json" -d "{\"texte_fr\":\"test\"}"`
       doit répondre **401/403** (RLS).
 - [ ] `git grep sb_secret` ne renvoie rien.
+- [ ] **Écrans déclarés** : Supervision → Écrans → déclarer chaque poste
+      (gare + type) AVANT de le mettre en service. Un écran non déclaré
+      affiche correctement les horaires mais reste invisible en supervision.
+- [ ] **Security Advisors** (Supabase → Advisors) : plus aucun avertissement
+      « anonymous write », « SECURITY DEFINER » ni « function search path ».
 - [ ] Débrancher le réseau d'un écran 3 min : badge « données de HH:MM » ;
       voir aussi `docs/tests-manuels.md`.
 

@@ -24,7 +24,14 @@ import type {
   TrainJour,
 } from '../core/types';
 import { creeProvider } from '../data';
-import { creeTicker, echapper, messagesVisibles, meteoHtml } from './affichage-commun';
+import {
+  creeJournalHeartbeat,
+  creeTicker,
+  echapper,
+  INTERVALLE_HEARTBEAT_MS,
+  messagesVisibles,
+  meteoHtml,
+} from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
 import {
@@ -345,6 +352,7 @@ async function demarre(): Promise<void> {
   // Jamais de heartbeat en aperçu (?apercu=1) ni sans gare : un poste de
   // bureau consultant la ligne entière n'est pas un écran de gare.
   if (url.get('apercu') !== '1' && gare !== null) {
+    const journaliseHeartbeat = creeJournalHeartbeat();
     const bat = (): void => {
       void provider
         .heartbeat({
@@ -355,10 +363,10 @@ async function demarre(): Promise<void> {
           donnees_maj: sync?.derniereSyncISO() ?? null,
           date_affichee: jour?.date ?? null,
         })
-        .catch(() => {});
+        .catch(journaliseHeartbeat);
     };
     bat();
-    window.setInterval(bat, 30_000);
+    window.setInterval(bat, INTERVALLE_HEARTBEAT_MS);
   }
 
   rendre();

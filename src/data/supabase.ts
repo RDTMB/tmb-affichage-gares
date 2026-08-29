@@ -73,6 +73,8 @@ export function exigeLignes(
 export class SupabaseProvider implements DataProvider {
   private readonly client: SupabaseClient;
   private grilles: Promise<Grille[]> | null = null;
+  /** Heure de chargement de CETTE page : référence de l'ordre de rechargement. */
+  private readonly chargeeA = Date.now();
   private canal: RealtimeChannel | null = null;
   private notifieId: number | null = null;
   private readonly abonnes = new Set<() => void>();
@@ -283,26 +285,41 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async heartbeat(e: EcranInfo): Promise<void> {
-    const { error } = await this.client.from('ecrans').upsert({
-      id: e.id,
-      gare: e.gare,
-      type: e.type ?? null,
-      derniere_vue: new Date().toISOString(),
-      donnees_maj: e.donnees_maj ?? null,
-      date_affichee: e.date_affichee ?? null,
-      version_app: e.version_app ?? null,
-      reseau: e.reseau ?? null,
-    });
-    verifie(error);
-    const { data } = await this.client
+    // UPDATE seulement : l'INSERT anonyme est interdit (les postes sont
+    // pré-déclarés). Seules les colonnes du signal de vie sont envoyées —
+    // les autres sont refusées par les GRANT de colonnes.
+    const { data, error } = await this.client
       .from('ecrans')
-      .select('recharger')
+      .update({
+        derniere_vue: new Date().toISOString(),
+        donnees_maj: e.donnees_maj ?? null,
+        date_affichee: e.date_affichee ?? null,
+        version_app: e.version_app ?? null,
+        reseau: e.reseau ?? null,
+      })
       .eq('id', e.id)
-      .maybeSingle();
-    if ((data as { recharger?: boolean } | null)?.recharger) {
-      await this.client.from('ecrans').update({ recharger: false }).eq('id', e.id);
-      window.location.reload();
+      .select('recharger_demande_at');
+    verifie(error);
+    const lignes = (data ?? []) as { recharger_demande_at: string | null }[];
+    if (lignes.length === 0) {
+      throw new Error(
+        `Écran « ${e.id} » non déclaré en supervision : son signal de vie n'est enregistré nulle part`,
+      );
     }
+    // Rechargement demandé APRÈS le chargement de cette page : on obéit une
+    // fois. Rien à réécrire, donc aucune boucle possible.
+    const demande = lignes[0]?.recharger_demande_at;
+    if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
+  }
+
+  async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
+    exigeLignes(
+      await this.client
+        .from('ecrans')
+        .insert({ id: e.id, gare: e.gare, type: e.type ?? null })
+        .select(),
+      'déclaration refusée',
+    );
   }
 
   // -------------------------------------------------------------- supervision
@@ -583,7 +600,11 @@ export class SupabaseProvider implements DataProvider {
 
   async demanderRechargement(id: string): Promise<void> {
     exigeLignes(
-      await this.client.from('ecrans').update({ recharger: true }).eq('id', id).select(),
+      await this.client
+        .from('ecrans')
+        .update({ recharger_demande_at: new Date().toISOString() })
+        .eq('id', id)
+        .select(),
       'écran inconnu',
     );
   }

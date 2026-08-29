@@ -123,7 +123,7 @@ retard ±5, motif, badges, confirmation suppression, export CSV. Onglet
 Messages : liste avec bouton Modifier (édition en place) + formulaire avec
 traduction EN automatique à la saisie (Edge Function DeepL + dictionnaire
 de repli, docs/02 §5) et cible toutes/gares/train, priorité, expiration.
-Onglet Écrans : cartes temps réel (en ligne si vu < 90 s), recharger.
+Onglet Écrans : déclaration préalable des postes, cartes temps réel (en ligne si vu < 150 s), recharger.
 Publier = logPublication + toast ; compteur de modifications.
 ```
 

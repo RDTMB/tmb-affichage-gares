@@ -323,10 +323,14 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    (vert : les données de l'écran sont postérieures à la dernière
    publication), « en retard de X min » (orange : la machine tourne mais
    affiche encore d'anciennes données — réseau coupé côté données), « hors
-   ligne » (rouge : plus de signal de vie depuis 90 s). Chaque carte indique
+   ligne » (rouge : plus de signal de vie depuis 150 s, soit deux cycles et
+   demi — un cycle manqué ne fait pas passer un écran sain au rouge). Chaque carte indique
    l'heure des données affichées et la journée montrée. Le bandeau de
    publication affiche, après un enregistrement, « Appliqué sur N/N écrans »
-   ou la liste des gares en attente. Cartes (gare, type, en ligne/hors ligne — silence > 90 s,
+   ou la liste des gares en attente. Déclaration préalable des postes
+   (gare + type + numéro) : un écran ne s'inscrit plus de lui-même, il doit
+   être déclaré ici avant d'être installé, sinon son signal de vie n'est
+   enregistré nulle part. Cartes (gare, type, en ligne/hors ligne — silence > 150 s,
    réseau fibre/5G, mention alimentation solaire pour le Nid d'Aigle,
    dernière vue, version) ; bouton « Recharger l'écran ».
 5. **Paramètres** (admin) : Machines (ajouter/renommer/couleur/en service/
@@ -365,7 +369,8 @@ Affluence→High demand, Exploitation→Operations).
 - Retour réseau : resynchronisation et retour automatique aux horaires.
 - Démarrage sans réseau : service worker + cache → écran neutre ou données
   fraîches selon l'âge du cache.
-- Heartbeat 30 s (id écran, gare, horodatage, version, user-agent).
+- Heartbeat 60 s (id écran, horodatage, fraîcheur des données, journée
+  affichée, version). Un échec n'interrompt jamais l'affichage voyageurs.
 
 ## 8. Hors périmètre v1 (extensions)
 

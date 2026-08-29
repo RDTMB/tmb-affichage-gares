@@ -34,6 +34,7 @@ import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from '.
 import {
   actionGroupeeFacultatifs,
   datetimeLocalVersIso,
+  identifiantEcranDeclare,
   etatFraicheurEcran,
   propositionAppariementFacultatif,
   resumeApplication,
@@ -1342,7 +1343,7 @@ async function rendreEcrans(): Promise<void> {
       </div>`;
         })
         .join('')
-    : '<div class="note">Aucun écran ne s’est encore signalé (heartbeat 30 s).</div>';
+    : '<div class="note">Aucun écran déclaré. Déclarez les postes ci-dessous : un écran ne s’inscrit plus de lui-même.</div>';
 }
 
 let resumeId = 0;
@@ -1368,6 +1369,39 @@ function majResumeApplication(liste: EcranInfo[], maintenantMs: number): void {
 }
 
 function initEcrans(): void {
+  // --- Déclaration préalable d'un poste (administrateur) ---
+  const selGare = $('decl-gare') as HTMLSelectElement;
+  const selType = $('decl-type') as HTMLSelectElement;
+  const numero = $('decl-numero') as HTMLInputElement;
+  selGare.innerHTML = ORDRE_GARES.map(
+    (g) => `<option value="${g}">${echapper(nomDeGare(g))}</option>`,
+  ).join('');
+
+  const idPropose = (): string =>
+    identifiantEcranDeclare(
+      selType.value === 'grille' ? 'grille' : 'ecran',
+      selGare.value,
+      Math.max(1, Number(numero.value) || 1),
+    );
+  const majApercu = (): void => {
+    $('decl-apercu').textContent = idPropose();
+  };
+  for (const champ of [selGare, selType, numero]) champ.addEventListener('change', majApercu);
+  numero.addEventListener('input', majApercu);
+  majApercu();
+
+  $('btn-declarer').addEventListener('click', () => {
+    const id = idPropose();
+    void provider
+      .declareEcran({ id, gare: selGare.value as GareId, type: selType.value })
+      .then(() => rendreEcrans())
+      .then(() => {
+        bump(`écran déclaré : ${id}`);
+        toast(`Écran ${id} déclaré — il apparaîtra dès son premier signal de vie`);
+      })
+      .catch(erreurVersToast);
+  });
+
   $('ecrans').addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
     if (cible.dataset.recharger) {
@@ -1385,7 +1419,12 @@ function initEcrans(): void {
       window.open(`${page}?gare=${cible.dataset.voir}&apercu=1`, '_blank');
     } else if (cible.dataset.oublier) {
       const id = cible.dataset.oublier;
-      if (!window.confirm(`Oublier l'écran « ${id} » ? Il réapparaîtra s'il redonne signe de vie.`))
+      if (
+        !window.confirm(
+          `Oublier l'écran « ${id} » ?
+Il ne réapparaîtra PAS tout seul : un écran doit être déclaré ici pour que son signal de vie soit enregistré.`,
+        )
+      )
         return;
       void provider
         .oublierEcran(id)

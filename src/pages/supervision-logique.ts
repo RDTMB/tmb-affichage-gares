@@ -3,6 +3,7 @@
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
 import type { Circulation, EcranInfo, GareId, Message } from '../core/types';
+import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
 export interface FormulaireMessage {
@@ -124,29 +125,48 @@ export function traductionLocale(fr: string): string {
  * l'écran des départs et l'écran grille d'une même gare s'écrasent dans
  * « État des écrans » et le bouton « Recharger » vise le mauvais poste.
  */
+/**
+ * Convention d'identifiant d'un poste, SOURCE UNIQUE : elle sert à la fois à
+ * l'écran qui se signale et à l'administrateur qui le déclare — les deux
+ * doivent tomber sur la même chaîne, sinon le signal de vie n'atteint
+ * aucune ligne.
+ */
+export function identifiantEcranDeclare(
+  type: 'ecran' | 'grille',
+  gare: string,
+  numero = 1,
+): string {
+  return `${gare}-${type}-${numero}`;
+}
+
 export function identifiantEcran(
   type: 'ecran' | 'grille',
   gare: string | null,
   parametre: string | null,
 ): string {
   if (parametre) return parametre; // ?ecran= reste prioritaire
-  return `${gare ?? 'sans-gare'}-${type}-1`;
+  return identifiantEcranDeclare(type, gare ?? 'sans-gare');
 }
 
 // ---------------------------------------------------------------------------
 // Preuve de mise à jour par écran
 // ---------------------------------------------------------------------------
 
-/** Silence toléré avant de déclarer un écran hors ligne (docs/01 §5.4). */
-export const SEUIL_HORS_LIGNE_MS = 90_000;
+/**
+ * Silence toléré avant de déclarer un écran hors ligne (docs/01 §5.4) :
+ * deux cycles et demi de signal de vie. Un cycle manqué (réseau qui hoquette,
+ * page qui redémarre) ne doit pas faire passer un écran sain au rouge.
+ */
+export const SEUIL_HORS_LIGNE_MS = 2.5 * INTERVALLE_HEARTBEAT_MS;
 
 /**
- * Les écrans se resynchronisent toutes les 30 s : juste après une
- * modification, un écran qui ne l'a pas encore reçue n'est pas « en retard »,
- * il est en cours de rattrapage. Sans cette fenêtre, TOUS les écrans
- * passeraient à l'orange pendant 30 s après chaque clic — du bruit permanent.
+ * Deux délais s'additionnent avant qu'une modification soit VISIBLE en
+ * supervision : l'écran se resynchronise dans les 30 s, puis n'en informe la
+ * supervision qu'à son signal de vie suivant (60 s). Pendant cette fenêtre,
+ * un écran qui n'a pas encore rattrapé n'est pas « en retard » — sans elle,
+ * TOUS les écrans passeraient à l'orange après chaque clic.
  */
-export const DELAI_PROPAGATION_MS = 35_000;
+export const DELAI_PROPAGATION_MS = 95_000;
 
 export interface EtatFraicheur {
   /**

@@ -112,3 +112,25 @@ export function meteoHtml(params: Params, grille: Grille): string {
   return `<div class="t">${meteo.t}°C</div>
     <div>${echapper(lieu)}<small>${echapper(`${meteo.ciel_fr} / ${meteo.ciel_en}`)}</small></div>`;
 }
+
+/**
+ * Cadence du signal de vie. Le seuil « hors ligne » de la supervision
+ * (SEUIL_HORS_LIGNE_MS) en dérive : il vaut deux cycles et demi, de quoi
+ * absorber un cycle manqué sans déclarer un écran mort à tort.
+ */
+export const INTERVALLE_HEARTBEAT_MS = 60_000;
+
+/**
+ * Un signal de vie en échec ne doit JAMAIS interrompre l'affichage
+ * voyageurs : on trace UNE fois par cause (un kiosque tourne 18 h par jour,
+ * pas question d’inonder la console) et le cycle suivant réessaie.
+ */
+export function creeJournalHeartbeat(): (erreur: unknown) => void {
+  const vues = new Set<string>();
+  return (erreur) => {
+    const message = erreur instanceof Error ? erreur.message : String(erreur);
+    if (vues.has(message)) return;
+    vues.add(message);
+    console.warn(`[TMB] signal de vie non enregistré, réessai au prochain cycle : ${message}`);
+  };
+}

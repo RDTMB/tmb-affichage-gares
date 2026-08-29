@@ -3,6 +3,7 @@
 // verrouillent les trois états attendus par l'exploitant.
 import { describe, expect, it } from 'vitest';
 
+import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 import { etatFraicheurEcran, resumeApplication, SEUIL_HORS_LIGNE_MS } from './supervision-logique';
 
 const MAINTENANT = new Date('2026-08-28T10:00:00Z').getTime();
@@ -47,13 +48,13 @@ describe('etatFraicheurEcran', () => {
   });
 
   it('passé le délai de propagation, le vrai retard est nommé', () => {
-    const publication = MAINTENANT - 60_000; // publié il y a 1 min
+    const publication = MAINTENANT - 3 * 60_000; // publié il y a 3 min
     const etat = etatFraicheurEcran(
       { derniere_vue: ilYA(5000), donnees_maj: ilYA(11 * 60_000) },
       publication,
       MAINTENANT,
     );
-    expect(etat.libelle).toBe('en retard de 10 min');
+    expect(etat.libelle).toBe('en retard de 8 min'); // 11 min de données - 3 min de publication
   });
 
   it('écran silencieux → rouge, même si ses dernières données étaient fraîches', () => {
@@ -66,7 +67,12 @@ describe('etatFraicheurEcran', () => {
     expect(etat.libelle).toBe('hors ligne');
   });
 
-  it('le seuil hors ligne est bien 90 s', () => {
+  it('le seuil hors ligne vaut deux cycles et demi de signal de vie', () => {
+    expect(SEUIL_HORS_LIGNE_MS).toBe(150_000);
+    expect(SEUIL_HORS_LIGNE_MS).toBe(2.5 * INTERVALLE_HEARTBEAT_MS);
+  });
+
+  it('un écran juste sous le seuil reste en ligne, juste au-dessus il tombe', () => {
     const juste = etatFraicheurEcran(
       { derniere_vue: ilYA(SEUIL_HORS_LIGNE_MS - 1000), donnees_maj: ilYA(1000) },
       null,

@@ -2,7 +2,7 @@
 -- TMB — Affichage voyageurs : schéma Supabase (phase 1) — docs/02 §2
 -- À exécuter dans l'éditeur SQL du projet Supabase, puis seed.sql.
 -- Sécurité : lecture publique (clé « publishable », RLS SELECT anon) ;
--- écritures réservées aux profils actifs selon leur rôle (role_courant()).
+-- écritures réservées aux profils actifs selon leur rôle (private.role_courant()).
 -- =============================================================================
 
 -- ---------------------------------------------------------------- tables
@@ -116,7 +116,10 @@ create table if not exists ecrans (
   date_affichee date,                     -- journée d'exploitation affichée
   version_app text,
   reseau text,
-  recharger boolean not null default false
+  -- Ordre de rechargement : un HORODATAGE, pas un booléen. L'écran compare
+  -- la demande à sa propre heure de chargement — il n'a donc rien à
+  -- réécrire (l'écriture anonyme lui est refusée) et ne boucle jamais.
+  recharger_demande_at timestamptz
 );
 
 create table if not exists publications (
@@ -127,26 +130,41 @@ create table if not exists publications (
 );
 
 -- ------------------------------------------------- rôle courant + triggers
-create or replace function public.role_courant()
-returns text language sql stable security definer set search_path = public as $$
-  select role from profils where user_id = auth.uid() and actif
-$$;
+-- Les fonctions SECURITY DEFINER vivent dans `private`, schéma NON exposé
+-- par PostgREST : elles ne sont pas appelables en RPC depuis le front, tout
+-- en restant utilisables par les politiques et les triggers. search_path
+-- vide + noms pleinement qualifiés (advisors Supabase).
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated;
+
+create or replace function private.role_courant()
+returns text language sql stable security definer set search_path = '' as $fn$
+  select role from public.profils where user_id = auth.uid() and actif
+$fn$;
+revoke all on function private.role_courant() from public;
+-- INDISPENSABLE : les politiques l'évaluent au nom de l'utilisateur
+-- connecté — sans ce GRANT, toute écriture serait refusée.
+grant execute on function private.role_courant() to authenticated;
 
 -- Rotation : la rame d'une montée est recopiée sur sa descente appariée
 -- (numero + 1) pour les exports — l'affichage la dérive déjà par jointure.
-create or replace function public.sync_rame_descente()
-returns trigger language plpgsql security definer set search_path = public as $$
+create or replace function private.sync_rame_descente()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
 begin
   if new.sens = 'montee' then
-    update circulations set rame = new.rame
+    update public.circulations set rame = new.rame
       where date = new.date and numero = new.numero + 1 and rame is distinct from new.rame;
   end if;
   return new;
-end $$;
+end $fn$;
+revoke all on function private.sync_rame_descente() from public;
+-- Pas de GRANT : EXECUTE d'une fonction de trigger est vérifié à la
+-- CRÉATION du trigger, jamais à son déclenchement.
 
 drop trigger if exists trg_sync_rame on circulations;
 create trigger trg_sync_rame after insert or update of rame on circulations
-  for each row execute function public.sync_rame_descente();
+  for each row execute function private.sync_rame_descente();
 
 -- ---------------------------------------------------------------- RLS
 alter table jours enable row level security;
@@ -173,54 +191,65 @@ create policy "lecture publique" on ecrans for select using (true);
 
 -- Écritures : admin + supervision (exploitation)
 create policy "exploitation" on jours for all to authenticated
-  using (role_courant() in ('admin','supervision'))
-  with check (role_courant() in ('admin','supervision'));
+  using (private.role_courant() in ('admin','supervision'))
+  with check (private.role_courant() in ('admin','supervision'));
 create policy "exploitation" on circulations for all to authenticated
-  using (role_courant() in ('admin','supervision'))
-  with check (role_courant() in ('admin','supervision'));
+  using (private.role_courant() in ('admin','supervision'))
+  with check (private.role_courant() in ('admin','supervision'));
 create policy "exploitation" on medias for all to authenticated
-  using (role_courant() in ('admin','supervision'))
-  with check (role_courant() in ('admin','supervision'));
+  using (private.role_courant() in ('admin','supervision'))
+  with check (private.role_courant() in ('admin','supervision'));
 
 -- Messages : tous les rôles actifs (la caisse ne gère QUE les messages)
 create policy "messages tous roles" on messages for all to authenticated
-  using (role_courant() in ('admin','supervision','caisse'))
-  with check (role_courant() in ('admin','supervision','caisse'));
+  using (private.role_courant() in ('admin','supervision','caisse'))
+  with check (private.role_courant() in ('admin','supervision','caisse'));
 
 -- Paramétrage : admin uniquement
 create policy "admin" on machines for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 create policy "admin" on motifs for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 create policy "admin" on params for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 
 -- Bibliothèque de messages : lecture pour tout compte connecté (le
 -- formulaire Messages est ouvert à tous les rôles), écriture admin seule.
 create policy "lecture connectes" on modeles_messages for select to authenticated
-  using (role_courant() in ('admin','supervision','caisse'));
+  using (private.role_courant() in ('admin','supervision','caisse'));
 create policy "admin" on modeles_messages for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 
 -- Profils : chacun lit son profil ; l'admin lit et gère tout
 create policy "lire son profil" on profils for select to authenticated
-  using (user_id = auth.uid() or role_courant() = 'admin');
+  using (user_id = auth.uid() or private.role_courant() = 'admin');
 create policy "gerer profils" on profils for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 
--- Écrans : heartbeat anonyme accepté (risque accepté docs/02 §2, phase 1) ;
--- la demande de rechargement reste possible pour l'exploitation.
-create policy "heartbeat insert" on ecrans for insert with check (true);
-create policy "heartbeat update" on ecrans for update using (true) with check (true);
+-- Écrans : PRÉ-DÉCLARÉS par un administrateur (id, gare, type). L'écran ne
+-- fait que donner signe de vie — jamais d'INSERT anonyme, et les colonnes
+-- qu'il peut toucher sont verrouillées par des GRANT de colonnes.
+revoke insert, update, delete, truncate on ecrans from anon;
+grant update (derniere_vue, donnees_maj, date_affichee, version_app, reseau)
+  on ecrans to anon;
+grant select, insert, update, delete on ecrans to authenticated;
+
+create policy "signal de vie" on ecrans for update to anon
+  using (true) with check (true);
+create policy "declarer ecran" on ecrans for insert to authenticated
+  with check (private.role_courant() = 'admin');
+create policy "commande ecran" on ecrans for update to authenticated
+  using (private.role_courant() in ('admin','supervision'))
+  with check (private.role_courant() in ('admin','supervision'));
 -- Retrait d'un poste obsolète : exploitation authentifiée uniquement
 create policy "oublier ecran" on ecrans for delete to authenticated
-  using (role_courant() in ('admin','supervision'));
+  using (private.role_courant() in ('admin','supervision'));
 
 -- Publications : journal — écrit par tout rôle actif, lu par les connectés
 create policy "journal insert" on publications for insert to authenticated
-  with check (role_courant() in ('admin','supervision','caisse'));
+  with check (private.role_courant() in ('admin','supervision','caisse'));
 create policy "journal select" on publications for select to authenticated
-  using (role_courant() in ('admin','supervision','caisse'));
+  using (private.role_courant() in ('admin','supervision','caisse'));
 
 -- ---------------------------------------------------------------- realtime
 alter publication supabase_realtime add table jours, circulations, messages,
@@ -232,11 +261,14 @@ values ('medias', 'medias', true, 20971520,
         array['image/jpeg','image/png','video/mp4'])
 on conflict (id) do nothing;
 
-create policy "medias lecture publique" on storage.objects for select
-  using (bucket_id = 'medias');
+-- Le bucket reste public : les écrans passent par l'URL publique, qui ne
+-- traverse pas RLS. La lecture RLS n'est donc utile qu'à l'exploitation
+-- (la suppression d'un fichier a besoin de voir l'objet).
+create policy "medias lecture exploitation" on storage.objects for select to authenticated
+  using (bucket_id = 'medias' and private.role_courant() in ('admin','supervision'));
 create policy "medias ecriture exploitation" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'medias' and role_courant() in ('admin','supervision'));
+  with check (bucket_id = 'medias' and private.role_courant() in ('admin','supervision'));
 create policy "medias suppression exploitation" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'medias' and role_courant() in ('admin','supervision'));
+  using (bucket_id = 'medias' and private.role_courant() in ('admin','supervision'));

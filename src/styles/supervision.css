@@ -1200,3 +1200,27 @@ input:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+/* Déclaration préalable d'un poste (onglet Écrans) */
+.ligne-declaration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ligne-declaration input[type='number'] {
+  width: 62px;
+}
+
+.ligne-declaration code {
+  font-family: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sec);
+  background: #f2f5f8;
+  border: 1px solid var(--bord);
+  border-radius: 6px;
+  padding: 5px 9px;
+}
