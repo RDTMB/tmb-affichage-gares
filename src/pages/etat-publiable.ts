@@ -50,11 +50,22 @@ export function normalise(valeur: unknown): string {
   return Number.isFinite(nombre) && /^[+-]?\d+(\.\d+)?$/.test(texte) ? String(nombre) : texte;
 }
 
-/** Tout ce qui compose l'état publiable, tel que la supervision le connaît. */
-export interface EntreesPubliables {
-  /** Date affichée : les circulations comparées sont celles de cette journée. */
+/**
+ * Une journée à comparer. Il y en a plusieurs : celle qui est affichée, et
+ * toutes celles qui portent des modifications en attente — « Publier »
+ * publie TOUTES les dates du brouillon, le compteur doit donc les voir
+ * toutes, sans quoi une modification posée sur une date puis quittée
+ * griserait le bouton et deviendrait impubliable.
+ */
+export interface JourPubliable {
   date: string;
   jour: Jour | null;
+}
+
+/** Tout ce qui compose l'état publiable, tel que la supervision le connaît. */
+export interface EntreesPubliables {
+  /** Journée affichée + toutes celles qui ont des modifications en attente. */
+  jours: JourPubliable[];
   messages: Message[];
   medias: Media[];
   params: Params | null;
@@ -85,20 +96,34 @@ const CHAMPS_MESSAGE = [
   'expire_at',
 ] as const satisfies readonly (keyof Message)[];
 
-export function instantanePubliable(e: EntreesPubliables): Instantane {
+/**
+ * Partie DATÉE de l'instantané (circulations et bascule Terminus). Elle est
+ * recalculée à chaque comparaison plutôt que figée dans la référence : les
+ * clés portent la date, une référence figée sur la date précédente ferait
+ * compter toute une journée comme supprimée et toute la nouvelle comme
+ * ajoutée (252 « modifications » observées le 29/08/2026).
+ */
+export function instantaneJours(jours: JourPubliable[]): Instantane {
   const instantane: Instantane = {};
+  for (const { date, jour } of jours) {
+    for (const c of jour?.circulations ?? []) {
+      for (const champ of CHAMPS_CIRCULATION) {
+        instantane[`circulation|${date}|${c.numero}|${champ}`] = normalise(c[champ]);
+      }
+    }
+    const flag = jour?.terminus_bellevue;
+    instantane[`jour|${date}|terminus_bellevue`] = normalise(
+      flag === false || !flag ? '' : flag.a_partir_du_train,
+    );
+  }
+  return instantane;
+}
+
+export function instantanePubliable(e: EntreesPubliables): Instantane {
+  const instantane: Instantane = { ...instantaneJours(e.jours) };
   const pose = (cle: string, valeur: unknown): void => {
     instantane[cle] = normalise(valeur);
   };
-
-  // --- Circulations de la date affichée ---
-  for (const c of e.jour?.circulations ?? []) {
-    for (const champ of CHAMPS_CIRCULATION) {
-      pose(`circulation|${e.date}|${c.numero}|${champ}`, c[champ]);
-    }
-  }
-  const flag = e.jour?.terminus_bellevue;
-  pose(`jour|${e.date}|terminus_bellevue`, flag === false || !flag ? '' : flag.a_partir_du_train);
 
   // --- Messages voyageurs ---
   for (const m of e.messages) {
@@ -195,6 +220,31 @@ export function ecarts(reference: Instantane, courant: Instantane): Ecart[] {
     liste.push({ cle, libelle: libelleDeCle(cle), avant, apres });
   }
   return liste;
+}
+
+/** Une clé porte-t-elle une date (circulation, bascule du jour) ? */
+export function estCleDatee(cle: string): boolean {
+  return cle.startsWith('circulation|') || cle.startsWith('jour|');
+}
+
+/**
+ * Écarts entre l'état PUBLIÉ et l'état effectif.
+ *
+ * La partie DATÉE est reconstruite des deux côtés à chaque appel, depuis les
+ * journées telles qu'elles sont en base : seule la partie non datée vient de
+ * la référence figée. C'est ce qui permet de changer de date sans que
+ * l'ancienne journée compte comme supprimée et la nouvelle comme ajoutée.
+ */
+export function ecartsPublies(
+  referenceFigee: Instantane,
+  joursDeReference: JourPubliable[],
+  courant: EntreesPubliables,
+): Ecart[] {
+  const reference: Instantane = instantaneJours(joursDeReference);
+  for (const [cle, valeur] of Object.entries(referenceFigee)) {
+    if (!estCleDatee(cle)) reference[cle] = valeur;
+  }
+  return ecarts(reference, instantanePubliable(courant));
 }
 
 /**

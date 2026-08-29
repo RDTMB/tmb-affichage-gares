@@ -36,8 +36,7 @@ function params(t: number, extra: Partial<Params> = {}): Params {
 
 function entrees(p: Params, jour: Jour, messages: Message[] = [], ecrans: EcranInfo[] = []) {
   return {
-    date: DATE,
-    jour,
+    jours: [{ date: DATE, jour }],
     messages,
     medias: [],
     params: p,

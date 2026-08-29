@@ -50,9 +50,9 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
-import type { Ecart, Instantane } from './etat-publiable';
+import type { Ecart, EntreesPubliables, Instantane, JourPubliable } from './etat-publiable';
 import {
-  ecarts,
+  ecartsPublies,
   horodatageJournal,
   instantanePubliable,
   journalVersCsv,
@@ -120,6 +120,22 @@ let modifs = 0;
 let dernierePublicationVue: string | null = null;
 /** Dernière liste d'écrans lue : la veille par poste entre dans l'état publiable. */
 let ecransConnus: EcranInfo[] = [];
+/**
+ * Journées telles qu'elles sont EN BASE (avant application du brouillon),
+ * par date. C'est le point zéro des clés datées de l'instantané : le garder
+ * évite de figer dans la référence une journée qui n'est plus affichée.
+ */
+const joursPublies = new Map<string, Jour>();
+
+/**
+ * Copie INDÉPENDANTE d'une journée. Indispensable : plusieurs gestionnaires
+ * modifient la circulation sur place (`c.facultatif_actif = …`) avant de la
+ * mettre au brouillon. Sans copie, le point de référence serait modifié en
+ * même temps que l'état courant et l'écart serait toujours nul.
+ */
+function copieJour(j: Jour): Jour {
+  return { ...j, circulations: j.circulations.map((c) => ({ ...c })) };
+}
 /**
  * Instant de la dernière écriture (ou publication) : référence pour juger si
  * un écran affiche bien l'état courant. null tant que rien n'a été modifié
@@ -194,11 +210,36 @@ function toast(texte: string): void {
 }
 
 /** Écriture IMMÉDIATE (Paramètres, Médias, Écrans...) : déjà en base. */
+/**
+ * Dates à comparer : celle qui est affichée, plus toutes celles qui portent
+ * des modifications en attente. « Publier » les publie TOUTES — les ignorer
+ * griserait le bouton alors qu'il reste quelque chose à publier ailleurs.
+ */
+function datesPubliables(): string[] {
+  return [...new Set([dateSel, ...brouillonCirc.keys(), ...brouillonTerminus.keys()])];
+}
+
+/** Journées telles qu'elles seront publiées (base + brouillon). */
+function joursEffectifs(): JourPubliable[] {
+  return datesPubliables().map((date) => {
+    if (date === dateSel) return { date, jour };
+    const base = joursPublies.get(date);
+    return {
+      date,
+      jour: base ? appliqueBrouillonJour(base, brouillonCirc, brouillonTerminus) : null,
+    };
+  });
+}
+
+/** Les mêmes journées, telles qu'elles sont EN BASE : le point de référence. */
+function joursDeReference(): JourPubliable[] {
+  return datesPubliables().map((date) => ({ date, jour: joursPublies.get(date) ?? null }));
+}
+
 /** Instantané de l'état publiable tel que la supervision le connaît. */
-function instantaneCourant(): Instantane {
-  return instantanePubliable({
-    date: dateSel,
-    jour,
+function entreesCourantes(): EntreesPubliables {
+  return {
+    jours: joursEffectifs(),
     messages,
     medias,
     params,
@@ -206,10 +247,20 @@ function instantaneCourant(): Instantane {
     machines: params?.machines ?? [],
     motifs: params?.motifs ?? [],
     modeles,
-  });
+  };
 }
 
-/** Prend l'état courant comme nouvelle référence (chargement, publication). */
+function instantaneCourant(): Instantane {
+  return instantanePubliable(entreesCourantes());
+}
+
+/**
+ * Prend l'état courant comme nouvelle référence (chargement, publication).
+ * Seule la partie NON DATÉE est figée ici : la partie datée se recalcule à
+ * chaque comparaison depuis `joursPublies`, sans quoi un changement de date
+ * ferait compter toute l'ancienne journée comme supprimée et toute la
+ * nouvelle comme ajoutée.
+ */
 function fixeReference(): void {
   reference = instantaneCourant();
   referenceFixee = true;
@@ -220,7 +271,7 @@ function fixeReference(): void {
 
 /** Recalcule les écarts et rafraîchit la barre de publication. */
 function recalculeEcarts(): void {
-  ecartsCourants = ecarts(reference, instantaneCourant());
+  ecartsCourants = ecartsPublies(reference, joursDeReference(), entreesCourantes());
   modifs = ecartsCourants.length;
   majBarrePublication();
 }
@@ -290,6 +341,7 @@ async function chargeTout(): Promise<void> {
   // Garde de course : ne pas écraser l'affichage si l'agent a changé de date
   // pendant le chargement (l'en-tête et le tableau seraient désynchronisées).
   if (demande === dateSel) {
+    joursPublies.set(demande, copieJour(j)); // état EN BASE, avant brouillon
     jour = j;
     rafraichitJourEffectif(); // réapplique les circulations/terminus en attente pour cette date
   }
@@ -936,14 +988,19 @@ async function allerDate(date: string): Promise<void> {
     dateSel = date; // les chargements concurrents comparent à cette valeur
     const nouveau = await provider.getJour(date);
     if (dateSel !== date) return; // une navigation plus récente a pris le relais
+    joursPublies.set(date, copieJour(nouveau)); // état EN BASE de la nouvelle date
     jour = nouveau;
     rafraichitJourEffectif(); // les modifications en attente pour CETTE date réapparaissent
     rendreCirculations();
+    // Sans ce recalcul, la barre gardait le compte de la date précédente et
+    // ne se réveillait qu'à la première écriture — d'où le saut brutal.
+    if (referenceFixee) recalculeEcarts();
   } catch (erreur) {
     if (dateSel === date) {
       dateSel = precedente;
       ($('date-picker') as HTMLInputElement).value = precedente;
       rendreCirculations(); // remet en-tête, service et bascule sur la date réelle
+      if (referenceFixee) recalculeEcarts();
     }
     erreurVersToast(erreur);
   }
