@@ -11,7 +11,13 @@ import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
 import '../styles/grille.css';
 
-import { formatHeure, passagesPourGare, positionsTrains, trainsDuJour } from '../core/horaires';
+import {
+  formatHeure,
+  libelleTrain,
+  passagesPourGare,
+  positionsTrains,
+  trainsDuJour,
+} from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
   GareId,
@@ -160,7 +166,12 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
 
   let html = '<thead><tr><th class="col-gare">GARE / STATION</th>';
   colonnes.forEach((c, i) => {
-    html += `<th class="${classesColonne(c, i === prochainIdx)}"><span class="num">TRAIN ${c.train.numero}</span>${formatHeure(c.departTheorique_s)}`;
+    html += `<th class="${classesColonne(c, i === prochainIdx)}"><span class="num">${echapper(
+      libelleTrain(
+        c.train,
+        colonnes.map((x) => x.train),
+      ),
+    )}</span>${formatHeure(c.departTheorique_s)}`;
     const pictos: string[] = [];
     if (c.train.express) {
       pictos.push(`<img class="motrice" src="${__MOTRICE_BLANC__}" alt="Express"> EXPRESS`);

@@ -36,8 +36,16 @@ create table if not exists circulations (
                                   -- course à vide : conservée en exploitation,
                                   -- JAMAIS affichée aux voyageurs
   motif text,
+  -- TRAIN SUPPLÉMENTAIRE : train de renfort absent de toute grille. Il porte
+  -- donc SES PROPRES passages, au format des grilles JSON — sans quoi il
+  -- serait invisible partout (docs/01 §2.7).
+  supplementaire boolean not null default false,
+  passages jsonb,
   maj timestamptz not null default now(),
-  unique (date, numero)
+  unique (date, numero),
+  -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
+  constraint circulations_sup_passages
+    check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 
 create table if not exists messages (

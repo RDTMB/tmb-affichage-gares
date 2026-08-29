@@ -15,9 +15,12 @@ import {
   A_QUAI_ORIGINE_DEFAUT_S,
   formatHeure,
   heureVersSecondes,
+  libelleTrain,
   monteesSansRetour,
   serviceActif,
 } from '../core/horaires';
+import { construitRotationSup, prochainNumeroSup } from '../core/train-sup';
+import type { RotationSup } from '../core/train-sup';
 import { ORDRE_GARES } from '../core/types';
 import type {
   Circulation,
@@ -30,6 +33,7 @@ import type {
   Message,
   ModeleMessage,
   Params,
+  PassageGrille,
   Profil,
   Role,
   TrainGrille,
@@ -47,6 +51,7 @@ import {
   stageCirculation,
   videDate,
   type BrouillonCirculations,
+  type BrouillonSupSupprimes,
   type BrouillonMessages,
   type BrouillonTerminus,
 } from './brouillon';
@@ -160,6 +165,8 @@ let traductionManuelle = false;
 let messagesBase: Message[] = [];
 let paramsBase: Params | null = null;
 const brouillonCirc: BrouillonCirculations = new Map();
+/** Trains sup dont la suppression attend la publication (numéro de montée). */
+const brouillonSupSupprimes: BrouillonSupSupprimes = new Map();
 const brouillonTerminus: BrouillonTerminus = new Map();
 const brouillonMessages: BrouillonMessages = new Map();
 let brouillonParams: Partial<Params> = {};
@@ -173,7 +180,8 @@ function rafraichitParamsEffectifs(): void {
 }
 
 function rafraichitJourEffectif(): void {
-  if (jour) jour = appliqueBrouillonJour(jour, brouillonCirc, brouillonTerminus);
+  if (jour)
+    jour = appliqueBrouillonJour(jour, brouillonCirc, brouillonTerminus, brouillonSupSupprimes);
 }
 
 /** Reste-t-il des modifications non publiées (toutes catégories confondues) ? */
@@ -232,7 +240,9 @@ function joursEffectifs(): JourPubliable[] {
     const base = joursPublies.get(date);
     return {
       date,
-      jour: base ? appliqueBrouillonJour(base, brouillonCirc, brouillonTerminus) : null,
+      jour: base
+        ? appliqueBrouillonJour(base, brouillonCirc, brouillonTerminus, brouillonSupSupprimes)
+        : null,
     };
   });
 }
@@ -486,6 +496,17 @@ function optionsMotifs(selection: string | null): string {
     .join('');
 }
 
+/** Vue « train de grille » d'un train sup, pour réutiliser le même rendu. */
+function commeTrainGrille(c: Circulation): TrainGrille {
+  return {
+    numero: c.numero,
+    express: false,
+    facultatif: false,
+    velos: false,
+    passages: c.passages ?? [],
+  };
+}
+
 function ligneCirculation(
   train: TrainGrille,
   sens: 'montee' | 'descente',
@@ -584,7 +605,23 @@ function ligneCirculation(
   return `<tr class="${heurePassee(depart) ? 'passe' : ''} ${inactif ? 'inactif' : ''} ${
     aVide ? 'a-vide' : ''
   } ${montee ? '' : 'paire-fin'}">
-    <td class="h-dep">${heure}<small>TRAIN ${n}</small></td>
+    <td class="h-dep">${heure}<small>${echapper(
+      libelleTrain(
+        { numero: n, supplementaire: c.supplementaire },
+        (jour?.circulations ?? []).map((x) => ({
+          numero: x.numero,
+          supplementaire: x.supplementaire,
+        })),
+      ),
+    )}</small>${
+      c.supplementaire
+        ? `<span class="badge-sup">SUP</span>${
+            montee && !lectureSeule
+              ? `<button class="leger btn-sup-suppr" data-action="sup-supprimer" data-numero="${n}">Supprimer ce train</button>`
+              : ''
+          }`
+        : ''
+    }</td>
     <td><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
       train.express
         ? `<span class="exp-tag"><img src="${__MOTRICE_MARINE__}" alt="" /> EXPRESS</span>`
@@ -673,15 +710,32 @@ function rendreCirculations(): void {
       '<tr><td colspan="8" style="padding:22px;color:var(--sec);font-weight:700">Aucun service ne circule à cette date.</td></tr>';
     return;
   }
-  tbody.innerHTML = grille.montees
-    .map((montee) => {
-      const descente = grille.descentes.find((d) => d.numero === montee.numero + 1);
-      return (
-        ligneCirculation(montee, 'montee', lectureSeule) +
-        (descente ? ligneCirculation(descente, 'descente', lectureSeule) : '')
-      );
-    })
-    .join('');
+  tbody.innerHTML =
+    grille.montees
+      .map((montee) => {
+        const descente = grille.descentes.find((d) => d.numero === montee.numero + 1);
+        return (
+          ligneCirculation(montee, 'montee', lectureSeule) +
+          (descente ? ligneCirculation(descente, 'descente', lectureSeule) : '')
+        );
+      })
+      .join('') +
+    // Trains SUPPLÉMENTAIRES : absents de la grille, ils portent leurs propres
+    // passages. On fabrique le TrainGrille équivalent pour réutiliser
+    // exactement le même rendu de ligne.
+    (jour?.circulations ?? [])
+      .filter((c) => c.supplementaire && c.sens === 'montee')
+      .sort((a, b) => a.numero - b.numero)
+      .map((montee) => {
+        const descente = jour?.circulations.find(
+          (c) => c.supplementaire && c.numero === montee.numero + 1,
+        );
+        return (
+          ligneCirculation(commeTrainGrille(montee), 'montee', lectureSeule) +
+          (descente ? ligneCirculation(commeTrainGrille(descente), 'descente', lectureSeule) : '')
+        );
+      })
+      .join('');
 }
 
 /**
@@ -751,6 +805,189 @@ function initCirculations(): void {
         : `${cibles.length} train(s) facultatif(s) désactivé(s), en attente de publication`,
     );
   });
+  // -------------------------------------------------------------------------
+  // Train supplémentaire
+  // -------------------------------------------------------------------------
+  /** Gares desservies cochées, dans l'ordre de la ligne. */
+  const garesCochees = (id: string): GareId[] =>
+    [...document.querySelectorAll<HTMLInputElement>(`#${id} input[type=checkbox]`)]
+      .filter((c) => c.checked)
+      .map((c) => c.value as GareId);
+
+  /** Cases d'un sens : origine et terminus toujours cochés ET verrouillés. */
+  const rendCasesGaresSup = (id: string, ordre: GareId[], obligatoires: GareId[]): void => {
+    $(id).innerHTML = ordre
+      .map((g) => {
+        const impose = obligatoires.includes(g);
+        return `<label><input type="checkbox" value="${echapper(g)}" ${
+          impose ? 'checked disabled' : 'checked'
+        } /> ${echapper(nomDeGare(g))}</label>`;
+      })
+      .join('');
+  };
+
+  /** Terminus proposés : jamais au-dessus de Bellevue si la bascule est active. */
+  const terminusPossibles = (): GareId[] => {
+    const limite = jour?.terminus_bellevue !== false;
+    return limite
+      ? (['col-de-voza', 'bellevue'] as GareId[])
+      : (['col-de-voza', 'bellevue', 'nid-daigle'] as GareId[]);
+  };
+
+  /** Aperçu des horaires CALCULÉS, chaque heure restant modifiable. */
+  const majApercuSup = (): void => {
+    const grille = grilleDuJour();
+    const depart = ($('sup-depart') as HTMLInputElement).value;
+    const conteneur = $('sup-apercu');
+    if (!grille || !depart) {
+      conteneur.innerHTML = '<i>Indiquez une heure de départ.</i>';
+      delete conteneur.dataset.rotation;
+      return;
+    }
+    try {
+      const rotation = construitRotationSup(grille, {
+        heureDepart_s: heureVersSecondes(depart),
+        garesMontee: garesCochees('sup-gares-montee'),
+        garesDescente: garesCochees('sup-gares-descente'),
+        battement_s: (Number(($('sup-battement') as HTMLInputElement).value) || 5) * 60,
+      });
+      const lignes = (titre: string, passages: PassageGrille[], sens: string): string =>
+        `<div class="sens"><b>${titre}</b>${passages
+          .map(
+            (p, i) =>
+              `<span class="etape"><i>${echapper(nomDeGare(p.gare))}</i>${
+                p.a === undefined
+                  ? ''
+                  : `<input type="time" step="1" data-sup="${sens}" data-i="${i}" data-champ="a" value="${echapper(p.a)}" title="Arrivée" />`
+              }${
+                p.d === undefined
+                  ? ''
+                  : `<input type="time" step="1" data-sup="${sens}" data-i="${i}" data-champ="d" value="${echapper(p.d)}" title="Départ" />`
+              }</span>`,
+          )
+          .join('')}</div>`;
+      conteneur.innerHTML =
+        lignes('Montée', rotation.montee, 'montee') +
+        lignes('Descente', rotation.descente, 'descente');
+      conteneur.dataset.rotation = JSON.stringify(rotation);
+    } catch (erreur) {
+      // Aucune heure inventée : on dit pourquoi le calcul échoue.
+      conteneur.innerHTML = `<span class="erreur-sup">${echapper(
+        erreur instanceof Error ? erreur.message : String(erreur),
+      )}</span>`;
+      delete conteneur.dataset.rotation;
+    }
+  };
+
+  const rendFormulaireSup = (): void => {
+    const grille = grilleDuJour();
+    if (!grille) return;
+    const sel = $('sup-terminus') as HTMLSelectElement;
+    const choisi = sel.value;
+    const possibles = terminusPossibles();
+    sel.innerHTML = possibles
+      .map((g) => `<option value="${echapper(g)}">${echapper(nomDeGare(g))}</option>`)
+      .join('');
+    sel.value = possibles.includes(choisi as GareId) ? choisi : 'col-de-voza';
+
+    const terminus = sel.value as GareId;
+    const ordreMontee = ORDRE_GARES.slice(0, ORDRE_GARES.indexOf(terminus) + 1);
+    const ordreDescente = [...ordreMontee].reverse();
+    rendCasesGaresSup('sup-gares-montee', ordreMontee, ['le-fayet', terminus]);
+    rendCasesGaresSup('sup-gares-descente', ordreDescente, [terminus, 'le-fayet']);
+
+    const rame = $('sup-rame') as HTMLSelectElement;
+    rame.innerHTML = (params?.machines ?? [])
+      .filter((m) => m.en_service)
+      .map((m) => `<option>${echapper(m.nom)}</option>`)
+      .join('');
+    majApercuSup();
+  };
+
+  $('btn-train-sup').addEventListener('click', () => {
+    if (!jour || jour.hors_saison || jour.enregistre === false) return;
+    const bloc = $('form-train-sup');
+    const ouvert = bloc.style.display !== 'none';
+    bloc.style.display = ouvert ? 'none' : '';
+    if (ouvert) return;
+    const battement = $('sup-battement') as HTMLInputElement;
+    if (!battement.value) battement.value = '5';
+    rendFormulaireSup();
+  });
+  $('btn-sup-annuler').addEventListener('click', () => {
+    $('form-train-sup').style.display = 'none';
+  });
+  $('sup-terminus').addEventListener('change', rendFormulaireSup);
+  $('sup-depart').addEventListener('change', majApercuSup);
+  $('sup-battement').addEventListener('change', majApercuSup);
+  $('sup-gares-montee').addEventListener('change', majApercuSup);
+  $('sup-gares-descente').addEventListener('change', majApercuSup);
+
+  // Une heure corrigée à la main l'emporte sur le calcul : un train qui ne
+  // s'arrête pas gagne quelques secondes que la grille ignore.
+  $('sup-apercu').addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    if (!champ.dataset.sup) return;
+    const conteneur = $('sup-apercu');
+    const brut = conteneur.dataset.rotation;
+    if (!brut) return;
+    const rotation = JSON.parse(brut) as RotationSup;
+    const liste = champ.dataset.sup === 'montee' ? rotation.montee : rotation.descente;
+    const passage = liste[Number(champ.dataset.i)];
+    if (passage) {
+      const valeur = champ.value.length === 5 ? `${champ.value}:00` : champ.value;
+      if (champ.dataset.champ === 'a') passage.a = valeur;
+      else passage.d = valeur;
+    }
+    conteneur.dataset.rotation = JSON.stringify(rotation);
+  });
+
+  $('btn-sup-valider').addEventListener('click', () => {
+    if (!jour) return;
+    const brut = $('sup-apercu').dataset.rotation;
+    if (!brut) {
+      toast('Horaires incalculables — vérifiez l’heure de départ et les gares desservies');
+      return;
+    }
+    const rotation = JSON.parse(brut) as RotationSup;
+    const numero = prochainNumeroSup(jour.circulations.map((c) => c.numero));
+    const base: Circulation = {
+      date: dateSel,
+      numero,
+      sens: 'montee',
+      express: false,
+      facultatif: false,
+      facultatif_actif: false,
+      velos: false,
+      rame: ($('sup-rame') as HTMLSelectElement).value,
+      // La bascule de plage s'applique aussi à un train sup : sa colonne
+      // Terminus suit l'état de la journée.
+      terminus: jour.terminus_bellevue === false ? 'nid-daigle' : 'bellevue',
+      statut: 'ok',
+      retard_min: 0,
+      motif: null,
+      sans_voyageurs: ($('sup-sans-voyageurs') as HTMLInputElement).checked,
+      supplementaire: true,
+      passages: rotation.montee,
+    };
+    stageCirculation(brouillonCirc, base);
+    stageCirculation(brouillonCirc, {
+      ...base,
+      numero: numero + 1,
+      sens: 'descente',
+      // Seule la MONTÉE peut être à vide : la descente ramène les voyageurs,
+      // c'est la raison d'être du train de renfort.
+      sans_voyageurs: false,
+      passages: rotation.descente,
+    });
+    brouillonSupSupprimes.get(dateSel)?.delete(numero);
+    rafraichitJourEffectif();
+    rendreCirculations();
+    $('form-train-sup').style.display = 'none';
+    bumpEnAttente(`train supplémentaire ${numero}/${numero + 1} créé (en attente)`);
+    toast('Train supplémentaire créé — en attente de publication');
+  });
+
   $('btn-reinitialiser').addEventListener('click', () => {
     // Seule action de l'onglet Circulations à rester IMMÉDIATE (docs/01 §5.6) :
     // c'est un retour à zéro déjà protégé par sa propre confirmation explicite,
@@ -881,6 +1118,31 @@ function initCirculations(): void {
           : 'Train facultatif désactivé, en attente de publication',
       );
       proposeAppariementFacultatif(numero, actif);
+    } else if (action === 'sup-supprimer') {
+      const libelle = libelleTrain(
+        { numero, supplementaire: true },
+        (jour?.circulations ?? []).map((x) => ({
+          numero: x.numero,
+          supplementaire: x.supplementaire,
+        })),
+      );
+      if (
+        !window.confirm(
+          `Supprimer ${libelle} (montée ${numero} et descente ${numero + 1}) ?
+Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne se suppriment pas : ils se mettent au statut « Supprimé ».`,
+        )
+      )
+        return;
+      const retires = brouillonSupSupprimes.get(dateSel) ?? new Set<number>();
+      retires.add(numero);
+      brouillonSupSupprimes.set(dateSel, retires);
+      // Une création jamais publiée s'annule purement et simplement.
+      brouillonCirc.get(dateSel)?.delete(numero);
+      brouillonCirc.get(dateSel)?.delete(numero + 1);
+      rafraichitJourEffectif();
+      rendreCirculations();
+      bumpEnAttente(`${libelle} supprimé (en attente)`);
+      toast(`${libelle} supprimé — en attente de publication`);
     } else if (action === 'sans-voyageurs') {
       // COPIE volontaire (conservée) : le brouillon garde son propre objet,
       // distinct de `c`, pour ne jamais dépendre d'une mutation partagée.
@@ -2449,9 +2711,41 @@ async function publieLeBrouillon(): Promise<boolean> {
     if (!ok) echecs.push('messages');
   }
 
+  // Suppressions de trains supplémentaires D'ABORD : si l'agent a supprimé
+  // puis recréé un train au même numéro, la création doit gagner.
+  for (const [date, numeros] of [...brouillonSupSupprimes.entries()]) {
+    let ok = true;
+    for (const numeroMontee of numeros) {
+      try {
+        await provider.supprimerTrainSup(date, numeroMontee);
+      } catch (erreur) {
+        ok = false;
+        erreurVersToast(erreur);
+      }
+    }
+    if (ok) brouillonSupSupprimes.delete(date);
+    else echecs.push(`suppression de train supplémentaire du ${date}`);
+  }
+
   for (const [date, parNumero] of [...brouillonCirc.entries()]) {
     try {
-      await provider.saveCirculations([...parNumero.values()]);
+      // Les trains SUPPLÉMENTAIRES neufs passent par creerTrainSup (insert de
+      // la rotation entière, contrôle des deux lignes) ; le reste par
+      // l'écriture groupée habituelle.
+      const enAttente = [...parNumero.values()];
+      const supNeufs = enAttente.filter((c) => c.supplementaire && c.sens === 'montee');
+      const autres = enAttente.filter(
+        (c) =>
+          !c.supplementaire ||
+          !supNeufs.some((m) => m.numero === c.numero || m.numero + 1 === c.numero),
+      );
+      for (const montee of supNeufs) {
+        const descente = enAttente.find((c) => c.numero === montee.numero + 1);
+        if (!descente)
+          throw new Error(`Train supplémentaire ${montee.numero} sans descente appariée`);
+        await provider.creerTrainSup(date, montee, descente);
+      }
+      if (autres.length > 0) await provider.saveCirculations(autres);
       brouillonCirc.delete(date);
     } catch (erreur) {
       echecs.push(`circulations du ${date}`);

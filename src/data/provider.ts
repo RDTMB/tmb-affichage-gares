@@ -58,6 +58,14 @@ export interface DataProvider {
    * si le nombre de lignes réellement écrites ne correspond pas.
    */
   saveCirculations(cs: Circulation[]): Promise<void>;
+  /** Crée la rotation d'un train supplémentaire (montée impaire + descente n+1). */
+  creerTrainSup(date: string, montee: Circulation, descente: Circulation): Promise<void>;
+  /**
+   * Supprime la rotation d'un train supplémentaire. REFUSÉ si le train n'est
+   * pas supplémentaire : un train de grille ne se supprime pas, il se met au
+   * statut « supprimé ».
+   */
+  supprimerTrainSup(date: string, numeroMontee: number): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   saveMessage(m: Message): Promise<void>;
   deleteMessage(id: string): Promise<void>;

@@ -428,6 +428,15 @@ export class MockProvider implements DataProvider {
         const modif = etatJour.circulations[String(c.numero)];
         if (modif) Object.assign(c, modif);
       }
+      // Trains SUPPLÉMENTAIRES : ils n'ont aucune contrepartie dans la grille,
+      // donc aucune circulation générée à compléter — il faut les AJOUTER,
+      // sans quoi ils disparaîtraient à la relecture.
+      const connus = new Set(jour.circulations.map((c) => c.numero));
+      for (const brut of Object.values(etatJour.circulations)) {
+        if (brut?.supplementaire !== true || connus.has(brut.numero ?? -1)) continue;
+        jour.circulations.push(brut as Circulation);
+      }
+      jour.circulations.sort((x, y) => x.numero - y.numero);
       jour.terminus_bellevue =
         etatJour.terminus === null ? false : { a_partir_du_train: etatJour.terminus };
     }
@@ -629,6 +638,38 @@ export class MockProvider implements DataProvider {
       }
     }
     ecritEtat(etat); // une seule notification pour toute l'action groupée
+  }
+
+  async creerTrainSup(date: string, montee: Circulation, descente: Circulation): Promise<void> {
+    const etat = litEtat();
+    etat.jours[date] ??= { terminus: null, circulations: {} };
+    const jour = etat.jours[date];
+    if (!jour) return;
+    for (const c of [montee, descente]) {
+      trace(etat, 'circulations', `${date} ${c.numero}`, null, c, undefined, date);
+      jour.circulations[String(c.numero)] = c;
+    }
+    ecritEtat(etat);
+  }
+
+  async supprimerTrainSup(date: string, numeroMontee: number): Promise<void> {
+    const etat = litEtat();
+    const jour = etat.jours[date];
+    const montee = jour?.circulations[String(numeroMontee)];
+    if (!jour || !montee) throw new Error(`TRAIN ${numeroMontee} introuvable au ${date}`);
+    // Même garde-fou qu'en production : un train de grille ne se supprime pas.
+    if (montee.supplementaire !== true) {
+      throw new Error(
+        `TRAIN ${numeroMontee} n'est pas un train supplémentaire : suppression refusée`,
+      );
+    }
+    for (const numero of [numeroMontee, numeroMontee + 1]) {
+      const c = jour.circulations[String(numero)];
+      if (!c) continue;
+      trace(etat, 'circulations', `${date} ${numero}`, c, null, undefined, date);
+      delete jour.circulations[String(numero)];
+    }
+    ecritEtat(etat);
   }
 
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {

@@ -1405,3 +1405,92 @@ input:disabled {
   font-size: 11px;
   line-height: 1.5;
 }
+
+/* Train supplémentaire : formulaire de création et repérage dans la liste */
+.carte-sup {
+  margin: 10px 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--rouge);
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.carte-sup h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.carte-sup .ligne {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.gares-sup label {
+  margin-right: 10px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.apercu-sup {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--bord);
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+
+.apercu-sup .sens {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.apercu-sup .etape {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.apercu-sup .etape i {
+  color: var(--sec);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.apercu-sup input[type='time'] {
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.erreur-sup {
+  color: var(--rouge);
+  font-weight: 700;
+}
+
+.badge-sup {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--rouge);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.btn-sup-suppr {
+  display: block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+}

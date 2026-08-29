@@ -163,6 +163,50 @@ Paramétrables en supervision : machines (nom, couleur, en service) —
 défaut Marie/Anne/Jeanne/Marguerite avec les couleurs de CLAUDE.md ;
 motifs (défaut : Météo, Croisement, Technique, Affluence, Exploitation).
 
+### 2.7 Train supplémentaire (« train sup »)
+
+Quand trop de clients doivent redescendre par rapport aux places disponibles,
+le chef d'exploitation crée un train de renfort. Il part du Fayet à une heure
+choisie, ne dessert souvent NI Saint-Gervais NI Motivon, s'arrête au Col de
+Voza pour récupérer les voyageurs, et redescend.
+
+Ce train **n'existe dans aucune grille**. Il porte donc SES PROPRES passages
+(colonne `passages`, au format des grilles JSON) : sans cela il serait
+invisible partout, le moteur ne sachant joindre un état d'exploitation qu'à
+un train de grille.
+
+**Numérotation** : la convention impair = montée / pair = descente est
+conservée — premier numéro impair libre ≥ 101 pour la montée, `numéro + 1`
+pour la descente. L'appariement de rame existant (la descente n+1 hérite de
+la montée n) fonctionne donc sans modification.
+
+**Horaires** : calculés depuis la grille EN VIGUEUR — temps inter-gares et
+temps d'arrêt lus sur son premier train non express, jamais codés en dur (la
+grille hiver aura les siens). Une gare non desservie ne coûte pas son temps
+d'arrêt : c'est précisément ce que le renfort gagne. Exemple été 2026 :
+Le Fayet 17:00:00 → Col de Voza 17:34:30 (10:00 + 11:30 + 13:00). Chaque
+heure calculée reste **modifiable** avant validation, un train qui ne
+s'arrête pas gagnant quelques secondes que la grille ignore.
+
+**Ce que l'application ne dit pas** : la voie est unique et les croisements
+relèvent du chef d'exploitation. Aucun écran n'indique qu'un sillon serait
+libre.
+
+**Affichage** : libellé « TRAIN SUP », ou « TRAIN SUP 1 », « TRAIN SUP 2 »…
+s'il y en a plusieurs (fonction unique partagée par l'écran de gare, la
+grille du jour et la supervision, pour qu'ils ne divergent jamais). Sous la
+destination, les gares non desservies sont listées dans l'esprit de la
+mention express : « SANS ARRÊT — non-stop : Saint-Gervais & Motivon ».
+Un train sup n'est **jamais** marqué express : ni picto motrice, ni mention
+express — « express » désigne le train qui saute Voza et Bellevue.
+
+Il obéit aux mêmes règles que les autres : `sans_voyageurs` l'exclut de tout
+affichage, le statut / retard / motif s'appliquent, et la bascule Terminus
+Bellevue le tronque comme n'importe quelle rotation. Un train sup limité au
+Col de Voza n'est pas concerné, n'ayant aucun passage au-dessus.
+
+_(Fonctionnalité validée par l'exploitant le 30/08/2026.)_
+
 ## 3. Écran de gare (`ecran.html`)
 
 Reproduit `maquettes/ecran-gare.html`, à une exception documentée : la
@@ -321,6 +365,21 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    si la grille officielle est corrigée ou après une fausse manœuvre) ;
    export CSV.
    _(Amélioration validée par l'exploitant le 25/08/2026.)_
+
+   **Train supplémentaire** (§2.7) : bouton « + Train supplémentaire » à côté
+   de « Trains facultatifs » et de la bascule Terminus Bellevue. Le
+   formulaire demande l'heure de départ du Fayet, le terminus (Col de Voza
+   par défaut ; les choix au-dessus de Bellevue disparaissent quand la
+   bascule Terminus Bellevue est active), les gares desservies à la montée
+   puis à la descente (origine et terminus toujours cochés et verrouillés),
+   le battement au terminus (défaut 5 min), la rame et une case « monte sans
+   voyageurs ». L'aperçu montre les horaires CALCULÉS, chacun modifiable
+   avant validation. Le train apparaît ensuite dans la liste avec un badge
+   « SUP » et, seul de tous les trains, un bouton « Supprimer ce train » avec
+   confirmation — les trains de grille ne se suppriment pas, ils se mettent
+   au statut « Supprimé ». Création et suppression passent par le brouillon
+   et la publication, comme le reste de l'onglet.
+   _(Fonctionnalité validée par l'exploitant le 30/08/2026.)_
 
    **Action groupée sur les facultatifs** : un bouton dans la barre du haut,
    à GAUCHE de la bascule « Terminus Bellevue », bascule d'un geste tous les

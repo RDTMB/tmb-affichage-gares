@@ -101,6 +101,8 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      supplementaire: false,
+      passages: null,
     });
   });
 
@@ -120,6 +122,8 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      supplementaire: false,
+      passages: null,
     });
   }
 
@@ -285,9 +289,53 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
         retard_min: circulation?.statut === 'retard' ? circulation.retard_min : 0,
         motif: circulation?.motif ?? null,
         terminusExceptionnel: false,
+        supplementaire: false,
         passages: resoudPassages(trainGrille, grille.arret_intermediaire_s),
       });
     }
+  }
+
+  // TRAINS SUPPLÉMENTAIRES : absents de toute grille, ils portent leurs
+  // propres passages. Sans ce bloc ils seraient invisibles partout — la
+  // boucle ci-dessus ne sait joindre que des trains de grille.
+  for (const circulation of jour.circulations) {
+    if (!circulation.supplementaire || !circulation.passages) continue;
+    if (circulation.sans_voyageurs === true) continue; // course à vide : jamais affichée
+
+    let rame = circulation.rame;
+    if (circulation.sens === 'descente') {
+      // Même règle que partout : la rame se choisit sur la montée (numéro
+      // impair), la descente appariée (numéro + 1) en hérite.
+      const monteeAppariee = circulationParNumero.get(circulation.numero - 1);
+      if (monteeAppariee) rame = monteeAppariee.rame;
+    }
+
+    trains.push({
+      numero: circulation.numero,
+      sens: circulation.sens,
+      // « express » désigne le train qui saute Voza et Bellevue, avec son
+      // picto motrice : un train sup n'en est pas un, même s'il saute des
+      // gares. Sa mention à lui est « SANS ARRÊT » (docs/01 §2.7).
+      express: false,
+      facultatif: false,
+      velos: false,
+      rame,
+      statut: circulation.statut,
+      retard_min: circulation.statut === 'retard' ? circulation.retard_min : 0,
+      motif: circulation.motif,
+      terminusExceptionnel: false,
+      supplementaire: true,
+      passages: resoudPassages(
+        {
+          numero: circulation.numero,
+          express: false,
+          facultatif: false,
+          velos: false,
+          passages: circulation.passages,
+        },
+        grille.arret_intermediaire_s,
+      ),
+    });
   }
 
   // Rotation limitée = colonne Terminus de la montée sur Bellevue. La descente
@@ -360,6 +408,36 @@ export function monteesSansRetour(grille: Grille, jour: Jour): number[] {
   }
   return sansRetour.sort((a, b) => a - b);
 }
+/**
+ * Libellé d'un train, SOURCE UNIQUE pour l'écran de gare, la grille du jour
+ * et la supervision — pour qu'ils ne divergent jamais.
+ *
+ *   train de grille                  → « TRAIN 9 »
+ *   un seul train sup dans la journée → « TRAIN SUP »
+ *   plusieurs                        → « TRAIN SUP 1 », « TRAIN SUP 2 »…
+ *
+ * Le rang d'un train sup suit l'ordre des NUMÉROS, pas l'ordre d'affichage :
+ * il doit rester le même partout et d'un rafraîchissement à l'autre.
+ */
+export function libelleTrain(
+  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+): string {
+  if (!train.supplementaire) return `TRAIN ${train.numero}`;
+  // Une rotation sup compte pour UN train : la montée (impair) et sa
+  // descente (numéro + 1) portent le même rang.
+  const rotations = [
+    ...new Set(
+      tousLesTrainsDuJour
+        .filter((t) => t.supplementaire)
+        .map((t) => (t.numero % 2 === 0 ? t.numero - 1 : t.numero)),
+    ),
+  ].sort((a, b) => a - b);
+  if (rotations.length <= 1) return 'TRAIN SUP';
+  const mien = train.numero % 2 === 0 ? train.numero - 1 : train.numero;
+  const rang = rotations.indexOf(mien);
+  return rang < 0 ? 'TRAIN SUP' : `TRAIN SUP ${rang + 1}`;
+}
 export function passagesPourGare(
   grille: Grille,
   jour: Jour,
@@ -389,6 +467,7 @@ export function passagesPourGare(
       origine: premier.gare,
       destination: dernier.gare,
       terminusExceptionnel: train.terminusExceptionnel,
+      supplementaire: train.supplementaire,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,
       depart_s: passage.depart_s === null ? null : passage.depart_s + decalage,
       arrivee_theorique_s: passage.arrivee_s,

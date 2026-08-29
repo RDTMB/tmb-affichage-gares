@@ -446,6 +446,47 @@ export class SupabaseProvider implements DataProvider {
    * rétrécir doit rétablir le service jusqu'au Nid d'Aigle — sinon
    * l'exploitant décoche et rien ne change à l'écran).
    */
+  async creerTrainSup(date: string, montee: Circulation, descente: Circulation): Promise<void> {
+    await this.assureJour(date);
+    const resultat = await this.client
+      .from('circulations')
+      .upsert([montee, descente], { onConflict: 'date,numero' })
+      .select();
+    exigeLignes(resultat, 'journée absente en base');
+    if ((resultat.data?.length ?? 0) !== 2) {
+      throw new Error(
+        `Train supplémentaire incomplet — ${resultat.data?.length ?? 0} circulation(s) sur 2 enregistrée(s)`,
+      );
+    }
+  }
+
+  async supprimerTrainSup(date: string, numeroMontee: number): Promise<void> {
+    // Garde-fou : on ne supprime QUE des trains supplémentaires. Un train de
+    // grille se met au statut « supprimé », il ne disparaît pas de la journée.
+    const { data, error } = await this.client
+      .from('circulations')
+      .select('numero, supplementaire')
+      .eq('date', date)
+      .in('numero', [numeroMontee, numeroMontee + 1]);
+    verifie(error);
+    const lignes = (data ?? []) as { numero: number; supplementaire: boolean }[];
+    if (lignes.length === 0) throw new Error(`TRAIN ${numeroMontee} introuvable au ${date}`);
+    if (lignes.some((l) => !l.supplementaire)) {
+      throw new Error(
+        `TRAIN ${numeroMontee} n'est pas un train supplémentaire : suppression refusée`,
+      );
+    }
+    exigeLignes(
+      await this.client
+        .from('circulations')
+        .delete()
+        .eq('date', date)
+        .in('numero', [numeroMontee, numeroMontee + 1])
+        .select(),
+      'train supplémentaire introuvable',
+    );
+  }
+
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     await this.assureJour(date);
     const resultat = await this.client

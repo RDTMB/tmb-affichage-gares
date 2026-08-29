@@ -24,6 +24,8 @@ export interface DataProvider {
   genererJour(date: string): Promise<void>;
   saveCirculation(c: Circulation): Promise<void>;
   saveCirculations(cs: Circulation[]): Promise<void>;     // action groupée : 1 écriture, lignes écrites contrôlées
+  creerTrainSup(date, montee, descente): Promise<void>;   // rotation de renfort (docs/01 §2.7)
+  supprimerTrainSup(date, numeroMontee): Promise<void>;   // REFUSÉ sur un train de grille
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   saveMessage(m: Message): Promise<void>; deleteMessage(id: string): Promise<void>;
   uploadMedia(file: File, meta: MediaMeta): Promise<void>; saveMedia(m: Media): Promise<void>; deleteMedia(id: string): Promise<void>;
@@ -71,12 +73,21 @@ create table circulations (
                                   -- course à vide : le train reste piloté en
                                   -- supervision (rame, rotation, terminus) mais
                                   -- n'apparaît sur AUCUN écran (docs/01 §2.2)
+  supplementaire boolean not null default false,
+  passages jsonb,                 -- TRAIN SUPPLÉMENTAIRE (docs/01 §2.7) : absent de
+                                  -- toute grille, il porte SES PROPRES passages, au
+                                  -- format des grilles JSON. Sans cela il serait
+                                  -- invisible partout, trainsDuJour() ne sachant
+                                  -- joindre qu'un train de grille.
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,
   maj timestamptz not null default now(),
-  unique (date, numero)
+  unique (date, numero),
+  constraint circulations_sup_passages
+    check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
+-- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
 
 create table messages (
   id uuid primary key default gen_random_uuid(),

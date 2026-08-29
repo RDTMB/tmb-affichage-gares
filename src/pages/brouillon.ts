@@ -17,6 +17,12 @@ import type { Circulation, Jour, Message, Params, TerminusFlag } from '../core/t
 /** Une circulation en attente, par date puis par numéro de train. */
 export type BrouillonCirculations = Map<string, Map<number, Circulation>>;
 
+/**
+ * Trains SUPPLÉMENTAIRES dont la suppression est en attente, par date : on
+ * mémorise le numéro de la MONTÉE, la descente appariée suit.
+ */
+export type BrouillonSupSupprimes = Map<string, Set<number>>;
+
 /** Une bascule « Terminus Bellevue » en attente, par date. */
 export type BrouillonTerminus = Map<string, TerminusFlag>;
 
@@ -76,14 +82,34 @@ export function appliqueBrouillonJour(
   jour: Jour,
   brouillonCirc: BrouillonCirculations,
   brouillonTerminus: BrouillonTerminus,
+  supSupprimes?: BrouillonSupSupprimes,
 ): Jour {
   const parNumero = brouillonCirc.get(jour.date);
   const terminusEnAttente = brouillonTerminus.get(jour.date);
-  if (!parNumero && terminusEnAttente === undefined) return jour;
+  const retires = supSupprimes?.get(jour.date);
+  if (!parNumero && terminusEnAttente === undefined && !retires?.size) return jour;
+
+  const existants = new Set(jour.circulations.map((c) => c.numero));
+  // Un train SUPPLÉMENTAIRE en attente n'a aucune contrepartie dans la
+  // journée : il faut l'AJOUTER, là où les autres modifications ne font que
+  // remplacer une circulation existante.
+  const ajouts = [...(parNumero?.values() ?? [])].filter(
+    (c) => c.supplementaire && !existants.has(c.numero),
+  );
+
+  const circulations = [...jour.circulations.map((c) => parNumero?.get(c.numero) ?? c), ...ajouts]
+    .filter((c) => {
+      if (!retires?.size) return true;
+      // La suppression vise une rotation : montée impaire et descente n+1.
+      const rotation = c.numero % 2 === 0 ? c.numero - 1 : c.numero;
+      return !(c.supplementaire && retires.has(rotation));
+    })
+    .sort((a, b) => a.numero - b.numero);
+
   return {
     ...jour,
     terminus_bellevue: terminusEnAttente === undefined ? jour.terminus_bellevue : terminusEnAttente,
-    circulations: jour.circulations.map((c) => parNumero?.get(c.numero) ?? c),
+    circulations,
   };
 }
 

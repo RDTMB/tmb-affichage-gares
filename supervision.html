@@ -60,6 +60,7 @@
             </div>
             <span class="service-tag" id="service-tag">—</span>
             <button class="leger" id="btn-facultatifs">Trains facultatifs</button>
+            <button class="leger" id="btn-train-sup">+ Train supplémentaire</button>
             <label class="terminus">
               <input type="checkbox" id="chk-terminus" />
               ⚠ Terminus Bellevue à partir du
@@ -75,6 +76,44 @@
             modification l'enregistrera automatiquement.
           </div>
           <div class="note avert-rotation" id="avert-rotation" style="display: none"></div>
+          <div class="carte-sup" id="form-train-sup" style="display: none">
+            <h3>Train supplémentaire</h3>
+            <div class="ligne">
+              <label>Départ du Fayet <input type="time" id="sup-depart" step="30" /></label>
+              <label
+                >Terminus
+                <select id="sup-terminus"></select>
+              </label>
+              <label
+                >Battement au terminus
+                <input type="number" id="sup-battement" min="1" max="60" /> min</label
+              >
+              <label
+                >Rame
+                <select id="sup-rame"></select>
+              </label>
+              <label class="switch"
+                ><input type="checkbox" id="sup-sans-voyageurs" />monte sans voyageurs</label
+              >
+            </div>
+            <div class="ligne gares-sup">
+              <b>Montée dessert :</b> <span id="sup-gares-montee"></span>
+            </div>
+            <div class="ligne gares-sup">
+              <b>Descente dessert :</b> <span id="sup-gares-descente"></span>
+            </div>
+            <div class="apercu-sup" id="sup-apercu"></div>
+            <div class="note">
+              Horaires calculés depuis la grille en vigueur (temps de parcours et d'arrêt) et
+              <b>modifiables</b> : un train qui ne s'arrête pas gagne quelques secondes que la
+              grille ignore. La voie est unique et les croisements relèvent du chef d'exploitation :
+              cet écran ne dit rien de la disponibilité du sillon.
+            </div>
+            <div class="ligne">
+              <button class="primaire leger" id="btn-sup-valider">Créer le train</button>
+              <button class="leger" id="btn-sup-annuler">Annuler</button>
+            </div>
+          </div>
           <h2>
             Circulations <span class="sous" id="sous-titre-jour"></span>
             <div class="actions">

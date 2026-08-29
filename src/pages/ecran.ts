@@ -12,6 +12,7 @@ import '../styles/tokens.css';
 import '../styles/ecran.css';
 
 import type { EtatCycle } from '../core/cycle-medias';
+import { garesSautees } from '../core/train-sup';
 import { etatInitial, prochainEtat } from '../core/cycle-medias';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
@@ -21,11 +22,13 @@ import {
   etatTronconFerme,
   finDeService,
   formatHeure,
+  libelleTrain,
   passagesPourGare,
   prochaineArrivee,
   serviceActif,
   veilleEffective,
   quaiOccupe,
+  trainsDuJour,
 } from '../core/horaires';
 import { ORDRE_GARES } from '../core/types';
 import type {
@@ -38,6 +41,7 @@ import type {
   Message,
   Params,
   PassageGare,
+  TrainJour,
 } from '../core/types';
 import { creeProvider } from '../data';
 import {
@@ -172,7 +176,35 @@ function chipHtml(p: PassageGare, maintenant_s: number): string {
   return `<span class="chip${cls}">${contenu}</span>`;
 }
 
-function ligneHtml(p: PassageGare, maintenant_s: number): string {
+/**
+ * Trains du jour, par numéro : sert au libellé (« TRAIN SUP 2 ») et à la
+ * mention « SANS ARRÊT » d'un train supplémentaire, qui a besoin de SES
+ * passages — le PassageGare d'une gare ne les porte pas.
+ */
+function trainsParNumero(): Map<number, TrainJour> {
+  if (!grille || !jour) return new Map();
+  return new Map(trainsDuJour(grille, jour).map((t) => [t.numero, t]));
+}
+
+/** Gares non desservies par un train sup, en clair et bilingue. */
+function mentionSansArret(train: TrainJour | undefined): string {
+  if (!grille || !train?.supplementaire) return '';
+  let sautees: GareId[] = [];
+  try {
+    sautees = garesSautees(
+      grille,
+      train.sens,
+      train.passages.map((p: { gare: GareId }) => p.gare),
+    );
+  } catch {
+    return ''; // grille inexploitable : on n'invente rien
+  }
+  if (sautees.length === 0) return '';
+  const noms = sautees.map((g) => nomGare(g)).join(' & ');
+  return `<span class="exp">SANS ARRÊT — non-stop : ${echapper(noms)}</span>`;
+}
+
+function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, TrainJour>): string {
   const supprime = p.statut === 'supprime';
   const retard = p.statut === 'retard';
   const machine = machineDe(p.rame);
@@ -181,11 +213,14 @@ function ligneHtml(p: PassageGare, maintenant_s: number): string {
     machine.cercle ? `box-shadow:0 0 0 .4vh ${machine.cercle};` : ''
   }"></span>`;
 
+  const sansArret = mentionSansArret(trains.get(p.numero));
   let note = p.express
     ? '<span class="exp">EXPRESS — sans arrêt / non-stop : Col de Voza &amp; Bellevue</span>'
-    : p.sens === 'montee'
-      ? 'Montée / Ascent'
-      : 'Descente / Descent';
+    : sansArret !== ''
+      ? sansArret
+      : p.sens === 'montee'
+        ? 'Montée / Ascent'
+        : 'Descente / Descent';
   if (p.terminusExceptionnel && p.sens === 'montee') {
     note += ' · <b>Terminus exceptionnel / Exceptional terminus</b>';
   }
@@ -215,10 +250,12 @@ function ligneHtml(p: PassageGare, maintenant_s: number): string {
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
       <div class="txt"><div class="dest">${echapper(nomGare(p.destination))}${motrice}</div><div class="note${
-        p.express ? ' note-exp' : ''
+        p.express || sansArret !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
-    <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span><span class="num">TRAIN ${p.numero}</span></div></div>
+    <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span><span class="num">${echapper(
+      libelleTrain({ numero: p.numero, supplementaire: p.supplementaire }, [...trains.values()]),
+    )}</span></div></div>
     <div>${supprime ? '' : chipHtml(p, maintenant_s)}</div>
     <div class="r-statut">${statut}</div>
   </div>`;
@@ -444,7 +481,10 @@ function rendre(gare: GareId): void {
   const fin = tronconFerme ? null : finDeService(grille, jour, gare, maintenant, grilleDemain);
   if (tronconFerme) afficheEtatSpecial(htmlTronconFerme());
   else if (fin) afficheEtatSpecial(htmlFinDeService(fin));
-  else afficheTableau(departs.map((p) => ligneHtml(p, maintenant)));
+  else {
+    const trains = trainsParNumero();
+    afficheTableau(departs.map((p) => ligneHtml(p, maintenant, trains)));
+  }
 
   // Les médias ne recouvrent JAMAIS un état spécial (tronçon fermé, fin de
   // service) : l'information voyageur prime.

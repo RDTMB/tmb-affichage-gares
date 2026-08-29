@@ -114,6 +114,19 @@ export interface Circulation {
    * en ligne. Une montée comme une descente peut l'être.
    */
   sans_voyageurs: boolean;
+  /**
+   * TRAIN SUPPLÉMENTAIRE : train de renfort créé à la demande, absent de
+   * toute grille. Il porte donc SES PROPRES passages — sans quoi il serait
+   * invisible partout, trainsDuJour() ne sachant joindre que des trains de
+   * grille.
+   */
+  supplementaire: boolean;
+  /**
+   * Passages du train sup, au format des grilles JSON
+   * (`[{"gare":"le-fayet","d":"17:00:00"}, …]`). null pour un train de
+   * grille — contrainte SQL circulations_sup_passages.
+   */
+  passages?: PassageGrille[] | null;
 }
 
 export interface Jour {
@@ -157,6 +170,8 @@ export interface TrainJour {
   motif: string | null;
   /** Montée tronquée à Bellevue ou descente partant de Bellevue. */
   terminusExceptionnel: boolean;
+  /** Train de renfort, absent des grilles (docs/01 §2.7). */
+  supplementaire: boolean;
   passages: PassageTrain[];
 }
 
@@ -175,6 +190,8 @@ export interface PassageGare {
   /** Gare terminus effective (« Nid d'Aigle », « Le Fayet », « Bellevue » si exceptionnel). */
   destination: GareId;
   terminusExceptionnel: boolean;
+  /** Train de renfort, absent des grilles (docs/01 §2.7). */
+  supplementaire: boolean;
   /** Heures réelles (retard inclus) ; un supprimé garde ses heures théoriques (affichées barrées). */
   arrivee_s: number | null;
   depart_s: number | null;

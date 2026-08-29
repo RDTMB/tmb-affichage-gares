@@ -17,12 +17,15 @@ import {
   formatHeure,
   generationJour,
   heureVersSecondes,
+  libelleTrain,
   passagesPourGare,
   positionsTrains,
   prochaineArrivee,
   quaiOccupe,
   serviceActif,
+  trainsDuJour,
 } from './horaires';
+import { construitRotationSup } from './train-sup';
 import type { Circulation, Grille, Jour, PassageGare, TrainGrille } from './types';
 
 const GRAND = grandServiceJson as unknown as Grille;
@@ -738,5 +741,194 @@ describe('quaiOccupe — source unique de la règle « pas de média à quai »'
   it('un train parti depuis longtemps ne bloque pas les médias', () => {
     // Liste non filtrée : le garde-fou borne « parti » au retrait de la ligne
     expect(quaiOccupe(t5, h('11:00:00'))).toBe(false);
+  });
+});
+
+describe('Trains supplémentaires dans le moteur', () => {
+  const DATE_SUP = '2026-07-15';
+
+  /** Journée avec une rotation sup Le Fayet ⇄ Col de Voza (101 / 102). */
+  function jourAvecSup(surcharge: Partial<Circulation> = {}): Jour {
+    const jour = jourGrand();
+    const rotation = construitRotationSup(GRAND, {
+      heureDepart_s: h('17:00:00'),
+      garesMontee: ['le-fayet', 'col-de-voza'],
+      garesDescente: ['col-de-voza', 'le-fayet'],
+      battement_s: 5 * 60,
+    });
+    const base: Circulation = {
+      date: DATE_SUP,
+      numero: 101,
+      sens: 'montee',
+      express: false,
+      facultatif: false,
+      facultatif_actif: false,
+      velos: false,
+      rame: 'Jeanne',
+      terminus: 'nid-daigle',
+      statut: 'ok',
+      retard_min: 0,
+      motif: null,
+      sans_voyageurs: false,
+      supplementaire: true,
+      passages: rotation.montee,
+    };
+    jour.circulations.push(
+      { ...base, ...surcharge },
+      {
+        ...base,
+        numero: 102,
+        sens: 'descente',
+        rame: 'PEU IMPORTE', // doit être écrasée par l'héritage de la montée
+        passages: rotation.descente,
+      },
+    );
+    return jour;
+  }
+
+  it('le train sup apparaît au Fayet et au Col de Voza', () => {
+    const jour = jourAvecSup();
+    expect(numeros(passagesPourGare(GRAND, jour, 'le-fayet'))).toContain(101);
+    expect(numeros(passagesPourGare(GRAND, jour, 'col-de-voza'))).toContain(101);
+  });
+
+  it('…et PAS à Saint-Gervais ni à Motivon, qu’il ne dessert pas', () => {
+    const jour = jourAvecSup();
+    expect(numeros(passagesPourGare(GRAND, jour, 'saint-gervais'))).not.toContain(101);
+    expect(numeros(passagesPourGare(GRAND, jour, 'motivon'))).not.toContain(101);
+  });
+
+  it('ses heures sont celles de ses propres passages', () => {
+    const jour = jourAvecSup();
+    const auVoza = passagesPourGare(GRAND, jour, 'col-de-voza').find((p) => p.numero === 101);
+    expect(auVoza?.arrivee_s).toBe(h('17:34:30'));
+    const auFayet = passagesPourGare(GRAND, jour, 'le-fayet').find((p) => p.numero === 101);
+    expect(auFayet?.depart_s).toBe(h('17:00:00'));
+    expect(auFayet?.arrivee_s).toBeNull(); // origine
+  });
+
+  it('il n’est PAS marqué express : ni picto motrice, ni mention express', () => {
+    const train = trainsDuJour(GRAND, jourAvecSup()).find((t) => t.numero === 101);
+    expect(train?.express).toBe(false);
+    expect(train?.supplementaire).toBe(true);
+    // Le drapeau est reporté jusqu'aux passages affichés
+    const p = passagesPourGare(GRAND, jourAvecSup(), 'le-fayet').find((x) => x.numero === 101);
+    expect(p?.supplementaire).toBe(true);
+    expect(p?.express).toBe(false);
+  });
+
+  it('la descente 102 hérite de la rame de la montée 101', () => {
+    const descente = trainsDuJour(GRAND, jourAvecSup()).find((t) => t.numero === 102);
+    expect(descente?.rame).toBe('Jeanne');
+  });
+
+  it('une montée sup sans voyageurs est invisible, sa descente reste visible', () => {
+    const jour = jourAvecSup({ sans_voyageurs: true });
+    const tous = numeros(trainsDuJour(GRAND, jour));
+    expect(tous).not.toContain(101);
+    expect(tous).toContain(102);
+  });
+
+  it('un retard de 10 min décale TOUS ses passages', () => {
+    const jour = jourAvecSup({ statut: 'retard', retard_min: 10 });
+    const auFayet = passagesPourGare(GRAND, jour, 'le-fayet').find((p) => p.numero === 101);
+    expect(auFayet?.depart_s).toBe(h('17:10:00'));
+    expect(auFayet?.depart_theorique_s).toBe(h('17:00:00'));
+    const auVoza = passagesPourGare(GRAND, jour, 'col-de-voza').find((p) => p.numero === 101);
+    expect(auVoza?.arrivee_s).toBe(h('17:44:30'));
+  });
+
+  it('un train sup supprimé reste affiché barré, puis disparaît', () => {
+    const jour = jourAvecSup({ statut: 'supprime', motif: 'Météo' });
+    const avant = passagesPourGare(GRAND, jour, 'le-fayet', h('16:59:00'));
+    expect(numeros(avant)).toContain(101);
+    const apres = passagesPourGare(GRAND, jour, 'le-fayet', h('17:00:30'));
+    expect(numeros(apres)).not.toContain(101);
+  });
+
+  it('Terminus Bellevue : un train sup vers le Nid d’Aigle est tronqué', () => {
+    const jour = jourGrand();
+    const rotation = construitRotationSup(GRAND, {
+      heureDepart_s: h('17:00:00'),
+      garesMontee: ['le-fayet', 'col-de-voza', 'bellevue', 'nid-daigle'],
+      garesDescente: ['nid-daigle', 'bellevue', 'col-de-voza', 'le-fayet'],
+      battement_s: 5 * 60,
+    });
+    const base: Circulation = {
+      date: DATE_SUP,
+      numero: 101,
+      sens: 'montee',
+      express: false,
+      facultatif: false,
+      facultatif_actif: false,
+      velos: false,
+      rame: 'Jeanne',
+      terminus: 'bellevue', // rotation limitée
+      statut: 'ok',
+      retard_min: 0,
+      motif: null,
+      sans_voyageurs: false,
+      supplementaire: true,
+      passages: rotation.montee,
+    };
+    jour.circulations.push(base, {
+      ...base,
+      numero: 102,
+      sens: 'descente',
+      passages: rotation.descente,
+    });
+
+    const montee = trainsDuJour(GRAND, jour).find((t) => t.numero === 101);
+    expect(montee?.terminusExceptionnel).toBe(true);
+    expect(montee?.passages[montee.passages.length - 1]?.gare).toBe('bellevue');
+    // Plus aucun passage au Nid d'Aigle : le tronçon supérieur est fermé
+    expect(numeros(passagesPourGare(GRAND, jour, 'nid-daigle'))).not.toContain(101);
+
+    const descente = trainsDuJour(GRAND, jour).find((t) => t.numero === 102);
+    expect(descente?.passages[0]?.gare).toBe('bellevue');
+  });
+
+  it('un train sup limité au Col de Voza n’est pas concerné par Bellevue', () => {
+    const jour = jourAvecSup({ terminus: 'bellevue' });
+    const montee = trainsDuJour(GRAND, jour).find((t) => t.numero === 101);
+    // Aucun passage à Bellevue : rien à tronquer, le train reste intact
+    expect(montee?.terminusExceptionnel).toBe(false);
+    expect(montee?.passages[montee.passages.length - 1]?.gare).toBe('col-de-voza');
+  });
+});
+
+describe('libelleTrain — source unique du libellé', () => {
+  const grilleTrains = [
+    { numero: 9, supplementaire: false },
+    { numero: 10, supplementaire: false },
+  ];
+
+  it('un train de grille garde « TRAIN 9 »', () => {
+    expect(libelleTrain({ numero: 9, supplementaire: false }, grilleTrains)).toBe('TRAIN 9');
+  });
+
+  it('un seul train sup dans la journée : « TRAIN SUP », sans numéro', () => {
+    const tous = [
+      ...grilleTrains,
+      { numero: 101, supplementaire: true },
+      { numero: 102, supplementaire: true },
+    ];
+    expect(libelleTrain({ numero: 101, supplementaire: true }, tous)).toBe('TRAIN SUP');
+    // La descente appariée porte le MÊME libellé : c'est la même rotation
+    expect(libelleTrain({ numero: 102, supplementaire: true }, tous)).toBe('TRAIN SUP');
+  });
+
+  it('deux trains sup : « TRAIN SUP 1 » et « TRAIN SUP 2 », dans l’ordre des numéros', () => {
+    const tous = [
+      ...grilleTrains,
+      { numero: 103, supplementaire: true },
+      { numero: 104, supplementaire: true },
+      { numero: 101, supplementaire: true },
+      { numero: 102, supplementaire: true },
+    ];
+    expect(libelleTrain({ numero: 101, supplementaire: true }, tous)).toBe('TRAIN SUP 1');
+    expect(libelleTrain({ numero: 102, supplementaire: true }, tous)).toBe('TRAIN SUP 1');
+    expect(libelleTrain({ numero: 103, supplementaire: true }, tous)).toBe('TRAIN SUP 2');
+    expect(libelleTrain({ numero: 104, supplementaire: true }, tous)).toBe('TRAIN SUP 2');
   });
 });

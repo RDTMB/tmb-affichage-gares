@@ -107,6 +107,24 @@ export function instantaneJours(jours: JourPubliable[]): Instantane {
   const instantane: Instantane = {};
   for (const { date, jour } of jours) {
     for (const c of jour?.circulations ?? []) {
+      if (c.supplementaire) {
+        // UNE seule clé pour un train supplémentaire : sa création ou sa
+        // suppression compte pour UNE modification par train, pas une par
+        // champ (huit champs feraient annoncer « 16 modifications » pour la
+        // création d'une simple rotation). Les passages sont sérialisés de
+        // façon STABLE — gare, arrivée, départ dans cet ordre — pour qu'un
+        // réordonnancement de clés JSON ne compte pas.
+        const passages = (c.passages ?? [])
+          .map((p) => `${p.gare}@${p.a ?? ''}>${p.d ?? ''}`)
+          .join(';');
+        instantane[`circulation|${date}|${c.numero}|sup`] =
+          `${c.sens} ${c.rame} ${c.terminus} ${c.statut} +${c.retard_min} ${c.motif ?? ''} ${
+            c.sans_voyageurs ? 'à vide' : ''
+          } ${passages}`
+            .replace(/\s+/g, ' ')
+            .trim();
+        continue;
+      }
       for (const champ of CHAMPS_CIRCULATION) {
         instantane[`circulation|${date}|${c.numero}|${champ}`] = normalise(c[champ]);
       }
@@ -185,7 +203,7 @@ export function libelleDeCle(cle: string): string {
   const [type = '', a = '', b = '', c = ''] = cle.split('|');
   switch (type) {
     case 'circulation':
-      return `TRAIN ${b} ${c}`;
+      return c === 'sup' ? `train supplémentaire ${b}` : `TRAIN ${b} ${c}`;
     case 'jour':
       return 'terminus Bellevue';
     case 'message':
