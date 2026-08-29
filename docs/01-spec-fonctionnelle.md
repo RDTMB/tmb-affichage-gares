@@ -390,10 +390,41 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    La bibliothèque de modèles est passée dans l'onglet Bandeau, la veille de
    nuit dans l'onglet Écrans, la vitesse du bandeau et la météo dans
    l'onglet Bandeau.
-6. **Publication** : les modifications s'appliquent immédiatement ; le
-   bouton « Publier » journalise un résumé horodaté (auteur + contenu) dans
-   l'historique ; compteur de modifications de la session ; « Aperçu
-   écrans » ouvre l'écran d'une gare dans un nouvel onglet.
+6. **Publication**. Le compteur affiche le nombre d'ÉCARTS RÉELS avec un
+   état de référence, pris au chargement de la page et après chaque
+   publication — et non le nombre de clics : ramener une température de 12 à
+   8 n'annonce plus « 2 modifications », mais aucune. La comparaison est
+   normalisée (nombres en valeur : 8, « 8 » et « 8.0 » se valent ; textes
+   après trim), de sorte qu'aucune différence purement cosmétique ne compte.
+   Elle porte sur les circulations de la date affichée (statut, retard,
+   motif, rame, terminus, facultatif, sans voyageurs), les messages, les
+   médias, les paramètres d'affichage, la veille globale et par écran, les
+   machines, les motifs et la bibliothèque de modèles. Elle est recalculée
+   après chaque écriture et après chaque rafraîchissement temps réel ; une
+   publication faite depuis un AUTRE poste remet la référence à zéro.
+
+   Quand il n'y a **rien à publier**, le bouton « Publier » est gris neutre
+   et inerte (désactivé, curseur interdit, infobulle « Aucune modification
+   depuis la dernière publication ») et le texte de gauche indique « Tout est
+   publié ✓ ». Il reprend le rouge charte dès qu'un écart apparaît, et
+   repasse en gris aussitôt la publication réussie. Le résumé consigné à
+   l'historique est construit sur ces mêmes écarts : « température 8 → 12 »
+   n'y figure pas si la valeur est revenue à 8. « Aperçu écrans » ouvre
+   l'écran d'une gare dans un nouvel onglet.
+
+7. **Journal d'exploitation** (Paramètres, lecture seule). Puisqu'une valeur
+   posée puis retirée ne laisse plus aucune trace dans le compteur, alors que
+   les écrans l'ont bel et bien affichée, chaque ÉCRITURE est consignée à
+   part — une ligne par champ modifié, avec quand, qui, objet, champ et
+   « avant → après ». Le journal est alimenté par la base elle-même
+   (déclencheurs) : rien ne lui échappe, pas même une correction faite
+   directement en SQL. Liste antéchronologique paginée par 100, filtres par
+   période, par utilisateur et par type d'objet, export CSV. Aucune
+   suppression depuis l'interface ; purge des entrées de plus de 12 mois à
+   lancer à la main (docs/02).
+   Les signaux de vie des écrans n'y figurent JAMAIS : ils noieraient le
+   journal sous ~8 600 lignes par jour.
+   _(Évolutions validées par l'exploitant le 29/08/2026.)_
 
 ## 6. Bilinguisme
 

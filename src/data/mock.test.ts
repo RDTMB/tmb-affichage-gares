@@ -646,3 +646,116 @@ describe('Veille propre à un écran et heure du relevé météo', () => {
     expect(params.meteo_sommet).toMatchObject({ t: -3, heure_releve: '09:15' });
   });
 });
+
+describe('Journal d’exploitation : trace permanente de chaque écriture', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('8 → 12 → 8 : DEUX écritures au journal, même si l’écart net est nul', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const meteo = (t: number) => ({
+      meteo_sommet: { t, ciel_fr: 'Dégagé', ciel_en: 'Clear', heure_releve: '08:00' },
+    });
+    await provider.saveParams(meteo(12));
+    await provider.saveParams(meteo(8));
+
+    const journal = await provider.listJournal({});
+    const surT = journal.filter((e) => e.cle === 'meteo_sommet' && e.champ === 't');
+    expect(surT).toHaveLength(2);
+    // Antéchronologique : le retour à 8 en premier
+    expect(surT[0]).toMatchObject({ avant: '12', apres: '8' });
+    expect(surT[1]).toMatchObject({ avant: '9', apres: '12' }); // 9 = valeur de démo
+  });
+
+  it('un retard posé puis retiré laisse deux entrées', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const date = '2026-08-25';
+    const jour = await provider.getJour(date);
+    const t5 = jour.circulations.find((c) => c.numero === 5);
+    if (!t5) throw new Error('TRAIN 5 absent');
+
+    await provider.saveCirculation({ ...t5, statut: 'retard', retard_min: 10 });
+    await provider.saveCirculation({ ...t5, statut: 'ok', retard_min: 0 });
+
+    const surStatut = (await provider.listJournal({})).filter((e) => e.champ === 'statut');
+    expect(surStatut).toHaveLength(2);
+    expect(surStatut[0]).toMatchObject({ avant: 'retard', apres: 'ok', cle: '2026-08-25 5' });
+    expect(surStatut[1]).toMatchObject({ avant: 'ok', apres: 'retard' });
+    // La journée d'exploitation concernée est renseignée
+    expect(surStatut[0]?.date_service).toBe(date);
+  });
+
+  it('une seule ligne par CHAMP réellement modifié', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const jour = await provider.getJour('2026-08-25');
+    const t5 = jour.circulations.find((c) => c.numero === 5);
+    if (!t5) throw new Error('TRAIN 5 absent');
+
+    await provider.saveCirculation({ ...t5, statut: 'retard', retard_min: 10, motif: 'Météo' });
+    const journal = await provider.listJournal({});
+    expect(journal.map((e) => e.champ).sort()).toEqual(['motif', 'retard_min', 'statut']);
+
+    // Réécrire la MÊME valeur n'ajoute rien
+    await provider.saveCirculation({ ...t5, statut: 'retard', retard_min: 10, motif: 'Météo' });
+    expect(await provider.listJournal({})).toHaveLength(3);
+  });
+
+  it('un signal de vie n’écrit RIEN au journal', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'le-fayet-ecran-1', gare: 'le-fayet', type: 'ecran' });
+    const apresDeclaration = (await provider.listJournal({})).length;
+    expect(apresDeclaration).toBeGreaterThan(0); // la déclaration, elle, est tracée
+
+    for (let i = 0; i < 5; i += 1) {
+      await provider.heartbeat({
+        id: 'le-fayet-ecran-1',
+        gare: 'le-fayet',
+        type: 'ecran',
+        donnees_maj: new Date().toISOString(),
+        date_affichee: '2026-08-25',
+      });
+    }
+    expect(await provider.listJournal({})).toHaveLength(apresDeclaration);
+  });
+
+  it('la veille propre à un écran est tracée, pas sa dernière vue', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
+    await provider.saveVeilleEcran('bellevue-ecran-1', '19:00', '06:30');
+    const champs = (await provider.listJournal({ table_cible: 'ecrans' })).map((e) => e.champ);
+    expect(champs).toContain('veille_debut');
+    expect(champs).toContain('veille_fin');
+    expect(champs).not.toContain('derniere_vue');
+    expect(champs).not.toContain('donnees_maj');
+  });
+
+  it('les filtres et la pagination fonctionnent', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.saveMotif({ fr: 'Vent', en: 'Wind' });
+    await provider.saveMachine({ nom: 'Marie', couleur: '#000000', en_service: true });
+
+    // Création : le déclencheur consigne chaque champ renseigné (OLD est vide)
+    const surMotifs = await provider.listJournal({ table_cible: 'motifs' });
+    expect(surMotifs.map((e) => e.champ).sort()).toEqual(['en', 'fr']);
+    expect(await provider.listJournal({ table_cible: 'machines' })).not.toHaveLength(0);
+    expect(await provider.listJournal({ table_cible: 'messages' })).toHaveLength(0);
+    // Pagination : une page d'une seule ligne
+    const page1 = await provider.listJournal({ limite: 1, depuis: 0 });
+    expect((await provider.listJournal({})).length).toBeGreaterThan(1);
+    const page2 = await provider.listJournal({ limite: 1, depuis: 1 });
+    expect(page1).toHaveLength(1);
+    expect(page2).toHaveLength(1);
+    expect(page1[0]?.id).not.toBe(page2[0]?.id);
+  });
+
+  it('une publication ne touche pas au journal des écritures', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.saveMotif({ fr: 'Vent', en: 'Wind' });
+    const avant = (await provider.listJournal({})).length;
+    await provider.logPublication('1 modification(s) : motif Vent — → Wind');
+    expect(await provider.listJournal({})).toHaveLength(avant);
+    expect(await provider.dernierePublication()).toBeTruthy();
+  });
+});

@@ -33,6 +33,8 @@ import type {
   Role,
   TrainGrille,
   User,
+  EntreeJournal,
+  FiltreJournal,
 } from '../core/types';
 import { creeProvider } from '../data';
 import {
@@ -48,6 +50,16 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
+import type { Ecart, Instantane } from './etat-publiable';
+import {
+  ecarts,
+  horodatageJournal,
+  instantanePubliable,
+  journalVersCsv,
+  libelleObjet,
+  OBJETS_JOURNAL,
+  resumeEcarts,
+} from './etat-publiable';
 import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
 import {
   actionGroupeeFacultatifs,
@@ -94,7 +106,20 @@ let utilisateurs: User[] = [];
 let modeles: ModeleMessage[] = [];
 let editionModeleId: string | null = null;
 let traductionModeleManuelle = false;
+/**
+ * Écarts RÉELS avec l'état de référence. On ne compte plus les clics :
+ * ramener une température de 12 à 8 n'est pas « 2 modifications », c'est
+ * aucun écart. La trace permanente des allers-retours vit, elle, au journal
+ * d'exploitation (alimenté par déclencheurs côté base).
+ */
+let reference: Instantane = {};
+let referenceFixee = false;
+let ecartsCourants: Ecart[] = [];
 let modifs = 0;
+/** Dernière publication connue, tous postes confondus. */
+let dernierePublicationVue: string | null = null;
+/** Dernière liste d'écrans lue : la veille par poste entre dans l'état publiable. */
+let ecransConnus: EcranInfo[] = [];
 /**
  * Instant de la dernière écriture (ou publication) : référence pour juger si
  * un écran affiche bien l'état courant. null tant que rien n'a été modifié
@@ -169,13 +194,61 @@ function toast(texte: string): void {
 }
 
 /** Écriture IMMÉDIATE (Paramètres, Médias, Écrans...) : déjà en base. */
+/** Instantané de l'état publiable tel que la supervision le connaît. */
+function instantaneCourant(): Instantane {
+  return instantanePubliable({
+    date: dateSel,
+    jour,
+    messages,
+    medias,
+    params,
+    ecrans: ecransConnus,
+    machines: params?.machines ?? [],
+    motifs: params?.motifs ?? [],
+    modeles,
+  });
+}
+
+/** Prend l'état courant comme nouvelle référence (chargement, publication). */
+function fixeReference(): void {
+  reference = instantaneCourant();
+  referenceFixee = true;
+  ecartsCourants = [];
+  modifs = 0;
+  majBarrePublication();
+}
+
+/** Recalcule les écarts et rafraîchit la barre de publication. */
+function recalculeEcarts(): void {
+  ecartsCourants = ecarts(reference, instantaneCourant());
+  modifs = ecartsCourants.length;
+  majBarrePublication();
+}
+
+function majBarrePublication(): void {
+  $('etat-pub').innerHTML =
+    modifs === 0
+      ? 'Tout est publié ✓'
+      : `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+  // Rien à publier : bouton neutre et inerte, plutôt qu'un rouge qui appelle
+  // un clic sans effet.
+  const bouton = $('btn-publier') as HTMLButtonElement;
+  bouton.disabled = modifs === 0;
+  bouton.setAttribute('aria-disabled', String(modifs === 0));
+  bouton.title =
+    modifs === 0
+      ? 'Aucune modification depuis la dernière publication'
+      : `Publier ${modifs} modification${modifs > 1 ? 's' : ''} sur les 6 gares`;
+}
+
 function bump(detail: string): void {
-  modifs += 1;
-  referenceMajMs = Date.now(); // les écrans doivent désormais rattraper cet instant
+  // referenceMajMs est mis à jour même si la valeur revient ensuite à son
+  // point de départ : les écrans ont bel et bien eu à rattraper l'état
+  // intermédiaire, leur fraîcheur ne se juge pas sur l'écart net.
+  referenceMajMs = Date.now();
   journal.push(detail);
   void rendreEcrans(); // met à jour les pastilles « à jour » / « en retard »
-  $('etat-pub').innerHTML =
-    `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+  recalculeEcarts();
 }
 
 /**
@@ -183,11 +256,10 @@ function bump(detail: string): void {
  * rien n'est encore en base, donc contrairement à `bump()`, la fraîcheur des
  * écrans (`referenceMajMs`) ne doit PAS avancer avant la vraie publication.
  */
+/** Modification en attente (brouillon) : n'a encore touché aucun écran. */
 function bumpEnAttente(detail: string): void {
-  modifs += 1;
   journal.push(detail);
-  $('etat-pub').innerHTML =
-    `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+  recalculeEcarts();
 }
 
 function erreurVersToast(erreur: unknown): void {
@@ -221,6 +293,14 @@ async function chargeTout(): Promise<void> {
     jour = j;
     rafraichitJourEffectif(); // réapplique les circulations/terminus en attente pour cette date
   }
+
+  // Une publication faite depuis un AUTRE poste remet la référence à zéro :
+  // ce qu'il a publié n'est plus « en attente » pour nous non plus.
+  const derniere = await provider.dernierePublication().catch(() => null);
+  if (derniere !== null && derniere !== dernierePublicationVue) {
+    dernierePublicationVue = derniere;
+    referenceFixee = false; // une publication distante redéfinit le point zéro
+  }
 }
 
 async function rechargeJour(): Promise<void> {
@@ -240,8 +320,14 @@ function rendreTout(): void {
   rendreBibliotheque();
   rendreMessages();
   rendreMedias();
-  void rendreEcrans();
   rendreParametres();
+  void rechargeJournal();
+  // La liste des écrans (veille par poste) fait partie de l'état publiable :
+  // on ne juge l'écart qu'une fois qu'elle est lue.
+  void rendreEcrans().then(() => {
+    if (referenceFixee) recalculeEcarts();
+    else fixeReference();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -673,7 +759,10 @@ function initCirculations(): void {
     descente.statut = 'supprime';
     descente.retard_min = 0;
     descente.motif = montee.motif;
-    stageCirculationEtRafraichit(descente, `statut TRAIN ${descente.numero} → supprime (rotation, en attente)`);
+    stageCirculationEtRafraichit(
+      descente,
+      `statut TRAIN ${descente.numero} → supprime (rotation, en attente)`,
+    );
   };
 
   /**
@@ -723,7 +812,10 @@ function initCirculations(): void {
     } else if (action === 'actif') {
       const actif = (cible as HTMLInputElement).checked;
       c.facultatif_actif = actif;
-      stageCirculationEtRafraichit(c, `facultatif TRAIN ${numero} ${actif ? 'activé' : 'désactivé'}`);
+      stageCirculationEtRafraichit(
+        c,
+        `facultatif TRAIN ${numero} ${actif ? 'activé' : 'désactivé'}`,
+      );
       toast(
         actif
           ? 'Train facultatif activé, en attente de publication'
@@ -1153,8 +1245,14 @@ function initMessages(): void {
     const message = messageDepuisFormulaire(f, idCourant);
     brouillonMessages.set(idCourant, message);
     rafraichitMessagesEffectifs();
-    bumpEnAttente(editionMessageId ? 'message modifié (en attente)' : 'message ajouté (en attente)');
-    toast(editionMessageId ? 'Message modifié, en attente de publication' : 'Message en attente de publication');
+    bumpEnAttente(
+      editionMessageId ? 'message modifié (en attente)' : 'message ajouté (en attente)',
+    );
+    toast(
+      editionMessageId
+        ? 'Message modifié, en attente de publication'
+        : 'Message en attente de publication',
+    );
     annuleEditionMessage();
     rendreMessages();
   });
@@ -1345,6 +1443,7 @@ async function rendreEcrans(): Promise<void> {
   } catch {
     return;
   }
+  ecransConnus = liste;
   const maintenant = Date.now();
   const etats = new Map(
     liste.map((e) => [e.id, etatFraicheurEcran(e, referenceMajMs, maintenant)]),
@@ -1718,7 +1817,19 @@ function initBibliotheque(): void {
 // Onglet Paramètres (admin)
 // ---------------------------------------------------------------------------
 
+function rendreFiltreJournalQui(): void {
+  const sel = $('journal-qui') as HTMLSelectElement;
+  const choisi = sel.value;
+  sel.innerHTML =
+    '<option value="">Tous les utilisateurs</option>' +
+    utilisateurs
+      .map((u) => `<option value="${echapper(u.email)}">${echapper(u.nom || u.email)}</option>`)
+      .join('');
+  sel.value = choisi;
+}
+
 function rendreParametres(): void {
+  rendreFiltreJournalQui();
   if (!params) return;
   // Machines
   $('machines').innerHTML = params.machines
@@ -1877,7 +1988,16 @@ function initBandeau(): void {
   // température sans heure ne dit pas si elle date de dix minutes ou de la
   // veille. L'agent peut ensuite corriger cette heure à la main.
   const horodateEtSauve = (): void => {
-    champMeteo('meteo-heure').value = heureCourante();
+    const base = paramsBase?.meteo_sommet;
+    const inchangee =
+      base !== undefined &&
+      Number(champMeteo('meteo-t').value) === base.t &&
+      champMeteo('meteo-fr').value.trim() === base.ciel_fr &&
+      champMeteo('meteo-en').value.trim() === base.ciel_en;
+    // Retour à la valeur publiée : on restitue SON heure de relevé. Horodater
+    // « maintenant » ferait afficher aux écrans un relevé plus récent que la
+    // mesure qu'il accompagne.
+    champMeteo('meteo-heure').value = inchangee ? (base?.heure_releve ?? '') : heureCourante();
     sauveMeteoDifferee();
   };
   for (const id of ['meteo-t', 'meteo-fr', 'meteo-en']) {
@@ -1894,6 +2014,108 @@ function heureCourante(): string {
     minute: '2-digit',
     timeZone: 'Europe/Paris',
   }).format(new Date());
+}
+
+// ---------------------------------------------------------------------------
+// Journal d'exploitation (lecture seule)
+// ---------------------------------------------------------------------------
+
+const PAGE_JOURNAL = 100;
+let pageJournal = 0;
+let entreesJournal: EntreeJournal[] = [];
+
+function filtreJournal(): FiltreJournal {
+  const val = (id: string): string => ($(id) as HTMLInputElement | HTMLSelectElement).value;
+  return {
+    du: val('journal-du') || null,
+    au: val('journal-au') || null,
+    qui: val('journal-qui') || null,
+    table_cible: val('journal-table') || null,
+    limite: PAGE_JOURNAL,
+    depuis: pageJournal * PAGE_JOURNAL,
+  };
+}
+
+async function rechargeJournal(): Promise<void> {
+  const corps = document.querySelector('#tab-journal tbody');
+  if (!corps) return;
+  try {
+    entreesJournal = await provider.listJournal(filtreJournal());
+  } catch (erreur) {
+    // Journal absent = migration non passée : le dire, plutôt qu'un tableau
+    // vide qu'on prendrait pour « aucune écriture ».
+    corps.innerHTML = `<tr><td colspan="5" style="padding:18px;color:var(--sec);font-weight:700">Journal indisponible — ${echapper(
+      erreur instanceof Error ? erreur.message : String(erreur),
+    )}</td></tr>`;
+    return;
+  }
+
+  corps.innerHTML = entreesJournal.length
+    ? entreesJournal
+        .map(
+          (e) => `<tr>
+        <td class="quand">${echapper(horodatageJournal(e.quand))}</td>
+        <td>${echapper(e.qui ?? '—')}</td>
+        <td>${echapper(libelleObjet(e.table_cible))} <b>${echapper(e.cle)}</b></td>
+        <td>${echapper(e.champ)}</td>
+        <td class="ecart"><span class="avant">${echapper(e.avant ?? '—')}</span> → <b>${echapper(e.apres ?? '—')}</b></td>
+      </tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="5" style="padding:18px;color:var(--sec)">Aucune écriture sur cette période.</td></tr>';
+
+  $('journal-page').textContent =
+    entreesJournal.length === 0 && pageJournal === 0
+      ? '—'
+      : `page ${pageJournal + 1} · ${entreesJournal.length} ligne(s)`;
+  ($('btn-journal-prec') as HTMLButtonElement).disabled = pageJournal === 0;
+  ($('btn-journal-suiv') as HTMLButtonElement).disabled = entreesJournal.length < PAGE_JOURNAL;
+}
+
+function initJournal(): void {
+  // Les listes de filtres se remplissent depuis les utilisateurs connus et
+  // les objets tracés — pas de saisie libre à côté de la plaque.
+  ($('journal-table') as HTMLSelectElement).innerHTML =
+    '<option value="">Tous les objets</option>' +
+    Object.entries(OBJETS_JOURNAL)
+      .map(([cle, libelle]) => `<option value="${cle}">${echapper(libelle)}</option>`)
+      .join('');
+
+  const filtrer = (): void => {
+    pageJournal = 0;
+    void rechargeJournal();
+  };
+  $('btn-journal-filtrer').addEventListener('click', filtrer);
+  for (const id of ['journal-du', 'journal-au', 'journal-qui', 'journal-table']) {
+    $(id).addEventListener('change', filtrer);
+  }
+  $('btn-journal-prec').addEventListener('click', () => {
+    if (pageJournal === 0) return;
+    pageJournal -= 1;
+    void rechargeJournal();
+  });
+  $('btn-journal-suiv').addEventListener('click', () => {
+    if (entreesJournal.length < PAGE_JOURNAL) return;
+    pageJournal += 1;
+    void rechargeJournal();
+  });
+
+  $('btn-journal-csv').addEventListener('click', () => {
+    // L'export porte sur le FILTRE courant, pas sur la seule page affichée :
+    // exporter 100 lignes en croyant tout avoir serait trompeur.
+    void provider
+      .listJournal({ ...filtreJournal(), limite: 5000, depuis: 0 })
+      .then((tout) => {
+        const blob = new Blob([journalVersCsv(tout)], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `journal-exploitation-${dateISO(0)}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast(`${tout.length} ligne(s) exportée(s)`);
+      })
+      .catch(erreurVersToast);
+  });
 }
 
 function initParametres(): void {
@@ -2125,7 +2347,9 @@ async function publieLeBrouillon(): Promise<boolean> {
     toast(
       `⚠ Publication incomplète — resté(e) en attente : ${echecs.join(', ')}. Réessayez « Publier ».`,
     );
-    $('etat-pub').innerHTML = `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+    // Publication partielle : on recompte ce qui reste réellement en écart
+    // plutôt que de réafficher un total devenu faux.
+    recalculeEcarts();
     return false;
   }
   return true;
@@ -2136,14 +2360,12 @@ function initPublication(): void {
     window.open('ecran.html?gare=saint-gervais', '_blank'),
   );
   $('btn-publier').addEventListener('click', () => {
-    const resume =
-      modifs > 0
-        ? `${modifs} modification(s) : ${journal.slice(-10).join(' · ')}`
-        : 'publication sans modification';
+    // Le résumé consigné décrit les ÉCARTS RÉELS : une température revenue à
+    // sa valeur d'origine n'y figure pas.
+    const resume = resumeEcarts(ecartsCourants);
     void publieLeBrouillon()
       .then((succes) => {
         if (!succes) return; // les catégories en échec restent en attente, rien n'est journalisé
-        modifs = 0;
         journal.length = 0;
         referenceMajMs = Date.now(); // nouvelle référence de fraîcheur des écrans : les écrans reçoivent seulement maintenant
         return chargeTout()
@@ -2151,9 +2373,11 @@ function initPublication(): void {
             rendreTout();
             return provider.logPublication(resume);
           })
-          .then(() => {
-            void rendreEcrans();
-            $('etat-pub').textContent = 'Tout est publié ✓';
+          .then(() => provider.dernierePublication().catch(() => null))
+          .then((quand) => {
+            dernierePublicationVue = quand;
+            void rendreEcrans().then(fixeReference);
+            fixeReference(); // référence remise à jour immédiatement
             toast('✓ Publié — les 6 gares sont synchronisées · consigné dans l’historique');
           });
       })
@@ -2174,15 +2398,19 @@ async function demarre(): Promise<void> {
   initEcrans();
   initBibliotheque();
   initBandeau();
+  initJournal();
   initParametres();
   initPublication();
 
   $('btn-deconnexion').addEventListener('click', () => {
     // Le brouillon (Bandeau, Circulations) ne vit qu'en mémoire : se
     // déconnecter sans publier le perdrait silencieusement.
-    if (!rienEnAttente() && !window.confirm(
-      `${modifs} modification(s) en attente de publication seront perdues. Se déconnecter quand même ?`,
-    )) {
+    if (
+      !rienEnAttente() &&
+      !window.confirm(
+        `${modifs} modification(s) en attente de publication seront perdues. Se déconnecter quand même ?`,
+      )
+    ) {
       return;
     }
     sessionStorage.clear();

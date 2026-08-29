@@ -29,16 +29,20 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
 7. Nouvelle requête → coller `supabase/ajout-bandeau-veille.sql` → **Run**
    (veille par écran + droits de l'onglet Bandeau — rejouable). À passer
    APRÈS `securite-advisors.sql`, dont il remplace la politique `params`.
-8. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
+8. Nouvelle requête → coller `supabase/ajout-journal-exploitation.sql` →
+   **Run** (journal d'exploitation : table, déclencheurs, RLS, purge —
+   rejouable). À passer APRÈS `securite-advisors.sql`, dont il réutilise le
+   schéma `private`.
+9. Nouvelle requête → coller `supabase/ajout-modeles.sql` → **Run**
    (bibliothèque de messages préenregistrés). Ce script est **idempotent** :
    il peut aussi être exécuté seul, plus tard, sur une base déjà en service,
    sans rejouer le reste ni écraser les modèles retouchés en supervision.
-9. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
+10. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
    schéma), public, limite 20 Mo.
-10. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
+11. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
    publication `supabase_realtime` contient bien les tables (fait par le
    schéma).
-11. Menu **Project Settings → API keys** : noter
+12. Menu **Project Settings → API keys** : noter
    - l'**URL du projet** (https://xxxx.supabase.co) ;
    - la clé **publishable** (`sb_publishable_…`) — PUBLIQUE par conception,
      la sécurité repose sur RLS ;

@@ -4,6 +4,8 @@
 import type {
   Circulation,
   EcranInfo,
+  EntreeJournal,
+  FiltreJournal,
   GareId,
   Grille,
   Jour,
@@ -79,6 +81,10 @@ export interface DataProvider {
   /** Traduction FR → EN (Edge Function DeepL ; null = service indisponible, repli local). */
   traduire(texteFr: string): Promise<string | null>;
   logPublication(resume: string): Promise<void>;
+  /** Horodatage de la dernière publication, tous postes confondus (null si aucune). */
+  dernierePublication(): Promise<string | null>;
+  /** Journal d'exploitation : lecture seule, antéchronologique. */
+  listJournal(filtre: FiltreJournal): Promise<EntreeJournal[]>;
   listEcrans(): Promise<EcranInfo[]>;
   /**
    * Déclaration préalable d'un poste (administrateur). Un écran ne peut plus

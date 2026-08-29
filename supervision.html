@@ -417,6 +417,53 @@
             </div>
           </div>
         </div>
+        <div class="carte" id="carte-journal">
+          <h2>
+            Journal d'exploitation
+            <span class="sous">trace permanente de chaque écriture — lecture seule</span>
+            <div class="actions">
+              <button class="leger" id="btn-journal-csv">Exporter CSV</button>
+            </div>
+          </h2>
+          <div class="note filtres-journal">
+            <label>Du <input type="date" id="journal-du" /></label>
+            <label>au <input type="date" id="journal-au" /></label>
+            <label
+              >Utilisateur
+              <select id="journal-qui"></select
+            ></label>
+            <label
+              >Objet
+              <select id="journal-table"></select
+            ></label>
+            <button class="leger" id="btn-journal-filtrer">Filtrer</button>
+          </div>
+          <div class="tableau-journal">
+            <table id="tab-journal">
+              <thead>
+                <tr>
+                  <th style="width: 148px">Quand</th>
+                  <th style="width: 190px">Qui</th>
+                  <th style="width: 190px">Objet</th>
+                  <th style="width: 150px">Champ</th>
+                  <th>Avant → après</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="note pagination-journal">
+            <button class="leger" id="btn-journal-prec">◀ Précédentes</button>
+            <span id="journal-page">—</span>
+            <button class="leger" id="btn-journal-suiv">Suivantes ▶</button>
+            <span class="sous">
+              Chaque écriture est consignée par la base elle-même : un aller-retour (8 → 12 → 8) ne
+              compte plus comme modification en attente, mais laisse bien ses deux traces ici. Purge
+              des entrées de plus de 12 mois :
+              <code>select private.purge_journal_exploitation();</code>
+            </span>
+          </div>
+        </div>
       </section>
     </main>
 

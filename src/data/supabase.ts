@@ -22,6 +22,8 @@ import type {
   Session,
   TerminusFlag,
   User,
+  EntreeJournal,
+  FiltreJournal,
 } from '../core/types';
 import { VITESSE_TICKER_DEFAUT } from '../pages/ticker';
 import type { DataProvider } from './provider';
@@ -597,6 +599,33 @@ export class SupabaseProvider implements DataProvider {
     } catch {
       return null; // repli : dictionnaire local
     }
+  }
+
+  async dernierePublication(): Promise<string | null> {
+    const { data, error } = await this.client
+      .from('publications')
+      .select('quand')
+      .order('quand', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    verifie(error);
+    return (data as { quand: string } | null)?.quand ?? null;
+  }
+
+  async listJournal(filtre: FiltreJournal): Promise<EntreeJournal[]> {
+    let requete = this.client
+      .from('journal_exploitation')
+      .select('*')
+      .order('quand', { ascending: false });
+    if (filtre.du) requete = requete.gte('quand', `${filtre.du}T00:00:00Z`);
+    if (filtre.au) requete = requete.lte('quand', `${filtre.au}T23:59:59Z`);
+    if (filtre.qui) requete = requete.eq('qui', filtre.qui);
+    if (filtre.table_cible) requete = requete.eq('table_cible', filtre.table_cible);
+    const depuis = filtre.depuis ?? 0;
+    const limite = filtre.limite ?? 100;
+    const { data, error } = await requete.range(depuis, depuis + limite - 1);
+    verifie(error);
+    return (data ?? []) as EntreeJournal[];
   }
 
   async logPublication(resume: string): Promise<void> {

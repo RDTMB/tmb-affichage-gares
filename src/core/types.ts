@@ -203,6 +203,35 @@ export type CompteARebours =
   | { type: 'minutes'; minutes: number; libelle: string; libelle_en: string }
   | { type: 'heures'; heures: number; minutes: number; libelle: string; libelle_en: string };
 
+/**
+ * Une écriture consignée au journal d'exploitation : UNE ligne par champ
+ * réellement modifié, écrite par un déclencheur Postgres (donc jamais
+ * contournable depuis le client).
+ */
+export interface EntreeJournal {
+  id: number;
+  quand: string;
+  qui: string | null;
+  table_cible: string;
+  cle: string;
+  champ: string;
+  avant: string | null;
+  apres: string | null;
+  date_service: string | null;
+}
+
+/** Filtres de consultation du journal d'exploitation. */
+export interface FiltreJournal {
+  /** Bornes incluses, « YYYY-MM-DD ». */
+  du?: string | null;
+  au?: string | null;
+  qui?: string | null;
+  table_cible?: string | null;
+  limite?: number;
+  /** Décalage pour la pagination (100 lignes par page). */
+  depuis?: number;
+}
+
 /** null côté appelant = le service n'est pas terminé ; premierDepart_s null = pas de service demain. */
 export interface FinDeService {
   premierDepart_s: number | null;

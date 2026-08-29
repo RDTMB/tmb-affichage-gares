@@ -31,6 +31,8 @@ export interface DataProvider {
   saveMachine(m: Machine): Promise<void>; saveMotif(...): Promise<void>;
   listUsers(): Promise<User[]>; saveUser(u: User): Promise<void>;   // admin
   logPublication(resume: string): Promise<void>;
+  dernierePublication(): Promise<string | null>;        // référence commune à tous les postes
+  listJournal(f: FiltreJournal): Promise<EntreeJournal[]>;  // lecture seule
   listEcrans(): Promise<EcranInfo[]>; demanderRechargement(id: string): Promise<void>;
 }
 ```
@@ -158,11 +160,60 @@ create table ecrans (
 -- Ajouts sur base existante : supabase/ajout-preuve-maj.sql puis
 -- supabase/securite-advisors.sql (tous deux rejouables).
 
-create table publications (
+create table publications (            -- journal des PUBLICATIONS (résumés)
   id bigint generated always as identity primary key,
   quand timestamptz not null default now(), qui text, resume text not null
 );
+
+create table journal_exploitation (    -- journal des ÉCRITURES (champ par champ)
+  id bigint generated always as identity primary key,
+  quand timestamptz not null default now(),
+  qui text,                            -- email de l'agent, résolu depuis profils
+  table_cible text not null,
+  cle text not null,                   -- id de la ligne, ou « date numéro » de train
+  champ text not null,
+  avant text, apres text,
+  date_service date                    -- journée d'exploitation concernée
+);
+create index idx_journal_quand on journal_exploitation (quand desc);
+create index idx_journal_date_service on journal_exploitation (date_service);
+-- Ajout sur base existante : supabase/ajout-journal-exploitation.sql
 ```
+
+### Journal d'exploitation — alimenté par DÉCLENCHEURS
+
+Le compteur de la barre de publication compare l'état courant à un état de
+référence : une valeur posée puis retirée n'y laisse aucune trace (c'est le
+bon comportement pour « reste-t-il quelque chose à publier ? »). Mais dès
+qu'une écriture a atteint la base, les écrans l'ont affichée — d'où ce
+second journal, distinct de `publications`.
+
+`private.tracer_ecriture()` (SECURITY DEFINER, `search_path` vide) est
+posée AFTER INSERT/UPDATE/DELETE et écrit **une ligne par champ réellement
+modifié** (comparaison OLD/NEW). Rien n'y échappe, pas même une correction
+faite directement en SQL depuis le tableau de bord Supabase. Les arguments du
+déclencheur portent la clé métier, la colonne de date de service, puis les
+colonnes à surveiller.
+
+Tables suivies : `circulations`, `jours` (terminus), `messages`,
+`medias`, `params`, `machines`, `motifs`, `modeles_messages`, et
+`ecrans` **uniquement** pour `veille_debut`, `veille_fin`, `gare`,
+`type` et `recharger_demande_at` — surtout PAS `derniere_vue`,
+`donnees_maj`, `version_app` ni `reseau` : 6 écrans × un signal toutes
+les 60 s feraient ~8 600 lignes par jour et noieraient le journal.
+
+Cas particulier de `params` : la colonne `valeur` est un JSON, le
+déclencheur descend donc d'un cran pour consigner « t 8 → 12 » plutôt que
+l'objet météo entier.
+
+RLS : lecture pour tout compte connecté (admin, supervision, caisse) ;
+INSERT/UPDATE/DELETE révoqués pour `anon` ET `authenticated` — seul le
+déclencheur écrit.
+
+Rétention : `select private.purge_journal_exploitation();` supprime les
+entrées de plus de 12 mois (paramètre optionnel : nombre de mois) et retourne
+le nombre de lignes supprimées. À lancer à la main ; le volume attendu est de
+quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
 
 ### RLS (résumé — livrer le SQL complet dans `supabase/schema.sql`)
 

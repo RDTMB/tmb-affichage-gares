@@ -153,7 +153,9 @@ describe('Messages en attente', () => {
   it('ajoute un message en cours de création (clé brouillon:...) à la suite', () => {
     const idTemp = nouvelIdMessageBrouillon();
     expect(estIdMessageBrouillon(idTemp)).toBe(true);
-    const brouillon: BrouillonMessages = new Map([[idTemp, message({ id: idTemp, texte_fr: 'Nouveau' })]]);
+    const brouillon: BrouillonMessages = new Map([
+      [idTemp, message({ id: idTemp, texte_fr: 'Nouveau' })],
+    ]);
     const effectif = appliqueBrouillonMessages([message()], brouillon);
     expect(effectif.map((m) => m.texte_fr)).toEqual(['Retard sur le réseau', 'Nouveau']);
   });

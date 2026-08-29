@@ -30,6 +30,8 @@ import type {
   Session,
   TerminusFlag,
   User,
+  EntreeJournal,
+  FiltreJournal,
 } from '../core/types';
 import type { DataProvider } from './provider';
 
@@ -219,6 +221,8 @@ interface EtatMock {
   medias: Media[];
   ecrans: Record<string, EcranInfo>;
   publications: { quand: string; qui: string; resume: string }[];
+  /** Journal d'exploitation : en production, écrit par des DÉCLENCHEURS. */
+  journal: EntreeJournal[];
   utilisateurs: User[] | null;
 }
 
@@ -239,8 +243,81 @@ function litEtat(): EtatMock {
     medias: [],
     ecrans: {},
     publications: [],
+    journal: [],
     utilisateurs: null,
   };
+}
+
+/**
+ * Reproduit le déclencheur `private.tracer_ecriture()` : une ligne de journal
+ * par CHAMP réellement modifié. Le mock doit se comporter comme la base,
+ * sinon les tests de traçabilité ne prouveraient rien.
+ *
+ * N'est JAMAIS appelé par heartbeat() : les signaux de vie ne sont pas des
+ * écritures d'exploitation et noieraient le journal.
+ */
+function trace(
+  etat: EtatMock,
+  table: string,
+  cle: string,
+  // `object` plutôt que `Record<string, unknown>` : les interfaces du domaine
+  // (Circulation, Message…) n'ont pas de signature d'index, et les convertir
+  // partout n'apporterait rien.
+  avant: object | null,
+  apres: object | null,
+  champs?: string[],
+  dateService?: string | null,
+): void {
+  etat.journal ??= [];
+  const session = sessionStorage.getItem(CLE_SESSION);
+  const qui = session ? (JSON.parse(session) as { email: string }).email : null;
+  const surveilles =
+    champs ??
+    [...new Set([...Object.keys(apres ?? {}), ...Object.keys(avant ?? {})])].filter(
+      (c) => c !== 'id' && c !== 'maj',
+    );
+  const texte = (v: unknown): string | null =>
+    v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v);
+
+  const pose = (champ: string, a: unknown, b: unknown): void => {
+    if (texte(a) === texte(b)) return;
+    etat.journal.push({
+      id: etat.journal.length + 1,
+      quand: new Date().toISOString(),
+      qui,
+      table_cible: table,
+      cle,
+      champ,
+      avant: texte(a),
+      apres: texte(b),
+      date_service: dateService ?? null,
+    });
+  };
+
+  for (const champ of surveilles) {
+    const a = (avant as Record<string, unknown> | null)?.[champ];
+    const b = (apres as Record<string, unknown> | null)?.[champ];
+    // Valeur JSON (params) : on descend d'un cran, comme le déclencheur.
+    const objetA = a !== null && typeof a === 'object' && !Array.isArray(a);
+    const objetB = b !== null && typeof b === 'object' && !Array.isArray(b);
+    if (objetA || objetB) {
+      const sousCles = [
+        ...new Set([
+          ...Object.keys(objetB ? (b as object) : {}),
+          ...Object.keys(objetA ? (a as object) : {}),
+        ]),
+      ];
+      for (const sous of sousCles) {
+        pose(
+          sous,
+          objetA ? (a as Record<string, unknown>)[sous] : undefined,
+          objetB ? (b as Record<string, unknown>)[sous] : undefined,
+        );
+      }
+    } else {
+      pose(champ, a, b);
+    }
+  }
 }
 
 function ecritEtat(etat: EtatMock): void {
@@ -422,6 +499,9 @@ export class MockProvider implements DataProvider {
   async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
     const ecrans = litEcrans();
     if (ecrans[e.id]) throw new Error(`Écran ${e.id} déjà déclaré`);
+    const etat = litEtat();
+    trace(etat, 'ecrans', e.id, null, { gare: e.gare, type: e.type ?? null }, ['gare', 'type']);
+    ecritEtat(etat);
     ecrans[e.id] = { id: e.id, gare: e.gare, type: e.type ?? null };
     ecritEcrans(ecrans);
   }
@@ -458,21 +538,72 @@ export class MockProvider implements DataProvider {
     ecritEtat(etat);
   }
 
+  /**
+   * État d'une circulation AVANT écriture, tel que la base le contient : le
+   * mock ne stocke que les modifications, mais en production la ligne existe
+   * déjà (journée générée). Sans ce repli sur la circulation théorique, la
+   * première écriture consignerait les SEPT champs au journal au lieu du seul
+   * qui change.
+   */
+  private async circulationAvant(date: string, numero: number): Promise<Circulation | null> {
+    const stocke = litEtat().jours[date]?.circulations[String(numero)];
+    const grille = serviceActif(await this.getGrilles(), date);
+    if (!grille) return (stocke as Circulation) ?? null;
+    const theorique = generationJour(grille, date).circulations.find((x) => x.numero === numero);
+    if (!theorique) return (stocke as Circulation) ?? null;
+    return { ...theorique, ...(stocke ?? {}) };
+  }
+
   async saveCirculation(c: Circulation): Promise<void> {
+    const avant = await this.circulationAvant(c.date, c.numero);
     const etat = litEtat();
     etat.jours[c.date] ??= { terminus: null, circulations: {} };
     const jour = etat.jours[c.date];
-    if (jour) jour.circulations[String(c.numero)] = c;
+    if (jour) {
+      trace(
+        etat,
+        'circulations',
+        `${c.date} ${c.numero}`,
+        avant,
+        c,
+        ['statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif', 'sans_voyageurs'],
+        c.date,
+      );
+      jour.circulations[String(c.numero)] = c;
+    }
     ecritEtat(etat);
   }
 
   async saveCirculations(cs: Circulation[]): Promise<void> {
     if (cs.length === 0) return;
+    const avants = new Map<string, Circulation | null>();
+    for (const c of cs) {
+      avants.set(`${c.date}|${c.numero}`, await this.circulationAvant(c.date, c.numero));
+    }
     const etat = litEtat();
     for (const c of cs) {
       etat.jours[c.date] ??= { terminus: null, circulations: {} };
       const jour = etat.jours[c.date];
-      if (jour) jour.circulations[String(c.numero)] = c;
+      if (jour) {
+        trace(
+          etat,
+          'circulations',
+          `${c.date} ${c.numero}`,
+          avants.get(`${c.date}|${c.numero}`) ?? null,
+          c,
+          [
+            'statut',
+            'retard_min',
+            'motif',
+            'rame',
+            'terminus',
+            'facultatif_actif',
+            'sans_voyageurs',
+          ],
+          c.date,
+        );
+        jour.circulations[String(c.numero)] = c;
+      }
     }
     ecritEtat(etat); // une seule notification pour toute l'action groupée
   }
@@ -491,6 +622,15 @@ export class MockProvider implements DataProvider {
             1,
             v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
           );
+    trace(
+      etat,
+      'jours',
+      date,
+      { terminus_bellevue_a_partir_du_train: etatJour.terminus },
+      { terminus_bellevue_a_partir_du_train: v === false ? null : seuil },
+      ['terminus_bellevue_a_partir_du_train'],
+      date,
+    );
     etatJour.terminus = v === false ? null : seuil;
     // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable
     // ensuite ; les montées hors plage sont LIBÉRÉES (décocher ou rétrécir
@@ -510,6 +650,7 @@ export class MockProvider implements DataProvider {
     const liste = etat.messages ?? [...MESSAGES_DEMO];
     const complet: Message = { ...m, id: m.id || `msg-${Date.now()}` };
     const index = liste.findIndex((x) => x.id === complet.id);
+    trace(etat, 'messages', complet.id, index >= 0 ? (liste[index] ?? null) : null, complet);
     if (index >= 0) liste[index] = complet;
     else liste.push(complet);
     etat.messages = liste;
@@ -518,7 +659,9 @@ export class MockProvider implements DataProvider {
 
   async deleteMessage(id: string): Promise<void> {
     const etat = litEtat();
-    etat.messages = (etat.messages ?? [...MESSAGES_DEMO]).filter((m) => m.id !== id);
+    const liste = etat.messages ?? [...MESSAGES_DEMO];
+    trace(etat, 'messages', id, liste.find((m) => m.id === id) ?? null, null);
+    etat.messages = liste.filter((m) => m.id !== id);
     ecritEtat(etat);
   }
 
@@ -542,12 +685,14 @@ export class MockProvider implements DataProvider {
     const index = etat.medias.findIndex((x) => x.id === m.id);
     // Échec bruyant, comme le provider Supabase (jamais de faux succès)
     if (index < 0) throw new Error(`Média ${m.id} introuvable`);
+    trace(etat, 'medias', m.id, etat.medias[index] ?? null, m);
     etat.medias[index] = m;
     ecritEtat(etat);
   }
 
   async deleteMedia(id: string): Promise<void> {
     const etat = litEtat();
+    trace(etat, 'medias', id, etat.medias.find((m) => m.id === id) ?? null, null);
     etat.medias = etat.medias.filter((m) => m.id !== id);
     ecritEtat(etat);
   }
@@ -557,6 +702,11 @@ export class MockProvider implements DataProvider {
     const { machines, motifs, ...simples } = p;
     if (machines) etat.machines = machines;
     if (motifs) etat.motifs = motifs;
+    // Une ligne de journal par CLÉ de paramètre, comme le déclencheur.
+    const avant = { ...PARAMS_DEMO, ...etat.paramsSimples } as Record<string, unknown>;
+    for (const [cle, valeur] of Object.entries(simples)) {
+      trace(etat, 'params', cle, { [cle]: avant[cle] }, { [cle]: valeur }, [cle]);
+    }
     etat.paramsSimples = { ...etat.paramsSimples, ...simples };
     ecritEtat(etat);
   }
@@ -565,6 +715,7 @@ export class MockProvider implements DataProvider {
     const etat = litEtat();
     const liste = etat.machines ?? [...PARAMS_DEMO.machines];
     const index = liste.findIndex((x) => x.nom === m.nom);
+    trace(etat, 'machines', m.nom, index >= 0 ? (liste[index] ?? null) : null, m);
     if (index >= 0) liste[index] = m;
     else liste.push(m);
     etat.machines = liste;
@@ -573,7 +724,9 @@ export class MockProvider implements DataProvider {
 
   async deleteMachine(nom: string): Promise<void> {
     const etat = litEtat();
-    etat.machines = (etat.machines ?? [...PARAMS_DEMO.machines]).filter((m) => m.nom !== nom);
+    const liste = etat.machines ?? [...PARAMS_DEMO.machines];
+    trace(etat, 'machines', nom, liste.find((m) => m.nom === nom) ?? null, null);
+    etat.machines = liste.filter((m) => m.nom !== nom);
     ecritEtat(etat);
   }
 
@@ -587,6 +740,13 @@ export class MockProvider implements DataProvider {
     const liste = etat.modeles ?? [...MODELES_DEMO];
     const complet: ModeleMessage = { ...m, id: m.id || `modele-${Date.now()}` };
     const index = liste.findIndex((x) => x.id === complet.id);
+    trace(
+      etat,
+      'modeles_messages',
+      complet.id,
+      index >= 0 ? (liste[index] ?? null) : null,
+      complet,
+    );
     if (index >= 0) liste[index] = complet;
     else liste.push(complet);
     etat.modeles = liste;
@@ -596,6 +756,7 @@ export class MockProvider implements DataProvider {
   async deleteModeleMessage(id: string): Promise<void> {
     const etat = litEtat();
     const liste = etat.modeles ?? [...MODELES_DEMO];
+    trace(etat, 'modeles_messages', id, liste.find((m) => m.id === id) ?? null, null);
     if (!liste.some((m) => m.id === id)) throw new Error(`Modèle ${id} introuvable`);
     etat.modeles = liste.filter((m) => m.id !== id);
     ecritEtat(etat);
@@ -605,6 +766,7 @@ export class MockProvider implements DataProvider {
     const etat = litEtat();
     const liste = etat.motifs ?? [...PARAMS_DEMO.motifs];
     const index = liste.findIndex((x) => x.fr === m.fr);
+    trace(etat, 'motifs', m.fr, index >= 0 ? (liste[index] ?? null) : null, m);
     if (index >= 0) liste[index] = m;
     else liste.push(m);
     etat.motifs = liste;
@@ -613,7 +775,9 @@ export class MockProvider implements DataProvider {
 
   async deleteMotif(fr: string): Promise<void> {
     const etat = litEtat();
-    etat.motifs = (etat.motifs ?? [...PARAMS_DEMO.motifs]).filter((m) => m.fr !== fr);
+    const liste = etat.motifs ?? [...PARAMS_DEMO.motifs];
+    trace(etat, 'motifs', fr, liste.find((m) => m.fr === fr) ?? null, null);
+    etat.motifs = liste.filter((m) => m.fr !== fr);
     ecritEtat(etat);
   }
 
@@ -651,6 +815,27 @@ export class MockProvider implements DataProvider {
     return null; // repli : dictionnaire local de phrases types
   }
 
+  async dernierePublication(): Promise<string | null> {
+    const publications = litEtat().publications;
+    return publications[publications.length - 1]?.quand ?? null;
+  }
+
+  async listJournal(filtre: FiltreJournal): Promise<EntreeJournal[]> {
+    // Le mock n'a pas de déclencheurs : il consigne à l'écriture (voir
+    // `trace()`). Le filtrage reproduit celui de la base.
+    const entrees = litEtat().journal ?? [];
+    const filtrees = entrees.filter((e) => {
+      if (filtre.du && e.quand < `${filtre.du}T00:00:00`) return false;
+      if (filtre.au && e.quand > `${filtre.au}T23:59:59Z`) return false;
+      if (filtre.qui && e.qui !== filtre.qui) return false;
+      if (filtre.table_cible && e.table_cible !== filtre.table_cible) return false;
+      return true;
+    });
+    filtrees.sort((a, b) => (a.quand < b.quand ? 1 : a.quand > b.quand ? -1 : b.id - a.id));
+    const depuis = filtre.depuis ?? 0;
+    return filtrees.slice(depuis, depuis + (filtre.limite ?? 100));
+  }
+
   async logPublication(resume: string): Promise<void> {
     const etat = litEtat();
     const session = sessionStorage.getItem(CLE_SESSION);
@@ -675,6 +860,16 @@ export class MockProvider implements DataProvider {
     const ecrans = litEcrans();
     const ecran = ecrans[id];
     if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    const etat = litEtat();
+    trace(
+      etat,
+      'ecrans',
+      id,
+      { veille_debut: ecran.veille_debut ?? null, veille_fin: ecran.veille_fin ?? null },
+      { veille_debut: debut, veille_fin: fin },
+      ['veille_debut', 'veille_fin'],
+    );
+    ecritEtat(etat);
     ecran.veille_debut = debut;
     ecran.veille_fin = fin;
     ecritEcrans(ecrans);
@@ -682,7 +877,14 @@ export class MockProvider implements DataProvider {
 
   async oublierEcran(id: string): Promise<void> {
     const ecrans = litEcrans();
-    if (!(id in ecrans)) throw new Error(`Écran ${id} inconnu`);
+    const ecran = ecrans[id];
+    if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    const etat = litEtat();
+    trace(etat, 'ecrans', id, { gare: ecran.gare, type: ecran.type ?? null }, null, [
+      'gare',
+      'type',
+    ]);
+    ecritEtat(etat);
     delete ecrans[id];
     ecritEcrans(ecrans);
   }

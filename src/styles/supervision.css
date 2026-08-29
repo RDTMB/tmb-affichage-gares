@@ -1147,6 +1147,19 @@ tr.paire-fin td {
   border-radius: 10px;
 }
 
+/* Rien à publier : gris neutre et inerte. La règle générale button:disabled
+   existe déjà, mais .primaire impose son rouge — il faut donc la surcharger
+   ici, sinon le bouton resterait rouge tout en étant inactif. */
+.publier button.primaire:disabled,
+.publier button.primaire:disabled:hover {
+  background: #e7edf3;
+  border-color: var(--bord);
+  color: #9fb0c0;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
 .toast {
   position: fixed;
   bottom: 100px;
@@ -1271,4 +1284,53 @@ input:disabled {
 .veille-propre {
   color: #7a6017;
   font-weight: 900;
+}
+
+/* Journal d'exploitation : lecture seule, dense mais lisible */
+.filtres-journal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tableau-journal {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+}
+
+#tab-journal {
+  font-size: 12.5px;
+}
+
+#tab-journal thead th {
+  position: sticky;
+  top: 0;
+  background: #fbfcfe;
+  z-index: 1;
+}
+
+#tab-journal td {
+  padding: 6px 10px;
+  vertical-align: top;
+}
+
+#tab-journal .quand {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--sec);
+}
+
+#tab-journal .ecart .avant {
+  color: var(--sec);
+  text-decoration: line-through;
+}
+
+.pagination-journal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
