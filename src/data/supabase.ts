@@ -302,6 +302,13 @@ export class SupabaseProvider implements DataProvider {
     const { data, error } = await this.client
       .from('ecrans')
       .update({
+        // RÉÉCRITE par le serveur (déclencheur trg_signal_de_vie) : toute
+        // écriture qui modifie derniere_vue voit sa valeur remplacée par
+        // now(). L'horloge d'un Raspberry n'entre plus dans le calcul de
+        // fraîcheur, et un signal ne peut être ni antidaté ni postdaté.
+        // On garde malgré tout le champ dans l'update : c'est lui qui
+        // déclenche l'horodatage, le retirer laisserait la colonne hors du
+        // UPDATE — et le déclencheur, conditionnel, ne ferait rien.
         derniere_vue: new Date().toISOString(),
         donnees_maj: e.donnees_maj ?? null,
         date_affichee: e.date_affichee ?? null,

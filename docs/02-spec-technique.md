@@ -244,6 +244,46 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   possible mais borné aux colonnes du signal de vie par des GRANT de
   colonnes — `recharger_demande_at`, `id`, `gare` et `type` sont hors
   d'atteinte. Un écran non déclaré n'écrit nulle part.
+
+  **Décision assumée : le signal de vie reste anonyme**, sans identité propre
+  à chaque écran. Un poste en gare n'a pas de secret à protéger et n'aurait de
+  toute façon aucun moyen d'en garder un — la clé publishable est publique par
+  conception. Trois garde-fous encadrent cette ouverture :
+  1. la **portée** est bornée par les GRANT de colonnes : un anonyme ne touche
+     que les colonnes du signal de vie, jamais `recharger_demande_at` (il ne
+     peut donc pas ordonner le rechargement des écrans de la ligne) ;
+  2. l'**INSERT lui est interdit** : les postes sont pré-déclarés par un
+     administrateur, une ligne inconnue n'écrit nulle part ;
+  3. **un signal de vie ne peut être ni antidaté ni postdaté** : toute
+     écriture qui modifie `derniere_vue` voit sa valeur remplacée par `now()`
+     côté serveur. L'horloge du Raspberry n'entre plus dans le calcul de
+     fraîcheur, et une date lointaine ne peut plus rendre un poste « vivant »
+     indéfiniment. Le champ reste envoyé par le client car c'est lui qui
+     déclenche l'horodatage.
+
+  Le déclencheur (`trg_signal_de_vie`, fonction
+  `private.horodate_signal_de_vie()`, BEFORE UPDATE sur `ecrans`) est
+  **conditionnel à dessein** : sans la condition, une action de supervision
+  (ordre de rechargement, réglage de veille) réécrirait `derniere_vue` et
+  ferait passer un écran MORT pour vivant — l'inverse exact du but recherché.
+  La garantie tient quand même, parce que la seule écriture que la condition
+  laisse passer est celle qui ne change rien : réécrire la valeur déjà en base.
+
+  `donnees_maj` n'est pas forcée mais **bornée** : la dernière synchro réussie
+  n'est jamais postérieure à l'instant présent. Elle peut en revanche être
+  antérieure — c'est le cas normal d'un écran vivant dont le réseau est coupé,
+  et c'est cette information qu'il faut préserver. Conséquence assumée : un
+  tiers peut faire paraître des données plus VIEILLES qu'elles ne sont, jamais
+  plus fraîches ; l'erreur possible va donc dans le sens de la fausse alerte,
+  pas du faux « tout va bien ».
+
+  **Limite connue** : `derniere_vue` ne peut plus être remise à NULL par un
+  UPDATE (elle serait horodatée à `now()`). Un poste repart de NULL à sa
+  déclaration (INSERT, non concerné par le déclencheur) ; aucun usage
+  d'exploitation n'a besoin de cette remise à zéro.
+
+  **Fermeture définitive en phase 2** : le micro-serveur interne de la Régie
+  prendra en charge les écritures des écrans et le rôle `anon` disparaîtra.
 - Storage : bucket `medias` public (les écrans passent par l'URL publique,
   qui ne traverse pas RLS) ; sur `storage.objects`, plus de policy SELECT
   ouverte à tous — SELECT/INSERT/DELETE réservés à l'exploitation

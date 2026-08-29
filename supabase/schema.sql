@@ -250,6 +250,33 @@ grant update (derniere_vue, donnees_maj, date_affichee, version_app, reseau)
   on ecrans to anon;
 grant select, insert, update, delete on ecrans to authenticated;
 
+-- DÉCISION ASSUMÉE : le signal de vie reste ANONYME, sans identité propre à
+-- chaque écran. Un poste en gare n'a pas de secret à protéger et n'aurait de
+-- toute façon aucun moyen d'en garder un — la clé publishable est publique
+-- par conception. Trois garde-fous encadrent cette ouverture :
+--   1. la portée est bornée par les GRANT de COLONNES ci-dessus : un anonyme
+--      ne touche que les colonnes du signal de vie, jamais
+--      recharger_demande_at (il ne peut donc pas ordonner le rechargement des
+--      écrans de la ligne), ni id, gare ou type ;
+--   2. l'INSERT lui est interdit : les postes sont pré-déclarés par un
+--      administrateur, une ligne inconnue n'écrit nulle part ;
+--   3. un signal de vie ne peut être ni antidaté ni postdaté : toute écriture
+--      qui MODIFIE derniere_vue voit sa valeur remplacée par now() côté
+--      serveur (trg_signal_de_vie). L'horloge du Raspberry n'entre plus dans
+--      le calcul de fraîcheur, et une date lointaine ne peut plus rendre un
+--      poste « vivant » indéfiniment. Le déclencheur est CONDITIONNEL à
+--      dessein : sans cela, une action de supervision (ordre de rechargement,
+--      réglage de veille) réécrirait derniere_vue et ferait passer un écran
+--      MORT pour vivant — l'inverse exact du but recherché.
+--      donnees_maj, elle, n'est pas forcée mais BORNÉE : jamais postérieure à
+--      l'instant présent, mais librement antérieure — c'est le cas normal
+--      d'un écran vivant dont le réseau est coupé, et c'est cette information
+--      qu'il faut préserver. Conséquence assumée : un tiers peut faire
+--      paraître des données plus VIEILLES qu'elles ne sont, jamais plus
+--      fraîches ; l'erreur possible va donc dans le sens de la fausse alerte,
+--      pas du faux « tout va bien ».
+-- Fermeture définitive en phase 2 : le micro-serveur interne de la Régie
+-- prendra en charge les écritures des écrans et le rôle anon disparaîtra.
 create policy "signal de vie" on ecrans for update to anon
   using (true) with check (true);
 create policy "declarer ecran" on ecrans for insert to authenticated
@@ -260,6 +287,38 @@ create policy "commande ecran" on ecrans for update to authenticated
 -- Retrait d'un poste obsolète : exploitation authentifiée uniquement
 create policy "oublier ecran" on ecrans for delete to authenticated
   using (private.role_courant() in ('admin','supervision'));
+
+-- LIMITE CONNUE : derniere_vue ne peut plus être remise à NULL par un UPDATE
+-- (elle serait horodatée à now()). Un poste repart de NULL à sa déclaration
+-- (INSERT, non concerné par le déclencheur) ; aucun usage d'exploitation n'a
+-- besoin de cette remise à zéro.
+-- Ajout sur base existante : supabase/migrations/2026-08-signal-de-vie-serveur.sql
+
+-- Le serveur horodate le signal de vie : ni l'horloge d'un Raspberry, ni un
+-- tiers muni de la clé publique ne décident plus de la fraîcheur d'un écran.
+create or replace function private.horodate_signal_de_vie()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
+begin
+  -- Ne s'applique QU'aux écritures qui touchent ces colonnes : une action de
+  -- supervision (veille, ordre de rechargement) ne fausse pas la dernière vue.
+  if new.derniere_vue is distinct from old.derniere_vue then
+    new.derniere_vue := now();
+  end if;
+  -- La dernière synchro réussie peut être ANTÉRIEURE (réseau coupé) mais
+  -- jamais postérieure à maintenant.
+  if new.donnees_maj is distinct from old.donnees_maj and new.donnees_maj is not null then
+    new.donnees_maj := least(new.donnees_maj, now());
+  end if;
+  return new;
+end;
+$fn$;
+
+revoke all on function private.horodate_signal_de_vie() from public;
+
+drop trigger if exists trg_signal_de_vie on public.ecrans;
+create trigger trg_signal_de_vie
+  before update on public.ecrans
+  for each row execute function private.horodate_signal_de_vie();
 
 -- Publications : journal — écrit par tout rôle actif, lu par les connectés
 create policy "journal insert" on publications for insert to authenticated
