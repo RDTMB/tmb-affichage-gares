@@ -665,11 +665,17 @@ function rendreCirculations(): void {
   ($('btn-reinitialiser') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
 
   const service = serviceActif(grilles, dateSel);
-  $('service-tag').textContent = service
+  // Libellé compact : le petit service a DEUX périodes, et le « et » comme
+  // les espaces autour des flèches faisaient déborder la barre.
+  const libelleService = service
     ? `${service.libelle.split('—')[0]?.trim()} (${service.periodes
-        .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)} → ${p.au.slice(8)}/${p.au.slice(5, 7)}`)
-        .join(' et ')})`
+        .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)}→${p.au.slice(8)}/${p.au.slice(5, 7)}`)
+        .join(' · ')})`
     : 'Hors saison / service hiver';
+  $('service-tag').textContent = libelleService;
+  // Le libellé est tronqué par CSS quand la barre manque de place : les
+  // périodes restent lisibles au survol.
+  $('service-tag').title = libelleService;
 
   // Bascule Terminus Bellevue « à partir du TRAIN N »
   const flag = jour.terminus_bellevue;

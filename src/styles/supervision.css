@@ -326,8 +326,34 @@ input[type='color'] {
   gap: 10px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--bord);
-  flex-wrap: wrap;
+  /* Une seule ligne : en petit service, le libellé de service compte deux
+     périodes et faisait basculer toute la barre sur deux lignes. */
+  flex-wrap: nowrap;
   background: #fbfcfe;
+}
+
+/* Boutons, navigation de date, chips et bloc terminus gardent leur taille… */
+.barre-jour > * {
+  flex: 0 0 auto;
+}
+
+/* …#service-tag est le SEUL à céder de la place, et il le fait par
+   troncature. Son texte complet reste lisible au survol (title posé par
+   src/pages/supervision.ts). */
+.barre-jour > .service-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Filet de sécurité : sur un poste étroit, mieux vaut deux lignes qu'une
+   barre écrasée. */
+@media (max-width: 1100px) {
+  .barre-jour {
+    flex-wrap: wrap;
+  }
 }
 
 .barre-jour .nav-date {
