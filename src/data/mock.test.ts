@@ -373,10 +373,10 @@ describe('Bibliothèque de messages préenregistrés', () => {
     sessionStockage.clear();
   });
 
-  it('fournit les 11 modèles validés par l’exploitant, bilingues et ordonnés', async () => {
+  it('fournit les 12 modèles validés par l’exploitant, bilingues et ordonnés', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     const liste = await provider.getModelesMessages();
-    expect(liste).toHaveLength(11);
+    expect(liste).toHaveLength(12);
     for (const m of liste) {
       expect(m.texte_fr.trim()).not.toBe('');
       expect(m.texte_en.trim()).not.toBe(''); // bibliothèque livrée bilingue
@@ -403,7 +403,7 @@ describe('Bibliothèque de messages préenregistrés', () => {
       actif: true,
     });
     let liste = await provider.getModelesMessages();
-    expect(liste).toHaveLength(12);
+    expect(liste).toHaveLength(13);
     const ajoute = liste.find((m) => m.titre === 'Chien tenu en laisse');
     if (!ajoute) throw new Error('modèle ajouté introuvable');
     // L'ordre place le modèle entre 40 et 50
@@ -414,7 +414,7 @@ describe('Bibliothèque de messages préenregistrés', () => {
     expect(liste.find((m) => m.id === ajoute.id)?.actif).toBe(false);
 
     await provider.deleteModeleMessage(ajoute.id);
-    expect(await provider.getModelesMessages()).toHaveLength(11);
+    expect(await provider.getModelesMessages()).toHaveLength(12);
     await expect(provider.deleteModeleMessage(ajoute.id)).rejects.toThrow(/introuvable/);
   });
 

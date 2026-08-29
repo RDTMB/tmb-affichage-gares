@@ -105,6 +105,12 @@ const MODELES_DEMO: ModeleMessage[] = [
     'Strong wind at the summit: services may be adjusted.',
   ],
   [
+    'Visibilité réduite',
+    'Météo',
+    'Visibilité réduite sur la ligne et au sommet : soyez prudents.',
+    'Reduced visibility on the line and at the summit: please take care.',
+  ],
+  [
     'Tronçon supérieur fermé',
     'Météo',
     'Tronçon Bellevue – Nid d’Aigle fermé pour raisons météorologiques.',

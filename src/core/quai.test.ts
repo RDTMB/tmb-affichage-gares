@@ -80,7 +80,7 @@ describe('Gare intermédiaire : l’heure d’ARRIVÉE ouvre le stationnement à
 
   it('les libellés sont bilingues', () => {
     const quai = compteARebours(p.depart_s ?? 0, h('09:11:00'), p.arrivee_s);
-    expect([quai.libelle, quai.libelle_en]).toEqual(['À QUAI', 'AT PLATFORM']);
+    expect([quai.libelle, quai.libelle_en]).toEqual(['À QUAI', 'ARRIVED']);
     const imminent = compteARebours(p.depart_s ?? 0, h('09:14:45'), p.arrivee_s);
     expect([imminent.libelle, imminent.libelle_en]).toEqual(['DÉPART IMMINENT', 'DEPARTING']);
     const parti = compteARebours(p.depart_s ?? 0, h('09:16:00'), p.arrivee_s);

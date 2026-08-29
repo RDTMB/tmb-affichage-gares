@@ -507,7 +507,7 @@ export function compteARebours(
   // délai forfaitaire avant le départ.
   const debutQuai = arrivee_s ?? depart_s - Math.max(0, aQuaiOrigine_s);
   if (maintenant_s >= debutQuai) {
-    return { type: 'quai', libelle: 'À QUAI', libelle_en: 'AT PLATFORM' };
+    return { type: 'quai', libelle: 'À QUAI', libelle_en: 'ARRIVED' };
   }
   // Le nombre affiché reste celui du DÉPART, cohérent avec l'heure de départ
   // imprimée juste à côté dans la ligne.
