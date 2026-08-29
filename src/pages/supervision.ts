@@ -1718,6 +1718,7 @@ function rendreParametres(): void {
       </select>
       <label class="switch"><input type="checkbox" ${u.actif ? 'checked' : ''} data-champ="actif" />Actif</label>
       <button class="leger" data-champ="reset">Réinit. mdp</button>
+      <button class="leger danger" data-champ="supprimer">Supprimer</button>
     </div>`,
     )
     .join('');
@@ -1977,14 +1978,27 @@ function initParametres(): void {
   });
   $('users').addEventListener('click', (e) => {
     const bouton = e.target as HTMLElement;
-    if (bouton.dataset.champ !== 'reset') return;
     const id = (bouton.closest('.user-row') as HTMLElement | null)?.dataset.user;
     const u = utilisateurs.find((x) => x.user_id === id);
     if (!u) return;
-    void provider
-      .resetMotDePasse(u.email)
-      .then(() => toast(`Réinitialisation du mot de passe envoyée à ${u.email}`))
-      .catch(erreurVersToast);
+    if (bouton.dataset.champ === 'reset') {
+      void provider
+        .resetMotDePasse(u.email)
+        .then(() => toast(`Réinitialisation du mot de passe envoyée à ${u.email}`))
+        .catch(erreurVersToast);
+    } else if (bouton.dataset.champ === 'supprimer') {
+      if (!window.confirm(`Supprimer définitivement le compte de ${u.nom} (${u.email}) ?`)) return;
+      void provider
+        .deleteUser(u.user_id)
+        .then(() => provider.listUsers())
+        .then((liste) => {
+          utilisateurs = liste;
+          bump(`utilisateur supprimé : ${u.email}`);
+          toast(`Compte supprimé : ${u.email}`);
+          rendreParametres();
+        })
+        .catch(erreurVersToast);
+    }
   });
 
   // « À quai » en gare d'origine : exprimé en MINUTES à la saisie, stocké en

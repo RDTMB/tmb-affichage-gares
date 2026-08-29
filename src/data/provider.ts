@@ -71,6 +71,8 @@ export interface DataProvider {
   deleteModeleMessage(id: string): Promise<void>;
   listUsers(): Promise<User[]>;
   saveUser(u: User): Promise<void>;
+  /** Suppression définitive (Edge Function — clé secrète jamais côté front). */
+  deleteUser(user_id: string): Promise<void>;
   /** Création par invitation email (Edge Function — clé secrète jamais côté front). */
   inviteUser(email: string, nom: string, role: Role): Promise<void>;
   resetMotDePasse(email: string): Promise<void>;

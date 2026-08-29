@@ -566,6 +566,14 @@ export class SupabaseProvider implements DataProvider {
     );
   }
 
+  async deleteUser(user_id: string): Promise<void> {
+    // La suppression exige la clé secrète : Edge Function côté Supabase.
+    const { error } = await this.client.functions.invoke('supprimer-utilisateur', {
+      body: { user_id },
+    });
+    if (error) throw new Error(error.message);
+  }
+
   async inviteUser(email: string, nom: string, role: Role): Promise<void> {
     // La création de compte exige la clé secrète : Edge Function côté Supabase.
     const { error } = await this.client.functions.invoke('inviter-utilisateur', {

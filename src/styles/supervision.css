@@ -281,6 +281,18 @@ button.leger {
   font-weight: 700;
 }
 
+button.leger.danger {
+  background: var(--alerte-bg);
+  border-color: var(--alerte-bg);
+  color: var(--alerte);
+}
+
+button.leger.danger:hover {
+  background: var(--alerte);
+  border-color: var(--alerte);
+  color: #fff;
+}
+
 input[type='text'],
 input[type='email'],
 input[type='password'],

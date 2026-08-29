@@ -625,6 +625,14 @@ export class MockProvider implements DataProvider {
     ecritEtat(etat);
   }
 
+  async deleteUser(user_id: string): Promise<void> {
+    const etat = litEtat();
+    etat.utilisateurs = (etat.utilisateurs ?? [...UTILISATEURS_DEMO]).filter(
+      (u) => u.user_id !== user_id,
+    );
+    ecritEtat(etat);
+  }
+
   async inviteUser(email: string, nom: string, role: Role): Promise<void> {
     await this.saveUser({ user_id: `mock-${Date.now()}`, nom, email, role, actif: true });
   }
