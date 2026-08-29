@@ -1,9 +1,14 @@
 -- =============================================================================
 -- TMB — AJOUT de la bibliothèque de messages préenregistrés
 -- À exécuter dans l'éditeur SQL d'une base DÉJÀ en service : ce script est
--- idempotent et n'altère aucune donnée existante (il peut être relancé).
--- Le contenu est également intégré à supabase/schema.sql pour les nouvelles
--- installations.
+-- idempotent et n'altère aucune donnée existante (il peut être relancé, y
+-- compris plus tard pour ajouter un nouveau modèle à la bibliothèque).
+-- La table et ses politiques RLS sont aussi définies directement dans
+-- supabase/schema.sql pour les nouvelles installations (mêmes définitions,
+-- sur private.role_courant() — voir plus bas) ; SEULE la bibliothèque de
+-- textes ci-dessous (les INSERT) n'existe que dans ce fichier : une
+-- nouvelle installation doit donc quand même exécuter ce script (cf.
+-- docs/mise-en-service.md, après schema.sql ET securite-advisors.sql).
 -- =============================================================================
 
 create table if not exists modeles_messages (
@@ -20,14 +25,18 @@ alter table modeles_messages enable row level security;
 
 -- Lecture : tout compte CONNECTÉ (le formulaire Messages est accessible à
 -- tous les rôles, y compris « caisse »). Les écrans publics n'en ont pas besoin.
+-- Utilise private.role_courant() (et non role_courant() en public), car ce
+-- script peut être relancé APRÈS supabase/securite-advisors.sql, qui a
+-- déplacé/retiré la fonction publique : un appel non qualifié échoue alors
+-- avec « function role_courant() does not exist ».
 drop policy if exists "lecture connectes" on modeles_messages;
 create policy "lecture connectes" on modeles_messages for select to authenticated
-  using (role_courant() in ('admin','supervision','caisse'));
+  using (private.role_courant() in ('admin','supervision','caisse'));
 
 -- Écriture : admin uniquement (même modèle que machines / motifs / params)
 drop policy if exists "admin" on modeles_messages;
 create policy "admin" on modeles_messages for all to authenticated
-  using (role_courant() = 'admin') with check (role_courant() = 'admin');
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 
 -- Temps réel (ajout idempotent : ignore l'erreur si la table y est déjà)
 do $$
