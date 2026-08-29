@@ -209,7 +209,6 @@ function ligneHtml(p: PassageGare, maintenant_s: number): string {
     : '';
 
   return `<div class="gridrow rangee${supprime ? ' supprime' : ''}">
-    <div class="r-arr">${p.arrivee_s !== null ? formatHeure(p.arrivee_s) : '<span class="tiret">—</span>'}</div>
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>

@@ -147,7 +147,11 @@ main {
 
 .gridrow {
   display: grid;
-  grid-template-columns: 8vw 11.5vw 1fr 14.5vw 11.5vw 12.5vw;
+  /* Départ · Destination · Train · Départ dans · Statut.
+     La colonne Arrivée a été retirée (docs/01 §3) : ses 8vw reviennent
+     d'eux-mêmes à Destination, seule colonne en 1fr — c'est elle qui
+     manquait de place (mention EXPRESS tronquée). */
+  grid-template-columns: 11.5vw 1fr 14.5vw 11.5vw 12.5vw;
   gap: 0.9vw;
   align-items: center;
   padding: 0 1.8vw;
@@ -192,17 +196,6 @@ main {
 .rangee.supprime .r-dest .dest {
   text-decoration: line-through;
   opacity: 0.42;
-}
-
-.r-arr {
-  font-weight: 400;
-  font-size: 3.1vh;
-  color: var(--texte-sec);
-  font-variant-numeric: tabular-nums;
-}
-
-.r-arr .tiret {
-  color: #4a6486;
 }
 
 .r-dep {

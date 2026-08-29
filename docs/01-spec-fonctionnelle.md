@@ -140,15 +140,33 @@ motifs (défaut : Météo, Croisement, Technique, Affluence, Exploitation).
 
 ## 3. Écran de gare (`ecran.html`)
 
-Reproduit `maquettes/ecran-gare.html` :
+Reproduit `maquettes/ecran-gare.html`, à une exception documentée : la
+colonne « Arrivée » de la maquette a été RETIRÉE le 29/08/2026 (voir §2
+ci-dessous). La maquette n'a pas été retouchée — elle reste le témoin de ce
+qui avait été validé à l'époque.
 
 1. **Bandeau crème** : logo officiel à gauche ; nom de gare (Amaranth) +
    « ALTITUDE X M » (rouge) centrés au milieu de l'écran ; horloge
    HH:MM:SS + date à droite ; liseré rouge.
 2. **Tableau marine** — colonnes strictement alignées :
-   Arrivée (discrète) · Départ (grosse) · Destination · Train · Départ dans · Statut.
-   - Arrivée = heure réelle du document d'exploitation (« — » à l'origine
-     du train ; repli départ − `arret_intermediaire_s` si l'arrivée manque) ;
+   Départ (grosse) · Destination · Train · Départ dans · Statut.
+
+   L'heure d'ARRIVÉE n'est plus affichée (simplification validée par
+   l'exploitant le 29/08/2026) : le voyageur qui attend sur le quai lit une
+   heure de départ, l'heure d'entrée en gare ne lui sert à rien. La largeur
+   libérée revient à la colonne Destination, seule colonne élastique, dont la
+   mention « EXPRESS — sans arrêt / non-stop : Col de Voza & Bellevue » se
+   trouvait tronquée.
+
+   ⚠ La donnée, elle, RESTE calculée et testée (`arrivee_s` dans le moteur,
+   heure réelle du document d'exploitation, repli départ −
+   `arret_intermediaire_s` si elle manque). C'est elle qui déclenche l'état
+   « À QUAI », de l'arrivée jusqu'à 30 s avant le départ : la retirer du
+   modèle casserait cet état. Seul l'affichage a changé. L'heure d'arrivée
+   reste par ailleurs visible à deux endroits : le bandeau « Prochaine
+   arrivée / Next arrival » en bas de l'écran (qui annonce le train entrant,
+   information distincte) et la grille du jour aux terminus, là où il n'y a
+   pas d'heure de départ (§4).
    - Destination : flèche oblique ↗ (montée) / ↙ (descente) dans un carré ;
      terminus (« Nid d'Aigle », « Le Fayet », ou « Bellevue » si terminus
      exceptionnel) ; pour un express, GRAND picto motrice blanc (~7 % de la
