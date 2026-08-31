@@ -174,8 +174,8 @@ describe('Identité de l’agent connecté dans l’en-tête', () => {
   });
 
   it('sans nom, l’e-mail sert de libellé et d’initiales', () => {
-    const p = profil('', 'caisse@tramwaydumontblanc.fr');
-    expect(libelleUtilisateur(p)).toBe('caisse@tramwaydumontblanc.fr');
+    const p = profil('', 'caisse@exemple.fr');
+    expect(libelleUtilisateur(p)).toBe('caisse@exemple.fr');
     expect(initiales(p)).toBe('CA');
   });
 

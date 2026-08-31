@@ -52,15 +52,15 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
 ## C. Les trois comptes (~10 min)
 
 1. Menu **Authentication → Users → Add user → Create new user** (trois
-   fois) : `thomas.musset@tramwaydumontblanc.fr`,
-   `supervision@tramwaydumontblanc.fr`, `caisse@tramwaydumontblanc.fr`
+   fois), avec les adresses réelles des agents : `prenom.nom@exemple.fr`
+   (administrateur), `<compte-supervision>`, `<compte-caisse>`,
    avec mots de passe provisoires (cocher « Auto Confirm User »).
 2. **SQL Editor** — relier les comptes aux rôles :
 
 ```sql
 insert into profils (user_id, nom, email, role)
-select id, 'Thomas Musset', email, 'admin' from auth.users
-  where email = 'thomas.musset@tramwaydumontblanc.fr'
+select id, 'Prénom Nom', email, 'admin' from auth.users
+  where email = 'prenom.nom@exemple.fr'
 on conflict (user_id) do update set role = 'admin', actif = true;
 -- répéter avec role = 'supervision' puis role = 'caisse' pour les 2 autres
 ```

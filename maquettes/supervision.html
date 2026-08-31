@@ -530,9 +530,9 @@ function rendreMotifs(){
 }
 function ajouterMotif(){const v=$("nouveauMotif").value.trim();if(!v)return;MOTIFS.push(v);$("nouveauMotif").value="";bump();rendreMotifs();}
 function rendreUsers(){
-  const us=[["Thomas Musset","thomas.musset@tramwaydumontblanc.fr","admin","Administrateur"],
-            ["Supervision","supervision@tramwaydumontblanc.fr","sup","Supervision"],
-            ["Caisse","caisse@tramwaydumontblanc.fr","caisse","Caisse"]];
+  const us=[["Prénom Nom","prenom.nom@exemple.fr","admin","Administrateur"],
+            ["Supervision","supervision@exemple.fr","sup","Supervision"],
+            ["Caisse","caisse@exemple.fr","caisse","Caisse"]];
   $("users").innerHTML=us.map(u=>`
     <div class="user-row">
       <b style="width:140px">${u[0]}</b>

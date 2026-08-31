@@ -5,8 +5,21 @@
 // Déploiement : supabase functions deploy supprimer-utilisateur
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+// Origines autorisées (CORS) : le site public et le serveur de dév local.
+const ORIGINES_AUTORISEES = ['https://rdtmb.github.io', 'http://localhost:5173'];
+
+// N'expose l'en-tête Access-Control-Allow-Origin que si l'origine est connue.
+function entetesCors(req: Request): Record<string, string> {
+  const origine = req.headers.get('Origin') ?? '';
+  const entetes: Record<string, string> = { 'Content-Type': 'application/json', Vary: 'Origin' };
+  if (ORIGINES_AUTORISEES.includes(origine)) {
+    entetes['Access-Control-Allow-Origin'] = origine;
+  }
+  return entetes;
+}
+
 Deno.serve(async (req) => {
-  const entetes = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+  const entetes = entetesCors(req);
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
