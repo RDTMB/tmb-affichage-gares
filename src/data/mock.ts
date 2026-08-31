@@ -25,6 +25,7 @@ import type {
   MediaMeta,
   ModeleMessage,
   Motif,
+  Ciel,
   Profil,
   Params,
   Role,
@@ -180,6 +181,15 @@ const PARAMS_DEMO: Params = {
     { fr: 'Affluence', en: 'High demand' },
     { fr: 'Exploitation', en: 'Operations' },
   ],
+  ciels: [
+    { fr: 'Dégagé', en: 'Clear', ordre: 10 },
+    { fr: 'Ensoleillé', en: 'Sunny', ordre: 20 },
+    { fr: 'Nuageux', en: 'Cloudy', ordre: 30 },
+    { fr: 'Couvert', en: 'Overcast', ordre: 40 },
+    { fr: 'Pluie', en: 'Rain', ordre: 50 },
+    { fr: 'Neige', en: 'Snow', ordre: 60 },
+    { fr: 'Brouillard', en: 'Fog', ordre: 70 },
+  ],
 };
 
 const UTILISATEURS_DEMO: User[] = [
@@ -219,6 +229,7 @@ interface EtatMock {
   > | null;
   machines: Machine[] | null;
   motifs: Motif[] | null;
+  ciels: Ciel[] | null;
   modeles: ModeleMessage[] | null;
   medias: Media[];
   ecrans: Record<string, EcranInfo>;
@@ -241,6 +252,7 @@ function litEtat(): EtatMock {
     paramsSimples: null,
     machines: null,
     motifs: null,
+    ciels: null,
     modeles: null,
     medias: [],
     ecrans: {},
@@ -467,6 +479,10 @@ export class MockProvider implements DataProvider {
       ...etat.paramsSimples,
       machines: etat.machines ?? PARAMS_DEMO.machines,
       motifs: etat.motifs ?? PARAMS_DEMO.motifs,
+      // Même ordre que le provider Supabase (.order('ordre').order('fr')).
+      ciels: [...(etat.ciels ?? PARAMS_DEMO.ciels)].sort(
+        (a, b) => a.ordre - b.ordre || a.fr.localeCompare(b.fr, 'fr'),
+      ),
     };
   }
 
@@ -771,9 +787,10 @@ export class MockProvider implements DataProvider {
 
   async saveParams(p: Partial<Params>): Promise<void> {
     const etat = litEtat();
-    const { machines, motifs, ...simples } = p;
+    const { machines, motifs, ciels, ...simples } = p;
     if (machines) etat.machines = machines;
     if (motifs) etat.motifs = motifs;
+    if (ciels) etat.ciels = ciels;
     // Une ligne de journal par CLÉ de paramètre, comme le déclencheur.
     const avant = { ...PARAMS_DEMO, ...etat.paramsSimples } as Record<string, unknown>;
     for (const [cle, valeur] of Object.entries(simples)) {
@@ -850,6 +867,25 @@ export class MockProvider implements DataProvider {
     const liste = etat.motifs ?? [...PARAMS_DEMO.motifs];
     trace(etat, 'motifs', fr, liste.find((m) => m.fr === fr) ?? null, null);
     etat.motifs = liste.filter((m) => m.fr !== fr);
+    ecritEtat(etat);
+  }
+
+  async saveCiel(c: Ciel): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.ciels ?? [...PARAMS_DEMO.ciels];
+    const index = liste.findIndex((x) => x.fr === c.fr);
+    trace(etat, 'ciels', c.fr, index >= 0 ? (liste[index] ?? null) : null, c);
+    if (index >= 0) liste[index] = c;
+    else liste.push(c);
+    etat.ciels = liste;
+    ecritEtat(etat);
+  }
+
+  async deleteCiel(fr: string): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.ciels ?? [...PARAMS_DEMO.ciels];
+    trace(etat, 'ciels', fr, liste.find((c) => c.fr === fr) ?? null, null);
+    etat.ciels = liste.filter((c) => c.fr !== fr);
     ecritEtat(etat);
   }
 

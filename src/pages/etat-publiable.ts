@@ -19,6 +19,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  Ciel,
   Params,
 } from '../core/types';
 
@@ -72,6 +73,7 @@ export interface EntreesPubliables {
   ecrans: EcranInfo[];
   machines: Machine[];
   motifs: Motif[];
+  ciels: Ciel[];
   modeles: ModeleMessage[];
 }
 
@@ -187,6 +189,10 @@ export function instantanePubliable(e: EntreesPubliables): Instantane {
     pose(`machine|${m.nom}|en_service`, m.en_service);
   }
   for (const m of e.motifs) pose(`motif|${m.fr}|en`, m.en);
+  for (const c of e.ciels) {
+    pose(`ciel|${c.fr}|en`, c.en);
+    pose(`ciel|${c.fr}|ordre`, c.ordre);
+  }
   for (const m of e.modeles) {
     pose(`modele|${m.id}|titre`, m.titre);
     pose(`modele|${m.id}|texte_fr`, m.texte_fr);
@@ -218,6 +224,8 @@ export function libelleDeCle(cle: string): string {
       return `rame ${a} ${b}`;
     case 'motif':
       return `motif ${a}`;
+    case 'ciel':
+      return `ciel ${a} ${b}`;
     case 'modele':
       return `modèle ${b}`;
     default:
@@ -294,6 +302,7 @@ export const OBJETS_JOURNAL: Record<string, string> = {
   params: 'Paramètre',
   machines: 'Rame',
   motifs: 'Motif',
+  ciels: 'État du ciel',
   modeles_messages: 'Modèle',
   ecrans: 'Écran',
 };

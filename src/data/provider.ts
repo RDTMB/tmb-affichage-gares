@@ -15,6 +15,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  Ciel,
   Profil,
   Params,
   Role,
@@ -77,6 +78,8 @@ export interface DataProvider {
   deleteMachine(nom: string): Promise<void>;
   saveMotif(m: Motif): Promise<void>;
   deleteMotif(fr: string): Promise<void>;
+  saveCiel(c: Ciel): Promise<void>;
+  deleteCiel(fr: string): Promise<void>;
   /** Bibliothèque de messages préenregistrés (lecture : tout compte connecté). */
   getModelesMessages(): Promise<ModeleMessage[]>;
   /** Écriture réservée au rôle admin (RLS). */

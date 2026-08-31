@@ -312,6 +312,13 @@ export interface Motif {
   en: string;
 }
 
+/** État du ciel proposé dans la liste météo (FR + EN + ordre d'affichage). */
+export interface Ciel {
+  fr: string;
+  en: string;
+  ordre: number;
+}
+
 export interface Params {
   meteo_sommet: MeteoSommet;
   veille_nuit: VeilleNuit;
@@ -339,6 +346,7 @@ export interface Params {
   vitesse_ticker_px_s: number;
   machines: Machine[];
   motifs: Motif[];
+  ciels: Ciel[];
 }
 
 /** Message préenregistré bilingue, proposé dans le formulaire Messages. */

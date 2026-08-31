@@ -31,6 +31,7 @@ function params(t: number, extra: Partial<Params> = {}): Params {
     a_quai_origine_s: 300,
     machines: [{ nom: 'Marie', couleur: '#2E74B5', en_service: true }],
     motifs: [{ fr: 'Météo', en: 'Weather' }],
+    ciels: [],
     ...extra,
   };
 }
@@ -44,6 +45,7 @@ function entrees(p: Params, jour: Jour, messages: Message[] = [], ecrans: EcranI
     ecrans,
     machines: p.machines,
     motifs: p.motifs,
+    ciels: p.ciels,
     modeles: [],
   };
 }
