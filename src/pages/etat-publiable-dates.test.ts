@@ -35,6 +35,7 @@ function params(): Params {
     a_quai_origine_s: 300,
     machines: [{ nom: 'Marie', couleur: '#2E74B5', en_service: true }],
     motifs: [{ fr: 'Météo', en: 'Weather' }],
+    ciels: [],
   };
 }
 
@@ -49,6 +50,7 @@ function entrees(jours: JourPubliable[]) {
     ecrans: [],
     machines: P.machines,
     motifs: P.motifs,
+    ciels: P.ciels,
     modeles: [],
   };
 }

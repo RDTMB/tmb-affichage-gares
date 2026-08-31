@@ -32,6 +32,7 @@ import type {
   Media,
   Message,
   ModeleMessage,
+  Ciel,
   Params,
   PassageGrille,
   Profil,
@@ -68,6 +69,7 @@ import {
   resumeEcarts,
 } from './etat-publiable';
 import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
+import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
 import {
   actionGroupeeFacultatifs,
   datetimeLocalVersIso,
@@ -262,6 +264,7 @@ function entreesCourantes(): EntreesPubliables {
     ecrans: ecransConnus,
     machines: params?.machines ?? [],
     motifs: params?.motifs ?? [],
+    ciels: params?.ciels ?? [],
     modeles,
   };
 }
@@ -2249,6 +2252,18 @@ function rendreParametres(): void {
         `<span class="motif-chip">${echapper(m.fr)} <small>/ ${echapper(m.en)}</small><button data-motif="${echapper(m.fr)}">×</button></span>`,
     )
     .join('');
+  // États du ciel : édition FR + EN + ordre, suppression avec confirmation.
+  $('ciels').innerHTML = ordonneCiels(params.ciels)
+    .map(
+      (c) => `
+    <div class="machine-row" data-fr="${echapper(c.fr)}">
+      <input type="text" value="${echapper(c.fr)}" data-champ="fr" style="width:130px" title="État (FR)" />
+      <input type="text" value="${echapper(c.en)}" data-champ="en" style="width:130px" title="État (EN)" />
+      <input type="number" value="${c.ordre}" data-champ="ordre" style="width:70px" title="Ordre" />
+      <button class="leger" style="margin-left:auto" data-champ="retirer">Retirer</button>
+    </div>`,
+    )
+    .join('');
   // Utilisateurs
   $('users').innerHTML = utilisateurs
     .map(
@@ -2303,8 +2318,7 @@ function rendreParametres(): void {
   majChampSansGener($('veille-debut') as HTMLInputElement, params.veille_nuit.debut);
   majChampSansGener($('veille-fin') as HTMLInputElement, params.veille_nuit.fin);
   majChampSansGener($('meteo-t') as HTMLInputElement, String(params.meteo_sommet.t));
-  majChampSansGener($('meteo-fr') as HTMLInputElement, params.meteo_sommet.ciel_fr);
-  majChampSansGener($('meteo-en') as HTMLInputElement, params.meteo_sommet.ciel_en);
+  rendreSelectCiel(params);
   majChampSansGener($('meteo-heure') as HTMLInputElement, params.meteo_sommet.heure_releve ?? '');
   majChampSansGener(
     $('a-quai-origine') as HTMLInputElement,
@@ -2320,6 +2334,24 @@ function rendreParametres(): void {
 function majChampSansGener(champ: HTMLInputElement, valeur: string): void {
   if (document.activeElement === champ) return;
   champ.value = valeur;
+}
+
+/**
+ * Sélecteur d'état du ciel (onglet Bandeau). Reconstruit à chaque
+ * rafraîchissement SAUF s'il est ouvert par l'agent. Une valeur historique hors
+ * liste est ajoutée en tête, marquée « (ancienne valeur) » et présélectionnée :
+ * ouvrir l'onglet ne change JAMAIS la météo affichée en gare.
+ */
+function rendreSelectCiel(p: Params): void {
+  const select = $('meteo-ciel') as HTMLSelectElement;
+  if (document.activeElement === select) return;
+  select.innerHTML = optionsCiel(p.ciels, p.meteo_sommet.ciel_fr, p.meteo_sommet.ciel_en)
+    .map(
+      (o) =>
+        `<option value="${echapper(o.fr)}" data-en="${echapper(o.en)}"${o.selected ? ' selected' : ''}>` +
+        `${echapper(o.fr)}${o.ancienne ? ' (ancienne valeur)' : ''}</option>`,
+    )
+    .join('');
 }
 
 /**
@@ -2369,11 +2401,15 @@ function initBandeau(): void {
   });
 
   const champMeteo = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
+  const selectCiel = (): HTMLSelectElement => $('meteo-ciel') as HTMLSelectElement;
+  // L'option choisie porte le `fr` en valeur et l'`en` en attribut : un seul
+  // choix renseigne ciel_fr ET ciel_en.
+  const cielEnChoisi = (): string => selectCiel().selectedOptions[0]?.dataset.en ?? '';
   const sauveMeteo = (): void => {
     brouillonParams.meteo_sommet = {
       t: Number(champMeteo('meteo-t').value) || 0,
-      ciel_fr: champMeteo('meteo-fr').value.trim() || '—',
-      ciel_en: champMeteo('meteo-en').value.trim() || '—',
+      ciel_fr: selectCiel().value || '—',
+      ciel_en: cielEnChoisi() || '—',
       heure_releve: champMeteo('meteo-heure').value || undefined,
     };
     rafraichitParamsEffectifs();
@@ -2390,17 +2426,16 @@ function initBandeau(): void {
     const inchangee =
       base !== undefined &&
       Number(champMeteo('meteo-t').value) === base.t &&
-      champMeteo('meteo-fr').value.trim() === base.ciel_fr &&
-      champMeteo('meteo-en').value.trim() === base.ciel_en;
+      selectCiel().value === base.ciel_fr &&
+      cielEnChoisi() === base.ciel_en;
     // Retour à la valeur publiée : on restitue SON heure de relevé. Horodater
     // « maintenant » ferait afficher aux écrans un relevé plus récent que la
     // mesure qu'il accompagne.
     champMeteo('meteo-heure').value = inchangee ? (base?.heure_releve ?? '') : heureCourante();
     sauveMeteoDifferee();
   };
-  for (const id of ['meteo-t', 'meteo-fr', 'meteo-en']) {
-    $(id).addEventListener('input', horodateEtSauve);
-  }
+  champMeteo('meteo-t').addEventListener('input', horodateEtSauve);
+  selectCiel().addEventListener('change', horodateEtSauve);
   // Le champ d'heure lui-même : enregistrement direct, sans réhorodater.
   $('meteo-heure').addEventListener('change', sauveMeteo);
 }
@@ -2585,6 +2620,64 @@ function initParametres(): void {
       .deleteMotif(fr)
       .then(() => rechargeParams())
       .then(() => bump(`motif retiré : ${fr}`))
+      .catch(erreurVersToast);
+  });
+
+  $('btn-ciel-ajout').addEventListener('click', () => {
+    const fr = ($('nouveau-ciel') as HTMLInputElement).value.trim();
+    if (!fr) return;
+    const en = ($('nouveau-ciel-en') as HTMLInputElement).value.trim();
+    // Nouvel état ajouté en fin de liste (ordre = max + 10).
+    const ordre = (params?.ciels ?? []).reduce((m, c) => Math.max(m, c.ordre), 0) + 10;
+    const enregistre = (texteEn: string): void => {
+      void provider
+        .saveCiel({ fr, en: texteEn, ordre })
+        .then(() => rechargeParams())
+        .then(() => {
+          bump(`état du ciel ajouté : ${fr}`);
+          ($('nouveau-ciel') as HTMLInputElement).value = '';
+          ($('nouveau-ciel-en') as HTMLInputElement).value = '';
+        })
+        .catch(erreurVersToast);
+    };
+    if (en) enregistre(en);
+    else void provider.traduire(fr).then((t) => enregistre(t ?? traductionLocale(fr)));
+  });
+  $('ciels').addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const rangee = champ.closest('.machine-row') as HTMLElement | null;
+    const ciel = params?.ciels.find((c) => c.fr === rangee?.dataset.fr);
+    if (!ciel || !rangee) return;
+    const maj: Ciel = { ...ciel };
+    if (champ.dataset.champ === 'fr') maj.fr = champ.value.trim() || ciel.fr;
+    if (champ.dataset.champ === 'en') maj.en = champ.value.trim();
+    if (champ.dataset.champ === 'ordre') maj.ordre = Number(champ.value) || ciel.ordre;
+    // Renommer le FR (clé primaire) = créer la nouvelle ligne puis retirer
+    // l'ancienne ; on enregistre AVANT de supprimer pour ne rien perdre.
+    const promesse =
+      maj.fr !== ciel.fr
+        ? provider.saveCiel(maj).then(() => provider.deleteCiel(ciel.fr))
+        : provider.saveCiel(maj);
+    void promesse
+      .then(() => rechargeParams())
+      .then(() => bump(`état du ciel ${maj.fr} mis à jour`))
+      .catch(erreurVersToast);
+  });
+  $('ciels').addEventListener('click', (e) => {
+    const bouton = e.target as HTMLElement;
+    if (bouton.dataset.champ !== 'retirer') return;
+    const fr = (bouton.closest('.machine-row') as HTMLElement | null)?.dataset.fr;
+    if (!fr) return;
+    // Un état actuellement affiché en gare ne peut pas être supprimé.
+    if (params && cielUtilise(fr, params.meteo_sommet.ciel_fr)) {
+      toast(`Impossible : « ${fr} » est l'état météo affiché en gare.`);
+      return;
+    }
+    if (!window.confirm(`Supprimer l'état du ciel « ${fr} » ?`)) return;
+    void provider
+      .deleteCiel(fr)
+      .then(() => rechargeParams())
+      .then(() => bump(`état du ciel retiré : ${fr}`))
       .catch(erreurVersToast);
   });
 

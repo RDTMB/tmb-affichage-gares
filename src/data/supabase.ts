@@ -17,6 +17,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  Ciel,
   Profil,
   Params,
   Role,
@@ -44,6 +45,7 @@ export const TABLES_AFFICHAGE = [
   'params',
   'machines',
   'motifs',
+  'ciels',
   'modeles_messages',
 ] as const;
 
@@ -233,14 +235,16 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async getParams(): Promise<Params> {
-    const [paramsRes, machinesRes, motifsRes] = await Promise.all([
+    const [paramsRes, machinesRes, motifsRes, cielsRes] = await Promise.all([
       this.client.from('params').select('cle, valeur'),
       this.client.from('machines').select('*').order('nom'),
       this.client.from('motifs').select('*').order('fr'),
+      this.client.from('ciels').select('*').order('ordre').order('fr'),
     ]);
     verifie(paramsRes.error);
     verifie(machinesRes.error);
     verifie(motifsRes.error);
+    verifie(cielsRes.error);
     const valeurs = new Map(
       ((paramsRes.data ?? []) as { cle: string; valeur: unknown }[]).map((p) => [p.cle, p.valeur]),
     );
@@ -262,6 +266,7 @@ export class SupabaseProvider implements DataProvider {
       vitesse_ticker_px_s: (valeurs.get('vitesse_ticker_px_s') as number) ?? VITESSE_TICKER_DEFAUT,
       machines: (machinesRes.data ?? []) as Machine[],
       motifs: (motifsRes.data ?? []) as Motif[],
+      ciels: (cielsRes.data ?? []) as Ciel[],
     };
   }
 
@@ -571,7 +576,7 @@ export class SupabaseProvider implements DataProvider {
 
   async saveParams(p: Partial<Params>): Promise<void> {
     const entrees = Object.entries(p).filter(
-      ([cle]) => !['machines', 'motifs'].includes(cle), // tables dédiées
+      ([cle]) => !['machines', 'motifs', 'ciels'].includes(cle), // tables dédiées
     );
     for (const [cle, valeur] of entrees) {
       exigeLignes(
@@ -626,6 +631,17 @@ export class SupabaseProvider implements DataProvider {
 
   async deleteMotif(fr: string): Promise<void> {
     verifie((await this.client.from('motifs').delete().eq('fr', fr)).error);
+  }
+
+  async saveCiel(c: Ciel): Promise<void> {
+    exigeLignes(
+      await this.client.from('ciels').upsert(c).select(),
+      'état du ciel refusé (droits insuffisants ?)',
+    );
+  }
+
+  async deleteCiel(fr: string): Promise<void> {
+    verifie((await this.client.from('ciels').delete().eq('fr', fr)).error);
   }
 
   async listUsers(): Promise<User[]> {

@@ -291,9 +291,7 @@
               >Température : <input type="number" id="meteo-t" style="width: 68px" />°C</label
             >
             <label style="font-weight: 700; color: var(--texte)"
-              >Ciel :
-              <input type="text" id="meteo-fr" placeholder="Ciel (FR)" style="width: 130px" />
-              <input type="text" id="meteo-en" placeholder="Sky (EN)" style="width: 130px" />
+              >Ciel : <select id="meteo-ciel" style="min-width: 150px"></select>
             </label>
             <label style="font-weight: 700; color: var(--texte)"
               >Heure du relevé : <input type="time" id="meteo-heure" />
@@ -423,6 +421,21 @@
             <div class="motifs" id="motifs"></div>
             <div class="note">
               Proposés dans l'onglet Circulations et affichés en gare « FR / EN ».
+            </div>
+          </div>
+          <div class="carte">
+            <h2>
+              États du ciel (météo)
+              <div class="actions">
+                <input type="text" id="nouveau-ciel" placeholder="Nouvel état (FR)…" style="width: 140px" />
+                <input type="text" id="nouveau-ciel-en" placeholder="English…" style="width: 130px" />
+                <button class="leger" id="btn-ciel-ajout">+ Ajouter</button>
+              </div>
+            </h2>
+            <div id="ciels"></div>
+            <div class="note">
+              Proposés dans le sélecteur météo de l'onglet Bandeau. Un état affiché
+              actuellement en gare ne peut pas être supprimé.
             </div>
           </div>
           <div class="carte">

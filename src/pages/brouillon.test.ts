@@ -172,6 +172,7 @@ function params(partiel: Partial<Params> = {}): Params {
     vitesse_ticker_px_s: 90,
     machines: [],
     motifs: [],
+    ciels: [],
     ...partiel,
   } as Params;
 }
