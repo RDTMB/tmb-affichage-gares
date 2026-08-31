@@ -59,7 +59,12 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
 ## Règles métier qui piègent (ne pas improviser)
 
 - **Trains numérotés** 1–25 impairs = montées, 2–26 pairs = descentes.
-  Libellé affiché partout : « TRAIN 9 » (majuscules, sans « n° »).
+  Libellé canonique, partout : « TRAIN 9 » (majuscules, sans « n° ») —
+  `libelleTrain()`, seule source pour la supervision et la grille du jour.
+  SEULE exception, voulue par l'exploitant : le badge rouge devant le nom de
+  la gare de destination sur l'écran de gare, qui porte l'écriture compacte
+  « T9 » / « SUP 2 » (`libelleTrainCourt()`, même calcul de rang). Cette
+  divergence est délibérée, ce n'est pas un oubli à « corriger ».
 - **Rames appariées** : la rame se choisit sur la montée UNIQUEMENT ; la
   descente de la même rotation hérite automatiquement (non modifiable).
   En supervision, montée et descente d'une rotation sont affichées l'une

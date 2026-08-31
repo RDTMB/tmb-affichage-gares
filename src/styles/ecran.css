@@ -198,6 +198,13 @@ main {
   opacity: 0.42;
 }
 
+/* Le badge suit l'opacité du bloc (héritée) mais JAMAIS le barré : une
+   étiquette barrée se lit comme un défaut d'affichage, pas comme une
+   suppression. Le nom de gare, lui, reste barré. */
+.rangee.supprime .badge-train {
+  text-decoration: none;
+}
+
 .r-dep {
   font-weight: 900;
   font-size: 5.6vh;
@@ -254,6 +261,26 @@ main {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Numéro de train : étiquette, donc Lato (Amaranth est réservé aux noms
+   propres — gares, titres). Aligné sur la ligne de base du nom de gare. */
+.badge-train {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-weight: 900;
+  font-size: 2.8vh;
+  line-height: 1;
+  color: #fff;
+  background: var(--tmb-rouge);
+  border-radius: 0.9vh;
+  padding: 0.2vh 1.2vh;
+  margin-right: 1.5vh;
+  /* `baseline` (défaut de l'inline-flex) : la ligne de base du « T11 » tombe
+     EXACTEMENT sur celle du nom de gare — mesuré, écart 0 px. */
+  vertical-align: baseline;
+  font-variant-numeric: tabular-nums;
 }
 
 .r-dest .dest img.motrice-dest {
@@ -313,20 +340,14 @@ main {
   min-width: 0;
 }
 
+/* Seule occupante de sa colonne depuis que le numéro est passé en badge
+   devant la destination : elle peut respirer. */
 .r-train .nom-rame {
-  font-size: 2.6vh;
+  font-size: 2.9vh;
   font-weight: 700;
   color: #e8f0f8;
   line-height: 1.15;
   white-space: nowrap;
-}
-
-.r-train .num {
-  display: block;
-  font-size: 1.7vh;
-  color: var(--texte-ter);
-  font-weight: 700;
-  letter-spacing: 0.08em;
 }
 
 .chip {

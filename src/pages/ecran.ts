@@ -23,7 +23,7 @@ import {
   etatTronconFerme,
   finDeService,
   formatHeure,
-  libelleTrain,
+  libelleTrainCourt,
   passagesPourGare,
   prochaineArrivee,
   serviceActif,
@@ -248,17 +248,22 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     ? `<img class="motrice-dest" src="${__MOTRICE_BLANC__}" alt="Express" />`
     : '';
 
+  // Badge du numéro DEVANT le nom de la gare de destination : c'est là que
+  // l'œil du voyageur va déjà. « TRAIN 11 » reste le libellé canonique en
+  // supervision et dans la grille du jour ; ici on écrit « T11 ».
+  const badge = `<span class="badge-train">${echapper(
+    libelleTrainCourt({ numero: p.numero, supplementaire: p.supplementaire }, [...trains.values()]),
+  )}</span>`;
+
   return `<div class="gridrow rangee${supprime ? ' supprime' : ''}">
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
-      <div class="txt"><div class="dest">${echapper(nomGare(p.destination))}${motrice}</div><div class="note${
+      <div class="txt"><div class="dest">${badge}${echapper(nomGare(p.destination))}${motrice}</div><div class="note${
         p.express || sansArret !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
-    <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span><span class="num">${echapper(
-      libelleTrain({ numero: p.numero, supplementaire: p.supplementaire }, [...trains.values()]),
-    )}</span></div></div>
+    <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span></div></div>
     <div>${supprime ? '' : chipHtml(p, maintenant_s)}</div>
     <div class="r-statut">${statut}</div>
   </div>`;

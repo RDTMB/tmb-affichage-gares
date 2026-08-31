@@ -42,7 +42,9 @@ describe('ecran.html : plus aucune colonne d’arrivée', () => {
     expect(entetes).toEqual([
       'Départ/Departure',
       'Destination/Towards',
-      'Train/Tram',
+      // « Rame », et non plus « Train » : le numéro est passé en badge devant
+      // la destination, cette colonne ne contient plus que « Marie ».
+      'Rame/Trainset',
       'Départ dans/Departs in',
       'Statut/Status',
     ]);
@@ -60,6 +62,16 @@ describe('ecran.html : plus aucune colonne d’arrivée', () => {
     // Les styles de l'ancienne cellule ont disparu avec elle
     expect(css).not.toMatch(/^\.r-arr\b/m);
   });
+
+  it('le badge du numéro suit l’opacité d’un train supprimé, jamais son barré', () => {
+    const css = source('src/styles/ecran.css');
+    // Une étiquette barrée se lit comme un défaut d'affichage.
+    expect(css).toMatch(/\.rangee\.supprime \.badge-train \{\s*text-decoration: none;/);
+    // Et l'étiquette reste en Lato : Amaranth est réservé aux noms propres.
+    const badge = css.match(/^\.badge-train \{[^}]+\}/m)?.[0] ?? '';
+    expect(badge).toContain("font-family: 'Lato'");
+    expect(badge).not.toContain('Amaranth');
+  });
 });
 
 describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
@@ -68,6 +80,19 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
   it('la cellule .r-arr et son tiret d’origine ont disparu', () => {
     expect(ts).not.toContain('r-arr');
     expect(ts).not.toContain('class="tiret"');
+  });
+
+  it('le numéro est un badge en TÊTE de .dest, avant le nom de gare', () => {
+    // L'ordre compte : le badge doit précéder le nom, pas le suivre.
+    expect(ts).toMatch(/<div class="dest">\$\{badge\}\$\{echapper\(nomGare/);
+    // …et le picto motrice de l'express reste après le nom.
+    expect(ts).toMatch(/nomGare\(p\.destination\)\)\}\$\{motrice\}<\/div>/);
+  });
+
+  it('la colonne Rame ne porte plus le numéro', () => {
+    expect(ts).not.toContain('class="num"');
+    // Le libellé long reste réservé à la supervision et à la grille du jour.
+    expect(ts).not.toContain('libelleTrain(');
   });
 
   it('la rangée produit bien cinq cellules', () => {

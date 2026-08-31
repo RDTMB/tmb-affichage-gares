@@ -424,19 +424,51 @@ export function libelleTrain(
   tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
 ): string {
   if (!train.supplementaire) return `TRAIN ${train.numero}`;
+  const rang = rangSup(train, tousLesTrainsDuJour);
+  return rang === null ? 'TRAIN SUP' : `TRAIN SUP ${rang}`;
+}
+
+/**
+ * Écriture COMPACTE du même libellé, pour le badge de l'écran de gare :
+ *
+ *   train de grille                   → « T11 »
+ *   un seul train sup dans la journée → « SUP »
+ *   plusieurs                         → « SUP 1 », « SUP 2 »…
+ *
+ * Le libellé canonique reste `libelleTrain()` (« TRAIN 11 ») : supervision et
+ * grille du jour ne s'écrivent pas autrement. Le rang, lui, est le MÊME —
+ * les deux fonctions le tirent de `rangSup()`.
+ */
+export function libelleTrainCourt(
+  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+): string {
+  if (!train.supplementaire) return `T${train.numero}`;
+  const rang = rangSup(train, tousLesTrainsDuJour);
+  return rang === null ? 'SUP' : `SUP ${rang}`;
+}
+
+/**
+ * Rang d'une rotation supplémentaire dans la journée (1, 2, …), ou `null`
+ * quand il n'y a rien à numéroter : une seule rotation sup, ou un train
+ * absent de la liste.
+ *
+ * L'ordre suit les NUMÉROS, pas l'ordre d'affichage : le rang doit rester le
+ * même partout et d'un rafraîchissement à l'autre.
+ */
+function rangSup(
+  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+): number | null {
   // Une rotation sup compte pour UN train : la montée (impair) et sa
   // descente (numéro + 1) portent le même rang.
+  const rotation = (numero: number): number => (numero % 2 === 0 ? numero - 1 : numero);
   const rotations = [
-    ...new Set(
-      tousLesTrainsDuJour
-        .filter((t) => t.supplementaire)
-        .map((t) => (t.numero % 2 === 0 ? t.numero - 1 : t.numero)),
-    ),
+    ...new Set(tousLesTrainsDuJour.filter((t) => t.supplementaire).map((t) => rotation(t.numero))),
   ].sort((a, b) => a - b);
-  if (rotations.length <= 1) return 'TRAIN SUP';
-  const mien = train.numero % 2 === 0 ? train.numero - 1 : train.numero;
-  const rang = rotations.indexOf(mien);
-  return rang < 0 ? 'TRAIN SUP' : `TRAIN SUP ${rang + 1}`;
+  if (rotations.length <= 1) return null;
+  const rang = rotations.indexOf(rotation(train.numero));
+  return rang < 0 ? null : rang + 1;
 }
 export function passagesPourGare(
   grille: Grille,

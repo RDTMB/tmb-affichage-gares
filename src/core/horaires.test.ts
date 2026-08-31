@@ -18,6 +18,7 @@ import {
   generationJour,
   heureVersSecondes,
   libelleTrain,
+  libelleTrainCourt,
   passagesPourGare,
   positionsTrains,
   prochaineArrivee,
@@ -930,5 +931,73 @@ describe('libelleTrain — source unique du libellé', () => {
     expect(libelleTrain({ numero: 102, supplementaire: true }, tous)).toBe('TRAIN SUP 1');
     expect(libelleTrain({ numero: 103, supplementaire: true }, tous)).toBe('TRAIN SUP 2');
     expect(libelleTrain({ numero: 104, supplementaire: true }, tous)).toBe('TRAIN SUP 2');
+  });
+});
+
+describe('libelleTrainCourt — écriture compacte du badge de l’écran de gare', () => {
+  const grilleTrains = [
+    { numero: 11, supplementaire: false },
+    { numero: 12, supplementaire: false },
+  ];
+
+  it('un train de grille : « T11 »', () => {
+    expect(libelleTrainCourt({ numero: 11, supplementaire: false }, grilleTrains)).toBe('T11');
+  });
+
+  it('un seul train sup dans la journée : « SUP », sans numéro', () => {
+    const tous = [
+      ...grilleTrains,
+      { numero: 101, supplementaire: true },
+      { numero: 102, supplementaire: true },
+    ];
+    expect(libelleTrainCourt({ numero: 101, supplementaire: true }, tous)).toBe('SUP');
+    expect(libelleTrainCourt({ numero: 102, supplementaire: true }, tous)).toBe('SUP');
+  });
+
+  it('deux rotations sup : « SUP 1 » et « SUP 2 », la descente partageant le rang de sa montée', () => {
+    const tous = [
+      ...grilleTrains,
+      { numero: 103, supplementaire: true },
+      { numero: 104, supplementaire: true },
+      { numero: 101, supplementaire: true },
+      { numero: 102, supplementaire: true },
+    ];
+    expect(libelleTrainCourt({ numero: 101, supplementaire: true }, tous)).toBe('SUP 1');
+    expect(libelleTrainCourt({ numero: 102, supplementaire: true }, tous)).toBe('SUP 1');
+    expect(libelleTrainCourt({ numero: 103, supplementaire: true }, tous)).toBe('SUP 2');
+    expect(libelleTrainCourt({ numero: 104, supplementaire: true }, tous)).toBe('SUP 2');
+  });
+
+  it('le rang est le MÊME que celui de libelleTrain, sur les mêmes entrées', () => {
+    // Les deux libellés décrivent le même objet : si le badge et la
+    // supervision divergeaient sur le rang, l'exploitant ne pourrait plus
+    // désigner un train au téléphone.
+    const tous = [
+      ...grilleTrains,
+      { numero: 105, supplementaire: true },
+      { numero: 106, supplementaire: true },
+      { numero: 101, supplementaire: true },
+      { numero: 102, supplementaire: true },
+      { numero: 103, supplementaire: true },
+    ];
+    for (const t of tous) {
+      const long = libelleTrain(t, tous);
+      const court = libelleTrainCourt(t, tous);
+      // « TRAIN 11 » → « T11 » ; « TRAIN SUP 2 » → « SUP 2 »
+      expect(court).toBe(
+        t.supplementaire ? long.replace('TRAIN ', '') : long.replace('TRAIN ', 'T'),
+      );
+    }
+  });
+
+  it('un train sup absent de la liste retombe sur « SUP », comme le libellé long', () => {
+    const tous = [
+      ...grilleTrains,
+      { numero: 101, supplementaire: true },
+      { numero: 103, supplementaire: true },
+    ];
+    // 201 n'appartient pas à la journée : aucun rang à lui donner.
+    expect(libelleTrainCourt({ numero: 201, supplementaire: true }, tous)).toBe('SUP');
+    expect(libelleTrain({ numero: 201, supplementaire: true }, tous)).toBe('TRAIN SUP');
   });
 });
