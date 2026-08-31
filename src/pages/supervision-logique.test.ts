@@ -14,6 +14,8 @@ import {
   initiales,
   libelleUtilisateur,
   recapCycle,
+  decisionBandeauApplication,
+  type EtatBandeauApplication,
 } from './supervision-logique';
 
 /** Message ciblé « Motivon », expirant ce soir à 21:00 (heure locale). */
@@ -220,5 +222,82 @@ describe('Récapitulatif du cycle des médias', () => {
     expect(recapCycle([], 'serie', 20)).toBe(
       'Cycle actuel : horaires en continu — aucun média actif.',
     );
+  });
+});
+
+// Bug du 31/08/2026 : le bandeau « Appliqué sur X/X écrans » apparaissait et
+// disparaissait en boucle. Chaque rafraîchissement le réaffichait, le minuteur
+// de 6 s le remasquait aussitôt, et ainsi de suite. La décision est désormais
+// prise ici, à partir d'une mémoire explicite.
+describe('decisionBandeauApplication (bandeau de publication)', () => {
+  const MAINTENANT = new Date('2026-08-31T10:00:00Z').getTime();
+  const ilYA = (ms: number): string => new Date(MAINTENANT - ms).toISOString();
+  const PUBLICATION = MAINTENANT - 60_000;
+  const NEUF: EtatBandeauApplication = { derniereReferenceAffichee: null, resumeResorbe: false };
+
+  const aJour = { gare: 'le-fayet', derniere_vue: ilYA(5000), donnees_maj: ilYA(5000) };
+  const enRetard = { gare: 'bellevue', derniere_vue: ilYA(5000), donnees_maj: ilYA(30 * 60_000) };
+
+  it('rien n’a été modifié : aucun bandeau', () => {
+    const d = decisionBandeauApplication([aJour], null, MAINTENANT, NEUF);
+    expect(d.afficher).toBe(false);
+  });
+
+  it('un écran en retard : affichage CONTINU, sans minuteur', () => {
+    const d = decisionBandeauApplication([aJour, enRetard], PUBLICATION, MAINTENANT, NEUF);
+    expect(d.afficher).toBe(true);
+    expect(d.classe).toBe('attente');
+    expect(d.minuteurMs).toBeNull(); // la situation dure : l'information reste
+    expect(d.libelle).toContain('en attente sur');
+  });
+
+  it('tant que l’écran reste en retard, le bandeau ne se résorbe pas', () => {
+    let etat = NEUF;
+    for (let i = 0; i < 5; i++) {
+      const d = decisionBandeauApplication(
+        [aJour, enRetard],
+        PUBLICATION,
+        MAINTENANT + i * 10_000,
+        etat,
+      );
+      expect(d.afficher).toBe(true);
+      etat = d.etat;
+    }
+  });
+
+  it('tout à jour : bandeau vert, puis minuteur de résorption', () => {
+    const d = decisionBandeauApplication([aJour], PUBLICATION, MAINTENANT, NEUF);
+    expect(d.afficher).toBe(true);
+    expect(d.classe).toBe('ok');
+    expect(d.minuteurMs).toBe(6000);
+    expect(d.etat.derniereReferenceAffichee).toBe(PUBLICATION);
+  });
+
+  it('une fois résorbé, les rafraîchissements suivants ne le rallument plus', () => {
+    const premier = decisionBandeauApplication([aJour], PUBLICATION, MAINTENANT, NEUF);
+    // Le minuteur est arrivé à échéance : le contrôleur note la résorption.
+    const resorbe: EtatBandeauApplication = { ...premier.etat, resumeResorbe: true };
+    for (const dt of [6001, 10_000, 60_000]) {
+      const d = decisionBandeauApplication([aJour], PUBLICATION, MAINTENANT + dt, resorbe);
+      expect(d.afficher).toBe(false);
+      expect(d.etat.resumeResorbe).toBe(true); // et la mémoire tient
+    }
+  });
+
+  it('une NOUVELLE modification réaffiche le bandeau', () => {
+    const resorbe: EtatBandeauApplication = {
+      derniereReferenceAffichee: PUBLICATION,
+      resumeResorbe: true,
+    };
+    const publicationSuivante = MAINTENANT + 120_000;
+    const d = decisionBandeauApplication(
+      [aJour],
+      publicationSuivante,
+      publicationSuivante + 1000,
+      resorbe,
+    );
+    expect(d.afficher).toBe(true);
+    expect(d.etat.derniereReferenceAffichee).toBe(publicationSuivante);
+    expect(d.etat.resumeResorbe).toBe(false);
   });
 });

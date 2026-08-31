@@ -58,6 +58,7 @@ import {
 } from './brouillon';
 import { echapper } from './affichage-commun';
 import type { ModeMedias } from '../core/cycle-medias';
+import type { EtatBandeauApplication } from './supervision-logique';
 import type { Ecart, EntreesPubliables, Instantane, JourPubliable } from './etat-publiable';
 import {
   ecartsPublies,
@@ -73,13 +74,13 @@ import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
 import {
   actionGroupeeFacultatifs,
   datetimeLocalVersIso,
+  decisionBandeauApplication,
   identifiantEcranDeclare,
   recapCycle,
   initiales,
   libelleUtilisateur,
   etatFraicheurEcran,
   propositionAppariementFacultatif,
-  resumeApplication,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
   traductionLocale,
@@ -1909,24 +1910,52 @@ async function rendreEcrans(): Promise<void> {
 
 let resumeId = 0;
 /**
+ * Mémoire du bandeau d'application : quelle référence a déjà été affichée, et
+ * a-t-il déjà été masqué pour celle-ci. Sans cette mémoire, chaque
+ * rafraîchissement le réaffichait et le minuteur le remasquait : il clignotait.
+ */
+let etatBandeau: EtatBandeauApplication = {
+  derniereReferenceAffichee: null,
+  resumeResorbe: false,
+};
+/**
  * Bandeau de publication : « Appliqué sur N/N écrans » (ou la liste des gares
  * en attente), calculé à partir des horodatages `donnees_maj` remontés par
  * les écrans. Affiché quelques secondes quand tout est appliqué, maintenu
  * tant que des écrans restent en retard.
  */
 function majResumeApplication(liste: EcranInfo[], maintenantMs: number): void {
-  if (referenceMajMs === null) return; // rien n'a encore été modifié
-  const resume = resumeApplication(liste, referenceMajMs, maintenantMs, nomDeGare);
+  const decision = decisionBandeauApplication(
+    liste,
+    referenceMajMs,
+    maintenantMs,
+    etatBandeau,
+    nomDeGare,
+  );
+  etatBandeau = decision.etat;
   const bloc = $('resume-application');
-  bloc.textContent = resume.libelle;
-  bloc.className = 'resume-application ' + (resume.enAttente.length === 0 ? 'ok' : 'attente');
+
+  // Rien à montrer. Surtout : on ne réaffiche PAS un bandeau déjà résorbé —
+  // c'est ce `display = ''` à chaque rafraîchissement qui le faisait
+  // clignoter, le minuteur de 6 s le remasquant aussitôt après.
+  if (!decision.afficher) {
+    window.clearTimeout(resumeId);
+    bloc.style.display = 'none';
+    return;
+  }
+
+  bloc.textContent = decision.libelle;
+  bloc.className = `resume-application ${decision.classe}`;
   bloc.style.display = '';
   window.clearTimeout(resumeId);
-  if (resume.enAttente.length === 0) {
-    resumeId = window.setTimeout(() => {
-      bloc.style.display = 'none';
-    }, 6000);
-  }
+  // Un écran en retard : affichage CONTINU, aucun minuteur — l'information
+  // doit rester sous les yeux tant que la situation dure.
+  if (decision.minuteurMs === null) return;
+  resumeId = window.setTimeout(() => {
+    bloc.style.display = 'none';
+    // Résorbé : plus rien ne le réaffichera avant la modification suivante.
+    etatBandeau = { ...etatBandeau, resumeResorbe: true };
+  }, decision.minuteurMs);
 }
 
 function initEcrans(): void {

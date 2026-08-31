@@ -214,6 +214,81 @@ export function etatFraicheurEcran(
   return { statut: 'en-retard', retard_min, libelle: `en retard de ${retard_min} min` };
 }
 
+/**
+ * Au-delà de ce silence, on précise DEPUIS QUAND un écran est en attente :
+ * cela distingue une synchronisation en cours d'un poste réellement mort.
+ */
+export const SILENCE_A_PRECISER_MS = 2 * 60_000;
+
+/** Mémoire du bandeau entre deux rafraîchissements. */
+export interface EtatBandeauApplication {
+  /** Référence déjà affichée : sert à repérer une NOUVELLE modification. */
+  derniereReferenceAffichee: number | null;
+  /** Le bandeau a été masqué DÉFINITIVEMENT pour cette référence. */
+  resumeResorbe: boolean;
+}
+
+export interface DecisionBandeau {
+  afficher: boolean;
+  libelle: string;
+  classe: 'ok' | 'attente';
+  /** Délai avant masquage définitif ; null = affichage CONTINU. */
+  minuteurMs: number | null;
+  /** État à mémoriser pour l'appel suivant. */
+  etat: EtatBandeauApplication;
+}
+
+/**
+ * Décide de l'affichage du bandeau « Appliqué sur N/N écrans ». PURE : le
+ * contrôleur ne fait qu'appliquer la décision.
+ *
+ * Le bandeau apparaissait et disparaissait en boucle parce que chaque
+ * rafraîchissement le réaffichait, le minuteur de 6 s le masquant aussitôt
+ * après. D'où la mémoire `resumeResorbe` : une fois résorbé, le bandeau reste
+ * masqué jusqu'à la modification SUIVANTE.
+ *
+ * Un écran en retard maintient l'affichage sans minuteur : l'information doit
+ * rester sous les yeux tant que la situation dure.
+ */
+export function decisionBandeauApplication(
+  ecrans: (Pick<EcranInfo, 'derniere_vue' | 'donnees_maj'> & { gare: string })[],
+  referenceMajMs: number | null,
+  maintenantMs: number,
+  etat: EtatBandeauApplication,
+  nomGare: (gare: string) => string = (g) => g,
+  delaiResorptionMs = 6000,
+): DecisionBandeau {
+  const masque = (etatSuivant: EtatBandeauApplication): DecisionBandeau => ({
+    afficher: false,
+    libelle: '',
+    classe: 'ok',
+    minuteurMs: null,
+    etat: etatSuivant,
+  });
+
+  if (referenceMajMs === null) return masque(etat); // rien n'a encore été modifié
+
+  // Une nouvelle modification relance le cycle d'affichage.
+  const etatCourant: EtatBandeauApplication =
+    referenceMajMs === etat.derniereReferenceAffichee
+      ? etat
+      : { derniereReferenceAffichee: referenceMajMs, resumeResorbe: false };
+
+  // Déjà résorbé : on ne réaffiche RIEN, sinon la boucle repart.
+  if (etatCourant.resumeResorbe) return masque(etatCourant);
+
+  const resume = resumeApplication(ecrans, referenceMajMs, maintenantMs, nomGare);
+  const enAttente = resume.enAttente.length > 0;
+  return {
+    afficher: true,
+    libelle: resume.libelle,
+    classe: enAttente ? 'attente' : 'ok',
+    // Un écran en retard : affichage continu, aucun minuteur.
+    minuteurMs: enAttente ? null : delaiResorptionMs,
+    etat: etatCourant,
+  };
+}
+
 /** Synthèse pour le bandeau de publication : « Appliqué sur N/N écrans ». */
 export function resumeApplication(
   ecrans: (Pick<EcranInfo, 'derniere_vue' | 'donnees_maj'> & { gare: string })[],
@@ -226,7 +301,21 @@ export function resumeApplication(
     etat: etatFraicheurEcran(e, publicationMs, maintenantMs),
   }));
   const aJour = etats.filter((e) => e.etat.statut === 'a-jour').length;
-  const enAttente = etats.filter((e) => e.etat.statut !== 'a-jour').map((e) => nomGare(e.gare));
+  // Un écran silencieux depuis plus de 2 min : on précise DEPUIS QUAND. Sans
+  // cela, « en attente sur : Saint-Gervais » ne dit pas si la synchro est en
+  // cours ou si le poste est mort.
+  const enAttente = ecrans
+    .map((e) => ({ e, etat: etatFraicheurEcran(e, publicationMs, maintenantMs) }))
+    .filter((x) => x.etat.statut !== 'a-jour')
+    .map((x) => {
+      const nom = nomGare(x.e.gare);
+      if (x.etat.statut !== 'hors-ligne') return nom;
+      const vu = x.e.derniere_vue ? new Date(x.e.derniere_vue).getTime() : NaN;
+      if (!Number.isFinite(vu)) return `${nom} (jamais vu)`;
+      const silence = maintenantMs - vu;
+      if (silence < SILENCE_A_PRECISER_MS) return nom;
+      return `${nom} (hors ligne depuis ${Math.round(silence / 60_000)} min)`;
+    });
   const total = etats.length;
   if (total === 0) return { total, aJour, enAttente, libelle: 'aucun écran connecté' };
   const libelle =

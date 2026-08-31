@@ -146,7 +146,24 @@ describe('resumeApplication (bandeau de publication)', () => {
     );
     expect(r.aJour).toBe(1);
     expect(r.total).toBe(3);
-    expect(r.libelle).toBe("Appliqué sur 1/3 écrans — en attente sur : Bellevue, Nid d'Aigle");
+    // Le Nid d'Aigle est muet depuis 10 min : on précise DEPUIS QUAND, sans
+    // quoi rien ne distingue une synchro en cours d'un poste mort.
+    expect(r.libelle).toBe(
+      "Appliqué sur 1/3 écrans — en attente sur : Bellevue, Nid d'Aigle (hors ligne depuis 10 min)",
+    );
+  });
+
+  it('un silence bref ne mérite pas de précision', () => {
+    // Écran vivant (vu il y a 5 s) mais figé sur d'anciennes données : c'est
+    // une synchro en retard, pas un poste mort — aucune durée à afficher.
+    const r = resumeApplication([enRetard], publication, MAINTENANT, (g) => g);
+    expect(r.libelle).toBe('Appliqué sur 0/1 écrans — en attente sur : bellevue');
+  });
+
+  it('un poste jamais vu est nommé comme tel', () => {
+    const jamais = { gare: 'motivon', derniere_vue: null, donnees_maj: null };
+    const r = resumeApplication([jamais], publication, MAINTENANT, (g) => g);
+    expect(r.libelle).toContain('motivon (jamais vu)');
   });
 
   it('aucun écran connecté : message explicite plutôt que « 0/0 »', () => {
