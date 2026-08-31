@@ -43,6 +43,7 @@ import type {
   FiltreJournal,
 } from '../core/types';
 import { creeProvider } from '../data';
+import { configSupabasePresente } from '../data/config';
 import {
   appliqueBrouillonJour,
   appliqueBrouillonMessages,
@@ -69,7 +70,7 @@ import {
   OBJETS_JOURNAL,
   resumeEcarts,
 } from './etat-publiable';
-import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from './ticker';
+import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from '../core/ticker';
 import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
 import {
   actionGroupeeFacultatifs,
@@ -89,6 +90,16 @@ import {
 } from './supervision-logique';
 
 const provider = creeProvider();
+
+/**
+ * Suffixe d'URL des aperçus. Les pages d'affichage n'acceptent plus le repli
+ * silencieux vers la démonstration (C-02) : sans configuration Supabase, un
+ * aperçu ouvrirait l'écran neutre. On demande donc explicitement la
+ * démonstration — et seulement dans ce cas, la vraie source primant toujours.
+ */
+function suffixeDemo(): string {
+  return configSupabasePresente() ? '' : '&demo=1';
+}
 
 function $(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -2065,7 +2076,7 @@ function initEcrans(): void {
       // l'identifiant du poste réel (sinon sa dernière vue serait faussée et
       // son ordre de rechargement consommé par cet onglet d'aperçu).
       const page = cible.dataset.type === 'grille' ? 'grille.html' : 'ecran.html';
-      window.open(`${page}?gare=${cible.dataset.voir}&apercu=1`, '_blank');
+      window.open(`${page}?gare=${cible.dataset.voir}&apercu=1${suffixeDemo()}`, '_blank');
     } else if (cible.dataset.oublier) {
       const id = cible.dataset.oublier;
       if (
@@ -2346,7 +2357,12 @@ function rendreParametres(): void {
   // Veille (onglet Écrans) + météo et délai « à quai »
   majChampSansGener($('veille-debut') as HTMLInputElement, params.veille_nuit.debut);
   majChampSansGener($('veille-fin') as HTMLInputElement, params.veille_nuit.fin);
-  majChampSansGener($('meteo-t') as HTMLInputElement, String(params.meteo_sommet.t));
+  // Température neutralisée par paramsValides() (valeur corrompue en base) :
+  // champ VIDE, jamais le texte « NaN ».
+  majChampSansGener(
+    $('meteo-t') as HTMLInputElement,
+    Number.isFinite(params.meteo_sommet.t) ? String(params.meteo_sommet.t) : '',
+  );
   rendreSelectCiel(params);
   majChampSansGener($('meteo-heure') as HTMLInputElement, params.meteo_sommet.heure_releve ?? '');
   majChampSansGener(
@@ -2435,8 +2451,14 @@ function initBandeau(): void {
   // choix renseigne ciel_fr ET ciel_en.
   const cielEnChoisi = (): string => selectCiel().selectedOptions[0]?.dataset.en ?? '';
   const sauveMeteo = (): void => {
+    // Champ vide ou illisible : on CONSERVE la température publiée plutôt que
+    // de publier 0 °C. Le `|| 0` d'origine transformait une saisie vide en
+    // « 0 °C » affiché en gare — une information fausse. 0 reste évidemment
+    // une valeur légitime quand l'agent la saisit vraiment.
+    const saisi = champMeteo('meteo-t').value.trim();
+    const nSaisi = saisi === '' ? Number.NaN : Number(saisi);
     brouillonParams.meteo_sommet = {
-      t: Number(champMeteo('meteo-t').value) || 0,
+      t: Number.isFinite(nSaisi) ? nSaisi : (paramsBase?.meteo_sommet.t ?? Number.NaN),
       ciel_fr: selectCiel().value || '—',
       ciel_en: cielEnChoisi() || '—',
       heure_releve: champMeteo('meteo-heure').value || undefined,
@@ -2909,7 +2931,7 @@ async function publieLeBrouillon(): Promise<boolean> {
 
 function initPublication(): void {
   $('btn-apercu').addEventListener('click', () =>
-    window.open('ecran.html?gare=saint-gervais', '_blank'),
+    window.open(`ecran.html?gare=saint-gervais${suffixeDemo()}`, '_blank'),
   );
   $('btn-publier').addEventListener('click', () => {
     // Le résumé consigné décrit les ÉCARTS RÉELS : une température revenue à

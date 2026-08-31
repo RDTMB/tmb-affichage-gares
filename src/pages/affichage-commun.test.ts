@@ -3,8 +3,15 @@
 // jamais de faux anglais fabriqué.
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Message } from '../core/types';
-import { contenuTicker, creeJournalHeartbeat, INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
+import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import { paramsValides } from '../core/params';
+import type { Grille, Message, Params } from '../core/types';
+import {
+  contenuTicker,
+  creeJournalHeartbeat,
+  INTERVALLE_HEARTBEAT_MS,
+  meteoHtml,
+} from './affichage-commun';
 import { identifiantEcran, identifiantEcranDeclare } from './supervision-logique';
 
 function message(id: string, fr: string, en: string): Message {
@@ -111,5 +118,60 @@ describe('Identifiant de poste : déclaration et écran tombent sur la même cha
 
   it('le paramètre ?ecran= reste prioritaire (poste nommé à la main)', () => {
     expect(identifiantEcran('ecran', 'le-fayet', 'hall-principal')).toBe('hall-principal');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-01 — la température vient du jsonb `params.valeur` : le typage TypeScript
+// ne vaut qu'à la compilation, et le rôle `caisse` peut y écrire n'importe
+// quoi. Rien de ce qu'elle contient ne doit atteindre le DOM.
+// ---------------------------------------------------------------------------
+
+const GRILLE = grandServiceJson as unknown as Grille;
+
+function paramsMeteo(meteo: unknown): Params {
+  return paramsValides({ meteo_sommet: meteo });
+}
+
+describe('meteoHtml — la charge d’attaque n’atteint jamais le DOM', () => {
+  it('une température porteuse de HTML n’injecte rien et affiche « — »', () => {
+    const html = meteoHtml(paramsMeteo({ t: '<img src=x onerror=alert(1)>' }), GRILLE);
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('onerror');
+    expect(html).toContain('—°C');
+  });
+
+  it('même sans validation préalable, le rendu seul neutralise la charge', () => {
+    // Ceinture ET bretelles : la page ne doit pas dépendre du fournisseur.
+    const brut = {
+      meteo_sommet: { t: '<script>alert(1)</script>', ciel_fr: 'Beau', ciel_en: 'Fine' },
+    } as unknown as Params;
+    const html = meteoHtml(brut, GRILLE);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('—°C');
+  });
+
+  it('un libellé de ciel porteur de HTML est échappé', () => {
+    const html = meteoHtml(
+      paramsMeteo({ t: 9, ciel_fr: '<script>x</script>', ciel_en: 'Fine' }),
+      GRILLE,
+    );
+    expect(html).not.toContain('<script>');
+  });
+
+  it('affiche les températures légitimes, négatives comprises', () => {
+    expect(meteoHtml(paramsMeteo({ t: -3, ciel_fr: 'Neige', ciel_en: 'Snow' }), GRILLE)).toContain(
+      '-3°C',
+    );
+    expect(meteoHtml(paramsMeteo({ t: 9, ciel_fr: 'Dégagé', ciel_en: 'Clear' }), GRILLE)).toContain(
+      '9°C',
+    );
+  });
+
+  it('ne LÈVE pas sur une heure de relevé non textuelle (écran figé sinon)', () => {
+    const brut = {
+      meteo_sommet: { t: 9, ciel_fr: 'A', ciel_en: 'B', heure_releve: 915 },
+    } as unknown as Params;
+    expect(() => meteoHtml(brut, GRILLE)).not.toThrow();
   });
 });

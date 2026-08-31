@@ -13,6 +13,7 @@ import {
   generationJour,
   serviceActif,
 } from '../core/horaires';
+import { paramsValides } from '../core/params';
 import type {
   Circulation,
   EcranInfo,
@@ -474,15 +475,21 @@ export class MockProvider implements DataProvider {
 
   async getParams(): Promise<Params> {
     const etat = litEtat();
-    return {
+    // `etat.paramsSimples` sort de JSON.parse(localStorage) : aucune garantie
+    // de forme, comme le jsonb côté Supabase. Même point de validation unique
+    // (C-01), et AVANT le tri : `localeCompare` lèverait sur un `fr` non
+    // textuel, ce qui figerait l'écran.
+    const p = paramsValides({
       ...PARAMS_DEMO,
       ...etat.paramsSimples,
       machines: etat.machines ?? PARAMS_DEMO.machines,
       motifs: etat.motifs ?? PARAMS_DEMO.motifs,
-      // Même ordre que le provider Supabase (.order('ordre').order('fr')).
-      ciels: [...(etat.ciels ?? PARAMS_DEMO.ciels)].sort(
-        (a, b) => a.ordre - b.ordre || a.fr.localeCompare(b.fr, 'fr'),
-      ),
+      ciels: etat.ciels ?? PARAMS_DEMO.ciels,
+    });
+    // Même ordre que le provider Supabase (.order('ordre').order('fr')).
+    return {
+      ...p,
+      ciels: [...p.ciels].sort((a, b) => a.ordre - b.ordre || a.fr.localeCompare(b.fr, 'fr')),
     };
   }
 

@@ -38,7 +38,8 @@ jobs:
             printf 'window.TMB_CONFIG = { supabaseUrl: "%s", supabaseKey: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > public/config.js
             echo "config.js généré (mode Supabase)"
           else
-            echo "Variables absentes : déploiement en mode mock (démo)"
+            echo "::error::Variables de dépôt absentes ou mal nommées : VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY sont requises (Settings → Secrets and variables → Actions → Variables). Déploiement REFUSÉ : sans elles, les écrans de gare n'auraient aucune source de données."
+            exit 1
           fi
       - name: Build (base = /nom-du-depot/)
         run: npm run build -- --base=/${{ github.event.repository.name }}/

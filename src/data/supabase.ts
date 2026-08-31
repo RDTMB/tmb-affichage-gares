@@ -4,7 +4,7 @@
 // complet, repli polling 30 s.
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 
-import { A_QUAI_ORIGINE_DEFAUT_S, generationJour, serviceActif } from '../core/horaires';
+import { generationJour, serviceActif } from '../core/horaires';
 import type {
   Circulation,
   EcranInfo,
@@ -27,7 +27,7 @@ import type {
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
-import { VITESSE_TICKER_DEFAUT } from '../pages/ticker';
+import { paramsValides } from '../core/params';
 import type { DataProvider } from './provider';
 
 /**
@@ -248,26 +248,17 @@ export class SupabaseProvider implements DataProvider {
     const valeurs = new Map(
       ((paramsRes.data ?? []) as { cle: string; valeur: unknown }[]).map((p) => [p.cle, p.valeur]),
     );
-    return {
-      meteo_sommet: (valeurs.get('meteo_sommet') as Params['meteo_sommet']) ?? {
-        t: 0,
-        ciel_fr: '—',
-        ciel_en: '—',
-      },
-      veille_nuit: (valeurs.get('veille_nuit') as Params['veille_nuit']) ?? {
-        debut: '21:00',
-        fin: '06:00',
-      },
-      duree_horaires_s: (valeurs.get('duree_horaires_s') as number) ?? 20,
-      duree_cache_min: (valeurs.get('duree_cache_min') as number) ?? 15,
-      mode_medias: (valeurs.get('mode_medias') as Params['mode_medias']) ?? 'alterne',
-      a_quai_origine_s: (valeurs.get('a_quai_origine_s') as number) ?? A_QUAI_ORIGINE_DEFAUT_S,
-      // Repli et bornes appliqués à l'affichage par vitesseTickerValide()
-      vitesse_ticker_px_s: (valeurs.get('vitesse_ticker_px_s') as number) ?? VITESSE_TICKER_DEFAUT,
-      machines: (machinesRes.data ?? []) as Machine[],
-      motifs: (motifsRes.data ?? []) as Motif[],
-      ciels: (cielsRes.data ?? []) as Ciel[],
-    };
+    // `params.valeur` est du jsonb : la base n'impose AUCUNE forme et le
+    // typage TypeScript ne vaut qu'à la compilation. Tout passe donc par
+    // paramsValides(), unique point de coercition et de bornage (C-01).
+    // `Object.fromEntries` et non `{ ...valeurs }` : le spread d'une Map
+    // donne un objet VIDE, ce qui remettrait tous les paramètres au défaut.
+    return paramsValides({
+      ...Object.fromEntries(valeurs),
+      machines: machinesRes.data,
+      motifs: motifsRes.data,
+      ciels: cielsRes.data,
+    });
   }
 
   onChange(cb: () => void): () => void {

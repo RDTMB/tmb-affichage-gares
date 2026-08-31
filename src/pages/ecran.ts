@@ -1,7 +1,8 @@
 // Écran de gare — étapes 2 (rendu maquette), 4 (résilience) et 7 (médias).
 // Paramètres d'URL : gare (obligatoire), ecran (identifiant physique, défaut
 // <gare>-1), simule=HH:MM, zoom, cache=N (minutes, tests du mode dégradé) et
-// en mode mock terminus=N (bascule « à partir du TRAIN N »).
+// demo=1 (démonstration EXPLICITE : horaires fictifs, bandeau permanent) et,
+// en mode démo, terminus=N (bascule « à partir du TRAIN N »).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/300.css';
@@ -30,6 +31,7 @@ import {
   quaiOccupe,
   trainsDuJour,
 } from '../core/horaires';
+import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
   FinDeService,
@@ -43,7 +45,8 @@ import type {
   PassageGare,
   TrainJour,
 } from '../core/types';
-import { creeProvider } from '../data';
+import { creeProviderDemo, creeProviderReel } from '../data';
+import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   creeJournalHeartbeat,
   creeTicker,
@@ -402,6 +405,32 @@ function afficheErreur(titre: string, detail: string): void {
   $('erreur-config').innerHTML = `<h2>${echapper(titre)}</h2><p>${detail}</p>`;
 }
 
+/** Délai de réessai quand aucune source de données n'est disponible. */
+const REESSAI_SANS_SOURCE_MS = 5 * 60_000;
+
+/**
+ * Écran neutre PERMANENT : logo, horloge et message bilingue déjà présents
+ * dans la page, exactement comme au-delà de `duree_cache_min`. Aucun horaire
+ * n'est affiché puisque aucune source fiable n'est disponible (C-02).
+ *
+ * Le rechargement périodique est indispensable : la décision est prise une
+ * seule fois au chargement, et un échec TRANSITOIRE de `config.js` (coupure
+ * au démarrage) figerait sinon l'écran en neutre jusqu'à une intervention sur
+ * place. `config.js` étant servi réseau d'abord par le service worker,
+ * l'écran se répare seul dès qu'il redevient joignable.
+ */
+function afficheNeutrePermanent(): void {
+  document.body.classList.add('mode-neutre');
+  const tic = (): void => {
+    const maintenant = heure.maintenantS();
+    majHorloge(maintenant);
+    $('horloge-neutre').textContent = formatHeure(maintenant);
+  };
+  tic();
+  window.setInterval(tic, 1000);
+  window.setTimeout(() => window.location.reload(), REESSAI_SANS_SOURCE_MS);
+}
+
 function majHorloge(maintenant_s: number): void {
   $('horloge').innerHTML =
     `${formatHeure(maintenant_s)}<span class="sec">${String(maintenant_s % 60).padStart(2, '0')}</span>`;
@@ -513,12 +542,26 @@ async function demarre(): Promise<void> {
   enregistreServiceWorker();
   demarreAntiBurnIn();
 
+  // C-02 — Aucune donnée réelle et aucune démonstration explicitement demandée :
+  // on n'invente RIEN. Sans ce garde-fou, l'écran retombait silencieusement sur
+  // le fournisseur de démonstration, qui annonce en gare un retard et une
+  // suppression INVENTÉS par-dessus la vraie grille officielle.
+  const mode = modeDonnees(configSupabasePresente(), estModeDemo(url));
+  if (mode === 'aucune') {
+    afficheNeutrePermanent();
+    return;
+  }
+  if (mode === 'demo') document.body.classList.add('mode-demo');
+
   const terminusParam = url.get('terminus');
-  const provider = creeProvider(
+  const optionsDemo =
     terminusParam !== null && Number(terminusParam) > 0
       ? { terminusAPartirDuTrain: Number(terminusParam) }
-      : {},
-  );
+      : {};
+  const provider =
+    mode === 'demo'
+      ? creeProviderDemo(optionsDemo)
+      : creeProviderReel(window.TMB_CONFIG!.supabaseUrl!, window.TMB_CONFIG!.supabaseKey!);
 
   const charge = async (): Promise<DonneesEcran> => {
     const dateJour = heure.dateISO();
@@ -548,7 +591,13 @@ async function demarre(): Promise<void> {
     rendsMeteo();
   };
 
-  sync = creeSynchronisation<DonneesEcran>({ cleSnapshot: `tmb-ecran-${gare}`, charge, applique });
+  sync = creeSynchronisation<DonneesEcran>({
+    cleSnapshot: `tmb-ecran-${gare}`,
+    charge,
+    applique,
+    // L'instantané relu ne passe pas par getParams() : même assainissement.
+    valide: (d) => ({ ...d, params: paramsValides(d.params) }),
+  });
   await sync.demarre(); // sans réseau ni cache : la boucle affiche l'écran neutre
 
   // Resynchronisation : temps réel (onChange), périodique 30 s, retour réseau,

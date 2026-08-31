@@ -757,3 +757,48 @@ body.mode-erreur .erreur-config {
   opacity: 0.7;
   vertical-align: middle;
 }
+
+/* Bandeau DÉMONSTRATION (?demo=1) : les horaires affichés sont FICTIFS. Un
+   écran branché par erreur sur cette URL doit se dénoncer de lui-même. */
+.bandeau-demo {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5vh;
+  z-index: 70;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2vw;
+  background: var(--rouge);
+  color: var(--creme);
+  border-bottom: 0.4vh solid var(--marine);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.bandeau-demo b {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 2.6vh;
+}
+.bandeau-demo span {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+  font-size: 1.9vh;
+  opacity: 0.92;
+}
+body.mode-demo .bandeau-demo {
+  display: flex;
+}
+/* Le bandeau prend sa place DANS l'en-tête. Jamais de padding sur `body` :
+   demarreAntiBurnIn() lui applique un `transform`, et un ancêtre transformé
+   devient le bloc conteneur des descendants `position: fixed` — tous les
+   calques (écran neutre, veille, médias) glisseraient d'une heure à l'autre. */
+body.mode-demo header {
+  flex-basis: 19vh;
+  padding-top: 5vh;
+}
+body.mode-demo .badge-cache {
+  top: 20.5vh;
+}

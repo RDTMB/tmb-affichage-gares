@@ -29,6 +29,15 @@ export function creeSynchronisation<T>(options: {
   cleSnapshot: string;
   charge: () => Promise<T>;
   applique: (donnees: T) => void;
+  /**
+   * Assainissement de l'instantané relu depuis localStorage. C'est la
+   * TROISIÈME entrée des paramètres, et la seule qui ne passe pas par
+   * getParams() : un instantané écrit avant le correctif C-01, ou par une
+   * version antérieure, y survit. `JSON.stringify` transforme en outre NaN
+   * en `null` — sans cette passe, une température neutralisée reviendrait
+   * en `null`. Facultatif : sans lui, l'instantané est appliqué tel quel.
+   */
+  valide?: (donnees: T) => T;
 }): Synchronisation {
   let derniereSynchroMs: number | null = null;
   let enCours = false;
@@ -69,7 +78,7 @@ export function creeSynchronisation<T>(options: {
       if (await synchronise()) return true;
       const instantane = lit();
       if (instantane) {
-        options.applique(instantane.donnees);
+        options.applique(options.valide ? options.valide(instantane.donnees) : instantane.donnees);
         derniereSynchroMs = instantane.quand;
         return true;
       }

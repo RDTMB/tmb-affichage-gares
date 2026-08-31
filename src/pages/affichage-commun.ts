@@ -1,7 +1,7 @@
 // Éléments d'affichage partagés entre l'écran de gare et la grille du jour :
 // échappement HTML, pied de page (messages défilants + météo sommet).
 import type { GareId, Grille, Message, Params, PassageGare } from '../core/types';
-import { dureeDefilementS, vitesseTickerValide } from './ticker';
+import { dureeDefilementS, vitesseTickerValide } from '../core/ticker';
 
 export function echapper(texte: string): string {
   return texte
@@ -111,10 +111,19 @@ export function meteoHtml(params: Params, grille: Grille): string {
   const lieu = sommet ? `${sommet.nom} · ${sommet.altitude_m.toLocaleString('fr-FR')} m` : '';
   // L'heure du relevé dit au voyageur si la température date de dix minutes
   // ou de la veille. Discrète : elle ne concurrence pas le chiffre.
-  const releve = meteo.heure_releve
-    ? `<span class="releve">relevé ${echapper(meteo.heure_releve)}</span>`
-    : '';
-  return `<div class="t">${meteo.t}°C${releve}</div>
+  const releve =
+    typeof meteo.heure_releve === 'string' && meteo.heure_releve !== ''
+      ? `<span class="releve">relevé ${echapper(meteo.heure_releve)}</span>`
+      : '';
+  // La température vient du jsonb `params.valeur` : le type `number` ne vaut
+  // qu'à la compilation. Ceinture ET bretelles — paramsValides() l'a déjà
+  // neutralisée, mais la page ne doit jamais redevenir un point d'injection.
+  // Test sur `typeof`, PAS sur `Number(...)` : Number(null), Number('') et
+  // Number([]) valent tous 0, et afficher « 0 °C » pour une valeur corrompue
+  // serait afficher une information FAUSSE. Rien vaut mieux que faux.
+  const t =
+    typeof meteo.t === 'number' && Number.isFinite(meteo.t) ? String(Math.round(meteo.t)) : '—';
+  return `<div class="t">${echapper(t)}°C${releve}</div>
     <div>${echapper(lieu)}<small>${echapper(`${meteo.ciel_fr} / ${meteo.ciel_en}`)}</small></div>`;
 }
 

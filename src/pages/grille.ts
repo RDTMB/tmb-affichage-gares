@@ -2,7 +2,8 @@
 // Deux tableaux (montée, descente) : colonnes = trains effectivement en
 // circulation, lignes = gares avec altitudes officielles. Paramètres d'URL :
 // gare (cible des messages), ecran, simule=HH:MM, zoom, cache=N (tests) et
-// en mode mock terminus=N (bascule « à partir du TRAIN N »).
+// demo=1 (démonstration EXPLICITE : horaires fictifs, bandeau permanent) et,
+// en mode démo, terminus=N (bascule « à partir du TRAIN N »).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/400.css';
@@ -18,6 +19,7 @@ import {
   positionsTrains,
   trainsDuJour,
 } from '../core/horaires';
+import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
   GareId,
@@ -29,7 +31,8 @@ import type {
   Sens,
   TrainJour,
 } from '../core/types';
-import { creeProvider } from '../data';
+import { creeProviderDemo, creeProviderReel } from '../data';
+import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   creeJournalHeartbeat,
   creeTicker,
@@ -256,6 +259,30 @@ function majHorloge(maintenant_s: number): void {
   $('date-jour').textContent = heure.dateLongue();
 }
 
+/** Délai de réessai quand aucune source de données n'est disponible. */
+const REESSAI_SANS_SOURCE_MS = 5 * 60_000;
+
+/**
+ * Écran neutre PERMANENT : logo, horloge et message bilingue déjà présents
+ * dans la page, exactement comme au-delà de `duree_cache_min`. Aucun horaire
+ * n'est affiché puisque aucune source fiable n'est disponible (C-02).
+ *
+ * Le rechargement périodique évite qu'un échec TRANSITOIRE de `config.js`
+ * (coupure au démarrage) ne fige l'écran en neutre jusqu'à une intervention
+ * sur place : `config.js` étant servi réseau d'abord, l'écran se répare seul.
+ */
+function afficheNeutrePermanent(): void {
+  document.body.classList.add('mode-neutre');
+  const tic = (): void => {
+    const maintenant = heure.maintenantS();
+    majHorloge(maintenant);
+    $('horloge-neutre').textContent = formatHeure(maintenant);
+  };
+  tic();
+  window.setInterval(tic, 1000);
+  window.setTimeout(() => window.location.reload(), REESSAI_SANS_SOURCE_MS);
+}
+
 // ---------------------------------------------------------------------------
 // Boucle principale — re-rendu 1×/s maximum (contrainte CLAUDE.md)
 // ---------------------------------------------------------------------------
@@ -323,12 +350,25 @@ async function demarre(): Promise<void> {
   enregistreServiceWorker();
   demarreAntiBurnIn();
 
+  // C-02 — Aucune donnée réelle et aucune démonstration explicitement demandée :
+  // on n'invente RIEN. Sans ce garde-fou, la page retombait silencieusement sur
+  // le fournisseur de démonstration et affichait en gare des horaires fictifs.
+  const mode = modeDonnees(configSupabasePresente(), estModeDemo(url));
+  if (mode === 'aucune') {
+    afficheNeutrePermanent();
+    return;
+  }
+  if (mode === 'demo') document.body.classList.add('mode-demo');
+
   const terminusParam = url.get('terminus');
-  const provider = creeProvider(
+  const optionsDemo =
     terminusParam !== null && Number(terminusParam) > 0
       ? { terminusAPartirDuTrain: Number(terminusParam) }
-      : {},
-  );
+      : {};
+  const provider =
+    mode === 'demo'
+      ? creeProviderDemo(optionsDemo)
+      : creeProviderReel(window.TMB_CONFIG!.supabaseUrl!, window.TMB_CONFIG!.supabaseKey!);
 
   const charge = async (): Promise<DonneesGrille> => {
     const dateJour = heure.dateISO();
@@ -353,6 +393,8 @@ async function demarre(): Promise<void> {
     cleSnapshot: `tmb-grille-${gare ?? 'ligne'}`,
     charge,
     applique,
+    // L'instantané relu ne passe pas par getParams() : même assainissement.
+    valide: (d) => ({ ...d, params: paramsValides(d.params) }),
   });
   await sync.demarre();
 

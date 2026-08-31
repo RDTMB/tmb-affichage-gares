@@ -29,12 +29,17 @@ if (liste) {
     altitude.className = 'altitude';
     altitude.textContent = `${gare.altitude_m} m`;
 
+    // `demo=1` : sans configuration Supabase, les pages d'affichage montrent
+    // désormais l'écran neutre plutôt que des horaires de démonstration
+    // (C-02). Le portail de test demande donc la démonstration EXPLICITEMENT ;
+    // quand la configuration est présente, elle l'emporte et les liens
+    // ouvrent les vraies données.
     const lienEcran = document.createElement('a');
-    lienEcran.href = `ecran.html?gare=${id}`; // relatif : compatible base GitHub Pages
+    lienEcran.href = `ecran.html?gare=${id}&demo=1`; // relatif : compatible base GitHub Pages
     lienEcran.textContent = 'Écran';
 
     const lienGrille = document.createElement('a');
-    lienGrille.href = `grille.html?gare=${id}`;
+    lienGrille.href = `grille.html?gare=${id}&demo=1`;
     lienGrille.textContent = 'Grille';
 
     li.append(nom, altitude, lienEcran, lienGrille);
