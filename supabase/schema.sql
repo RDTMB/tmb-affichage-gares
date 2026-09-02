@@ -88,6 +88,14 @@ create table if not exists motifs (
   en text not null default ''
 );
 
+-- États du ciel proposés dans le sélecteur météo (liste, plus de texte libre)
+-- Ajout sur base existante : supabase/ajout-ciels.sql
+create table if not exists ciels (
+  fr text primary key,
+  en text not null default '',
+  ordre int not null default 0                   -- ordre d'affichage dans la liste
+);
+
 -- Bibliothèque de messages préenregistrés bilingues (docs/01 §2.4)
 create table if not exists modeles_messages (
   id uuid primary key default gen_random_uuid(),
@@ -185,6 +193,7 @@ alter table messages enable row level security;
 alter table medias enable row level security;
 alter table machines enable row level security;
 alter table motifs enable row level security;
+alter table ciels enable row level security;
 alter table modeles_messages enable row level security;
 alter table params enable row level security;
 alter table profils enable row level security;
@@ -198,6 +207,7 @@ create policy "lecture publique" on messages for select using (true);
 create policy "lecture publique" on medias for select using (true);
 create policy "lecture publique" on machines for select using (true);
 create policy "lecture publique" on motifs for select using (true);
+create policy "lecture publique" on ciels for select using (true);
 create policy "lecture publique" on params for select using (true);
 create policy "lecture publique" on ecrans for select using (true);
 
@@ -221,6 +231,8 @@ create policy "messages tous roles" on messages for all to authenticated
 create policy "admin" on machines for all to authenticated
   using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 create policy "admin" on motifs for all to authenticated
+  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
+create policy "admin" on ciels for all to authenticated
   using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
 -- Params : les clés d'AFFICHAGE (onglet Bandeau) sont le quotidien de la
 -- caisse — elle doit pouvoir changer une température sans un administrateur.
@@ -522,6 +534,11 @@ create trigger trg_journal_motifs
   after insert or update or delete on motifs
   for each row execute function private.tracer_ecriture('fr', '');
 
+drop trigger if exists trg_journal_ciels on ciels;
+create trigger trg_journal_ciels
+  after insert or update or delete on ciels
+  for each row execute function private.tracer_ecriture('fr', '');
+
 drop trigger if exists trg_journal_modeles on modeles_messages;
 create trigger trg_journal_modeles
   after insert or update or delete on modeles_messages
@@ -564,7 +581,7 @@ grant execute on function private.purge_journal_exploitation(int) to authenticat
 
 -- ---------------------------------------------------------------- realtime
 alter publication supabase_realtime add table jours, circulations, messages,
-  medias, params, machines, motifs, modeles_messages, ecrans;
+  medias, params, machines, motifs, ciels, modeles_messages, ecrans;
 
 -- ---------------------------------------------------------------- storage
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
