@@ -1,21 +1,25 @@
-# Déploiement GitHub Pages (docs/02 §6) : tests obligatoires — un test rouge
-# bloque le déploiement. config.js est généré depuis les VARIABLES de dépôt
-# (Settings → Secrets and variables → Actions → Variables) : jamais de clé
-# dans le code. La clé « publishable » Supabase est publique par conception.
-name: Déploiement GitHub Pages
+# Tests sur TOUTES les branches, déploiement GitHub Pages depuis `main`
+# uniquement (docs/02 §6, docs/mise-en-service.md « Mise en ligne d'une
+# évolution »). Un test rouge bloque la mise en ligne. config.js est généré
+# depuis les VARIABLES de dépôt (Settings → Secrets and variables → Actions →
+# Variables) : jamais de clé dans le code. La clé « publishable » Supabase est
+# publique par conception.
+name: Tests et déploiement GitHub Pages
 
 on:
   push:
+    branches: ['**']
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# Une branche de travail n'annule jamais la mise en ligne de `main` : un
+# groupe de concurrence par référence.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +33,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - name: Génère public/config.js depuis les variables de dépôt
+      - run: npm run format:check
+      - name: Génère public/config.js depuis les variables de dépôt (main seulement)
+        if: github.ref == 'refs/heads/main'
         env:
           SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -41,15 +47,25 @@ jobs:
             echo "::error::Variables de dépôt absentes ou mal nommées : VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY sont requises (Settings → Secrets and variables → Actions → Variables). Déploiement REFUSÉ : sans elles, les écrans de gare n'auraient aucune source de données."
             exit 1
           fi
+      # Sur une branche de travail, le build tourne SANS config.js : il prouve
+      # que le code compile et se construit, rien n'est mis en ligne.
       - name: Build (base = /nom-du-depot/)
         run: npm run build -- --base=/${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        if: github.ref == 'refs/heads/main'
         with:
           path: dist
 
   deploy:
+    # Mise en ligne depuis `main` seulement : jamais depuis une branche ni
+    # depuis une pull request.
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
