@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:/Users/MUSSETThomas-TRAMWAY/AppData/Local/nodejs-portable/node-v24.19.0-win-x64/node.exe",
       "runtimeArgs": ["node_modules/vite/bin/vite.js"],
       "port": 5173
+    },
+    {
+      "name": "dev-demo",
+      "runtimeExecutable": "C:/Users/MUSSETThomas-TRAMWAY/AppData/Local/nodejs-portable/node-v24.19.0-win-x64/node.exe",
+      "runtimeArgs": ["node_modules/vite/bin/vite.js", "--mode", "demo", "--port", "5174"],
+      "port": 5174
     }
   ]
 }

@@ -12,7 +12,13 @@ function logoDataUri(nom: string): string {
 // Multi-pages : quatre entrées HTML indépendantes (portail de test, écran de
 // gare, grille du jour, supervision). Les écrans tournent sur Raspberry Pi en
 // kiosque : tout est auto-hébergé, aucune ressource externe.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // Mode « demo » (`vite --mode demo`, lanceur « dev-demo ») : le dossier
+  // public/ n'est pas servi, donc pas de config.js → toutes les pages tournent
+  // sur le fournisseur de DÉMONSTRATION (mock), même quand un config.js local
+  // pointe sur un projet Supabase. Les logos sont inlinés au build (define),
+  // les grilles de référence viennent de docs/ : rien ne manque en démo.
+  publicDir: mode === 'demo' ? false : 'public',
   // fflate n'est importé que dynamiquement (lecteur Excel de la supervision) :
   // sans cette pré-optimisation, le premier clic sur « Charger un fichier
   // Excel… » en `npm run dev` déclenchait un rechargement complet de la page
@@ -42,4 +48,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
