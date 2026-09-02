@@ -45,6 +45,7 @@ import type {
 } from '../core/types';
 import { creeProvider } from '../data';
 import { configSupabasePresente } from '../data/config';
+import { initOngletHoraires, type OngletHoraires } from './onglet-horaires';
 import {
   appliqueBrouillonJour,
   appliqueBrouillonMessages,
@@ -109,10 +110,11 @@ function $(id: string): HTMLElement {
 }
 
 const ONGLET_PAR_ROLE: Record<Role, string[]> = {
-  admin: ['circulations', 'bandeau', 'medias', 'ecrans', 'parametres'],
-  supervision: ['circulations', 'bandeau', 'medias', 'ecrans'],
-  // La caisse tient le bandeau voyageurs : messages, vitesse et météo.
-  caisse: ['bandeau'],
+  admin: ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans', 'parametres'],
+  supervision: ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans'],
+  // La caisse tient le bandeau voyageurs : messages, vitesse et météo. Elle
+  // voit aussi les grilles horaires, en lecture seule (« Voir » uniquement).
+  caisse: ['bandeau', 'horaires'],
 };
 
 // ---------------------------------------------------------------------------
@@ -122,7 +124,9 @@ const ONGLET_PAR_ROLE: Record<Role, string[]> = {
 let role: Role | null = null;
 /** Profil de l'agent connecté, lu en base : survit à la réouverture d'un onglet. */
 let profilConnecte: Profil | null = null;
+/** Grilles ACTIVES (celles que voient les écrans) ; l'onglet Horaires lit, lui, toutes les grilles. */
 let grilles: Grille[] = [];
+let ongletHoraires: OngletHoraires | null = null;
 let jour: Jour | null = null;
 let dateSel = dateISO(0);
 let params: Params | null = null;
@@ -404,6 +408,7 @@ async function rechargeJour(): Promise<void> {
 
 function rendreTout(): void {
   rendreEnTete();
+  void ongletHoraires?.rendre().catch(() => {}); // liste des grilles (toutes, actives ou non)
   rendreCirculations();
   rendreCasesGares(); // noms de gares : les grilles sont chargées à ce stade
   rendreSelecteurModeles();
@@ -2330,21 +2335,18 @@ function rendreParametres(): void {
     </div>`,
     )
     .join('');
-  // Saisons
-  const aujourdhui = dateISO(0);
-  $('saisons').innerHTML =
-    grilles
-      .map((g) => {
-        const enCours = g.periodes.some((p) => aujourdhui >= p.du && aujourdhui <= p.au);
-        const periodes = g.periodes
-          .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)} → ${p.au.slice(8)}/${p.au.slice(5, 7)}`)
-          .join(' et ');
-        return `<div class="saison"><b>${echapper(g.libelle)}</b><span class="per">${periodes} · ${g.montees.length} montées + ${g.descentes.length} descentes</span><span class="etat" style="${
-          enCours ? 'background:var(--ok-bg);color:var(--ok)' : 'background:#EEF2F6;color:#4A6078'
-        }">${enCours ? 'EN COURS' : 'PROGRAMMÉ'}</span></div>`;
-      })
-      .join('') +
-    '<div class="saison"><b>Service hiver</b><span class="per">terminus Bellevue permanent (à partir du TRAIN 1) — grille à charger</span><span class="etat" style="background:#FBEEC2;color:#7A6017">À CRÉER</span></div>';
+  // Grilles horaires : elles se gèrent dans l'onglet Horaires (chargement
+  // depuis l'Excel exploitation, activation, retour arrière). Ici, un simple
+  // renvoi, avec la grille en service aujourd'hui.
+  const enService = serviceActif(grilles, dateISO(0));
+  $('saisons').innerHTML = `<div class="saison"><b>${
+    enService ? echapper(enService.libelle) : 'Hors saison'
+  }</b><span class="per">${
+    enService ? 'grille en service aujourd’hui' : 'aucune grille ne couvre la date du jour'
+  } · les grilles (été, hiver, dates de validité, chargement depuis l’Excel exploitation) se gèrent dans l’onglet Horaires</span><button class="leger" id="btn-vers-horaires">Ouvrir l’onglet Horaires</button></div>`;
+  $('btn-vers-horaires').addEventListener('click', () => {
+    document.querySelector<HTMLButtonElement>('nav.tabs button[data-t="horaires"]')?.click();
+  });
   // Vitesse du bandeau + aperçu en direct
   const vitesse = vitesseTickerValide(params.vitesse_ticker_px_s);
   const selVitesse = $('vitesse-ticker') as HTMLSelectElement;
@@ -2982,6 +2984,19 @@ async function demarre(): Promise<void> {
   initJournal();
   initParametres();
   initPublication();
+  ongletHoraires = initOngletHoraires({
+    provider,
+    $,
+    toast,
+    erreurVersToast,
+    role: () => role,
+    // Une grille chargée ou (dés)activée change les grilles ACTIVES et donc
+    // la journée affichée : on relit tout, comme après une publication.
+    apresChangement: async () => {
+      await chargeTout();
+      rendreTout();
+    },
+  });
 
   $('btn-deconnexion').addEventListener('click', () => {
     // Le brouillon (Bandeau, Circulations) ne vit qu'en mémoire : se

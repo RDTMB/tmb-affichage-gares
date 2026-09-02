@@ -305,6 +305,7 @@ export const OBJETS_JOURNAL: Record<string, string> = {
   ciels: 'État du ciel',
   modeles_messages: 'Modèle',
   ecrans: 'Écran',
+  grilles: 'Grille horaire',
 };
 
 export function libelleObjet(table: string): string {

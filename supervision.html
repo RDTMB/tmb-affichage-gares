@@ -38,6 +38,7 @@
 
     <nav class="tabs" id="tabs" style="display: none">
       <button data-t="circulations" class="on">Circulations</button>
+      <button data-t="horaires">Horaires</button>
       <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
       <button data-t="medias">Médias</button>
       <button data-t="ecrans">Écrans</button>
@@ -151,6 +152,51 @@
             </button>
           </div>
         </div>
+      </section>
+
+      <!-- ================= HORAIRES (grilles) ================= -->
+      <section class="onglet" id="t-horaires">
+        <div class="carte">
+          <h2>
+            Grilles horaires
+            <span class="sous">quelle grille s’applique à quelles dates</span>
+            <div class="actions">
+              <button class="primaire leger" id="btn-grille-importer">
+                Charger un fichier Excel…
+              </button>
+              <input
+                type="file"
+                id="grille-fichier"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                style="display: none"
+              />
+            </div>
+          </h2>
+          <div class="note recap-import" id="horaires-recap" style="display: none"></div>
+          <table id="tab-grilles">
+            <thead>
+              <tr>
+                <th>Grille</th>
+                <th>Dates de validité</th>
+                <th style="width: 190px">Trains</th>
+                <th style="width: 170px">État</th>
+                <th style="width: 190px">Chargée le / par</th>
+                <th style="width: 190px"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <div class="note">
+            Une grille ne s’applique qu’à ses dates de validité. Si deux grilles actives couvrent la
+            même date, la <b>plus récemment chargée l’emporte</b> : charger une grille corrigée
+            suffit à la faire appliquer, et la <b>désactiver</b> redonne la main à la précédente
+            (retour arrière). Hors de toute période, aucun service n’est affiché. Les écrans suivent
+            en quelques secondes ; les journées déjà préparées ne sont jamais réécrites sans votre
+            accord. Le format du fichier Excel est décrit dans le guide « Charger la grille ».
+          </div>
+        </div>
+        <div class="carte" id="carte-import" style="display: none"></div>
+        <div class="carte" id="carte-voir" style="display: none"></div>
       </section>
 
       <!-- ================= MESSAGES ================= -->
@@ -475,7 +521,7 @@
             </div>
           </div>
           <div class="carte">
-            <h2>Saisons et durées d'affichage</h2>
+            <h2>Grille en service et durées d'affichage</h2>
             <div class="saisons" id="saisons"></div>
             <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
               <label style="font-weight: 700; color: var(--texte)"

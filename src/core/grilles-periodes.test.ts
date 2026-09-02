@@ -8,7 +8,7 @@ import {
   datesDesPeriodes,
   grillesEntierementCouvertes,
   reprisesApresDesactivation,
-} from './grilles';
+} from './grilles-periodes';
 import type { Grille } from './types';
 
 const GRAND: Grille = {
