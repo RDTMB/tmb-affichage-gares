@@ -18,6 +18,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  OptionsEnregistrementGrille,
   Profil,
   Params,
   Role,
@@ -28,6 +29,11 @@ import type {
   FiltreJournal,
 } from '../core/types';
 import { paramsValides } from '../core/params';
+import {
+  contenuSansMetadonnees,
+  grilleDepuisEnregistrement,
+  type EnregistrementGrille,
+} from '../core/grilles';
 import type { DataProvider } from './provider';
 
 /**
@@ -47,6 +53,9 @@ export const TABLES_AFFICHAGE = [
   'motifs',
   'ciels',
   'modeles_messages',
+  // Import ou activation d'une grille : les écrans doivent la voir en
+  // quelques secondes (la promesse getGrilles est oubliée à chaque signal).
+  'grilles',
 ] as const;
 
 interface LigneJour {
@@ -90,17 +99,18 @@ export class SupabaseProvider implements DataProvider {
 
   // ------------------------------------------------------------------ lecture
 
+  /**
+   * Contenu (jsonb) de chaque grille, par version. Une version n'est JAMAIS
+   * réécrite en base (l'import crée « -v2 ») : ce cache est définitif pour
+   * la durée de vie de la page.
+   */
+  private readonly contenus = new Map<string, unknown>();
+
   getGrilles(): Promise<Grille[]> {
-    // Les grilles officielles restent des JSON statiques versionnés du dépôt.
-    this.grilles ??= Promise.all(
-      ['2026-ete-grand-service', '2026-ete-petit-service'].map(async (nom) => {
-        const reponse = await fetch(`${import.meta.env.BASE_URL}grilles/${nom}.json`, {
-          cache: 'no-store',
-        });
-        if (!reponse.ok) throw new Error(`Grille ${nom} introuvable (${reponse.status})`);
-        return (await reponse.json()) as Grille;
-      }),
-    ).catch((erreur: unknown) => {
+    // Grilles ACTIVES, lues en base. La promesse est mémorisée jusqu'au
+    // prochain signal de changement (notifie) ou jusqu'à la prochaine
+    // écriture de grille depuis ce poste.
+    this.grilles ??= this.chargeGrilles(true).catch((erreur: unknown) => {
       // Sans cet oubli du cache, une promesse REJETÉE (démarrage hors ligne)
       // resterait mémorisée : plus aucune tentative au retour du réseau et
       // l'écran resterait figé sur l'écran neutre toute la journée.
@@ -108,6 +118,85 @@ export class SupabaseProvider implements DataProvider {
       throw erreur;
     });
     return this.grilles;
+  }
+
+  async listGrilles(): Promise<Grille[]> {
+    return this.chargeGrilles(false);
+  }
+
+  /**
+   * Deux requêtes au plus : les MÉTADONNÉES de toutes les grilles (quelques
+   * centaines d'octets), puis le contenu des seules versions pas encore en
+   * mémoire. Les écrans se resynchronisent toutes les 30 s : relire ~25 Ko
+   * de contenu à chaque fois aurait coûté ~0,5 Go par mois et par écran, pour
+   * des grilles qui ne changent que quelques fois par an.
+   */
+  private async chargeGrilles(activesSeulement: boolean): Promise<Grille[]> {
+    const colonnes = 'version, libelle, source, periodes, actif, cree_le, cree_par, commentaire';
+    const base = this.client.from('grilles').select(colonnes);
+    const meta = await (activesSeulement ? base.eq('actif', true) : base).order('cree_le');
+    verifie(meta.error);
+    const lignes = (meta.data ?? []) as Omit<EnregistrementGrille, 'contenu'>[];
+
+    const manquantes = lignes.map((l) => l.version).filter((v) => !this.contenus.has(v));
+    if (manquantes.length > 0) {
+      const contenus = await this.client
+        .from('grilles')
+        .select('version, contenu')
+        .in('version', manquantes);
+      verifie(contenus.error);
+      for (const l of (contenus.data ?? []) as { version: string; contenu: unknown }[]) {
+        this.contenus.set(l.version, l.contenu);
+      }
+    }
+    // grilleDepuisEnregistrement vérifie la forme du contenu (C-01) et lève
+    // une erreur explicite plutôt que de servir une grille à moitié lue.
+    return lignes.map((l) =>
+      grilleDepuisEnregistrement({ ...l, contenu: this.contenus.get(l.version) }),
+    );
+  }
+
+  async saveGrille(g: Grille, options: OptionsEnregistrementGrille = {}): Promise<void> {
+    const { data: auth } = await this.client.auth.getUser();
+    const resultat = await this.client
+      .from('grilles')
+      .insert({
+        version: g.version,
+        libelle: g.libelle,
+        source: g.source ?? null,
+        periodes: g.periodes,
+        contenu: contenuSansMetadonnees(g),
+        actif: options.actif ?? true,
+        cree_par: auth.user?.email ?? null,
+        commentaire: options.commentaire ?? null,
+      })
+      .select('version');
+    if (resultat.error?.code === '23505') {
+      // Clé primaire violée : une version n'est JAMAIS réécrite (l'import
+      // doit créer « -v2 »). Message pour l'agent, pas le jargon Postgres.
+      throw new Error(`Une grille « ${g.version} » existe déjà : elle n'a pas été écrasée`);
+    }
+    exigeLignes(resultat, 'grille refusée (droits insuffisants ?)');
+    this.grilles = null;
+  }
+
+  async setGrilleActive(version: string, actif: boolean): Promise<void> {
+    exigeLignes(
+      await this.client.from('grilles').update({ actif }).eq('version', version).select('version'),
+      `grille « ${version} » introuvable ou droits insuffisants`,
+    );
+    this.grilles = null;
+  }
+
+  async listJoursGeneres(du: string, au: string): Promise<string[]> {
+    const { data, error } = await this.client
+      .from('jours')
+      .select('date')
+      .gte('date', du)
+      .lte('date', au)
+      .order('date');
+    verifie(error);
+    return ((data ?? []) as { date: string }[]).map((l) => l.date);
   }
 
   async getJour(date: string): Promise<Jour> {
@@ -284,6 +373,10 @@ export class SupabaseProvider implements DataProvider {
   }
 
   private notifie(): void {
+    // Les grilles ont pu changer (import, activation) : la prochaine lecture
+    // relit leurs métadonnées — requête légère, le contenu d'une version déjà
+    // connue restant en mémoire.
+    this.grilles = null;
     if (this.notifieId !== null) return; // anti-rafale : au plus 1 refresh / 300 ms
     this.notifieId = window.setTimeout(() => {
       this.notifieId = null;

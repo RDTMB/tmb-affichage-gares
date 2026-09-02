@@ -14,6 +14,7 @@ import '../styles/supervision.css';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   formatHeure,
+  grillePourJour,
   heureVersSecondes,
   libelleTrain,
   monteesSansRetour,
@@ -214,8 +215,14 @@ function dateISO(decalageJours: number): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(d);
 }
 
+/**
+ * Grille de la journée affichée : celle qui l'a générée, sinon celle en
+ * vigueur à sa date (plus jamais « la première de la liste », qui pouvait
+ * être n'importe quelle grille depuis qu'elles vivent en base). Sans journée
+ * chargée, la première grille active sert de repli aux listes de trains.
+ */
 function grilleDuJour(): Grille | null {
-  return grilles.find((g) => g.version === jour?.grille_version) ?? grilles[0] ?? null;
+  return jour ? grillePourJour(grilles, jour) : (grilles[0] ?? null);
 }
 
 function circulationDe(numero: number): Circulation | null {

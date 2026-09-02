@@ -16,6 +16,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  OptionsEnregistrementGrille,
   Profil,
   Params,
   Role,
@@ -25,8 +26,24 @@ import type {
 } from '../core/types';
 
 export interface DataProvider {
-  /** JSON statiques versionnés (public/grilles/). */
+  /**
+   * Grilles ACTIVES (écrans, génération des journées). Elles vivent en base
+   * (table `grilles`, importées depuis l'Excel exploitation en supervision) ;
+   * le mock les lit dans les JSON de référence. Le service en vigueur à une
+   * date se déduit par `serviceActif()` (src/core/horaires.ts).
+   */
   getGrilles(): Promise<Grille[]>;
+  /** TOUTES les grilles, actives ou non, avec leurs métadonnées (onglet Horaires). */
+  listGrilles(): Promise<Grille[]>;
+  /**
+   * Enregistre une NOUVELLE grille, active par défaut. Une version existante
+   * n'est jamais écrasée : l'appel échoue, l'import crée alors « …-v2 ».
+   */
+  saveGrille(g: Grille, options?: OptionsEnregistrementGrille): Promise<void>;
+  /** Active ou désactive une grille ; la désactivation est le retour arrière. */
+  setGrilleActive(version: string, actif: boolean): Promise<void>;
+  /** Dates (« YYYY-MM-DD », bornes incluses) dont la journée existe déjà en base. */
+  listJoursGeneres(du: string, au: string): Promise<string[]>;
   /** Circulations + drapeaux du jour (terminus…). */
   getJour(date: string): Promise<Jour>;
   getMessages(gare: GareId): Promise<Message[]>;

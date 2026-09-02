@@ -14,6 +14,7 @@ import '../styles/grille.css';
 
 import {
   formatHeure,
+  grillePourJour,
   libelleTrain,
   passagesPourGare,
   positionsTrains,
@@ -385,7 +386,7 @@ async function demarre(): Promise<void> {
     jour = d.jour;
     params = d.params;
     messages = d.messages;
-    grille = d.grilles.find((g) => g.version === d.jour.grille_version) ?? d.grilles[0] ?? null;
+    grille = grillePourJour(d.grilles, d.jour);
     rendsEntetesEtPied();
   };
 

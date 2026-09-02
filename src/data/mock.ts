@@ -27,6 +27,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  OptionsEnregistrementGrille,
   Profil,
   Params,
   Role,
@@ -36,6 +37,7 @@ import type {
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
+import { contenuSansMetadonnees } from '../core/grilles';
 import type { DataProvider } from './provider';
 
 const CLE_ETAT = 'tmb-mock-etat';
@@ -238,6 +240,10 @@ interface EtatMock {
   /** Journal d'exploitation : en production, écrit par des DÉCLENCHEURS. */
   journal: EntreeJournal[];
   utilisateurs: User[] | null;
+  /** Grilles importées en démo (table `grilles`), métadonnées comprises. */
+  grillesImportees?: Grille[];
+  /** Versions désactivées (grilles de référence ou importées) : retour arrière. */
+  grillesDesactivees?: string[];
 }
 
 function litEtat(): EtatMock {
@@ -260,8 +266,13 @@ function litEtat(): EtatMock {
     publications: [],
     journal: [],
     utilisateurs: null,
+    grillesImportees: [],
+    grillesDesactivees: [],
   };
 }
+
+/** Date de création prêtée aux grilles de référence : celle du document d'exploitation. */
+const CREE_LE_REFERENCE = '2026-06-05T00:00:00.000Z';
 
 /**
  * Reproduit le déclencheur `private.tracer_ecriture()` : une ligne de journal
@@ -376,14 +387,15 @@ function dateAujourdhuiParis(): string {
 export class MockProvider implements DataProvider {
   /** Heure de chargement de CETTE page : référence de l’ordre de rechargement. */
   private readonly chargeeA = Date.now();
-  private grilles: Promise<Grille[]> | null = null;
+  private grillesJson: Promise<Grille[]> | null = null;
 
   constructor(private readonly options: OptionsMock = {}) {}
 
-  getGrilles(): Promise<Grille[]> {
+  /** Les deux grilles JSON de référence (une lecture, retentée après échec). */
+  private grillesDeReference(): Promise<Grille[]> {
     // `no-store` : la sonde traverse le service worker et détecte la coupure
     // réseau (mode dégradé) ; les données restent servies par le snapshot.
-    this.grilles ??= Promise.all(
+    this.grillesJson ??= Promise.all(
       ['2026-ete-grand-service', '2026-ete-petit-service'].map(async (nom) => {
         const reponse = await fetch(`${import.meta.env.BASE_URL}grilles/${nom}.json`, {
           cache: 'no-store',
@@ -392,10 +404,90 @@ export class MockProvider implements DataProvider {
         return (await reponse.json()) as Grille;
       }),
     ).catch((erreur: unknown) => {
-      this.grilles = null; // nouvelle tentative à la prochaine synchro
+      this.grillesJson = null; // nouvelle tentative à la prochaine synchro
       throw erreur;
     });
-    return this.grilles;
+    return this.grillesJson;
+  }
+
+  /**
+   * Toutes les grilles — référence + importées en démo — avec leurs
+   * métadonnées, comme la table `grilles`. Les grilles de référence sont
+   * datées du document d'exploitation : une grille importée ensuite, plus
+   * récente, l'emporte sur les dates communes (serviceActif).
+   */
+  async listGrilles(): Promise<Grille[]> {
+    const etat = litEtat();
+    const desactivees = new Set(etat.grillesDesactivees ?? []);
+    const reference = (await this.grillesDeReference()).map((g) => ({
+      ...g,
+      cree_le: CREE_LE_REFERENCE,
+      cree_par: 'grilles de référence (démo)',
+      commentaire: null,
+    }));
+    return [...reference, ...(etat.grillesImportees ?? [])].map((g) => ({
+      ...g,
+      actif: !desactivees.has(g.version),
+    }));
+  }
+
+  /** Grilles ACTIVES seulement (écrans, génération des journées). */
+  async getGrilles(): Promise<Grille[]> {
+    return (await this.listGrilles()).filter((g) => g.actif !== false);
+  }
+
+  async saveGrille(g: Grille, options: OptionsEnregistrementGrille = {}): Promise<void> {
+    if ((await this.listGrilles()).some((x) => x.version === g.version)) {
+      // Comme la clé primaire en base : une version n'est JAMAIS réécrite.
+      throw new Error(`Une grille « ${g.version} » existe déjà : elle n'a pas été écrasée`);
+    }
+    const etat = litEtat();
+    const session = sessionStorage.getItem(CLE_SESSION);
+    const enregistree: Grille = {
+      ...contenuSansMetadonnees(g),
+      actif: options.actif ?? true,
+      cree_le: new Date().toISOString(),
+      cree_par: session ? (JSON.parse(session) as { email: string }).email : null,
+      commentaire: options.commentaire ?? null,
+    };
+    etat.grillesImportees = [...(etat.grillesImportees ?? []), enregistree];
+    if (options.actif === false) {
+      etat.grillesDesactivees = [...(etat.grillesDesactivees ?? []), g.version];
+    }
+    // Même trace que le déclencheur trg_journal_grilles : actif, libellé,
+    // périodes, commentaire — jamais le contenu.
+    trace(
+      etat,
+      'grilles',
+      g.version,
+      null,
+      {
+        actif: enregistree.actif,
+        libelle: g.libelle,
+        periodes: g.periodes,
+        commentaire: enregistree.commentaire,
+      },
+      ['actif', 'libelle', 'periodes', 'commentaire'],
+    );
+    ecritEtat(etat);
+  }
+
+  async setGrilleActive(version: string, actif: boolean): Promise<void> {
+    const cible = (await this.listGrilles()).find((g) => g.version === version);
+    if (!cible) throw new Error(`Grille « ${version} » introuvable`);
+    const etat = litEtat();
+    const desactivees = new Set(etat.grillesDesactivees ?? []);
+    trace(etat, 'grilles', version, { actif: !desactivees.has(version) }, { actif }, ['actif']);
+    if (actif) desactivees.delete(version);
+    else desactivees.add(version);
+    etat.grillesDesactivees = [...desactivees];
+    ecritEtat(etat);
+  }
+
+  async listJoursGeneres(du: string, au: string): Promise<string[]> {
+    return Object.keys(litEtat().jours)
+      .filter((d) => d >= du && d <= au)
+      .sort();
   }
 
   async getJour(date: string): Promise<Jour> {

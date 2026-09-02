@@ -68,14 +68,39 @@ export function dateSuivante(date: string): string {
 // Service actif et génération du jour
 // ---------------------------------------------------------------------------
 
-/** Grille dont une période couvre la date (bornes incluses), ou null hors saison. */
+/**
+ * Grille en vigueur à une date. Règle, écrite noir sur blanc (docs/01 §2.1) :
+ *
+ * 1. seules les grilles ACTIVES comptent (`actif` absent ou true) ;
+ * 2. une grille ne s'applique qu'à ses périodes (bornes incluses) ;
+ * 3. si plusieurs grilles actives couvrent la date, la plus RÉCEMMENT créée
+ *    (`cree_le`) l'emporte — importer une grille corrigée suffit à la faire
+ *    appliquer, et la désactiver redonne la main à la précédente (retour
+ *    arrière) ;
+ * 4. à égalité (fichiers JSON sans `cree_le`), la première de la liste.
+ *
+ * Hors saison : null — JAMAIS de repli sur une autre grille (bug exploitant
+ * du 25/08/2026 : le petit service s'affichait en plein hiver).
+ */
 export function serviceActif(grilles: Grille[], date: string): Grille | null {
+  let retenue: Grille | null = null;
   for (const grille of grilles) {
-    for (const periode of grille.periodes) {
-      if (date >= periode.du && date <= periode.au) return grille;
-    }
+    if (grille.actif === false) continue;
+    if (!grille.periodes.some((p) => date >= p.du && date <= p.au)) continue;
+    if (retenue === null || (grille.cree_le ?? '') > (retenue.cree_le ?? '')) retenue = grille;
   }
-  return null;
+  return retenue;
+}
+
+/**
+ * Grille à utiliser pour AFFICHER une journée : celle qui a servi à la
+ * générer (`jour.grille_version`) si elle est encore disponible, sinon celle
+ * en vigueur à sa date. Jamais « la première de la liste » : avec des grilles
+ * en base, ce repli aurait pu montrer le petit service un jour de grand
+ * service dès qu'une version était désactivée.
+ */
+export function grillePourJour(grilles: Grille[], jour: Jour): Grille | null {
+  return grilles.find((g) => g.version === jour.grille_version) ?? serviceActif(grilles, jour.date);
 }
 
 /**

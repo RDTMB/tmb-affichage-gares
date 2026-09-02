@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
 import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
 import { ORDRE_GARES } from '../core/types';
+import type { Grille } from '../core/types';
 
 // --- Environnement navigateur minimal : MockProvider tourne ici sous Node
 // localStorage FIDÈLE : setItem émet un événement `storage` comme le fait un
@@ -758,5 +759,108 @@ describe('Journal d’exploitation : trace permanente de chaque écriture', () =
     await provider.logPublication('1 modification(s) : motif Vent — → Wind');
     expect(await provider.listJournal({})).toHaveLength(avant);
     expect(await provider.dernierePublication()).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Grilles en base (chantier import des horaires, étape 1) : le mock se
+// comporte comme la table `grilles` — versions jamais réécrites, la plus
+// récente l'emporte, désactiver = retour arrière, tout est journalisé.
+// ---------------------------------------------------------------------------
+describe('MockProvider — grilles : import, activation, retour arrière', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  const GRAND = grandServiceJson as unknown as Grille;
+  const PETIT = petitServiceJson as unknown as Grille;
+
+  it('listGrilles renvoie les deux grilles de référence, actives et datées du document', async () => {
+    const provider = new MockProvider();
+    const grilles = await provider.listGrilles();
+    expect(grilles.map((g) => g.version)).toEqual([
+      '2026-ete-grand-service',
+      '2026-ete-petit-service',
+    ]);
+    expect(grilles.every((g) => g.actif === true && typeof g.cree_le === 'string')).toBe(true);
+    expect(await provider.getGrilles()).toHaveLength(2);
+  });
+
+  it('saveGrille : une grille plus récente l’emporte sur ses dates ; la désactiver redonne la main', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    const v2: Grille = {
+      ...GRAND,
+      version: '2026-ete-grand-service-v2',
+      libelle: 'Grand service — été 2026 (v2)',
+    };
+    await provider.saveGrille(v2, { commentaire: 'heures corrigées' });
+
+    expect((await provider.getJour('2026-07-15')).grille_version).toBe('2026-ete-grand-service-v2');
+    expect((await provider.listGrilles()).find((g) => g.version === v2.version)).toMatchObject({
+      actif: true,
+      cree_par: 'admin@demo',
+      commentaire: 'heures corrigées',
+    });
+
+    await provider.setGrilleActive(v2.version, false);
+    expect((await provider.getJour('2026-07-15')).grille_version).toBe('2026-ete-grand-service');
+    expect((await provider.getGrilles()).map((g) => g.version)).not.toContain(v2.version);
+    expect((await provider.listGrilles()).find((g) => g.version === v2.version)?.actif).toBe(false);
+
+    await provider.setGrilleActive(v2.version, true);
+    expect((await provider.getJour('2026-07-15')).grille_version).toBe('2026-ete-grand-service-v2');
+  });
+
+  it('une version existante n’est jamais écrasée', async () => {
+    const provider = new MockProvider();
+    await expect(provider.saveGrille(GRAND)).rejects.toThrow(/existe déjà/);
+    expect(await provider.listGrilles()).toHaveLength(2);
+  });
+
+  it('désactiver une grille sans remplaçante : hors saison, jamais de repli sur une autre grille', async () => {
+    const provider = new MockProvider();
+    await provider.setGrilleActive('2026-ete-petit-service', false);
+    expect((await provider.getJour('2026-06-20')).hors_saison).toBe(true);
+    expect((await provider.getJour('2026-07-15')).hors_saison).toBeUndefined();
+    await provider.setGrilleActive('2026-ete-petit-service', true);
+    expect((await provider.getJour('2026-06-20')).hors_saison).toBeUndefined();
+  });
+
+  it('une grille enregistrée inactive n’a aucun effet tant qu’elle n’est pas activée', async () => {
+    const provider = new MockProvider();
+    await provider.saveGrille({ ...PETIT, version: 'petit-v2' }, { actif: false });
+    expect((await provider.getJour('2026-06-20')).grille_version).toBe('2026-ete-petit-service');
+    await provider.setGrilleActive('petit-v2', true);
+    expect((await provider.getJour('2026-06-20')).grille_version).toBe('petit-v2');
+  });
+
+  it('listJoursGeneres ne renvoie que les journées existantes de la plage, triées', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-01' });
+    await provider.genererJour('2026-07-20');
+    await provider.genererJour('2026-07-10');
+    await provider.genererJour('2026-08-05');
+    expect(await provider.listJoursGeneres('2026-07-01', '2026-07-31')).toEqual([
+      '2026-07-10',
+      '2026-07-20',
+    ]);
+    expect(await provider.listJoursGeneres('2026-09-01', '2026-09-30')).toEqual([]);
+  });
+
+  it('import et activation laissent une trace au journal d’exploitation, jamais le contenu', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await provider.saveGrille({ ...PETIT, version: 'petit-v3' });
+    await provider.setGrilleActive('petit-v3', false);
+    const journal = await provider.listJournal({ table_cible: 'grilles' });
+    expect(journal.map((e) => e.champ).sort()).toEqual(['actif', 'actif', 'libelle', 'periodes']);
+    expect(
+      journal.some(
+        (e) =>
+          e.cle === 'petit-v3' && e.champ === 'actif' && e.avant === 'true' && e.apres === 'false',
+      ),
+    ).toBe(true);
+    expect(journal.every((e) => e.qui === 'admin@demo')).toBe(true);
   });
 });

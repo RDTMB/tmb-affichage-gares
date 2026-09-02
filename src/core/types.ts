@@ -69,6 +69,29 @@ export interface Grille {
   regles?: Record<string, string>;
   montees: TrainGrille[];
   descentes: TrainGrille[];
+  // --- Métadonnées d'ENREGISTREMENT (table `grilles`), posées par le
+  // fournisseur de données ; absentes d'un fichier JSON de référence. ---
+  /**
+   * false = grille désactivée : ignorée par serviceActif(), les écrans
+   * retombent sur la grille précédente couvrant la date (retour arrière).
+   * Absent ou true = active.
+   */
+  actif?: boolean;
+  /**
+   * Horodatage ISO de l'enregistrement. Entre deux grilles ACTIVES couvrant
+   * la même date, la plus récemment créée l'emporte (serviceActif()).
+   */
+  cree_le?: string;
+  /** Email de l'agent qui a importé la grille (ou nom du script SQL). */
+  cree_par?: string | null;
+  commentaire?: string | null;
+}
+
+/** Options d'enregistrement d'une grille importée (DataProvider.saveGrille). */
+export interface OptionsEnregistrementGrille {
+  /** Défaut true : la grille s'applique dès sa première date de validité. */
+  actif?: boolean;
+  commentaire?: string | null;
 }
 
 // ---------------------------------------------------------------------------

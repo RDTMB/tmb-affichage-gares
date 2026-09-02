@@ -16,6 +16,7 @@ import {
   finDeService,
   formatHeure,
   generationJour,
+  grillePourJour,
   heureVersSecondes,
   libelleTrain,
   libelleTrainCourt,
@@ -90,6 +91,61 @@ describe('serviceActif', () => {
   it('renvoie null hors saison', () => {
     expect(serviceActif(GRILLES, '2026-05-01')).toBeNull();
     expect(serviceActif(GRILLES, '2026-10-05')).toBeNull();
+  });
+
+  // Grilles en BASE (chantier import des horaires) : règle documentée dans
+  // docs/01 §2.1 et dans le commentaire de serviceActif().
+  it('ignore une grille désactivée, sans jamais replier sur une autre hors saison', () => {
+    const petitInactif: Grille = { ...PETIT, actif: false };
+    expect(serviceActif([GRAND, petitInactif], '2026-06-20')).toBeNull();
+    expect(serviceActif([GRAND, petitInactif], '2026-07-15')?.version).toBe(
+      '2026-ete-grand-service',
+    );
+  });
+
+  it('deux grilles actives sur la même date : la plus récemment créée l’emporte, quel que soit l’ordre', () => {
+    const v1: Grille = { ...GRAND, version: 'grand-v1', cree_le: '2026-06-05T10:00:00Z' };
+    const v2: Grille = { ...GRAND, version: 'grand-v2', cree_le: '2026-09-01T10:00:00Z' };
+    expect(serviceActif([v1, v2], '2026-07-15')?.version).toBe('grand-v2');
+    expect(serviceActif([v2, v1], '2026-07-15')?.version).toBe('grand-v2');
+  });
+
+  it('désactiver la grille la plus récente redonne la main à la précédente (retour arrière)', () => {
+    const v1: Grille = { ...GRAND, version: 'grand-v1', cree_le: '2026-06-05T10:00:00Z' };
+    const v2: Grille = { ...GRAND, version: 'grand-v2', cree_le: '2026-09-01T10:00:00Z' };
+    expect(serviceActif([v1, { ...v2, actif: false }], '2026-07-15')?.version).toBe('grand-v1');
+    // La grille réactivée reprend aussitôt la main.
+    expect(serviceActif([v1, { ...v2, actif: true }], '2026-07-15')?.version).toBe('grand-v2');
+  });
+
+  it('une grille sans date de création (fichier JSON) compte comme la plus ancienne ; à égalité, la première de la liste', () => {
+    const datee: Grille = { ...GRAND, version: 'grand-datee', cree_le: '2026-06-05T10:00:00Z' };
+    expect(serviceActif([GRAND, datee], '2026-07-15')?.version).toBe('grand-datee');
+    expect(serviceActif([GRAND, { ...GRAND, version: 'grand-copie' }], '2026-07-15')?.version).toBe(
+      '2026-ete-grand-service',
+    );
+  });
+});
+
+describe('grillePourJour', () => {
+  it('prend la grille qui a généré la journée quand elle est disponible', () => {
+    const jour = generationJour(PETIT, '2026-06-20');
+    expect(grillePourJour(GRILLES, jour)?.version).toBe('2026-ete-petit-service');
+  });
+
+  it('replie sur la grille en vigueur à la date si la version de la journée n’est plus disponible', () => {
+    const jour: Jour = { ...jourGrand(), grille_version: '2026-ete-grand-service-v0' };
+    expect(grillePourJour(GRILLES, jour)?.version).toBe('2026-ete-grand-service');
+  });
+
+  it('null hors saison plutôt que la première grille de la liste', () => {
+    const jour: Jour = {
+      date: '2026-12-01',
+      grille_version: 'inconnue',
+      terminus_bellevue: false,
+      circulations: [],
+    };
+    expect(grillePourJour(GRILLES, jour)).toBeNull();
   });
 });
 

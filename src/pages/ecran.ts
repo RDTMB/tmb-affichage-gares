@@ -23,6 +23,7 @@ import {
   etatTronconFerme,
   finDeService,
   formatHeure,
+  grillePourJour,
   libelleTrainCourt,
   passagesPourGare,
   prochaineArrivee,
@@ -585,7 +586,7 @@ async function demarre(): Promise<void> {
     params = d.params;
     messages = d.messages;
     medias = d.medias;
-    grille = d.grilles.find((g) => g.version === d.jour.grille_version) ?? d.grilles[0] ?? null;
+    grille = grillePourJour(d.grilles, d.jour);
     grilleDemain = serviceActif(d.grilles, dateSuivante(d.jour.date));
     if (!grille) return;
     document.title = `TMB — ${nomGare(gare)}`;
