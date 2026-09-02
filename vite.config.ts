@@ -13,6 +13,11 @@ function logoDataUri(nom: string): string {
 // gare, grille du jour, supervision). Les écrans tournent sur Raspberry Pi en
 // kiosque : tout est auto-hébergé, aucune ressource externe.
 export default defineConfig({
+  // fflate n'est importé que dynamiquement (lecteur Excel de la supervision) :
+  // sans cette pré-optimisation, le premier clic sur « Charger un fichier
+  // Excel… » en `npm run dev` déclenchait un rechargement complet de la page
+  // (découverte tardive de la dépendance). Sans effet sur le build.
+  optimizeDeps: { include: ['fflate'] },
   define: {
     __LOGO_ROND__: logoDataUri('logo-rond.svg'),
     __LOGO_ROND_BLANC__: logoDataUri('logo-rond-blanc.svg'),
