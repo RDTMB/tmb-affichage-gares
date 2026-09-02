@@ -95,6 +95,18 @@ export interface OptionsEnregistrementGrille {
   commentaire?: string | null;
 }
 
+/**
+ * Métadonnées d'une grille modifiables EN PLACE (DataProvider.updateGrilleMetadonnees) :
+ * nom, dates de validité, commentaire. Le CONTENU (heures, trains,
+ * indicateurs) ne se modifie jamais en place : toute correction crée une
+ * nouvelle version (« -v2 ») qui remplace la précédente, réactivable.
+ */
+export interface MetadonneesGrille {
+  libelle: string;
+  periodes: Periode[];
+  commentaire: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Jour d'exploitation (circulations générées + drapeaux du jour)
 // ---------------------------------------------------------------------------

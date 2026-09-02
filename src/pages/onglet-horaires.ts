@@ -11,7 +11,11 @@
 // jamais « version », « payload » ni jargon technique. L'identifiant interne
 // n'apparaît qu'en petit, sous le nom « référence », pour le journal.
 import { decritEcarts, libellePeriodes } from '../core/ecarts-grille';
-import { datesDesPeriodes } from '../core/grilles-periodes';
+import {
+  datesDesPeriodes,
+  effetChangementPeriodes,
+  type EffetPeriodes,
+} from '../core/grilles-periodes';
 import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
 import { nomGare, parseClasseur, type Probleme } from '../core/import-grille';
 import { ORDRE_GARES } from '../core/types';
@@ -21,13 +25,20 @@ import { echapper } from './affichage-commun';
 import {
   dateCourte,
   dateLongue,
+  datesGagnees,
   ecartsFeuille,
+  lignesEffetPeriodes,
+  nouvelleEdition,
   nouvelleFeuilleImport,
+  periodesValides,
   planValidation,
   raisonsBlocage,
+  raisonsBlocageEdition,
+  resumeEdition,
   resumePlan,
   texteActivation,
   texteDesactivation,
+  type EditionGrille,
   type FeuilleImport,
 } from './horaires-onglet';
 import { avertissementsGrillePrecedente } from '../core/import-grille';
@@ -71,6 +82,8 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   const { provider, $, toast, erreurVersToast } = deps;
   let grilles: Grille[] = [];
   let importEnCours: ImportEnCours | null = null;
+  /** Fiche « Modifier » ouverte : la grille telle qu'enregistrée, et la saisie. */
+  let editionEnCours: { grille: Grille; edition: EditionGrille } | null = null;
 
   const peutEcrire = (): boolean => deps.role() === 'admin' || deps.role() === 'supervision';
   const actives = (): Grille[] => grilles.filter((g) => g.actif !== false);
@@ -101,6 +114,9 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     const v = echapper(g.version);
     const actions = [`<button class="leger" data-action="voir" data-version="${v}">Voir</button>`];
     if (peutEcrire()) {
+      actions.push(
+        `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
+      );
       actions.push(
         g.actif === false
           ? `<button class="leger" data-action="activer" data-version="${v}">Réactiver</button>`
@@ -138,6 +154,159 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       carte.innerHTML = '';
     });
     carte.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // --------------------------------------------------------------- modifier
+
+  async function ouvreEdition(version: string): Promise<void> {
+    const g = grilles.find((x) => x.version === version);
+    if (!g || !peutEcrire()) return;
+    editionEnCours = { grille: g, edition: nouvelleEdition(g) };
+    await chargeJoursEdition();
+    rendreEdition();
+    $('carte-editer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Effet des dates saisies (seules les périodes complètes comptent). */
+  function effetEdition(): EffetPeriodes | null {
+    if (!editionEnCours) return null;
+    return effetChangementPeriodes(
+      grilles,
+      editionEnCours.grille.version,
+      periodesValides(editionEnCours.edition.periodes),
+    );
+  }
+
+  /** Journées déjà préparées dans les dates GAGNÉES : les seules que la modification peut concerner. */
+  async function chargeJoursEdition(): Promise<void> {
+    if (!editionEnCours) return;
+    const e = editionEnCours.edition;
+    const effet = effetEdition();
+    const gagnees = effet ? datesGagnees(effet) : [];
+    if (gagnees.length === 0) {
+      e.joursExistants = [];
+      e.joursAReinitialiser.clear();
+      return;
+    }
+    const dans = new Set(gagnees);
+    try {
+      e.joursExistants = (
+        await provider.listJoursGeneres(gagnees[0] ?? '', gagnees[gagnees.length - 1] ?? '')
+      ).filter((d) => dans.has(d));
+    } catch (erreur) {
+      erreurVersToast(erreur);
+      e.joursExistants = [];
+    }
+    for (const d of [...e.joursAReinitialiser]) {
+      if (!e.joursExistants.includes(d)) e.joursAReinitialiser.delete(d);
+    }
+  }
+
+  function rendreEdition(): void {
+    const carte = $('carte-editer');
+    if (!editionEnCours) {
+      carte.style.display = 'none';
+      carte.innerHTML = '';
+      return;
+    }
+    const { grille: g, edition: e } = editionEnCours;
+    carte.style.display = '';
+    const periodes = e.periodes
+      .map(
+        (p, k) => `<span class="periode">
+          <input type="date" data-role="du" data-periode="${k}" value="${echapper(p.du)}"> →
+          <input type="date" data-role="au" data-periode="${k}" value="${echapper(p.au)}">
+          <button class="leger" data-role="suppr-periode" data-periode="${k}" title="Retirer cette période">✕</button>
+        </span>`,
+      )
+      .join('');
+    const effet = effetEdition();
+    const lignes = effet ? lignesEffetPeriodes(g, effet) : [];
+    const jours =
+      e.joursExistants.length === 0
+        ? ''
+        : `<div class="jours-existants"><b>${e.joursExistants.length} journée(s) déjà préparée(s)</b> sur les dates ajoutées, peut-être retouchée(s) à la main. Cochez celles à <b>réinitialiser depuis cette grille</b> ; les autres sont conservées telles quelles.
+          <div class="jours">${e.joursExistants
+            .map(
+              (d) =>
+                `<label><input type="checkbox" data-role="jour" data-date="${d}" ${
+                  e.joursAReinitialiser.has(d) ? 'checked' : ''
+                }> ${dateLongue(d)}</label>`,
+            )
+            .join('')}</div></div>`;
+    carte.innerHTML = `<h2>Modifier la grille « ${echapper(g.libelle)} »
+        <span class="sous">nom, dates de validité et commentaire — les heures et les trains ne se modifient pas ici</span>
+        <div class="actions"><button class="leger" id="edition-fermer">Fermer</button></div>
+      </h2>
+      <div class="corps-edition">
+        <div class="champs-import">
+          <label>Nom de la grille
+            <input type="text" data-role="libelle" value="${echapper(e.libelle)}" maxlength="80"></label>
+          <div class="periodes-import"><span class="intitule">Dates de validité (du → au, plusieurs périodes possibles)</span>
+            ${periodes}
+            <span><button class="leger" data-role="ajout-periode">+ Ajouter une période</button></span>
+          </div>
+          <label>Commentaire
+            <input type="text" data-role="commentaire" value="${echapper(e.commentaire)}" maxlength="200" placeholder="pourquoi cette modification (facultatif)"></label>
+        </div>
+        <div class="effet-periodes"><b>Effet des dates saisies :</b>
+          <ul>${lignes.map((l) => `<li class="${l.niveau}">${echapper(l.texte)}</li>`).join('')}</ul>
+        </div>
+        ${jours}
+        <div class="note">Une grille décrit le service théorique : la modifier ne change aucune journée déjà préparée, sauf celles cochées ci-dessus. <b>Pour modifier les trains d’aujourd’hui, utilisez l’onglet Circulations.</b></div>
+        <div class="validation-import">
+          <ul id="edition-raisons"></ul>
+          <button class="primaire" id="edition-enregistrer" disabled>Enregistrer les modifications</button>
+        </div>
+      </div>`;
+    rendreValidationEdition();
+  }
+
+  function rendreValidationEdition(): void {
+    if (!editionEnCours) return;
+    const raisons = raisonsBlocageEdition(editionEnCours.grille, editionEnCours.edition);
+    $('edition-raisons').innerHTML =
+      raisons.length > 0
+        ? raisons.map((r) => `<li>${echapper(r)}</li>`).join('')
+        : '<li class="ok">✓ Prêt à enregistrer.</li>';
+    ($('edition-enregistrer') as HTMLButtonElement).disabled = raisons.length > 0;
+  }
+
+  async function enregistreEdition(): Promise<void> {
+    if (!editionEnCours) return;
+    const { grille: g, edition: e } = editionEnCours;
+    const effet = effetEdition();
+    const resume = resumeEdition(g, e);
+    const question = [
+      'Enregistrer les modifications ?',
+      '',
+      `• ${resume}`,
+      '',
+      ...(effet ? lignesEffetPeriodes(g, effet).map((l) => `• ${l.texte}`) : []),
+      '',
+      'Les écrans suivent en quelques secondes.',
+    ].join('\n');
+    if (!window.confirm(question)) return;
+    ($('edition-enregistrer') as HTMLButtonElement).disabled = true;
+    try {
+      await provider.updateGrilleMetadonnees(g.version, {
+        libelle: e.libelle.trim(),
+        periodes: periodesValides(e.periodes),
+        commentaire: e.commentaire.trim() || null,
+      });
+      for (const date of [...e.joursAReinitialiser].sort()) await provider.reinitialiseJour(date);
+      await provider.logPublication(resume).catch(erreurVersToast);
+      editionEnCours = null;
+      rendreEdition();
+      const recap = $('horaires-recap');
+      recap.style.display = '';
+      recap.innerHTML = `✓ ${echapper(resume)}`;
+      toast('✓ Grille modifiée · consigné dans l’historique');
+      await deps.apresChangement();
+    } catch (erreur) {
+      erreurVersToast(erreur);
+      rendreValidationEdition();
+    }
   }
 
   // ------------------------------------------------------ tableau d'aperçu
@@ -513,8 +682,57 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     if (!bouton) return;
     const version = bouton.dataset.version ?? '';
     if (bouton.dataset.action === 'voir') rendreVoir(version);
+    if (bouton.dataset.action === 'modifier') void ouvreEdition(version).catch(erreurVersToast);
     if (bouton.dataset.action === 'activer') void bascule(version, true);
     if (bouton.dataset.action === 'desactiver') void bascule(version, false);
+  });
+
+  const carteEditer = $('carte-editer');
+  carteEditer.addEventListener('click', (e) => {
+    const cible = (e.target as HTMLElement).closest<HTMLElement>('button');
+    if (!cible || !editionEnCours) return;
+    if (cible.id === 'edition-fermer') {
+      editionEnCours = null;
+      rendreEdition();
+      return;
+    }
+    if (cible.id === 'edition-enregistrer') {
+      void enregistreEdition();
+      return;
+    }
+    const ed = editionEnCours.edition;
+    if (cible.dataset.role === 'ajout-periode') {
+      ed.periodes.push({ du: '', au: '' });
+      rendreEdition();
+    }
+    if (cible.dataset.role === 'suppr-periode') {
+      ed.periodes.splice(Number(cible.dataset.periode), 1);
+      void chargeJoursEdition().then(rendreEdition);
+    }
+  });
+  carteEditer.addEventListener('input', (e) => {
+    const champ = e.target as HTMLInputElement;
+    if (!editionEnCours) return;
+    if (champ.dataset.role === 'libelle') editionEnCours.edition.libelle = champ.value;
+    if (champ.dataset.role === 'commentaire') editionEnCours.edition.commentaire = champ.value;
+    if (champ.dataset.role === 'libelle' || champ.dataset.role === 'commentaire') {
+      rendreValidationEdition();
+    }
+  });
+  carteEditer.addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    if (!editionEnCours) return;
+    const ed = editionEnCours.edition;
+    const role = champ.dataset.role;
+    if (role === 'jour') {
+      if (champ.checked) ed.joursAReinitialiser.add(champ.dataset.date ?? '');
+      else ed.joursAReinitialiser.delete(champ.dataset.date ?? '');
+    } else if (role === 'du' || role === 'au') {
+      const periode = ed.periodes[Number(champ.dataset.periode)];
+      if (periode) periode[role] = champ.value;
+      // Les dates changent l'effet annoncé et les journées concernées.
+      void chargeJoursEdition().then(rendreEdition);
+    }
   });
 
   $('horaires-recap').addEventListener('click', () => {
@@ -594,6 +812,16 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     async rendre() {
       grilles = await provider.listGrilles();
       rendreListe();
+      // La fiche ouverte suit la grille telle qu'enregistrée (sans redessiner
+      // la saisie en cours) ; si la grille a disparu, la fiche se ferme.
+      if (editionEnCours) {
+        const g = grilles.find((x) => x.version === editionEnCours?.grille.version);
+        if (g) editionEnCours.grille = g;
+        else {
+          editionEnCours = null;
+          rendreEdition();
+        }
+      }
     },
   };
 }

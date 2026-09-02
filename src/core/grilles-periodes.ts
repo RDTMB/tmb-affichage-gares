@@ -76,6 +76,133 @@ export function reprisesApresDesactivation(grilles: Grille[], version: string): 
   return reprises;
 }
 
+// ---------------------------------------------------------------------------
+// Modification des dates de validité d'une grille enregistrée
+// ---------------------------------------------------------------------------
+
+/** Dates gagnées par la modification, regroupées en plages consécutives. */
+export interface PlageGagnee {
+  du: string;
+  au: string;
+  /** Grille qui sert ces dates aujourd'hui (null = aucun service). */
+  avant: Grille | null;
+  /** Grille qui s'appliquera après la modification (null = aucun service). */
+  gagnante: Grille | null;
+  /** true = c'est bien la grille modifiée qui s'appliquera sur ces dates. */
+  sApplique: boolean;
+}
+
+/** Dates perdues par la modification, regroupées en plages consécutives. */
+export interface PlagePerdue {
+  du: string;
+  au: string;
+  /** Grille qui reprend la main (null = plus aucun service). */
+  reprise: Grille | null;
+}
+
+/** Autre grille active partageant des dates avec les nouvelles périodes. */
+export interface Chevauchement {
+  du: string;
+  au: string;
+  autre: Grille;
+  /** Celle des deux qui s'applique sur ces dates (règle serviceActif). */
+  prioritaire: Grille;
+}
+
+export interface EffetPeriodes {
+  gagnees: PlageGagnee[];
+  perdues: PlagePerdue[];
+  /** Nombre de dates présentes avant comme après. */
+  conservees: number;
+  chevauchements: Chevauchement[];
+}
+
+/** Regroupe des dates triées en plages consécutives de même clé. */
+function regroupe<T extends { du: string; au: string }>(
+  dates: string[],
+  cle: (date: string) => string,
+  fabrique: (date: string) => T,
+): T[] {
+  const plages: T[] = [];
+  let cleCourante = '';
+  for (const date of dates) {
+    const derniere = plages[plages.length - 1];
+    const k = cle(date);
+    if (derniere && k === cleCourante && dateSuivante(derniere.au) === date) {
+      derniere.au = date;
+    } else {
+      plages.push(fabrique(date));
+      cleCourante = k;
+    }
+  }
+  return plages;
+}
+
+/**
+ * Ce que produirait le remplacement des dates de validité de `version` par
+ * `nouvelles` : dates gagnées (et qui elles remplacent, ou qui reste
+ * prioritaire), dates perdues (et qui reprend la main), chevauchements avec
+ * les autres grilles actives. Règle de priorité inchangée : serviceActif().
+ * Une grille désactivée ne gagne rien tant qu'elle n'est pas réactivée.
+ */
+export function effetChangementPeriodes(
+  grilles: Grille[],
+  version: string,
+  nouvelles: Periode[],
+): EffetPeriodes {
+  const cible = grilles.find((g) => g.version === version);
+  if (!cible) return { gagnees: [], perdues: [], conservees: 0, chevauchements: [] };
+  const simulees = grilles.map((g) => (g.version === version ? { ...g, periodes: nouvelles } : g));
+  const anciennes = new Set(datesDesPeriodes(cible.periodes));
+  const nouvellesDates = datesDesPeriodes(nouvelles);
+  const nouvellesSet = new Set(nouvellesDates);
+
+  const gagnees = regroupe(
+    nouvellesDates.filter((d) => !anciennes.has(d)),
+    (d) => {
+      const g = serviceActif(simulees, d);
+      return `${serviceActif(grilles, d)?.version ?? ''}|${g?.version ?? ''}`;
+    },
+    (d): PlageGagnee => {
+      const gagnante = serviceActif(simulees, d);
+      return {
+        du: d,
+        au: d,
+        avant: serviceActif(grilles, d),
+        gagnante,
+        sApplique: gagnante?.version === version,
+      };
+    },
+  );
+  const perdues = regroupe(
+    [...anciennes].filter((d) => !nouvellesSet.has(d)).sort(),
+    (d) => serviceActif(simulees, d)?.version ?? '',
+    (d): PlagePerdue => ({ du: d, au: d, reprise: serviceActif(simulees, d) }),
+  );
+  const conservees = nouvellesDates.filter((d) => anciennes.has(d)).length;
+
+  const chevauchements: Chevauchement[] = [];
+  for (const autre of grilles) {
+    if (autre.version === version || autre.actif === false) continue;
+    const communes = nouvellesDates.filter((d) =>
+      autre.periodes.some((p) => p.du <= d && d <= p.au),
+    );
+    chevauchements.push(
+      ...regroupe(
+        communes,
+        (d) => serviceActif(simulees, d)?.version ?? '',
+        (d): Chevauchement => ({
+          du: d,
+          au: d,
+          autre,
+          prioritaire: serviceActif(simulees, d) ?? autre,
+        }),
+      ),
+    );
+  }
+  return { gagnees, perdues, conservees, chevauchements };
+}
+
 /**
  * Grilles INACTIVES qui couvrent au moins une des dates données : ce sont
  * celles qu'on peut réactiver pour revenir en arrière.

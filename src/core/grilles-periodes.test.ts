@@ -6,6 +6,7 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 import {
   datesDesPeriodes,
+  effetChangementPeriodes,
   grillesEntierementCouvertes,
   reprisesApresDesactivation,
 } from './grilles-periodes';
@@ -101,5 +102,65 @@ describe('reprisesApresDesactivation', () => {
 
   it('une version inconnue ne renvoie rien', () => {
     expect(reprisesApresDesactivation([GRAND], 'inconnue')).toEqual([]);
+  });
+});
+
+describe('effetChangementPeriodes (modifier les dates d’une grille)', () => {
+  const petitRecent: Grille = { ...PETIT, cree_le: '2026-06-06T00:00:00Z' };
+  const prolongees = [PETIT.periodes[0]!, { du: '2026-08-24', au: '2026-09-27' }];
+
+  it('prolonger le petit service d’une semaine sur le grand : dates gagnées, grille remplacée, jours conservés', () => {
+    const effet = effetChangementPeriodes([GRAND, petitRecent], PETIT.version, prolongees);
+    expect(effet.gagnees).toHaveLength(1);
+    expect(effet.gagnees[0]).toMatchObject({ du: '2026-08-24', au: '2026-08-30', sApplique: true });
+    expect(effet.gagnees[0]?.avant?.version).toBe(GRAND.version);
+    expect(effet.gagnees[0]?.gagnante?.version).toBe(PETIT.version);
+    expect(effet.perdues).toEqual([]);
+    expect(effet.conservees).toBe(49); // 21 jours en juin-juillet + 28 en septembre
+    expect(effet.chevauchements).toHaveLength(1);
+    expect(effet.chevauchements[0]).toMatchObject({ du: '2026-08-24', au: '2026-08-30' });
+    expect(effet.chevauchements[0]?.autre.version).toBe(GRAND.version);
+    expect(effet.chevauchements[0]?.prioritaire.version).toBe(PETIT.version);
+  });
+
+  it('si l’autre grille est aussi récente ou plus, la grille modifiée ne s’applique pas sur les dates gagnées', () => {
+    // Même date de chargement : la première de la liste (GRAND) garde la main.
+    const effet = effetChangementPeriodes([GRAND, PETIT], PETIT.version, prolongees);
+    expect(effet.gagnees[0]).toMatchObject({ sApplique: false });
+    expect(effet.gagnees[0]?.gagnante?.version).toBe(GRAND.version);
+  });
+
+  it('raccourcir : dates perdues avec reprise ou hors saison, dates gagnées non prioritaires', () => {
+    const effet = effetChangementPeriodes([GRAND, PETIT], PETIT.version, [
+      { du: '2026-06-20', au: '2026-07-05' },
+    ]);
+    expect(effet.perdues.map((p) => [p.du, p.au, p.reprise?.version ?? null])).toEqual([
+      ['2026-06-13', '2026-06-19', null],
+      ['2026-08-31', '2026-09-27', null],
+    ]);
+    expect(effet.gagnees.map((p) => [p.du, p.au, p.sApplique])).toEqual([
+      ['2026-07-04', '2026-07-05', false],
+    ]);
+    expect(effet.conservees).toBe(14); // 20 juin → 3 juillet
+  });
+
+  it('grille désactivée : elle ne gagne rien tant qu’elle n’est pas réactivée', () => {
+    const inactive: Grille = { ...petitRecent, actif: false };
+    const effet = effetChangementPeriodes([GRAND, inactive], PETIT.version, prolongees);
+    expect(effet.gagnees[0]).toMatchObject({ sApplique: false });
+    expect(effet.gagnees[0]?.gagnante?.version).toBe(GRAND.version);
+  });
+
+  it('dates inchangées : rien de gagné ni de perdu ; version inconnue : effet vide', () => {
+    const rien = effetChangementPeriodes([GRAND, PETIT], PETIT.version, PETIT.periodes);
+    expect(rien.gagnees).toEqual([]);
+    expect(rien.perdues).toEqual([]);
+    expect(rien.conservees).toBe(49);
+    expect(effetChangementPeriodes([GRAND], 'inconnue', PETIT.periodes)).toEqual({
+      gagnees: [],
+      perdues: [],
+      conservees: 0,
+      chevauchements: [],
+    });
   });
 });

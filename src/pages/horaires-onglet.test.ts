@@ -6,16 +6,23 @@ import { describe, expect, it } from 'vitest';
 import cellulesJson from '../core/__fixtures__/2026-ete-exploit-v1.cellules.json';
 import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
+import { effetChangementPeriodes } from '../core/grilles-periodes';
 import { parseClasseur, type FeuilleCellules } from '../core/import-grille';
 import type { Grille } from '../core/types';
 import {
   dateCourte,
   dateLongue,
+  datesGagnees,
   ecartsFeuille,
   grillePrecedentePour,
+  lignesEffetPeriodes,
+  nouvelleEdition,
   nouvelleFeuilleImport,
+  periodesValides,
   planValidation,
   raisonsBlocage,
+  raisonsBlocageEdition,
+  resumeEdition,
   resumePlan,
   texteActivation,
   texteDesactivation,
@@ -103,8 +110,14 @@ describe('raisonsBlocage', () => {
     ]);
     fs[0]!.periodes = [{ du: '2026-07-10', au: '2026-07-01' }];
     expect(raisonsBlocage(fs)[0]).toBe(
-      '« Petit service » : une période est incomplète ou se termine avant de commencer.',
+      '« Petit service » : la fin (01/07/2026) est avant le début (10/07/2026).',
     );
+    // Deux périodes de la même feuille ne peuvent pas se chevaucher non plus
+    fs[0]!.periodes = [
+      { du: '2026-06-13', au: '2026-07-03' },
+      { du: '2026-06-20', au: '2026-06-25' },
+    ];
+    expect(raisonsBlocage(fs)[0]).toMatch(/« Petit service » : les périodes .* se chevauchent/);
   });
 
   it('erreurs du fichier et avertissements non acquittés bloquent ; l’acquittement libère', () => {
@@ -230,5 +243,99 @@ describe('confirmations', () => {
   it('dates lisibles', () => {
     expect(dateCourte('2026-07-04')).toBe('04/07/2026');
     expect(dateLongue('2026-07-04')).toMatch(/sam\. 4 juil\. 2026/);
+  });
+});
+
+describe('modification d’une grille : nom, dates de validité, commentaire', () => {
+  const petitRecent: Grille = { ...PETIT, cree_le: '2026-06-06T00:00:00Z' };
+  const prolongees = [PETIT.periodes[0]!, { du: '2026-08-24', au: '2026-09-27' }];
+
+  it('nouvelleEdition copie la fiche ; rien à enregistrer tant que rien ne change', () => {
+    const e = nouvelleEdition(PETIT);
+    expect(e.periodes).toEqual(PETIT.periodes);
+    expect(e.periodes).not.toBe(PETIT.periodes);
+    expect(e.commentaire).toBe('');
+    expect(raisonsBlocageEdition(PETIT, e)).toEqual(['Aucune modification à enregistrer.']);
+    e.commentaire = 'saison prolongée';
+    expect(raisonsBlocageEdition(PETIT, e)).toEqual([]);
+  });
+
+  it('nom vide, période à l’envers, périodes qui se chevauchent : messages précis', () => {
+    const e = nouvelleEdition(PETIT);
+    e.libelle = '  ';
+    e.periodes = [
+      { du: '2026-06-13', au: '2026-06-01' },
+      { du: '2026-08-31', au: '2026-09-27' },
+      { du: '2026-09-20', au: '2026-10-04' },
+    ];
+    expect(raisonsBlocageEdition(PETIT, e)).toEqual([
+      'Donnez un nom à la grille.',
+      'période 1 : la fin (01/06/2026) est avant le début (13/06/2026).',
+      'les périodes 31/08/2026 → 27/09/2026 et 20/09/2026 → 04/10/2026 se chevauchent : fusionnez-les ou corrigez les dates.',
+    ]);
+  });
+
+  it('prolonger le petit service d’une semaine : l’effet dit qui est remplacé et ce qui est conservé', () => {
+    const e = nouvelleEdition(petitRecent);
+    e.periodes = prolongees;
+    const effet = effetChangementPeriodes(
+      [GRAND, petitRecent],
+      PETIT.version,
+      periodesValides(e.periodes),
+    );
+    expect(lignesEffetPeriodes(petitRecent, effet)).toEqual([
+      {
+        niveau: 'info',
+        texte:
+          'Dates ajoutées du 24/08/2026 au 30/08/2026 : cette grille remplacera « Grand service — été 2026 » (plus ancienne).',
+      },
+      { niveau: 'info', texte: '49 jour(s) conservé(s) : rien ne change pour eux.' },
+    ]);
+    expect(datesGagnees(effet)).toHaveLength(7);
+    expect(datesGagnees(effet)[0]).toBe('2026-08-24');
+    expect(resumeEdition(petitRecent, e)).toBe(
+      'Grille « Petit service — été 2026 » modifiée (référence 2026-ete-petit-service) — dates 13/06/2026 → 03/07/2026 et 31/08/2026 → 27/09/2026 → 13/06/2026 → 03/07/2026 et 24/08/2026 → 27/09/2026',
+    );
+  });
+
+  it('quand l’autre grille reste prioritaire, ou que la grille est désactivée, l’effet prévient', () => {
+    const e = nouvelleEdition(PETIT);
+    e.periodes = prolongees;
+    const effet = effetChangementPeriodes([GRAND, PETIT], PETIT.version, e.periodes);
+    expect(lignesEffetPeriodes(PETIT, effet)[0]).toEqual({
+      niveau: 'attention',
+      texte:
+        'Dates ajoutées du 24/08/2026 au 30/08/2026 : ATTENTION, la grille « Grand service — été 2026 », déjà en service et chargée en même temps ou plus récemment, reste prioritaire : cette grille n’y sera pas affichée.',
+    });
+    const inactive: Grille = { ...PETIT, actif: false };
+    const effetInactive = effetChangementPeriodes([GRAND, inactive], PETIT.version, e.periodes);
+    expect(lignesEffetPeriodes(inactive, effetInactive)[0]?.texte).toMatch(
+      /sans effet tant que la grille est désactivée/,
+    );
+  });
+
+  it('retirer des dates : hors saison ou reprise ; dates inchangées', () => {
+    const e = nouvelleEdition(PETIT);
+    e.periodes = [{ du: '2026-06-20', au: '2026-07-03' }];
+    const effet = effetChangementPeriodes([GRAND, PETIT], PETIT.version, e.periodes);
+    expect(lignesEffetPeriodes(PETIT, effet).map((l) => l.texte)).toEqual([
+      'Dates retirées du 13/06/2026 au 19/06/2026 : plus aucun service ne sera affiché (hors saison).',
+      'Dates retirées du 31/08/2026 au 27/09/2026 : plus aucun service ne sera affiché (hors saison).',
+      '14 jour(s) conservé(s) : rien ne change pour eux.',
+    ]);
+    const inchange = effetChangementPeriodes([GRAND, PETIT], PETIT.version, PETIT.periodes);
+    expect(lignesEffetPeriodes(PETIT, inchange)).toEqual([
+      { niveau: 'info', texte: 'Dates de validité inchangées.' },
+    ]);
+  });
+
+  it('resumeEdition : nom, commentaire et journées réinitialisées', () => {
+    const e = nouvelleEdition(PETIT);
+    e.libelle = 'Petit service — été 2026 (prolongé)';
+    e.commentaire = 'demande du chef d’exploitation';
+    e.joursAReinitialiser = new Set(['2026-08-25', '2026-08-24']);
+    expect(resumeEdition(PETIT, e)).toBe(
+      'Grille « Petit service — été 2026 » modifiée (référence 2026-ete-petit-service) — nom « Petit service — été 2026 » → « Petit service — été 2026 (prolongé) » — commentaire : demande du chef d’exploitation — journées réinitialisées : 24/08/2026, 25/08/2026',
+    );
   });
 });

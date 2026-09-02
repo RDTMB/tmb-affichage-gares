@@ -27,6 +27,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
   Params,
@@ -248,6 +249,8 @@ interface EtatMock {
   grillesImportees?: Grille[];
   /** Versions désactivées (grilles de référence ou importées) : retour arrière. */
   grillesDesactivees?: string[];
+  /** Métadonnées modifiées en place (nom, dates, commentaire), par version. */
+  grillesMetadonnees?: Record<string, Partial<MetadonneesGrille>>;
 }
 
 function litEtat(): EtatMock {
@@ -433,8 +436,33 @@ export class MockProvider implements DataProvider {
     }));
     return [...reference, ...(etat.grillesImportees ?? [])].map((g) => ({
       ...g,
+      // Comme en base : la LIGNE (métadonnées modifiées) fait foi sur le contenu.
+      ...(etat.grillesMetadonnees?.[g.version] ?? {}),
       actif: !desactivees.has(g.version),
     }));
+  }
+
+  async updateGrilleMetadonnees(version: string, meta: MetadonneesGrille): Promise<void> {
+    const cible = (await this.listGrilles()).find((g) => g.version === version);
+    if (!cible) throw new Error(`Grille « ${version} » introuvable`);
+    const etat = litEtat();
+    trace(
+      etat,
+      'grilles',
+      version,
+      { libelle: cible.libelle, periodes: cible.periodes, commentaire: cible.commentaire ?? null },
+      { libelle: meta.libelle, periodes: meta.periodes, commentaire: meta.commentaire },
+      ['libelle', 'periodes', 'commentaire'],
+    );
+    etat.grillesMetadonnees = {
+      ...etat.grillesMetadonnees,
+      [version]: {
+        libelle: meta.libelle,
+        periodes: meta.periodes.map((p) => ({ ...p })),
+        commentaire: meta.commentaire,
+      },
+    };
+    ecritEtat(etat);
   }
 
   /** Grilles ACTIVES seulement (écrans, génération des journées). */

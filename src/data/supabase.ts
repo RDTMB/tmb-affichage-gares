@@ -18,6 +18,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
   Params,
@@ -183,6 +184,26 @@ export class SupabaseProvider implements DataProvider {
   async setGrilleActive(version: string, actif: boolean): Promise<void> {
     exigeLignes(
       await this.client.from('grilles').update({ actif }).eq('version', version).select('version'),
+      `grille « ${version} » introuvable ou droits insuffisants`,
+    );
+    this.grilles = null;
+  }
+
+  async updateGrilleMetadonnees(version: string, meta: MetadonneesGrille): Promise<void> {
+    // Colonnes de la LIGNE seulement : le contenu jsonb reste intact (le cache
+    // par version reste donc valable) et la ligne fait foi sur le contenu
+    // pour le nom et les périodes (src/core/grilles.ts). Le déclencheur
+    // trg_journal_grilles consigne chaque champ modifié.
+    exigeLignes(
+      await this.client
+        .from('grilles')
+        .update({
+          libelle: meta.libelle,
+          periodes: meta.periodes,
+          commentaire: meta.commentaire,
+        })
+        .eq('version', version)
+        .select('version'),
       `grille « ${version} » introuvable ou droits insuffisants`,
     );
     this.grilles = null;

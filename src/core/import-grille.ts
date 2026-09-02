@@ -988,6 +988,71 @@ export function periodesSeChevauchent(a: Periode, b: Periode): boolean {
   return a.du <= b.au && b.du <= a.au;
 }
 
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** « YYYY-MM-DD » complet ET existant dans le calendrier (pas de 31 juin). */
+export function dateValide(iso: string): boolean {
+  if (!DATE_ISO.test(iso)) return false;
+  const [annee = 0, mois = 0, jour = 0] = iso.split('-').map(Number);
+  return dateISO(annee, mois, jour) === iso;
+}
+
+/** « 2026-07-04 » → « 04/07/2026 ». */
+export function dateFrancaise(iso: string): string {
+  return DATE_ISO.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso;
+}
+
+/**
+ * Contrôle des périodes d'UNE grille — la même règle pour l'import et pour la
+ * modification d'une grille enregistrée : au moins une période, dates
+ * complètes et réelles, début ≤ fin, aucun chevauchement entre les périodes
+ * de la grille. Erreurs bloquantes, rédigées pour l'agent.
+ */
+export function problemesPeriodes(periodes: Periode[], nom?: string): Probleme[] {
+  const prefixe = nom ? `« ${nom} » : ` : '';
+  const problemes: Probleme[] = [];
+  if (periodes.length === 0) {
+    problemes.push(
+      probleme('erreur', `${prefixe}indiquez au moins une période de validité (du… au…).`),
+    );
+    return problemes;
+  }
+  const numero = (i: number): string => (periodes.length > 1 ? `période ${i + 1} : ` : '');
+  periodes.forEach((p, i) => {
+    if (!dateValide(p.du) || !dateValide(p.au)) {
+      problemes.push(
+        probleme(
+          'erreur',
+          `${prefixe}${numero(i)}dates incomplètes ou invalides (du ${p.du || '?'} au ${p.au || '?'}).`,
+        ),
+      );
+    } else if (p.du > p.au) {
+      problemes.push(
+        probleme(
+          'erreur',
+          `${prefixe}${numero(i)}la fin (${dateFrancaise(p.au)}) est avant le début (${dateFrancaise(p.du)}).`,
+        ),
+      );
+    }
+  });
+  const valides = periodes.filter((p) => dateValide(p.du) && dateValide(p.au) && p.du <= p.au);
+  for (let i = 0; i < valides.length; i++) {
+    for (let j = i + 1; j < valides.length; j++) {
+      const a = valides[i];
+      const b = valides[j];
+      if (a && b && periodesSeChevauchent(a, b)) {
+        problemes.push(
+          probleme(
+            'erreur',
+            `${prefixe}les périodes ${dateFrancaise(a.du)} → ${dateFrancaise(a.au)} et ${dateFrancaise(b.du)} → ${dateFrancaise(b.au)} se chevauchent : fusionnez-les ou corrigez les dates.`,
+          ),
+        );
+      }
+    }
+  }
+  return problemes;
+}
+
 /**
  * Dans un même classeur, deux feuilles ne peuvent pas être valides les mêmes
  * jours. Contrôle à faire sur les périodes CONFIRMÉES par l'agent.

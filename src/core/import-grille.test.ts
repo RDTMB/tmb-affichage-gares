@@ -10,12 +10,14 @@ import {
   ARRETS_HABITUELS_S,
   avertissementsGrillePrecedente,
   chevauchementsPeriodes,
+  dateValide,
   interpreteHeure,
   lettreColonne,
   libelleProposee,
   parseClasseur,
   parseFeuille,
   periodesDepuisTitre,
+  problemesPeriodes,
   versionDisponible,
   versionProposee,
   type Cellule,
@@ -432,5 +434,39 @@ describe('heures, périodes du titre, identifiants', () => {
     expect(lettreColonne(6)).toBe('G');
     expect(lettreColonne(25)).toBe('Z');
     expect(lettreColonne(26)).toBe('AA');
+  });
+
+  it('dateValide : date complète ET existante dans le calendrier', () => {
+    expect(dateValide('2026-07-04')).toBe(true);
+    expect(dateValide('2026-02-29')).toBe(false); // 2026 n'est pas bissextile
+    expect(dateValide('2026-06-31')).toBe(false);
+    expect(dateValide('2026-7-4')).toBe(false);
+    expect(dateValide('')).toBe(false);
+  });
+
+  it('problemesPeriodes : la même règle pour l’import et pour la modification d’une grille', () => {
+    expect(problemesPeriodes(PETIT.periodes)).toEqual([]);
+    expect(problemesPeriodes([], 'Hiver').map((p) => p.message)).toEqual([
+      '« Hiver » : indiquez au moins une période de validité (du… au…).',
+    ]);
+    expect(
+      problemesPeriodes([
+        { du: '2026-06-13', au: '2026-06-01' },
+        { du: '2026-08-31', au: '' },
+        { du: '2026-09-01', au: '2026-09-27' },
+        { du: '2026-09-20', au: '2026-10-04' },
+      ]).map((p) => p.message),
+    ).toEqual([
+      'période 1 : la fin (01/06/2026) est avant le début (13/06/2026).',
+      'période 2 : dates incomplètes ou invalides (du 2026-08-31 au ?).',
+      'les périodes 01/09/2026 → 27/09/2026 et 20/09/2026 → 04/10/2026 se chevauchent : fusionnez-les ou corrigez les dates.',
+    ]);
+    // Deux périodes qui se touchent sont distinctes, pas chevauchantes
+    expect(
+      problemesPeriodes([
+        { du: '2026-06-13', au: '2026-07-03' },
+        { du: '2026-07-04', au: '2026-08-30' },
+      ]),
+    ).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ import type {
   ModeleMessage,
   Motif,
   Ciel,
+  MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
   Params,
@@ -42,6 +43,12 @@ export interface DataProvider {
   saveGrille(g: Grille, options?: OptionsEnregistrementGrille): Promise<void>;
   /** Active ou désactive une grille ; la désactivation est le retour arrière. */
   setGrilleActive(version: string, actif: boolean): Promise<void>;
+  /**
+   * Modifie EN PLACE les seules métadonnées d'une grille (nom, dates de
+   * validité, commentaire), avec trace au journal d'exploitation. Le contenu
+   * n'est jamais réécrit : une correction d'heures passe par saveGrille().
+   */
+  updateGrilleMetadonnees(version: string, meta: MetadonneesGrille): Promise<void>;
   /** Dates (« YYYY-MM-DD », bornes incluses) dont la journée existe déjà en base. */
   listJoursGeneres(du: string, au: string): Promise<string[]>;
   /** Circulations + drapeaux du jour (terminus…). */

@@ -1858,3 +1858,33 @@ input:disabled {
   padding: 1px 6px;
   font-size: 11px;
 }
+
+/* ------- Onglet Horaires : fiche « Modifier » (nom, dates, commentaire) ------- */
+.corps-edition .champs-import {
+  padding: 12px 18px 0;
+}
+
+.corps-edition .jours-existants {
+  padding: 0 18px;
+}
+
+.effet-periodes {
+  padding: 4px 18px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--texte);
+}
+
+.effet-periodes ul {
+  margin: 4px 0 0 18px;
+}
+
+.effet-periodes li.attention {
+  color: var(--retard);
+  font-weight: 700;
+}
+
+.effet-periodes li.perte {
+  color: var(--alerte);
+  font-weight: 700;
+}

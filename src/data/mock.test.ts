@@ -863,4 +863,39 @@ describe('MockProvider — grilles : import, activation, retour arrière', () =>
     ).toBe(true);
     expect(journal.every((e) => e.qui === 'admin@demo')).toBe(true);
   });
+
+  it('updateGrilleMetadonnees : nom, dates et commentaire en place, contenu intact, trace au journal', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await provider.updateGrilleMetadonnees('2026-ete-petit-service', {
+      libelle: 'Petit service — été 2026 (prolongé)',
+      periodes: [
+        { du: '2026-06-13', au: '2026-07-03' },
+        { du: '2026-08-24', au: '2026-09-27' },
+      ],
+      commentaire: 'saison prolongée d’une semaine',
+    });
+    const g = (await provider.listGrilles()).find((x) => x.version === '2026-ete-petit-service');
+    expect(g).toMatchObject({
+      libelle: 'Petit service — été 2026 (prolongé)',
+      commentaire: 'saison prolongée d’une semaine',
+      actif: true,
+    });
+    expect(g?.periodes).toEqual([
+      { du: '2026-06-13', au: '2026-07-03' },
+      { du: '2026-08-24', au: '2026-09-27' },
+    ]);
+    expect(g?.montees).toEqual(PETIT.montees); // le contenu n'a pas bougé
+    expect((await provider.getJour('2026-09-27')).grille_version).toBe('2026-ete-petit-service');
+    const journal = await provider.listJournal({ table_cible: 'grilles' });
+    expect(journal.map((e) => e.champ).sort()).toEqual(['commentaire', 'libelle', 'periodes']);
+    expect(journal.every((e) => e.qui === 'admin@demo')).toBe(true);
+    await expect(
+      provider.updateGrilleMetadonnees('inconnue', {
+        libelle: 'x',
+        periodes: [],
+        commentaire: null,
+      }),
+    ).rejects.toThrow(/introuvable/);
+  });
 });

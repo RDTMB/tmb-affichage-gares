@@ -106,7 +106,8 @@ function ecartsHeures(sens: Sens, avant: TrainGrille, apres: TrainGrille): Ecart
   return liste;
 }
 
-function memesPeriodes(a: Periode[], b: Periode[]): boolean {
+/** Mêmes périodes, à l'ordre près. */
+export function memesPeriodes(a: Periode[], b: Periode[]): boolean {
   const cle = (p: Periode[]): string =>
     [...p]
       .map((x) => `${x.du}→${x.au}`)
