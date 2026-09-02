@@ -6,7 +6,7 @@
 // démontrer que le calcul suit la grille et rien d'autre.
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import { heureVersSecondes } from './horaires';
 import {
   calculePassagesSup,

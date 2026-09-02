@@ -21,7 +21,8 @@ export type Statut = 'ok' | 'retard' | 'supprime';
 export type Terminus = 'nid-daigle' | 'bellevue';
 
 // ---------------------------------------------------------------------------
-// Grille de saison (public/grilles/*.json — horaires OFFICIELS, jamais modifiés à la main)
+// Grille de saison (table `grilles`, chargée depuis l'Excel exploitation en
+// supervision ; docs/grilles-historique/ = référence été 2026, jamais modifiée à la main)
 // ---------------------------------------------------------------------------
 
 export interface GareGrille {

@@ -1,8 +1,9 @@
 # Spécification fonctionnelle v2 — Affichage voyageurs TMB
 
-Version 2.0 — 24 août 2026 (retours de validation intégrés).
+Version 2.1 — 2 septembre 2026 (grilles en base, import Excel).
 Référence visuelle : maquettes v2 validées (`maquettes/`). Référence
-horaires : `public/grilles/*.json` (officiels été 2026).
+horaires : la table `grilles` (chargée depuis l'Excel exploitation) ;
+historique été 2026 dans `docs/grilles-historique/`.
 
 ## 1. Vues
 
@@ -20,22 +21,47 @@ plusieurs écrans du même type se distinguent par `ecran=`),
 
 ## 2. Données métier
 
-### 2.1 Grilles de saison (fichiers versionnés)
+### 2.1 Grilles de saison (en base, chargées depuis l'Excel exploitation)
 
-`2026-ete-grand-service.json` (04/07→30/08) et
-`2026-ete-petit-service.json` (13/06→03/07 et 31/08→27/09) — générées
-depuis le document d'EXPLOITATION des horaires été 2026 : trains numérotés
-(impairs = montées), liste ordonnée de passages `{gare, a?, d?: "HH:MM:SS"}`
+Les grilles horaires sont des DONNÉES (table `grilles`), chargées par
+l'exploitation depuis le classeur Excel d'exploitation, dans la Supervision →
+onglet Horaires, avec aperçu, contrôle des écarts et retour arrière
+(`docs/import-grilles.md` ; contrat de format : `docs/format-excel-horaires.md`).
+Aucun développeur n'intervient. Une grille porte : `version` (identifiant
+`année-saison-feuille`, ex. `2026-ete-grand-service`), `libelle`, `source`
+(fichier et date de mise à jour), `periodes` de validité (bornes incluses,
+plusieurs possibles), les gares avec altitudes, et les trains numérotés
+(impairs = montées) : liste ordonnée de passages `{gare, a?, d?: "HH:MM:SS"}`
 avec l'arrivée ET le départ RÉELS à chaque gare (ex. arrêt de 5 min à
 Saint-Gervais en montée ; « a » absent au point d'origine, « d » absent au
 terminus ; les express n'ont pas de passage à col-de-voza/bellevue),
 drapeaux `express`, `facultatif`, `velos`. `arret_intermediaire_s` (60 s)
-ne sert plus que de REPLI si une arrivée manque dans le document. La halte
-de SERVICE de Mont Lachat (entre Bellevue et le Nid d'Aigle) n'est pas
-desservie : volontairement absente des grilles, elle ne doit JAMAIS
-apparaître sur les écrans.
-Une grille « 2026-2027-hiver » sera créée plus tard (terminus Bellevue
-permanent). Le service actif se déduit de la date via `periodes`.
+ne sert que de REPLI si une arrivée manque dans le document. La halte de
+SERVICE de Mont Lachat (entre Bellevue et le Nid d'Aigle) n'est pas
+desservie : lue puis ignorée à l'import, elle ne doit JAMAIS apparaître sur
+les écrans.
+
+**Priorité entre grilles** (règle unique, `serviceActif()`) : une grille ne
+s'applique qu'à ses périodes ; seules les grilles ACTIVES comptent ; si deux
+grilles actives couvrent la même date, la plus récemment chargée l'emporte ;
+désactiver une grille redonne la main à la précédente (c'est le retour
+arrière) ; hors de toute période, AUCUN service n'est affiché, jamais de
+repli sur une autre grille. Une version n'est jamais réécrite : recharger
+une grille existante crée « …-v2 » et désactive automatiquement la
+précédente, qui reste réactivable. Rien ne change sur les écrans avant la
+première date de validité ; les journées déjà préparées ne sont réécrites
+que si l'agent le demande, journée par journée, à l'import.
+
+**Grille d'hiver** : le Nid d'Aigle est fermé, Bellevue est le terminus
+NORMAL. La grille d'hiver n'a donc aucun passage au Nid d'Aigle (ligne
+absente ou tirets dans l'Excel) ; les écrans affichent « Bellevue » comme
+destination, sans mention « terminus exceptionnel ». La bascule « Terminus
+Bellevue à partir du TRAIN N » (§2.3) reste réservée aux fermetures
+imprévues.
+
+Référence historique : `docs/grilles-historique/` (grilles été 2026 telles
+que générées le 25/08/2026 ; oracle des tests d'import et grilles de la
+démonstration — jamais modifiées à la main).
 
 ### 2.2 Circulations du jour (base)
 

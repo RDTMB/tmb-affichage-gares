@@ -24,6 +24,8 @@ bascule Terminus Bellevue), `&zoom=`, `&cache=N` (tests du mode dégradé).
 - [Mise en service](docs/mise-en-service.md) — GitHub Pages + Supabase pas à pas
 - [Kiosque Raspberry Pi](docs/kiosque.md) — installation des écrans en gare
 - [Tests manuels](docs/tests-manuels.md) — résilience et modes dégradés
+- [Charger une grille horaire](docs/import-grilles.md) — import depuis l'Excel exploitation
+- [Format du fichier Excel](docs/format-excel-horaires.md) — contrat lu par l'import
 
 ## Développement
 
@@ -40,6 +42,10 @@ Sans `public/config.js`, l'application tourne en **mode mock** complet
 (la clé Supabase « publishable » est publique par conception, la sécurité
 repose sur RLS).
 
-Horaires officiels : `public/grilles/*.json` — ne jamais modifier à la main.
+Horaires officiels : en base (table `grilles`), chargés depuis l'Excel
+exploitation dans la Supervision → onglet Horaires
+([guide](docs/import-grilles.md), [format du fichier](docs/format-excel-horaires.md)).
+`docs/grilles-historique/` garde les grilles été 2026 de référence — ne
+jamais modifier à la main.
 Maquettes validées par l'exploitant : `maquettes/` — elles font foi pour le
 rendu.

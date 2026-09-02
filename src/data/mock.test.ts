@@ -4,8 +4,8 @@
 // bruyamment (PostgREST répond « succès » avec 0 ligne).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
-import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 import { ORDRE_GARES } from '../core/types';
 import type { Grille } from '../core/types';
 

@@ -10,9 +10,11 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
 - `docs/01-spec-fonctionnelle.md` — quoi afficher, règles métier, cas limites
 - `docs/02-spec-technique.md` — architecture, schéma de données, sécurité, déploiement
 - `docs/03-plan-de-developpement.md` — étapes ordonnées avec critères d'acceptation
-- `public/grilles/2026-ete-grand-service.json` et `2026-ete-petit-service.json`
-  — horaires OFFICIELS été 2026 (générés depuis l'Excel de la Régie) : ne
-  jamais modifier les heures à la main
+- Les grilles horaires vivent EN BASE (table `grilles`), chargées par
+  l'exploitation depuis l'Excel exploitation dans la Supervision → onglet
+  Horaires (`docs/import-grilles.md` ; contrat de format :
+  `docs/format-excel-horaires.md`). `docs/grilles-historique/` = référence
+  été 2026 (oracle des tests, grilles de la démo), jamais modifiée à la main
 - `public/logos/` — logos officiels SVG (logo rond, logo rond blanc, picto
   motrice express blanc et marine)
 - `maquettes/` — maquettes HTML **validées par l'exploitant** : REPRODUIRE
@@ -41,6 +43,11 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   (micro-serveur Windows). AUCUN appel Supabase hors de `src/data/`.
 - Bundle JS < 400 Ko gzippé hors polices ; re-rendu 1×/s max ; pas de fuite
   mémoire (18 h/jour d'affichage).
+- Import Excel : `src/core/lecture-xlsx.ts` (lecteur .xlsx maison sur
+  `fflate`, chargé à la demande par la supervision UNIQUEMENT — jamais dans
+  les bundles des écrans) et `src/core/import-grille.ts` (cellules → Grille,
+  validation, PUR et testé sur les cellules du document réel en
+  `src/core/__fixtures__/`).
 
 ## Conventions
 
@@ -84,13 +91,24 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   express part, elle, de Bellevue.
 - **Facultatif** : n'apparaît sur AUCUN écran tant qu'il n'est pas activé en
   supervision ; une fois activé, il s'affiche normalement.
-- **Terminus Bellevue** (météo, à partir du TRAIN N, et service hiver =
-  à partir du T1) : montées ≥ N → destination « Bellevue — terminus
-  exceptionnel », express signalés « à traiter » (jamais retirés
-  automatiquement), écran du Nid d'Aigle → état « tronçon fermé » bilingue
-  avec logo dès qu'il n'a plus aucun passage à afficher.
+- **Terminus Bellevue** (fermeture imprévue, météo : à partir du TRAIN N) :
+  montées ≥ N → destination « Bellevue — terminus exceptionnel », express
+  signalés « à traiter » (jamais retirés automatiquement), écran du Nid
+  d'Aigle → état « tronçon fermé » bilingue avec logo dès qu'il n'a plus
+  aucun passage à afficher. En HIVER, Bellevue est le terminus NORMAL : la
+  grille d'hiver n'a simplement aucun passage au Nid d'Aigle (ce n'est pas
+  la bascule « à partir du T1 » qui fait le régime hiver).
+- **Grilles** (table `grilles`) : une grille ne s'applique qu'à ses périodes
+  (bornes incluses) ; seules les grilles ACTIVES comptent ; si deux grilles
+  actives couvrent une date, la plus récemment chargée l'emporte
+  (`serviceActif()`) ; désactiver une grille redonne la main à la précédente
+  (retour arrière) ; hors de toute période = AUCUN service, jamais de repli ;
+  une version n'est jamais réécrite (recharger crée « …-v2 » et désactive
+  la précédente, réactivable). Les écrans affichent une journée avec la
+  grille qui l'a générée, sinon celle en vigueur à sa date
+  (`grillePourJour()`), jamais « la première de la liste ».
 - **Arrivée + départ** affichés pour chaque passage ; les arrivées sont les
-  heures RÉELLES du document d'exploitation (dans les grilles JSON) ;
+  heures RÉELLES du document d'exploitation (dans les grilles) ;
   `arret_intermediaire_s` (60 s) n'est qu'un REPLI si une arrivée manque ;
   « — » au point d'origine.
 - **Suppression** : le train reste affiché barré avec motif jusqu'à son

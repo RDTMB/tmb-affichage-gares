@@ -1,7 +1,7 @@
 // Action groupée sur les facultatifs et rotations appariées (docs/01 §5.1).
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import { generationJour, passagesPourGare } from '../core/horaires';
 import type { Circulation, Grille, Jour } from '../core/types';
 import { messagesVisibles } from './affichage-commun';

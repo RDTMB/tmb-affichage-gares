@@ -5,7 +5,7 @@
 // le test qui a tort — corriger le test, jamais la grille.
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   compteARebours,

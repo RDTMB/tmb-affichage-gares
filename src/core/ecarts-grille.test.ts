@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
-import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 import { decritEcarts, ecarts, libellePeriodes } from './ecarts-grille';
 import type { Grille } from './types';
 

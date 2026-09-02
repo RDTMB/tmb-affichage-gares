@@ -1,20 +1,21 @@
 // Service worker des écrans TMB (étape 4) — démarrage hors ligne.
-// - précache : coquille de l'application + grilles officielles + logos ;
+// - précache : coquille de l'application + logos ;
 // - navigations et config.js : réseau d'abord, repli cache (les mises à jour
 //   déployées arrivent dès que le réseau revient) ;
 // - reste (polices, JS/CSS hachés, médias) : cache d'abord, alimenté au fil
 //   de l'eau ;
 // - les sondes de synchronisation (cache: 'no-store') ne sont JAMAIS servies
 //   depuis le cache : ce sont elles qui détectent la coupure réseau.
-const VERSION = 'tmb-v1';
+// Les grilles horaires ne sont plus des fichiers : elles viennent de la base
+// avec le reste des données et vivent dans l'instantané localStorage de
+// l'écran (src/pages/resilience.ts) — même règle des 15 minutes.
+const VERSION = 'tmb-v2';
 const PRECACHE = [
   './',
   './index.html',
   './ecran.html',
   './grille.html',
   './supervision.html',
-  './grilles/2026-ete-grand-service.json',
-  './grilles/2026-ete-petit-service.json',
   './logos/logo-rond.svg',
   './logos/logo-rond-blanc.svg',
   './logos/motrice-direct_blanc_FFFFFF.svg',

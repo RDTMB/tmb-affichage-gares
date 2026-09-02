@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
-import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 
 function sql(fichier: string): string {
   return readFileSync(

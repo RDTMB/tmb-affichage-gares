@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 
 import cellulesJson from './__fixtures__/2026-ete-exploit-v1.cellules.json';
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
-import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 import {
   ARRETS_HABITUELS_S,
   avertissementsGrillePrecedente,

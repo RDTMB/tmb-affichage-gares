@@ -2,8 +2,8 @@
 // (C-01). La ligne fait foi sur le contenu pour ce que l'exploitant pilote.
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
-import petitServiceJson from '../../public/grilles/2026-ete-petit-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 import {
   contenuGrilleValide,
   contenuSansMetadonnees,

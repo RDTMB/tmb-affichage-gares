@@ -39,6 +39,10 @@ import type {
 } from '../core/types';
 import { contenuSansMetadonnees } from '../core/grilles';
 import type { DataProvider } from './provider';
+// Grilles de référence (docs/grilles-historique/) : URL de fichiers copiés au
+// build, jamais inlinées dans le JS.
+import grandServiceUrl from '../../docs/grilles-historique/2026-ete-grand-service.json?url';
+import petitServiceUrl from '../../docs/grilles-historique/2026-ete-petit-service.json?url';
 
 const CLE_ETAT = 'tmb-mock-etat';
 /**
@@ -391,16 +395,18 @@ export class MockProvider implements DataProvider {
 
   constructor(private readonly options: OptionsMock = {}) {}
 
-  /** Les deux grilles JSON de référence (une lecture, retentée après échec). */
+  /**
+   * Les deux grilles JSON de référence (docs/grilles-historique/), copiées au
+   * build comme simples fichiers (import `?url`) : seule la démonstration les
+   * télécharge, le bundle des écrans n'en porte que deux URL. `no-store` : la
+   * sonde traverse le service worker et détecte la coupure réseau (mode
+   * dégradé) ; les données restent servies par l'instantané.
+   */
   private grillesDeReference(): Promise<Grille[]> {
-    // `no-store` : la sonde traverse le service worker et détecte la coupure
-    // réseau (mode dégradé) ; les données restent servies par le snapshot.
     this.grillesJson ??= Promise.all(
-      ['2026-ete-grand-service', '2026-ete-petit-service'].map(async (nom) => {
-        const reponse = await fetch(`${import.meta.env.BASE_URL}grilles/${nom}.json`, {
-          cache: 'no-store',
-        });
-        if (!reponse.ok) throw new Error(`Grille ${nom} introuvable (${reponse.status})`);
+      [grandServiceUrl, petitServiceUrl].map(async (url) => {
+        const reponse = await fetch(url, { cache: 'no-store' });
+        if (!reponse.ok) throw new Error(`Grille de référence introuvable (${reponse.status})`);
         return (await reponse.json()) as Grille;
       }),
     ).catch((erreur: unknown) => {

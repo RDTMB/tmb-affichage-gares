@@ -30,7 +30,8 @@ réglable en supervision).
 ## 3. Démarrage hors ligne
 
 1. Visiter l'écran une fois en ligne (le SW précache l'application, les
-   polices, les logos et les grilles ; les données vont en localStorage).
+   polices et les logos ; les données — grilles horaires comprises, lues en
+   base — vont dans l'instantané localStorage).
 2. Passer Offline, puis recharger la page (F5) :
    - snapshot récent (< 15 min) → horaires affichés avec badge ;
    - snapshot ancien → écran neutre ;

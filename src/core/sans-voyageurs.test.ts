@@ -3,7 +3,7 @@
 // été 2026 — si un test « attend » une autre heure, c'est le test qui a tort.
 import { describe, expect, it } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import {
   generationJour,
   heureVersSecondes,

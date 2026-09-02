@@ -3,7 +3,7 @@
 // jamais de faux anglais fabriqué.
 import { describe, expect, it, vi } from 'vitest';
 
-import grandServiceJson from '../../public/grilles/2026-ete-grand-service.json';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import { paramsValides } from '../core/params';
 import type { Grille, Message, Params } from '../core/types';
 import {

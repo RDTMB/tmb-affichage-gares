@@ -11,7 +11,11 @@ Toutes les données passent par l'interface `DataProvider` :
 ```ts
 // src/data/provider.ts
 export interface DataProvider {
-  getGrilles(): Promise<Grille[]>;                       // JSON statiques versionnés
+  getGrilles(): Promise<Grille[]>;                       // grilles ACTIVES, lues en base (table grilles)
+  listGrilles(): Promise<Grille[]>;                      // toutes, avec métadonnées (onglet Horaires)
+  saveGrille(g: Grille, options?): Promise<void>;        // NOUVELLE version : jamais d'écrasement
+  setGrilleActive(version, actif): Promise<void>;        // désactiver = retour arrière
+  listJoursGeneres(du, au): Promise<string[]>;           // journées déjà préparées dans une plage
   getJour(date: string): Promise<Jour>;                  // circulations + drapeaux (terminus…)
   getMessages(gare: string): Promise<Message[]>;
   getMedias(gare: string): Promise<Media[]>;             // URLs + durées
@@ -45,6 +49,24 @@ export interface DataProvider {
 ## 2. Schéma de données (Supabase / Postgres)
 
 ```sql
+create table grilles (                          -- grilles horaires : des DONNÉES, plus des fichiers
+  version text primary key,                     -- ex : 2026-ete-grand-service, 2026-2027-hiver, …-v2
+  libelle text not null,                        -- « Grand service — été 2026 »
+  source text,                                  -- fichier Excel d'origine + date de mise à jour
+  contenu jsonb not null,                       -- l'objet Grille complet (src/core/types.ts) ;
+                                                -- forme contrôlée par grilles_contenu_forme, et
+                                                -- revérifiée à la lecture (src/core/grilles.ts, C-01)
+  periodes jsonb not null default '[]',         -- recopie de contenu.periodes, requêtable
+  actif boolean not null default true,          -- false = retour arrière : la précédente reprend la main
+  cree_le timestamptz not null default now(),   -- deux grilles actives sur une date : la plus récente gagne
+  cree_par text,                                -- email de l'agent (ou nom du script)
+  commentaire text
+);
+-- Chargement depuis l'Excel exploitation en supervision (docs/import-grilles.md).
+-- Lecture : `select` des métadonnées à chaque synchro (quelques centaines
+-- d'octets), `contenu` chargé UNE fois par version (jamais réécrite).
+-- Ajout sur base existante : supabase/ajout-grilles.sql (insère les grilles été 2026).
+
 create table jours (
   date date primary key,
   grille_version text not null,                 -- ex : 2026-ete-grand-service
@@ -230,11 +252,12 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
 
 ### RLS (résumé — livrer le SQL complet dans `supabase/schema.sql`)
 
-- SELECT public (anon) sur : jours, circulations, messages, medias,
-  machines, motifs, params, ecrans (les écrans lisent sans compte).
+- SELECT public (anon) sur : grilles, jours, circulations, messages, medias,
+  machines, motifs, ciels, params, ecrans (les écrans lisent sans compte).
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
-  le rôle — `caisse` : messages uniquement ; `supervision` : tout sauf
-  machines/motifs/params/profils ; `admin` : tout. Implémentation par
+  le rôle — `caisse` : messages uniquement (et les clés d'affichage de
+  `params`) ; `supervision` : tout sauf machines/motifs/ciels/params/profils
+  (donc grilles : import et activation) ; `admin` : tout. Implémentation par
   fonction SQL `private.role_courant()` (lit `profils`) utilisée dans les
   policies.
 - **Schéma `private`** : les fonctions SECURITY DEFINER
@@ -306,7 +329,7 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
 
 ## 3. Moteur horaires (`src/core/horaires.ts`) — pur, testé
 
-Entrées : grille active (JSON), jour (circulations + terminus), gare, heure
+Entrées : grille active (lue en base), jour (circulations + terminus), gare, heure
 injectée. Fonctions : `serviceActif(date)`, `passagesPourGare`,
 `prochaineArrivee`, `compteARebours`, `finDeService` (lit la grille du
 lendemain), `positionsTrains`, `appliqueTerminusBellevue` (« à partir du
