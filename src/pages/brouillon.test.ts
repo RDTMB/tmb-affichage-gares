@@ -42,6 +42,8 @@ function jour(partiel: Partial<Jour> = {}): Jour {
     date: '2026-08-30',
     grille_version: 'grand-service',
     terminus_bellevue: false,
+    gare_debut: 'le-fayet',
+    gare_fin: 'nid-daigle',
     circulations: [circulation()],
     ...partiel,
   };

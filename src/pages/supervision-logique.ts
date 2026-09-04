@@ -5,6 +5,7 @@
 import { dureeCycleS } from '../core/cycle-medias';
 import type { ModeMedias } from '../core/cycle-medias';
 import type { Circulation, EcranInfo, GareId, Media, Message, Profil } from '../core/types';
+import { ORDRE_GARES } from '../core/types';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
@@ -529,4 +530,64 @@ export function recapCycle(
   }
   const total = dureeCycleS(liste as Media[], mode, dureeHorairesS);
   return `Cycle actuel : ${etapes.join(' → ')} — ${total} s au total`;
+}
+
+// ---------------------------------------------------------------------------
+// Section exploitée (travaux) — contrainte d'interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Bornes admissibles des deux listes « Ligne exploitée de … à … ».
+ * `gare_debut` doit précéder STRICTEMENT `gare_fin` dans l'ordre de la ligne :
+ * l'interface doit l'empêcher, pas seulement la base — une section inversée
+ * viderait tous les écrans, et un message d'erreur après coup ne rattrape pas
+ * un affichage voyageurs déjà faux.
+ */
+export function bornesSectionPossibles(cote: 'debut' | 'fin', autre: GareId): GareId[] {
+  const rang = ORDRE_GARES.indexOf(autre);
+  return cote === 'debut' ? ORDRE_GARES.slice(0, Math.max(rang, 1)) : ORDRE_GARES.slice(rang + 1);
+}
+
+/**
+ * Section corrigée après un choix de l'exploitant : la borne qu'il vient de
+ * bouger est respectée, l'AUTRE se décale du minimum nécessaire pour rester
+ * ordonnée. Rien n'est refusé silencieusement, rien n'est laissé incohérent.
+ */
+export function ajusteSection(
+  debut: GareId,
+  fin: GareId,
+  bougee: 'debut' | 'fin',
+): { debut: GareId; fin: GareId } {
+  const iDebut = ORDRE_GARES.indexOf(debut);
+  const iFin = ORDRE_GARES.indexOf(fin);
+  if (iDebut >= 0 && iFin >= 0 && iDebut < iFin) return { debut, fin };
+  if (bougee === 'debut') {
+    const suivante = ORDRE_GARES[Math.min(iDebut + 1, ORDRE_GARES.length - 1)];
+    return { debut, fin: suivante ?? fin };
+  }
+  const precedente = ORDRE_GARES[Math.max(iFin - 1, 0)];
+  return { debut: precedente ?? debut, fin };
+}
+
+/**
+ * Bandeau d'information de la restriction de ligne. Il énonce ce qui est
+ * certain et utile : la section, les gares fermées, et le fait que la
+ * restriction se REPORTE sur les journées suivantes tant qu'elle n'est pas
+ * levée — c'est ce report qui évite qu'une journée oubliée annonce des trains
+ * qui ne circulent pas, l'erreur la plus grave que ce système puisse
+ * commettre. Renvoie null sur une ligne entière : rien à signaler.
+ */
+export function bandeauSection(
+  section: { gare_debut: GareId; gare_fin: GareId },
+  nomGare: (gare: GareId) => string,
+): string | null {
+  const iDebut = ORDRE_GARES.indexOf(section.gare_debut);
+  const iFin = ORDRE_GARES.indexOf(section.gare_fin);
+  if (iDebut < 0 || iFin < 0 || (iDebut === 0 && iFin === ORDRE_GARES.length - 1)) return null;
+  const fermees = ORDRE_GARES.filter((_, i) => i < iDebut || i > iFin).map(nomGare);
+  return (
+    `⚠ Ligne exploitée de ${nomGare(section.gare_debut)} à ${nomGare(section.gare_fin)} — ` +
+    `${fermees.length > 1 ? 'gares fermées' : 'gare fermée'} : ${fermees.join(', ')}. ` +
+    'Cette restriction est reportée sur les journées suivantes tant qu’elle n’est pas levée.'
+  );
 }

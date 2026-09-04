@@ -21,6 +21,7 @@ import {
   enVeille,
   dateSuivante,
   etatTronconFerme,
+  fermetureGare,
   finDeService,
   formatHeure,
   grillePourJour,
@@ -32,6 +33,7 @@ import {
   quaiOccupe,
   trainsDuJour,
 } from '../core/horaires';
+import type { FermetureGare } from '../core/horaires';
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
@@ -293,10 +295,16 @@ function afficheTableau(lignes: string[]): void {
   $('corps').innerHTML = lignes.join('');
 }
 
-function htmlTronconFerme(): string {
-  return `<h2>Tronçon Bellevue – Nid d'Aigle fermé</h2>
-    <p>En raison des conditions météorologiques, les trains ont pour terminus Bellevue.<br>
-    <span class="en">Due to weather conditions, trams terminate at Bellevue.</span></p>
+/**
+ * Gare FERMÉE : hors de la section exploitée (travaux) ou sous le tronçon
+ * Bellevue – Nid d'Aigle. Jamais muet, et jamais confondu avec « service
+ * terminé » : le message vient de la supervision, à défaut d'un texte
+ * bilingue construit sur la section réelle (`fermetureGare()`).
+ */
+function htmlTronconFerme(fermeture: FermetureGare): string {
+  return `<h2>${echapper(fermeture.titre_fr)}</h2>
+    <p>${echapper(fermeture.texte_fr)}<br>
+    <span class="en">${echapper(fermeture.texte_en)}</span></p>
     <img class="logo-fin" src="${__LOGO_ROND_BLANC__}" alt="" />`;
 }
 
@@ -516,9 +524,13 @@ function rendre(gare: GareId): void {
   const passages = passagesPourGare(grille, jour, gare, maintenant);
   const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
 
+  // Gare fermée AVANT fin de service : une gare fermée pour travaux ne doit
+  // jamais annoncer « service terminé », qui laisserait croire à une reprise
+  // le lendemain.
   const tronconFerme = etatTronconFerme(grille, jour, gare, maintenant);
+  const fermeture = tronconFerme ? fermetureGare(jour, gare, nomGare) : null;
   const fin = tronconFerme ? null : finDeService(grille, jour, gare, maintenant, grilleDemain);
-  if (tronconFerme) afficheEtatSpecial(htmlTronconFerme());
+  if (fermeture) afficheEtatSpecial(htmlTronconFerme(fermeture));
   else if (fin) afficheEtatSpecial(htmlFinDeService(fin));
   else {
     const trains = trainsParNumero();
@@ -530,7 +542,12 @@ function rendre(gare: GareId): void {
   if (tronconFerme || fin) arreteCycleMedias();
   else gereMedias(departs, maintenant);
 
-  rendsArrivee(gare, maintenant);
+  // Gare FERMÉE : pas de bandeau « prochaine arrivée — demain », qui
+  // promettrait un train là où il n'en viendra aucun tant que la section
+  // reste restreinte. C'est la même faute que « service terminé ».
+  const bandeauArrivee = $('arrivee');
+  bandeauArrivee.style.display = fermeture ? 'none' : '';
+  if (!fermeture) rendsArrivee(gare, maintenant);
   majTicker(
     messagesVisibles(messages, gare, passages, heure.maintenantMs()),
     params?.vitesse_ticker_px_s,

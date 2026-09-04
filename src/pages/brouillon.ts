@@ -12,7 +12,7 @@
 // l'écran de supervision doit afficher pendant que rien n'est encore publié.
 // Les écritures elles-mêmes restent dans supervision.ts (provider) : ce
 // fichier ne fait que de la fusion pure, testable sans DOM ni réseau.
-import type { Circulation, Jour, Message, Params, TerminusFlag } from '../core/types';
+import type { Circulation, Jour, Message, Params, SectionJour, TerminusFlag } from '../core/types';
 
 /** Une circulation en attente, par date puis par numéro de train. */
 export type BrouillonCirculations = Map<string, Map<number, Circulation>>;
@@ -25,6 +25,9 @@ export type BrouillonSupSupprimes = Map<string, Set<number>>;
 
 /** Une bascule « Terminus Bellevue » en attente, par date. */
 export type BrouillonTerminus = Map<string, TerminusFlag>;
+
+/** Une section exploitée en attente, par date (travaux). */
+export type BrouillonSection = Map<string, SectionJour>;
 
 /**
  * Un message en attente, par identifiant :
@@ -67,9 +70,11 @@ export function videDate(
   brouillonCirc: BrouillonCirculations,
   brouillonTerminus: BrouillonTerminus,
   date: string,
+  brouillonSection?: BrouillonSection,
 ): void {
   brouillonCirc.delete(date);
   brouillonTerminus.delete(date);
+  brouillonSection?.delete(date);
 }
 
 /**
@@ -83,11 +88,20 @@ export function appliqueBrouillonJour(
   brouillonCirc: BrouillonCirculations,
   brouillonTerminus: BrouillonTerminus,
   supSupprimes?: BrouillonSupSupprimes,
+  brouillonSection?: BrouillonSection,
 ): Jour {
   const parNumero = brouillonCirc.get(jour.date);
   const terminusEnAttente = brouillonTerminus.get(jour.date);
+  const sectionEnAttente = brouillonSection?.get(jour.date);
   const retires = supSupprimes?.get(jour.date);
-  if (!parNumero && terminusEnAttente === undefined && !retires?.size) return jour;
+  if (
+    !parNumero &&
+    terminusEnAttente === undefined &&
+    sectionEnAttente === undefined &&
+    !retires?.size
+  ) {
+    return jour;
+  }
 
   const existants = new Set(jour.circulations.map((c) => c.numero));
   // Un train SUPPLÉMENTAIRE en attente n'a aucune contrepartie dans la
@@ -109,6 +123,7 @@ export function appliqueBrouillonJour(
   return {
     ...jour,
     terminus_bellevue: terminusEnAttente === undefined ? jour.terminus_bellevue : terminusEnAttente,
+    ...(sectionEnAttente ?? {}),
     circulations,
   };
 }

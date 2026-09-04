@@ -416,6 +416,55 @@ input[type='color'] {
   accent-color: var(--alerte);
 }
 
+/* Restriction de ligne : un simple lien tant qu'elle ne sert pas — la barre
+   du jour est déjà chargée, et une ligne complète est le cas courant. */
+.lien-section {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rouge);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.carte-section {
+  margin: 10px 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--rouge);
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.carte-section .ligne {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.carte-section .msg-troncon {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 320px;
+}
+
+.carte-section .msg-troncon input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.note.bandeau-report {
+  background: #fdf3e0;
+  color: #7a6017;
+  font-weight: 700;
+}
+
 /* ------- Table circulations ------- */
 table {
   width: 100%;

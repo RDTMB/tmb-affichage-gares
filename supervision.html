@@ -98,7 +98,34 @@
               ⚠ Terminus Bellevue à partir du
               <select id="sel-terminus-train"></select>
             </label>
+            <button class="lien-section" id="btn-section">Restreindre la ligne (travaux)</button>
           </div>
+          <div class="carte-section" id="bloc-section" style="display: none">
+            <div class="ligne">
+              <b>Ligne exploitée</b>
+              <label
+                >de
+                <select id="sel-section-debut"></select
+              ></label>
+              <label
+                >à
+                <select id="sel-section-fin"></select
+              ></label>
+              <button class="leger" id="btn-section-complete">Rétablir la ligne entière</button>
+            </div>
+            <div class="ligne">
+              <label class="msg-troncon"
+                >Message des gares fermées (FR)
+                <input type="text" id="msg-troncon-fr" maxlength="180" />
+              </label>
+              <label class="msg-troncon"
+                >English
+                <input type="text" id="msg-troncon-en" maxlength="180" />
+              </label>
+            </div>
+            <div class="note" id="apercu-troncon"></div>
+          </div>
+          <div class="note bandeau-report" id="bandeau-report" style="display: none"></div>
           <div
             class="note"
             id="bandeau-apercu"
@@ -111,7 +138,10 @@
           <div class="carte-sup" id="form-train-sup" style="display: none">
             <h3>Train supplémentaire</h3>
             <div class="ligne">
-              <label>Départ du Fayet <input type="time" id="sup-depart" step="30" /></label>
+              <label
+                ><span id="sup-libelle-depart">Départ : Le Fayet</span>
+                <input type="time" id="sup-depart" step="30" />
+              </label>
               <label
                 >Terminus
                 <select id="sup-terminus"></select>

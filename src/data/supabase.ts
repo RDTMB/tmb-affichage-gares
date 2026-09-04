@@ -4,7 +4,7 @@
 // complet, repli polling 30 s.
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 
-import { generationJour, serviceActif } from '../core/horaires';
+import { datePrecedente, generationJour, sectionReportee, serviceActif } from '../core/horaires';
 import type {
   Circulation,
   EcranInfo,
@@ -24,11 +24,13 @@ import type {
   Params,
   Role,
   Session,
+  SectionJour,
   TerminusFlag,
   User,
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
 import { paramsValides } from '../core/params';
 import {
   contenuSansMetadonnees,
@@ -63,6 +65,10 @@ interface LigneJour {
   date: string;
   grille_version: string;
   terminus_bellevue_a_partir_du_train: number | null;
+  gare_debut: GareId | null;
+  gare_fin: GareId | null;
+  message_troncon_fr: string | null;
+  message_troncon_en: string | null;
 }
 
 /** Messages d'erreur Supabase les plus courants sur un mot de passe, en français. */
@@ -254,6 +260,14 @@ export class SupabaseProvider implements DataProvider {
         date,
         grille_version: '',
         terminus_bellevue: ligne ? versFlag(ligne) : false,
+        ...(ligne
+          ? versSection(ligne)
+          : {
+              gare_debut: GARE_DEBUT_DEFAUT,
+              gare_fin: GARE_FIN_DEFAUT,
+              message_troncon_fr: null,
+              message_troncon_en: null,
+            }),
         circulations: [],
         enregistre: ligne !== null,
         hors_saison: true,
@@ -269,14 +283,20 @@ export class SupabaseProvider implements DataProvider {
         await this.genererJour(date);
         this.joursAssures.add(date);
         const cree = generationJour(grille, date);
-        if (ligne) cree.terminus_bellevue = versFlag(ligne);
+        if (ligne) {
+          cree.terminus_bellevue = versFlag(ligne);
+          Object.assign(cree, versSection(ligne));
+        }
         cree.enregistre = true;
         return cree;
       }
       // Date passée jamais exploitée (ou écran anonyme) : aperçu théorique,
       // rien n'est fabriqué en base (pas d'historique inventé).
       const defaut = generationJour(grille, date);
-      if (ligne) defaut.terminus_bellevue = versFlag(ligne);
+      if (ligne) {
+        defaut.terminus_bellevue = versFlag(ligne);
+        Object.assign(defaut, versSection(ligne));
+      }
       defaut.enregistre = false;
       return defaut;
     }
@@ -284,6 +304,7 @@ export class SupabaseProvider implements DataProvider {
       date,
       grille_version: ligne.grille_version,
       terminus_bellevue: versFlag(ligne),
+      ...versSection(ligne),
       circulations,
       enregistre: true,
     };
@@ -515,11 +536,23 @@ export class SupabaseProvider implements DataProvider {
     const grille = serviceActif(grilles, date);
     if (!grille) throw new Error('Aucun service ne circule à cette date');
     const jour = generationJour(grille, date);
+    // REPORT DE LA VEILLE : un chantier dure des semaines, et une journée
+    // créée sur la ligne complète afficherait des trains qui ne circulent
+    // pas — un voyageur attendrait à une gare fermée. Le report ne s'applique
+    // qu'à la CRÉATION (`ignoreDuplicates`), et reste modifiable ensuite.
+    const veille = await this.client
+      .from('jours')
+      .select('*')
+      .eq('date', datePrecedente(date))
+      .maybeSingle();
+    verifie(veille.error);
+    const ligneVeille = veille.data as LigneJour | null;
+    const reportee = ligneVeille ? sectionReportee({ ...jour, ...versSection(ligneVeille) }) : null;
     // Idempotent : n'écrase JAMAIS une ligne déjà présente/modifiée
     const jours = await this.client
       .from('jours')
       .upsert(
-        { date, grille_version: grille.version },
+        { date, grille_version: grille.version, ...(reportee ?? {}) },
         { onConflict: 'date', ignoreDuplicates: true },
       );
     verifie(jours.error);
@@ -610,6 +643,23 @@ export class SupabaseProvider implements DataProvider {
         .select(),
       'train supplémentaire introuvable',
     );
+  }
+
+  async setSectionJour(date: string, section: SectionJour): Promise<void> {
+    await this.assureJour(date);
+    const resultat = await this.client
+      .from('jours')
+      .update({
+        gare_debut: section.gare_debut,
+        gare_fin: section.gare_fin,
+        // Message vide → NULL : le défaut bilingue construit sur la section
+        // reprend alors la main côté écran.
+        message_troncon_fr: section.message_troncon_fr?.trim() || null,
+        message_troncon_en: section.message_troncon_en?.trim() || null,
+      })
+      .eq('date', date)
+      .select();
+    exigeLignes(resultat, 'journée absente en base');
   }
 
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
@@ -914,4 +964,18 @@ function versFlag(ligne: LigneJour): TerminusFlag {
   return ligne.terminus_bellevue_a_partir_du_train === null
     ? false
     : { a_partir_du_train: ligne.terminus_bellevue_a_partir_du_train };
+}
+
+/**
+ * Section exploitée portée par la ligne `jours`. Les colonnes ont un défaut
+ * en base, mais une ligne écrite avant la migration les rend nulles : on
+ * retombe sur la ligne complète, et `sectionDuJour()` assainit ensuite.
+ */
+function versSection(ligne: LigneJour): SectionJour {
+  return {
+    gare_debut: ligne.gare_debut ?? GARE_DEBUT_DEFAUT,
+    gare_fin: ligne.gare_fin ?? GARE_FIN_DEFAUT,
+    message_troncon_fr: ligne.message_troncon_fr,
+    message_troncon_en: ligne.message_troncon_en,
+  };
 }

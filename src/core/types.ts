@@ -15,6 +15,18 @@ export type GareId = (typeof ORDRE_GARES)[number];
 
 export type Sens = 'montee' | 'descente';
 
+/** Bornes de la ligne complète : défaut de toute journée. */
+export const GARE_DEBUT_DEFAUT: GareId = 'le-fayet';
+export const GARE_FIN_DEFAUT: GareId = 'nid-daigle';
+
+/** Section exploitée d'une journée, telle qu'elle se saisit et se publie. */
+export interface SectionJour {
+  gare_debut: GareId;
+  gare_fin: GareId;
+  message_troncon_fr: string | null;
+  message_troncon_en: string | null;
+}
+
 export type Statut = 'ok' | 'retard' | 'supprime';
 
 /** Terminus possible d'une montée (les descentes partent du terminus atteint). */
@@ -169,6 +181,27 @@ export interface Jour {
   date: string;
   grille_version: string;
   terminus_bellevue: TerminusFlag;
+  /**
+   * SECTION DE LIGNE EXPLOITÉE ce jour, bornes INCLUSES (travaux, fermeture
+   * d'un tronçon). « Terminus Bellevue » n'est qu'un CAS PARTICULIER de
+   * « une partie de la ligne n'est pas desservie » : il n'existe donc qu'une
+   * seule troncature dans le moteur (`tronqueTrain()`), et la section est la
+   * borne EXTÉRIEURE — la colonne `terminus` d'une circulation ne peut que
+   * réduire davantage, jamais dépasser.
+   *
+   * Lire ces bornes par `sectionDuJour()` et JAMAIS directement : elles
+   * peuvent venir d'un instantané en cache antérieur au déploiement, donc
+   * être absentes ou hors de `ORDRE_GARES` (leçon C-01).
+   */
+  gare_debut: GareId;
+  gare_fin: GareId;
+  /**
+   * Message affiché par les écrans des gares FERMÉES (hors section). Vide :
+   * un défaut bilingue est construit sur la section réelle — un écran ne
+   * reste jamais muet.
+   */
+  message_troncon_fr?: string | null;
+  message_troncon_en?: string | null;
   circulations: Circulation[];
   /**
    * false = journée pas encore enregistrée côté données (aperçu théorique) :

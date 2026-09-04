@@ -10,9 +10,12 @@
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   appliqueTerminusBellevue,
+  datePrecedente,
   generationJour,
+  sectionReportee,
   serviceActif,
 } from '../core/horaires';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
 import { paramsValides } from '../core/params';
 import type {
   Circulation,
@@ -33,6 +36,7 @@ import type {
   Params,
   Role,
   Session,
+  SectionJour,
   TerminusFlag,
   User,
   EntreeJournal,
@@ -222,7 +226,12 @@ const UTILISATEURS_DEMO: User[] = [
 interface EtatMock {
   jours: Record<
     string,
-    { terminus: number | null; circulations: Record<string, Partial<Circulation>> }
+    {
+      terminus: number | null;
+      /** Section exploitée ; absente = ligne complète (état écrit avant la fonctionnalité). */
+      section?: SectionJour;
+      circulations: Record<string, Partial<Circulation>>;
+    }
   >;
   messages: Message[] | null; // null = messages de démo
   paramsSimples: Partial<
@@ -533,6 +542,10 @@ export class MockProvider implements DataProvider {
         date,
         grille_version: '',
         terminus_bellevue: false,
+        gare_debut: GARE_DEBUT_DEFAUT,
+        gare_fin: GARE_FIN_DEFAUT,
+        message_troncon_fr: null,
+        message_troncon_en: null,
         circulations: [],
         enregistre: false,
         hors_saison: true,
@@ -557,7 +570,16 @@ export class MockProvider implements DataProvider {
     const aujourdhui = this.options.aujourdhui ?? dateAujourdhuiParis();
     if (!etatJour && date >= aujourdhui && sessionStorage.getItem(CLE_SESSION) !== null) {
       const etat = litEtat();
-      etat.jours[date] = { terminus: null, circulations: {} };
+      // REPORT DE LA VEILLE : un chantier dure des semaines, et une journée
+      // créée sur la ligne complète afficherait des trains qui ne circulent
+      // pas. Le report ne s'applique qu'à la CRÉATION, et reste modifiable.
+      const veille = etat.jours[datePrecedente(date)];
+      const reportee = veille?.section ? sectionReportee({ ...jour, ...veille.section }) : null;
+      etat.jours[date] = {
+        terminus: null,
+        circulations: {},
+        ...(reportee ? { section: reportee } : {}),
+      };
       localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // simple lecture : pas de notification
       etatJour = etat.jours[date];
     }
@@ -578,6 +600,7 @@ export class MockProvider implements DataProvider {
       jour.circulations.sort((x, y) => x.numero - y.numero);
       jour.terminus_bellevue =
         etatJour.terminus === null ? false : { a_partir_du_train: etatJour.terminus };
+      if (etatJour.section) Object.assign(jour, etatJour.section);
     }
 
     if (this.options.terminusAPartirDuTrain !== undefined) {
@@ -818,6 +841,29 @@ export class MockProvider implements DataProvider {
       trace(etat, 'circulations', `${date} ${numero}`, c, null, undefined, date);
       delete jour.circulations[String(numero)];
     }
+    ecritEtat(etat);
+  }
+
+  async setSectionJour(date: string, section: SectionJour): Promise<void> {
+    const etat = litEtat();
+    etat.jours[date] ??= { terminus: null, circulations: {} };
+    const etatJour = etat.jours[date];
+    if (!etatJour) return;
+    const propre: SectionJour = {
+      gare_debut: section.gare_debut,
+      gare_fin: section.gare_fin,
+      // Message vide → null : le défaut bilingue reprend la main côté écran.
+      message_troncon_fr: section.message_troncon_fr?.trim() || null,
+      message_troncon_en: section.message_troncon_en?.trim() || null,
+    };
+    const avant = etatJour.section ?? {
+      gare_debut: GARE_DEBUT_DEFAUT,
+      gare_fin: GARE_FIN_DEFAUT,
+      message_troncon_fr: null,
+      message_troncon_en: null,
+    };
+    trace(etat, 'jours', date, avant, propre, Object.keys(propre), date);
+    etatJour.section = propre;
     ecritEtat(etat);
   }
 

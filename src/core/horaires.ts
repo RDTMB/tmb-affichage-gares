@@ -14,10 +14,12 @@ import type {
   PositionTrain,
   ProchaineArrivee,
   ResultatTerminusBellevue,
+  SectionJour,
   TrainGrille,
   TrainJour,
   VeilleNuit,
 } from './types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from './types';
 
 /** Rames par défaut à la génération d'un jour (modifiables dans Paramètres → Machines). */
 export const RAMES_DEFAUT = ['Marie', 'Anne', 'Jeanne', 'Marguerite'];
@@ -62,6 +64,12 @@ export function formatHeure(secondes: number | null): string {
 export function dateSuivante(date: string): string {
   const [annee = 0, mois = 1, jour = 1] = date.split('-').map(Number);
   return new Date(Date.UTC(annee, mois - 1, jour + 1)).toISOString().slice(0, 10);
+}
+
+/** « YYYY-MM-DD » → date de la veille (même calcul UTC). */
+export function datePrecedente(date: string): string {
+  const [annee = 0, mois = 1, jour = 1] = date.split('-').map(Number);
+  return new Date(Date.UTC(annee, mois - 1, jour - 1)).toISOString().slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +161,18 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
   }
 
   circulations.sort((a, b) => a.numero - b.numero);
-  return { date, grille_version: grille.version, terminus_bellevue: false, circulations };
+  return {
+    date,
+    grille_version: grille.version,
+    terminus_bellevue: false,
+    // Ligne complète par défaut ; une restriction se saisit en supervision et
+    // se reporte de la veille (voir `sectionReportee()`).
+    gare_debut: GARE_DEBUT_DEFAUT,
+    gare_fin: GARE_FIN_DEFAUT,
+    message_troncon_fr: null,
+    message_troncon_en: null,
+    circulations,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -183,24 +202,131 @@ function resoudPassages(train: TrainGrille, arretIntermediaireS: number): Passag
   });
 }
 
-/** Montée limitée à Bellevue : passages tronqués, Bellevue devient le terminus (arrivée seule). */
-function tronqueMonteeABellevue(train: TrainJour): TrainJour {
-  const index = train.passages.findIndex((p) => p.gare === 'bellevue');
-  if (index < 0) return train; // express : pas de passage à Bellevue, inapplicable
-  const passages = train.passages
-    .slice(0, index + 1)
-    .map((p, i, liste) => (i === liste.length - 1 ? { ...p, depart_s: null } : p));
-  return { ...train, passages, terminusExceptionnel: true };
+/**
+ * SECTION EXPLOITÉE du jour, assainie. Les bornes peuvent venir d'un
+ * instantané mis en cache AVANT le déploiement de la fonctionnalité, donc
+ * être absentes, ou d'un jsonb quelconque, donc hors `ORDRE_GARES` : dans les
+ * deux cas on retombe sur la ligne complète plutôt que de calculer sur un
+ * index -1 qui viderait tous les écrans (leçon C-01).
+ *
+ * Une section inversée (debut après fin dans l'ordre de la ligne) est elle
+ * aussi ramenée à la ligne complète : mieux vaut afficher trop que faire
+ * disparaître un service qui circule.
+ */
+export function sectionDuJour(jour: Pick<Jour, 'gare_debut' | 'gare_fin'>): {
+  debut: GareId;
+  fin: GareId;
+} {
+  const valide = (g: unknown, defaut: GareId): GareId =>
+    typeof g === 'string' && (ORDRE_GARES as readonly string[]).includes(g)
+      ? (g as GareId)
+      : defaut;
+  const debut = valide(jour.gare_debut, GARE_DEBUT_DEFAUT);
+  const fin = valide(jour.gare_fin, GARE_FIN_DEFAUT);
+  if (ORDRE_GARES.indexOf(debut) >= ORDRE_GARES.indexOf(fin)) {
+    return { debut: GARE_DEBUT_DEFAUT, fin: GARE_FIN_DEFAUT };
+  }
+  return { debut, fin };
 }
 
-/** Descente partant de Bellevue : le tronçon Nid d'Aigle → Bellevue est retiré. */
-function descenteDepuisBellevue(train: TrainJour): TrainJour {
-  const index = train.passages.findIndex((p) => p.gare === 'bellevue');
-  if (index <= 0) return train;
-  const passages = train.passages
-    .slice(index)
-    .map((p, i) => (i === 0 ? { ...p, arrivee_s: null } : p));
-  return { ...train, passages, terminusExceptionnel: true };
+/**
+ * REPORT DE LA VEILLE — section à pré-remplir quand une journée est générée
+ * pour la PREMIÈRE fois.
+ *
+ * Un chantier dure des semaines : sans ce report, la journée du lendemain
+ * naîtrait sur la ligne complète et afficherait des trains qui ne circulent
+ * pas. C'est l'erreur la plus grave que ce système puisse commettre — un
+ * voyageur attendrait un train à une gare fermée. Le report est donc le
+ * défaut, et il reste modifiable en supervision.
+ *
+ * Renvoie null quand il n'y a rien à reporter (pas de veille en base, ou
+ * veille sur la ligne complète) : la journée prend alors ses défauts.
+ */
+export function sectionReportee(veille: Jour | null | undefined): SectionJour | null {
+  if (!veille || sectionComplete(veille)) return null;
+  const { debut, fin } = sectionDuJour(veille);
+  return {
+    gare_debut: debut,
+    gare_fin: fin,
+    message_troncon_fr: veille.message_troncon_fr ?? null,
+    message_troncon_en: veille.message_troncon_en ?? null,
+  };
+}
+
+/** La ligne est-elle exploitée en entier ce jour-là ? */
+export function sectionComplete(jour: Pick<Jour, 'gare_debut' | 'gare_fin'>): boolean {
+  const { debut, fin } = sectionDuJour(jour);
+  return debut === GARE_DEBUT_DEFAUT && fin === GARE_FIN_DEFAUT;
+}
+
+/** Gare HORS de la section exploitée : son écran affiche « ligne fermée ». */
+export function gareHorsSection(
+  jour: Pick<Jour, 'gare_debut' | 'gare_fin'>,
+  gare: GareId,
+): boolean {
+  const { debut, fin } = sectionDuJour(jour);
+  const rang = ORDRE_GARES.indexOf(gare);
+  return rang < ORDRE_GARES.indexOf(debut) || rang > ORDRE_GARES.indexOf(fin);
+}
+
+/**
+ * TRONCATURE UNIQUE — seule fonction du moteur qui coupe un train hors de la
+ * partie de ligne exploitée, dans les deux sens. « Terminus Bellevue » en est
+ * un cas particulier (voir `tronqueABellevue()`) : il n'existe pas de second
+ * mécanisme parallèle, deux sources de vérité pour la même idée étant
+ * exactement ce qui a produit le bug des médias par-dessus un train à quai.
+ *
+ * INVARIANT : la section [`debut`, `fin`] est la borne EXTÉRIEURE. Cette
+ * fonction ne fait que RETIRER des passages — elle n'en ajoute jamais. Un
+ * train portant `terminus = 'nid-daigle'` dans une section qui s'arrête au
+ * Col de Voza s'arrête donc au Col de Voza : la section gagne toujours,
+ * quel que soit l'ordre des appels.
+ *
+ * Bornes absentes des passages (cas de l'EXPRESS, qui ne dessert ni Voza ni
+ * Bellevue) : le train ne peut pas être tronqué proprement, on ne lui invente
+ * pas un terminus. Il est renvoyé INCHANGÉ et remonte dans `aTraiter`
+ * (`expressATraiter()`) pour suppression ou requalification manuelle.
+ */
+export function tronqueTrain(train: TrainJour, debut: GareId, fin: GareId): TrainJour {
+  // Dans le sens de marche : une montée part de `debut` vers `fin`, une
+  // descente l'inverse. Les bornes de la section sont les mêmes.
+  const [origine, terminus] = train.sens === 'montee' ? [debut, fin] : [fin, debut];
+  const iOrigine = train.passages.findIndex((p) => p.gare === origine);
+  const iTerminus = train.passages.findIndex((p) => p.gare === terminus);
+  if (iOrigine < 0 || iTerminus < 0 || iTerminus <= iOrigine) return train;
+  const dernier = train.passages.length - 1;
+  if (iOrigine === 0 && iTerminus === dernier) return train; // rien à couper
+
+  const passages = train.passages.slice(iOrigine, iTerminus + 1).map((p, i, liste) => ({
+    ...p,
+    // « — » aux deux extrémités : le train n'arrive pas là où il commence,
+    // et ne repart pas de là où il finit.
+    arrivee_s: i === 0 ? null : p.arrivee_s,
+    depart_s: i === liste.length - 1 ? null : p.depart_s,
+  }));
+  return {
+    ...train,
+    passages,
+    // « Terminus exceptionnel » ne se dit que si le TERMINUS a bougé. Une
+    // montée dont seule l'origine est déplacée (section [Voza, Nid d'Aigle])
+    // va toujours au Nid d'Aigle : l'annoncer exceptionnel serait faux.
+    terminusExceptionnel: train.terminusExceptionnel || iTerminus < dernier,
+  };
+}
+
+/**
+ * Rotation limitée à Bellevue : CAS PARTICULIER de `tronqueTrain()`, où
+ * l'autre borne est l'extrémité que le train a déjà (la section du jour
+ * s'étant appliquée avant). Montée : elle s'arrête à Bellevue. Descente : elle
+ * en part.
+ */
+function tronqueABellevue(train: TrainJour): TrainJour {
+  const premier = train.passages[0]?.gare;
+  const dernier = train.passages[train.passages.length - 1]?.gare;
+  if (!premier || !dernier) return train;
+  return train.sens === 'montee'
+    ? tronqueTrain(train, premier, 'bellevue')
+    : tronqueTrain(train, dernier, 'bellevue');
 }
 
 /**
@@ -373,14 +499,19 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
   const monteeTronquee = (numeroMontee: number): boolean =>
     rotationLimitee(numeroMontee) && !monteeGrilleParNumero.get(numeroMontee)?.express;
 
+  // La SECTION du jour s'applique à TOUS les trains, trains supplémentaires
+  // compris, AVANT la logique de terminus par train : elle est la borne
+  // extérieure, et la colonne Terminus ne peut ensuite que réduire davantage.
+  const { debut, fin } = sectionDuJour(jour);
   return trains.map((train) => {
-    if (train.sens === 'montee' && monteeTronquee(train.numero)) {
-      return tronqueMonteeABellevue(train);
+    const dansLaSection = tronqueTrain(train, debut, fin);
+    if (dansLaSection.sens === 'montee' && monteeTronquee(dansLaSection.numero)) {
+      return tronqueABellevue(dansLaSection);
     }
-    if (train.sens === 'descente' && rotationLimitee(train.numero - 1)) {
-      return descenteDepuisBellevue(train);
+    if (dansLaSection.sens === 'descente' && rotationLimitee(dansLaSection.numero - 1)) {
+      return tronqueABellevue(dansLaSection);
     }
-    return train;
+    return dansLaSection;
   });
 }
 
@@ -761,10 +892,16 @@ export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number
 }
 
 /**
- * État « tronçon Bellevue – Nid d'Aigle fermé » de l'écran du Nid d'Aigle :
- * bascule Terminus Bellevue enregistrée sur le jour ET plus aucun passage à
- * afficher (les rotations non limitées et les express « à traiter » restent
- * affichés jusqu'à leur dernier passage — l'information prime).
+ * État « gare fermée » : la gare ne peut plus rien afficher parce qu'une
+ * partie de la ligne n'est pas desservie. Deux causes, une seule notion :
+ * - la gare est HORS de la section exploitée du jour (travaux) — vrai de
+ *   n'importe quel bout de la ligne, pas seulement du haut ;
+ * - bascule Terminus Bellevue et gare du Nid d'Aigle (comportement d'origine,
+ *   conservé à l'identique).
+ *
+ * Dans les deux cas, l'état n'est atteint que lorsqu'il n'y a plus AUCUN
+ * passage à afficher : les rotations non limitées et les express « à traiter »
+ * restent affichés jusqu'à leur dernier passage — l'information prime.
  */
 export function etatTronconFerme(
   grille: Grille,
@@ -772,7 +909,88 @@ export function etatTronconFerme(
   gare: GareId,
   maintenant_s: number,
 ): boolean {
-  if (gare !== 'nid-daigle') return false;
-  if (jour.terminus_bellevue === false) return false;
+  const parLaSection = gareHorsSection(jour, gare);
+  const parTerminusBellevue = gare === 'nid-daigle' && jour.terminus_bellevue !== false;
+  if (!parLaSection && !parTerminusBellevue) return false;
   return passagesPourGare(grille, jour, gare, maintenant_s).length === 0;
+}
+
+/**
+ * Texte par DÉFAUT des gares fermées, construit sur la section réelle. Seule
+ * source de cette formulation : la supervision en affiche l'aperçu, l'écran
+ * l'affiche pour de bon — les deux doivent dire exactement la même chose.
+ */
+export function messageTronconDefaut(
+  debut: GareId,
+  fin: GareId,
+  nomGare: (gare: GareId) => string,
+): { fr: string; en: string } {
+  return {
+    fr: `Ligne fermée entre ${nomGare(debut)} et ${nomGare(fin)} — travaux`,
+    en: `Line closed between ${nomGare(debut)} and ${nomGare(fin)} — works`,
+  };
+}
+
+/**
+ * Gares qui peuvent servir de TERMINUS à un train supplémentaire : toutes
+ * celles situées après la gare de départ du jour, dans la section exploitée.
+ * La gare de DÉPART, elle, est imposée — c'est `jour.gare_debut`.
+ */
+export function terminusPossiblesSup(jour: Pick<Jour, 'gare_debut' | 'gare_fin'>): GareId[] {
+  const { debut, fin } = sectionDuJour(jour);
+  return ORDRE_GARES.slice(ORDRE_GARES.indexOf(debut) + 1, ORDRE_GARES.indexOf(fin) + 1);
+}
+
+/** Écran bilingue d'une gare fermée, prêt à afficher. */
+export interface FermetureGare {
+  /** 'section' = travaux, hors section ; 'terminus-bellevue' = tronçon supérieur. */
+  cause: 'section' | 'terminus-bellevue';
+  titre_fr: string;
+  titre_en: string;
+  texte_fr: string;
+  texte_en: string;
+}
+
+/**
+ * Message d'une gare fermée. Le texte saisi en supervision l'emporte ; à
+ * défaut, un DÉFAUT bilingue est construit sur la section réelle. Un écran de
+ * gare ne reste JAMAIS muet, et n'affiche jamais un « fin de service »
+ * trompeur alors que sa gare est fermée pour travaux : ce sont deux états
+ * distincts, celui-ci étant prioritaire.
+ *
+ * `nomGare` vient de la grille (noms officiels) ; les noms de gares sont des
+ * noms propres, identiques en anglais.
+ */
+export function fermetureGare(
+  jour: Jour,
+  gare: GareId,
+  nomGare: (gare: GareId) => string,
+): FermetureGare | null {
+  const horsSection = gareHorsSection(jour, gare);
+  const terminusBellevue = gare === 'nid-daigle' && jour.terminus_bellevue !== false;
+  if (!horsSection && !terminusBellevue) return null;
+
+  const saisi = (valeur: string | null | undefined): string => (valeur ?? '').trim();
+  const fr = saisi(jour.message_troncon_fr);
+  const en = saisi(jour.message_troncon_en);
+
+  if (horsSection) {
+    const { debut, fin } = sectionDuJour(jour);
+    const defaut = messageTronconDefaut(debut, fin, nomGare);
+    return {
+      cause: 'section',
+      titre_fr: 'Ligne fermée',
+      titre_en: 'Line closed',
+      texte_fr: fr || defaut.fr,
+      texte_en: en || defaut.en,
+    };
+  }
+  return {
+    cause: 'terminus-bellevue',
+    titre_fr: "Tronçon Bellevue – Nid d'Aigle fermé",
+    titre_en: 'Bellevue – Nid d’Aigle section closed',
+    texte_fr:
+      fr || 'En raison des conditions météorologiques, les trains ont pour terminus Bellevue.',
+    texte_en: en || 'Due to weather conditions, trams terminate at Bellevue.',
+  };
 }

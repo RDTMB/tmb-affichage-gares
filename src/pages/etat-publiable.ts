@@ -135,6 +135,13 @@ export function instantaneJours(jours: JourPubliable[]): Instantane {
     instantane[`jour|${date}|terminus_bellevue`] = normalise(
       flag === false || !flag ? '' : flag.a_partir_du_train,
     );
+    // SECTION EXPLOITÉE : restreindre la ligne retire des trains de tous les
+    // écrans, c'est une modification au moins aussi lourde qu'un retard —
+    // elle doit compter dans la barre de publication.
+    instantane[`jour|${date}|gare_debut`] = normalise(jour?.gare_debut);
+    instantane[`jour|${date}|gare_fin`] = normalise(jour?.gare_fin);
+    instantane[`jour|${date}|message_troncon_fr`] = normalise(jour?.message_troncon_fr);
+    instantane[`jour|${date}|message_troncon_en`] = normalise(jour?.message_troncon_en);
   }
   return instantane;
 }
@@ -211,7 +218,18 @@ export function libelleDeCle(cle: string): string {
     case 'circulation':
       return c === 'sup' ? `train supplémentaire ${b}` : `TRAIN ${b} ${c}`;
     case 'jour':
-      return 'terminus Bellevue';
+      switch (b) {
+        case 'gare_debut':
+          return 'ligne exploitée (début)';
+        case 'gare_fin':
+          return 'ligne exploitée (fin)';
+        case 'message_troncon_fr':
+          return 'message gares fermées (FR)';
+        case 'message_troncon_en':
+          return 'message gares fermées (EN)';
+        default:
+          return 'terminus Bellevue';
+      }
     case 'message':
       return `message ${b}`;
     case 'media':

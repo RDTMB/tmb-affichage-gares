@@ -3,7 +3,8 @@
 // d'écran doivent distinguer l'écran des départs de l'écran grille.
 import { describe, expect, it } from 'vitest';
 
-import type { Message } from '../core/types';
+import type { GareId, Message } from '../core/types';
+import { ORDRE_GARES } from '../core/types';
 import {
   datetimeLocalVersIso,
   identifiantEcran,
@@ -14,6 +15,9 @@ import {
   initiales,
   libelleUtilisateur,
   recapCycle,
+  ajusteSection,
+  bandeauSection,
+  bornesSectionPossibles,
   decisionBandeauApplication,
   type EtatBandeauApplication,
 } from './supervision-logique';
@@ -299,5 +303,108 @@ describe('decisionBandeauApplication (bandeau de publication)', () => {
     expect(d.afficher).toBe(true);
     expect(d.etat.derniereReferenceAffichee).toBe(publicationSuivante);
     expect(d.etat.resumeResorbe).toBe(false);
+  });
+});
+
+// Section exploitée : la CONTRAINTE gare_debut < gare_fin doit vivre dans
+// l'interface, pas seulement en base. Une section inversée viderait tous les
+// écrans, et un message d'erreur après coup ne rattrape pas un affichage
+// voyageurs déjà faux.
+describe('bornesSectionPossibles : les listes déroulantes interdisent l’incohérent', () => {
+  it('le début ne propose jamais la fin ni au-delà', () => {
+    expect(bornesSectionPossibles('debut', 'nid-daigle')).toEqual([
+      'le-fayet',
+      'saint-gervais',
+      'motivon',
+      'col-de-voza',
+      'bellevue',
+    ]);
+    expect(bornesSectionPossibles('debut', 'motivon')).toEqual(['le-fayet', 'saint-gervais']);
+  });
+
+  it('la fin ne propose jamais le début ni en dessous', () => {
+    expect(bornesSectionPossibles('fin', 'le-fayet')).toEqual([
+      'saint-gervais',
+      'motivon',
+      'col-de-voza',
+      'bellevue',
+      'nid-daigle',
+    ]);
+    expect(bornesSectionPossibles('fin', 'bellevue')).toEqual(['nid-daigle']);
+  });
+
+  it('aucune liste n’est jamais vide : il reste toujours une section valide', () => {
+    for (const g of ORDRE_GARES) {
+      expect(
+        bornesSectionPossibles('debut', g).length + bornesSectionPossibles('fin', g).length,
+      ).toBeGreaterThan(0);
+    }
+    // Le Fayet en fin serait absurde : la liste des débuts garde au moins Le Fayet.
+    expect(bornesSectionPossibles('debut', 'le-fayet')).toEqual(['le-fayet']);
+  });
+});
+
+describe('ajusteSection : la borne déplacée est respectée, l’autre suit', () => {
+  it('une section déjà cohérente n’est pas touchée', () => {
+    expect(ajusteSection('le-fayet', 'nid-daigle', 'debut')).toEqual({
+      debut: 'le-fayet',
+      fin: 'nid-daigle',
+    });
+  });
+
+  it('début poussé au-delà de la fin : la fin se décale juste après', () => {
+    // L'exploitant choisit « de Bellevue » alors que la fin est à Motivon :
+    // on respecte son choix et on remonte la fin au minimum nécessaire.
+    expect(ajusteSection('bellevue', 'motivon', 'debut')).toEqual({
+      debut: 'bellevue',
+      fin: 'nid-daigle',
+    });
+  });
+
+  it('fin ramenée avant le début : le début se décale juste avant', () => {
+    expect(ajusteSection('col-de-voza', 'saint-gervais', 'fin')).toEqual({
+      debut: 'le-fayet',
+      fin: 'saint-gervais',
+    });
+  });
+
+  it('début et fin identiques : la section reste non vide', () => {
+    const r = ajusteSection('motivon', 'motivon', 'debut');
+    expect(ORDRE_GARES.indexOf(r.debut)).toBeLessThan(ORDRE_GARES.indexOf(r.fin));
+  });
+});
+
+describe('bandeauSection : signalé seulement quand la ligne est restreinte', () => {
+  const nom = (g: GareId): string =>
+    ({
+      'le-fayet': 'Le Fayet',
+      'saint-gervais': 'Saint-Gervais',
+      motivon: 'Motivon',
+      'col-de-voza': 'Col de Voza',
+      bellevue: 'Bellevue',
+      'nid-daigle': "Nid d'Aigle",
+    })[g] ?? g;
+
+  it('ligne entière : aucun bandeau', () => {
+    expect(bandeauSection({ gare_debut: 'le-fayet', gare_fin: 'nid-daigle' }, nom)).toBeNull();
+  });
+
+  it('il nomme les gares fermées et annonce le report', () => {
+    const texte = bandeauSection({ gare_debut: 'col-de-voza', gare_fin: 'nid-daigle' }, nom);
+    expect(texte).toContain("de Col de Voza à Nid d'Aigle");
+    expect(texte).toContain('gares fermées : Le Fayet, Saint-Gervais, Motivon');
+    // Le report est LA garantie contre une journée oubliée : il doit être dit.
+    expect(texte).toContain('reportée sur les journées suivantes');
+  });
+
+  it('une seule gare fermée : le singulier', () => {
+    const texte = bandeauSection({ gare_debut: 'saint-gervais', gare_fin: 'nid-daigle' }, nom);
+    expect(texte).toContain('gare fermée : Le Fayet');
+    expect(texte).not.toContain('gares fermées');
+  });
+
+  it('les deux bouts peuvent être fermés en même temps', () => {
+    const texte = bandeauSection({ gare_debut: 'saint-gervais', gare_fin: 'col-de-voza' }, nom);
+    expect(texte).toContain("Le Fayet, Bellevue, Nid d'Aigle");
   });
 });

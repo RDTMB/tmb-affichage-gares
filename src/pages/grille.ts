@@ -14,8 +14,12 @@ import '../styles/grille.css';
 
 import {
   formatHeure,
+  gareHorsSection,
   grillePourJour,
   libelleTrain,
+  messageTronconDefaut,
+  sectionComplete,
+  sectionDuJour,
   passagesPourGare,
   positionsTrains,
   trainsDuJour,
@@ -104,6 +108,11 @@ function machineDe(nomRame: string): Machine {
   return params?.machines.find((m) => m.nom === nomRame) ?? { ...RAME_INCONNUE, nom: nomRame };
 }
 
+/** Nom officiel d'une gare, tel que la grille le porte. */
+function nomGare(id: GareId): string {
+  return grille?.gares.find((g) => g.id === id)?.nom ?? id;
+}
+
 function dureeCacheMs(): number {
   const surcharge = Number(url.get('cache'));
   const minutes = surcharge > 0 ? surcharge : (params?.duree_cache_min ?? 15);
@@ -160,7 +169,14 @@ function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {
 function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, GareId>): string {
   if (!grille) return '';
   const colonnes = colonnesDuSens(sens, maintenant_s);
-  const gares = sens === 'montee' ? grille.gares : [...grille.gares].reverse();
+  // Les gares HORS section n'ont rien à montrer : trois lignes de « — »
+  // seraient du bruit, et laisseraient croire à un service interrompu plutôt
+  // qu'à un tronçon fermé (celui-ci est annoncé par le bandeau).
+  const jourCourant = jour;
+  const dansLaSection = jourCourant
+    ? grille.gares.filter((g) => !gareHorsSection(jourCourant, g.id))
+    : grille.gares;
+  const gares = sens === 'montee' ? dansLaSection : [...dansLaSection].reverse();
   // Prochain départ (surligné) : plus petit départ RÉEL d'origine encore à
   // venir — un gros retard peut inverser l'ordre théorique des colonnes.
   let prochainIdx = -1;
@@ -247,6 +263,26 @@ function rendsEntetesEtPied(): void {
   // « Today's timetable · Grand service » — libellé du service depuis la grille
   const service = jour?.hors_saison ? 'Hors saison' : (grille.libelle.split('—')[0]?.trim() ?? '');
   $('sous-titre').textContent = service ? `Today's timetable · ${service}` : "Today's timetable";
+
+  // SECTION EXPLOITÉE : les titres des deux sens suivent les bornes réelles,
+  // et une restriction est annoncée en tête de page — la grille du jour dit
+  // la même chose que les écrans de gare.
+  const { debut, fin } = jour
+    ? sectionDuJour(jour)
+    : { debut: 'le-fayet' as GareId, fin: 'nid-daigle' as GareId };
+  $('titre-montee').textContent = `Montée — ${nomGare(debut)} → ${nomGare(fin)}`;
+  $('titre-descente').textContent = `Descente — ${nomGare(fin)} → ${nomGare(debut)}`;
+  const restreinte = jour !== null && !sectionComplete(jour);
+  const bandeau = $('bandeau-section');
+  bandeau.style.display = restreinte ? '' : 'none';
+  if (restreinte && jour) {
+    // Même formulation que les écrans de gare : message saisi en
+    // supervision, à défaut le texte bilingue construit sur la section.
+    const defaut = messageTronconDefaut(debut, fin, nomGare);
+    bandeau.innerHTML =
+      `<b>${echapper((jour.message_troncon_fr ?? '').trim() || defaut.fr)}</b>` +
+      `<span class="en">${echapper((jour.message_troncon_en ?? '').trim() || defaut.en)}</span>`;
+  }
   rendsLegende();
   $('meteo').innerHTML = meteoHtml(params, grille);
 }

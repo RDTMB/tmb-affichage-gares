@@ -60,6 +60,26 @@ header {
   width: auto;
 }
 
+/* Restriction de ligne (travaux) annoncée en tête de page : même texte que
+   les écrans des gares fermées. */
+.bandeau-section {
+  margin: 0 2vw 1vh;
+  padding: 1vh 1.6vw;
+  border-radius: 1vh;
+  background: var(--rouge);
+  color: #fff;
+  font-weight: 700;
+  font-size: 2.1vh;
+  text-align: center;
+}
+
+.bandeau-section .en {
+  display: block;
+  font-weight: 400;
+  font-size: 1.7vh;
+  opacity: 0.9;
+}
+
 .titre-bloc {
   position: absolute;
   left: 50%;

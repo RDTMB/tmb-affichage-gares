@@ -16,13 +16,18 @@ import {
   formatHeure,
   grillePourJour,
   heureVersSecondes,
+  gareHorsSection,
   libelleTrain,
+  messageTronconDefaut,
+  sectionComplete,
+  sectionDuJour,
+  terminusPossiblesSup,
   monteesSansRetour,
   serviceActif,
 } from '../core/horaires';
 import { construitRotationSup, prochainNumeroSup } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
-import { ORDRE_GARES } from '../core/types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from '../core/types';
 import type {
   Circulation,
   EcranInfo,
@@ -38,6 +43,7 @@ import type {
   PassageGrille,
   Profil,
   Role,
+  SectionJour,
   TrainGrille,
   User,
   EntreeJournal,
@@ -55,6 +61,7 @@ import {
   stageCirculation,
   videDate,
   type BrouillonCirculations,
+  type BrouillonSection,
   type BrouillonSupSupprimes,
   type BrouillonMessages,
   type BrouillonTerminus,
@@ -77,6 +84,9 @@ import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from '.
 import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
 import {
   actionGroupeeFacultatifs,
+  ajusteSection,
+  bandeauSection,
+  bornesSectionPossibles,
   datetimeLocalVersIso,
   decisionBandeauApplication,
   identifiantEcranDeclare,
@@ -195,6 +205,8 @@ const brouillonCirc: BrouillonCirculations = new Map();
 /** Trains sup dont la suppression attend la publication (numéro de montée). */
 const brouillonSupSupprimes: BrouillonSupSupprimes = new Map();
 const brouillonTerminus: BrouillonTerminus = new Map();
+/** Section exploitée (travaux) en attente de publication, par date. */
+const brouillonSection: BrouillonSection = new Map();
 const brouillonMessages: BrouillonMessages = new Map();
 let brouillonParams: Partial<Params> = {};
 
@@ -208,7 +220,13 @@ function rafraichitParamsEffectifs(): void {
 
 function rafraichitJourEffectif(): void {
   if (jour)
-    jour = appliqueBrouillonJour(jour, brouillonCirc, brouillonTerminus, brouillonSupSupprimes);
+    jour = appliqueBrouillonJour(
+      jour,
+      brouillonCirc,
+      brouillonTerminus,
+      brouillonSupSupprimes,
+      brouillonSection,
+    );
 }
 
 /** Reste-t-il des modifications non publiées (toutes catégories confondues) ? */
@@ -216,6 +234,7 @@ function rienEnAttente(): boolean {
   return (
     brouillonCirc.size === 0 &&
     brouillonTerminus.size === 0 &&
+    brouillonSection.size === 0 &&
     brouillonMessages.size === 0 &&
     Object.keys(brouillonParams).length === 0
   );
@@ -263,7 +282,14 @@ function toast(texte: string): void {
  * griserait le bouton alors qu'il reste quelque chose à publier ailleurs.
  */
 function datesPubliables(): string[] {
-  return [...new Set([dateSel, ...brouillonCirc.keys(), ...brouillonTerminus.keys()])];
+  return [
+    ...new Set([
+      dateSel,
+      ...brouillonCirc.keys(),
+      ...brouillonTerminus.keys(),
+      ...brouillonSection.keys(),
+    ]),
+  ];
 }
 
 /** Journées telles qu'elles seront publiées (base + brouillon). */
@@ -274,7 +300,13 @@ function joursEffectifs(): JourPubliable[] {
     return {
       date,
       jour: base
-        ? appliqueBrouillonJour(base, brouillonCirc, brouillonTerminus, brouillonSupSupprimes)
+        ? appliqueBrouillonJour(
+            base,
+            brouillonCirc,
+            brouillonTerminus,
+            brouillonSupSupprimes,
+            brouillonSection,
+          )
         : null,
     };
   });
@@ -675,6 +707,74 @@ function ligneCirculation(
   </tr>`;
 }
 
+// -------------------------------------------------------------------------
+// SECTION EXPLOITÉE (travaux) — « une partie seulement de la ligne est
+// exploitée ». Même concept que « Terminus Bellevue », qui n'en est qu'un
+// cas particulier : la section est la borne extérieure, la colonne Terminus
+// ne peut que réduire davantage (voir tronqueTrain()).
+// -------------------------------------------------------------------------
+
+/** Section actuellement affichée (base + brouillon). */
+const sectionAffichee = (): SectionJour => {
+  const { debut, fin } = sectionDuJour(
+    jour ?? { gare_debut: GARE_DEBUT_DEFAUT, gare_fin: GARE_FIN_DEFAUT },
+  );
+  return {
+    gare_debut: debut,
+    gare_fin: fin,
+    message_troncon_fr: jour?.message_troncon_fr ?? null,
+    message_troncon_en: jour?.message_troncon_en ?? null,
+  };
+};
+
+const optionsGares = (liste: GareId[], choisie: GareId): string =>
+  liste
+    .map(
+      (g) =>
+        `<option value="${echapper(g)}"${g === choisie ? ' selected' : ''}>${echapper(
+          nomDeGare(g),
+        )}</option>`,
+    )
+    .join('');
+
+const rendBlocSection = (): void => {
+  const section = sectionAffichee();
+  const complete = sectionComplete(section);
+  // Réglage qui n'apparaît que lorsqu'il sert : un simple lien tant que la
+  // ligne est entière (le cas courant), le bloc déplié sinon.
+  const deplie = !complete || $('bloc-section').dataset.ouvert === '1';
+  $('bloc-section').style.display = deplie ? '' : 'none';
+  $('btn-section').style.display = deplie ? 'none' : '';
+
+  const selDebut = $('sel-section-debut') as HTMLSelectElement;
+  const selFin = $('sel-section-fin') as HTMLSelectElement;
+  selDebut.innerHTML = optionsGares(
+    bornesSectionPossibles('debut', section.gare_fin),
+    section.gare_debut,
+  );
+  selFin.innerHTML = optionsGares(
+    bornesSectionPossibles('fin', section.gare_debut),
+    section.gare_fin,
+  );
+
+  ($('msg-troncon-fr') as HTMLInputElement).value = section.message_troncon_fr ?? '';
+  ($('msg-troncon-en') as HTMLInputElement).value = section.message_troncon_en ?? '';
+
+  // Aperçu du DÉFAUT : l'exploitant voit ce que les écrans diront s'il
+  // n'écrit rien — un écran de gare fermée n'est jamais muet.
+  const defaut = messageTronconDefaut(section.gare_debut, section.gare_fin, nomDeGare);
+  const fermees = ORDRE_GARES.filter((g) => gareHorsSection(section, g)).map(nomDeGare);
+  $('apercu-troncon').innerHTML = complete
+    ? 'Ligne entière : aucune gare fermée.'
+    : `Gares fermées : <b>${echapper(fermees.join(', '))}</b>. À défaut de message saisi, leur écran affichera « ${echapper(defaut.fr)} » / « ${echapper(defaut.en)} ».`;
+
+  const bandeau = bandeauSection(section, nomDeGare);
+  $('bandeau-report').style.display = bandeau === null ? 'none' : '';
+  $('bandeau-report').textContent = bandeau ?? '';
+};
+
+/** Met la section en attente de publication et rafraîchit tout ce qui en dépend. */
+
 function rendreCirculations(): void {
   const grille = grilleDuJour();
   if (!grille || !jour) return;
@@ -724,6 +824,14 @@ function rendreCirculations(): void {
         }>TRAIN ${m.numero}${m.numero === 1 ? ' (journée entière)' : ''}</option>`,
     )
     .join('');
+
+  // Section exploitée : bornes, message des gares fermées, bandeau.
+  rendBlocSection();
+  ($('sel-section-debut') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
+  ($('sel-section-fin') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
+  ($('btn-section') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
+  ($('msg-troncon-fr') as HTMLInputElement).disabled = horsSaison || lectureSeule;
+  ($('msg-troncon-en') as HTMLInputElement).disabled = horsSaison || lectureSeule;
 
   // Action groupée sur les facultatifs + avertissement de rotation
   const btnFac = $('btn-facultatifs') as HTMLButtonElement;
@@ -867,12 +975,19 @@ function initCirculations(): void {
       .join('');
   };
 
-  /** Terminus proposés : jamais au-dessus de Bellevue si la bascule est active. */
+  /**
+   * Terminus proposés pour un train supplémentaire : TOUTES les gares situées
+   * après la gare de départ dans la section du jour — le renfort peut être
+   * limité à Saint-Gervais ou Motivon, pas seulement aux trois du haut. La
+   * bascule Terminus Bellevue retire en plus ce qui est au-dessus de
+   * Bellevue, puisque le train n'y circulerait pas.
+   */
   const terminusPossibles = (): GareId[] => {
-    const limite = jour?.terminus_bellevue !== false;
-    return limite
-      ? (['col-de-voza', 'bellevue'] as GareId[])
-      : (['col-de-voza', 'bellevue', 'nid-daigle'] as GareId[]);
+    const section = sectionAffichee();
+    const possibles = terminusPossiblesSup(section);
+    if (jour?.terminus_bellevue === false) return possibles;
+    const plafond = ORDRE_GARES.indexOf('bellevue');
+    return possibles.filter((g) => ORDRE_GARES.indexOf(g) <= plafond);
   };
 
   /** Aperçu des horaires CALCULÉS, chaque heure restant modifiable. */
@@ -929,13 +1044,28 @@ function initCirculations(): void {
     sel.innerHTML = possibles
       .map((g) => `<option value="${echapper(g)}">${echapper(nomDeGare(g))}</option>`)
       .join('');
-    sel.value = possibles.includes(choisi as GareId) ? choisi : 'col-de-voza';
+    // Défaut : le Col de Voza s'il est dans la section (cas courant du
+    // renfort), sinon le dernier terminus possible.
+    const defaut = possibles.includes('col-de-voza')
+      ? 'col-de-voza'
+      : (possibles[possibles.length - 1] ?? 'nid-daigle');
+    sel.value = possibles.includes(choisi as GareId) ? choisi : defaut;
 
+    // La gare de DÉPART est imposée : c'est la gare de début de ligne du
+    // jour (`gare_debut`), pas Le Fayet en dur — dans une section
+    // [Col de Voza, Nid d'Aigle], le renfort part du Col de Voza.
+    const depart = sectionAffichee().gare_debut;
     const terminus = sel.value as GareId;
-    const ordreMontee = ORDRE_GARES.slice(0, ORDRE_GARES.indexOf(terminus) + 1);
+    // « Départ : <gare> » et non « Départ de <gare> » : « de Le Fayet » est
+    // fautif, et la gare de départ varie désormais avec la section.
+    $('sup-libelle-depart').textContent = `Départ : ${nomDeGare(depart)}`;
+    const ordreMontee = ORDRE_GARES.slice(
+      ORDRE_GARES.indexOf(depart),
+      ORDRE_GARES.indexOf(terminus) + 1,
+    );
     const ordreDescente = [...ordreMontee].reverse();
-    rendCasesGaresSup('sup-gares-montee', ordreMontee, ['le-fayet', terminus]);
-    rendCasesGaresSup('sup-gares-descente', ordreDescente, [terminus, 'le-fayet']);
+    rendCasesGaresSup('sup-gares-montee', ordreMontee, [depart, terminus]);
+    rendCasesGaresSup('sup-gares-descente', ordreDescente, [terminus, depart]);
 
     const rame = $('sup-rame') as HTMLSelectElement;
     rame.innerHTML = (params?.machines ?? [])
@@ -1046,7 +1176,7 @@ function initCirculations(): void {
         // Le retour à zéro serveur a réussi : les modifications en attente de cette
         // date n'ont plus de sens. On les purge seulement maintenant (pas avant l'appel
         // réseau) pour ne pas perdre le brouillon local si reinitialiseJour échoue.
-        videDate(brouillonCirc, brouillonTerminus, dateSel);
+        videDate(brouillonCirc, brouillonTerminus, dateSel, brouillonSection);
         return rechargeJour();
       })
       .then(() => {
@@ -1056,6 +1186,75 @@ function initCirculations(): void {
       .catch(erreurVersToast);
   });
   $('btn-csv').addEventListener('click', exporteCsv);
+
+  const poseSection = (section: SectionJour, detail: string): void => {
+    brouillonSection.set(dateSel, section);
+    rafraichitJourEffectif();
+    bumpEnAttente(detail);
+    rendBlocSection();
+    rendreCirculations();
+    rendFormulaireSup();
+  };
+
+  const changeBorne = (bougee: 'debut' | 'fin') => (): void => {
+    const section = sectionAffichee();
+    const choisie = (
+      bougee === 'debut'
+        ? ($('sel-section-debut') as HTMLSelectElement)
+        : ($('sel-section-fin') as HTMLSelectElement)
+    ).value as GareId;
+    const ajustee = ajusteSection(
+      bougee === 'debut' ? choisie : section.gare_debut,
+      bougee === 'fin' ? choisie : section.gare_fin,
+      bougee,
+    );
+    poseSection(
+      { ...section, gare_debut: ajustee.debut, gare_fin: ajustee.fin },
+      `ligne exploitée de ${nomDeGare(ajustee.debut)} à ${nomDeGare(ajustee.fin)} (en attente)`,
+    );
+    toast(
+      `Ligne exploitée de ${nomDeGare(ajustee.debut)} à ${nomDeGare(ajustee.fin)} — en attente de publication`,
+    );
+  };
+
+  $('btn-section').addEventListener('click', () => {
+    $('bloc-section').dataset.ouvert = '1';
+    rendBlocSection();
+  });
+  $('btn-section-complete').addEventListener('click', () => {
+    delete $('bloc-section').dataset.ouvert;
+    poseSection(
+      {
+        gare_debut: GARE_DEBUT_DEFAUT,
+        gare_fin: GARE_FIN_DEFAUT,
+        message_troncon_fr: null,
+        message_troncon_en: null,
+      },
+      'ligne entière rétablie (en attente)',
+    );
+    toast('Ligne entière rétablie — en attente de publication');
+  });
+  $('sel-section-debut').addEventListener('change', changeBorne('debut'));
+  $('sel-section-fin').addEventListener('change', changeBorne('fin'));
+
+  // Message des gares fermées : enregistré à la frappe retombée, traduction
+  // anglaise automatique comme pour les messages voyageurs (et éditable).
+  const poseMessageTroncon = antiRebond(() => {
+    const section = sectionAffichee();
+    const fr = ($('msg-troncon-fr') as HTMLInputElement).value.trim();
+    const en = ($('msg-troncon-en') as HTMLInputElement).value.trim();
+    const enregistre = (texteEn: string): void => {
+      ($('msg-troncon-en') as HTMLInputElement).value = texteEn;
+      poseSection(
+        { ...section, message_troncon_fr: fr || null, message_troncon_en: texteEn || null },
+        'message des gares fermées (en attente)',
+      );
+    };
+    if (en || !fr) enregistre(en);
+    else void provider.traduire(fr).then((t) => enregistre(t ?? traductionLocale(fr)));
+  });
+  $('msg-troncon-fr').addEventListener('input', poseMessageTroncon);
+  $('msg-troncon-en').addEventListener('input', poseMessageTroncon);
 
   const terminusChange = (): void => {
     const coche = ($('chk-terminus') as HTMLInputElement).checked;
@@ -2916,6 +3115,19 @@ async function publieLeBrouillon(): Promise<boolean> {
       brouillonCirc.delete(date);
     } catch (erreur) {
       echecs.push(`circulations du ${date}`);
+      erreurVersToast(erreur);
+    }
+  }
+
+  // La SECTION avant la bascule Terminus : la section est la borne
+  // extérieure, l'écrire d'abord évite un état intermédiaire où la colonne
+  // Terminus désignerait une gare déjà hors service.
+  for (const [date, section] of [...brouillonSection.entries()]) {
+    try {
+      await provider.setSectionJour(date, section);
+      brouillonSection.delete(date);
+    } catch (erreur) {
+      echecs.push(`ligne exploitée du ${date}`);
       erreurVersToast(erreur);
     }
   }

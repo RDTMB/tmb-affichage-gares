@@ -143,6 +143,8 @@ describe('grillePourJour', () => {
       date: '2026-12-01',
       grille_version: 'inconnue',
       terminus_bellevue: false,
+      gare_debut: 'le-fayet',
+      gare_fin: 'nid-daigle',
       circulations: [],
     };
     expect(grillePourJour(GRILLES, jour)).toBeNull();

@@ -90,6 +90,20 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   descente de la même rotation hérite automatiquement (non modifiable).
   En supervision, montée et descente d'une rotation sont affichées l'une
   sous l'autre.
+- **Section exploitée** (`jours.gare_debut` / `gare_fin`, bornes incluses) :
+  « une partie seulement de la ligne est exploitée » est UN concept, pas deux.
+  « Terminus Bellevue » n'en est qu'un cas particulier — il n'existe donc
+  qu'une seule troncature dans le moteur, `tronqueTrain()`, et les bornes se
+  lisent TOUJOURS par `sectionDuJour()` (un instantané en cache d'avant le
+  déploiement n'a pas les colonnes ; un index -1 viderait tous les écrans).
+  INVARIANT : la section est la borne EXTÉRIEURE, la colonne `terminus` d'une
+  circulation ne peut que réduire davantage, jamais dépasser. Les heures ne
+  sont jamais recalculées : la grille est simplement TRONQUÉE. Une gare hors
+  section affiche « Ligne fermée » (message saisi, sinon défaut bilingue
+  construit sur la section) et JAMAIS « service terminé ». La section se
+  REPORTE sur la journée suivante à sa création (`sectionReportee()`) : un
+  chantier dure des semaines, et une journée oubliée annoncerait des trains
+  qui ne circulent pas.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir

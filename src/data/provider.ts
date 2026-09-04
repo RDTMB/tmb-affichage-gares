@@ -22,6 +22,7 @@ import type {
   Params,
   Role,
   Session,
+  SectionJour,
   TerminusFlag,
   User,
 } from '../core/types';
@@ -92,6 +93,12 @@ export interface DataProvider {
    */
   supprimerTrainSup(date: string, numeroMontee: number): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
+  /**
+   * SECTION EXPLOITÉE du jour (travaux) et message des gares fermées.
+   * « Terminus Bellevue » reste une écriture distincte : il agit sur la
+   * colonne Terminus des circulations, la section sur la journée elle-même.
+   */
+  setSectionJour(date: string, section: SectionJour): Promise<void>;
   saveMessage(m: Message): Promise<void>;
   deleteMessage(id: string): Promise<void>;
   uploadMedia(file: File, meta: MediaMeta): Promise<void>;
