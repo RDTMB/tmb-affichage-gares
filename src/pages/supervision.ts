@@ -94,6 +94,7 @@ import {
   decisionBandeauApplication,
   identifiantEcranDeclare,
   recapCycle,
+  routageCirculations,
   initiales,
   libelleUtilisateur,
   etatFraicheurEcran,
@@ -207,6 +208,13 @@ let paramsBase: Params | null = null;
 const brouillonCirc: BrouillonCirculations = new Map();
 /** Trains sup dont la suppression attend la publication (numéro de montée). */
 const brouillonSupSupprimes: BrouillonSupSupprimes = new Map();
+/**
+ * Trains sup NEUFS en attente (numéro de MONTÉE, par date). Seule la création
+ * y inscrit un numéro : la nouveauté se MARQUE, elle ne se devine pas. La
+ * deviner à partir de `supplementaire && sens === 'montee'` faisait échouer
+ * toute modification d'un renfort déjà enregistré (bug du 04/09/2026).
+ */
+const brouillonSupNeufs: BrouillonSupSupprimes = new Map();
 const brouillonTerminus: BrouillonTerminus = new Map();
 /** Section exploitée (travaux) en attente de publication, par date. */
 const brouillonSection: BrouillonSection = new Map();
@@ -1150,6 +1158,12 @@ function initCirculations(): void {
       passages: rotation.descente,
     });
     brouillonSupSupprimes.get(dateSel)?.delete(numero);
+    // MARQUE de nouveauté : c'est le seul endroit qui l'inscrit. La
+    // publication s'en sert pour router la rotation vers `creerTrainSup()`
+    // plutôt que vers l'écriture groupée.
+    const neufs = brouillonSupNeufs.get(dateSel) ?? new Set<number>();
+    neufs.add(numero);
+    brouillonSupNeufs.set(dateSel, neufs);
     rafraichitJourEffectif();
     rendreCirculations();
     $('form-train-sup').style.display = 'none';
@@ -1174,7 +1188,14 @@ function initCirculations(): void {
         // Le retour à zéro serveur a réussi : les modifications en attente de cette
         // date n'ont plus de sens. On les purge seulement maintenant (pas avant l'appel
         // réseau) pour ne pas perdre le brouillon local si reinitialiseJour échoue.
-        videDate(brouillonCirc, brouillonTerminus, dateSel, brouillonSection);
+        videDate(
+          brouillonCirc,
+          brouillonTerminus,
+          dateSel,
+          brouillonSection,
+          brouillonSupSupprimes,
+          brouillonSupNeufs,
+        );
         return rechargeJour();
       })
       .then(() => {
@@ -1374,9 +1395,11 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
       const retires = brouillonSupSupprimes.get(dateSel) ?? new Set<number>();
       retires.add(numero);
       brouillonSupSupprimes.set(dateSel, retires);
-      // Une création jamais publiée s'annule purement et simplement.
+      // Une création jamais publiée s'annule purement et simplement : les
+      // deux lignes ET la marque de nouveauté disparaissent du brouillon.
       brouillonCirc.get(dateSel)?.delete(numero);
       brouillonCirc.get(dateSel)?.delete(numero + 1);
+      brouillonSupNeufs.get(dateSel)?.delete(numero);
       rafraichitJourEffectif();
       rendreCirculations();
       bumpEnAttente(`${libelle} supprimé (en attente)`);
@@ -3043,20 +3066,30 @@ function initParametres(): void {
  */
 async function publieLeBrouillon(): Promise<boolean> {
   const echecs: string[] = [];
+  /**
+   * Échec consigné AVEC sa cause. Jusqu'ici `erreurVersToast()` affichait le
+   * vrai message, que le toast « Publication incomplète » écrasait une
+   * fraction de seconde plus tard : l'agent ne voyait jamais la cause, ce qui
+   * a coûté deux allers-retours le 04/09/2026. Les causes réelles sont
+   * désormais gardées et affichées dans un bandeau PERSISTANT.
+   */
+  const causes: string[] = [];
+  const echoue = (quoi: string, erreur: unknown): void => {
+    echecs.push(quoi);
+    causes.push(`${quoi} : ${erreur instanceof Error ? erreur.message : String(erreur)}`);
+  };
 
   if (Object.keys(brouillonParams).length > 0) {
     try {
       await provider.saveParams(brouillonParams);
       brouillonParams = {};
     } catch (erreur) {
-      echecs.push('météo/vitesse');
-      erreurVersToast(erreur);
+      echoue('météo/vitesse', erreur);
     }
   }
 
   if (brouillonMessages.size > 0) {
     const entrees = [...brouillonMessages.entries()];
-    let ok = true;
     for (const [id, message] of entrees) {
       try {
         if (message === null) {
@@ -3068,53 +3101,66 @@ async function publieLeBrouillon(): Promise<boolean> {
         }
         brouillonMessages.delete(id);
       } catch (erreur) {
-        ok = false;
-        erreurVersToast(erreur);
+        echoue(`message ${id}`, erreur);
       }
     }
-    if (!ok) echecs.push('messages');
   }
 
   // Suppressions de trains supplémentaires D'ABORD : si l'agent a supprimé
   // puis recréé un train au même numéro, la création doit gagner.
   for (const [date, numeros] of [...brouillonSupSupprimes.entries()]) {
-    let ok = true;
-    for (const numeroMontee of numeros) {
+    for (const numeroMontee of [...numeros]) {
       try {
         await provider.supprimerTrainSup(date, numeroMontee);
+        numeros.delete(numeroMontee); // ce qui a réussi sort du brouillon
       } catch (erreur) {
-        ok = false;
-        erreurVersToast(erreur);
+        echoue(`suppression du train supplémentaire ${numeroMontee} du ${date}`, erreur);
       }
     }
-    if (ok) brouillonSupSupprimes.delete(date);
-    else echecs.push(`suppression de train supplémentaire du ${date}`);
+    if (numeros.size === 0) brouillonSupSupprimes.delete(date);
   }
 
   for (const [date, parNumero] of [...brouillonCirc.entries()]) {
+    // Rotations sup NEUVES → creerTrainSup (insert des deux lignes) ; tout le
+    // reste, modification d'un renfort déjà en base comprise → écriture
+    // groupée. La nouveauté est MARQUÉE, jamais devinée (`routageCirculations`).
+    let routage;
     try {
-      // Les trains SUPPLÉMENTAIRES neufs passent par creerTrainSup (insert de
-      // la rotation entière, contrôle des deux lignes) ; le reste par
-      // l'écriture groupée habituelle.
-      const enAttente = [...parNumero.values()];
-      const supNeufs = enAttente.filter((c) => c.supplementaire && c.sens === 'montee');
-      const autres = enAttente.filter(
-        (c) =>
-          !c.supplementaire ||
-          !supNeufs.some((m) => m.numero === c.numero || m.numero + 1 === c.numero),
-      );
-      for (const montee of supNeufs) {
-        const descente = enAttente.find((c) => c.numero === montee.numero + 1);
-        if (!descente)
-          throw new Error(`Train supplémentaire ${montee.numero} sans descente appariée`);
-        await provider.creerTrainSup(date, montee, descente);
-      }
-      if (autres.length > 0) await provider.saveCirculations(autres);
-      brouillonCirc.delete(date);
+      routage = routageCirculations([...parNumero.values()], brouillonSupNeufs.get(date));
     } catch (erreur) {
-      echecs.push(`circulations du ${date}`);
-      erreurVersToast(erreur);
+      echoue(`circulations du ${date}`, erreur);
+      continue;
     }
+
+    // CHAQUE écriture réussie sort du brouillon immédiatement. Vider la date
+    // entière seulement « si tout passe » faisait réapparaître comme « en
+    // attente » des trains DÉJÀ enregistrés en base — observé en production
+    // le 04/09/2026 sur le train sup 101/102.
+    for (const { montee, descente } of routage.creations) {
+      try {
+        await provider.creerTrainSup(date, montee, descente);
+        parNumero.delete(montee.numero);
+        parNumero.delete(descente.numero);
+        brouillonSupNeufs.get(date)?.delete(montee.numero);
+      } catch (erreur) {
+        echoue(`création du train supplémentaire ${montee.numero} du ${date}`, erreur);
+      }
+    }
+
+    if (routage.misesAJour.length > 0) {
+      try {
+        await provider.saveCirculations(routage.misesAJour);
+        for (const c of routage.misesAJour) parNumero.delete(c.numero);
+      } catch (erreur) {
+        // Écriture groupée : en cas d'échec on garde TOUT le lot. Une reprise
+        // est idempotente (upsert sur date + numéro), alors qu'oublier une
+        // ligne réellement non écrite la perdrait pour de bon.
+        echoue(`circulations du ${date}`, erreur);
+      }
+    }
+
+    if (parNumero.size === 0) brouillonCirc.delete(date);
+    if (brouillonSupNeufs.get(date)?.size === 0) brouillonSupNeufs.delete(date);
   }
 
   // La SECTION avant la bascule Terminus : la section est la borne
@@ -3125,8 +3171,7 @@ async function publieLeBrouillon(): Promise<boolean> {
       await provider.setSectionJour(date, section);
       brouillonSection.delete(date);
     } catch (erreur) {
-      echecs.push(`ligne exploitée du ${date}`);
-      erreurVersToast(erreur);
+      echoue(`ligne exploitée du ${date}`, erreur);
     }
   }
 
@@ -3135,8 +3180,7 @@ async function publieLeBrouillon(): Promise<boolean> {
       await provider.setTerminusBellevue(date, flag);
       brouillonTerminus.delete(date);
     } catch (erreur) {
-      echecs.push(`terminus Bellevue du ${date}`);
-      erreurVersToast(erreur);
+      echoue(`terminus Bellevue du ${date}`, erreur);
     }
   }
 
@@ -3145,6 +3189,9 @@ async function publieLeBrouillon(): Promise<boolean> {
   rafraichitJourEffectif();
 
   if (echecs.length > 0) {
+    // La CAUSE dans un bandeau persistant, le résumé dans le toast : un
+    // diagnostic qui s'efface avant d'être lu ne sert à personne.
+    afficheEchecPublication(causes);
     toast(
       `⚠ Publication incomplète — resté(e) en attente : ${echecs.join(', ')}. Réessayez « Publier ».`,
     );
@@ -3153,7 +3200,26 @@ async function publieLeBrouillon(): Promise<boolean> {
     recalculeEcarts();
     return false;
   }
+  afficheEchecPublication([]);
   return true;
+}
+
+/**
+ * Bandeau des causes d'une publication incomplète. Persistant : il n'est
+ * effacé que par une publication qui réussit, ou par une nouvelle tentative.
+ */
+function afficheEchecPublication(causes: string[]): void {
+  const bloc = $('echec-publication');
+  if (causes.length === 0) {
+    bloc.style.display = 'none';
+    bloc.textContent = '';
+    return;
+  }
+  bloc.style.display = '';
+  bloc.innerHTML =
+    '<b>⚠ Publication incomplète</b><ul>' +
+    causes.map((c) => `<li>${echapper(c)}</li>`).join('') +
+    '</ul>';
 }
 
 function initPublication(): void {
@@ -3164,6 +3230,7 @@ function initPublication(): void {
     // Le résumé consigné décrit les ÉCARTS RÉELS : une température revenue à
     // sa valeur d'origine n'y figure pas.
     const resume = resumeEcarts(ecartsCourants);
+    afficheEchecPublication([]); // la tentative précédente n'a plus cours
     void publieLeBrouillon()
       .then((succes) => {
         if (!succes) return; // les catégories en échec restent en attente, rien n'est journalisé

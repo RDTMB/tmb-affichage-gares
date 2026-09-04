@@ -654,6 +654,10 @@
       <div>
         <div class="etat" id="etat-pub">Tout est publié ✓</div>
         <div class="resume-application" id="resume-application" style="display: none"></div>
+        <!-- Cause RÉELLE d'une publication incomplète : elle reste affichée
+             jusqu'à la publication suivante, là où le toast s'effaçait avant
+             que l'agent ait pu la lire. -->
+        <div class="echec-publication" id="echec-publication" style="display: none"></div>
         <div class="detail" id="detail-pub">
           Les modifications s'appliquent immédiatement ; « Publier » consigne un résumé horodaté
           dans l'historique.
