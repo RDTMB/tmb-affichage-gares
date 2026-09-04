@@ -248,7 +248,9 @@ describe('grille d’hiver : retireNidDaigle', () => {
     expect(erreurs).toContain(
       "TRAIN 9 : un express va jusqu'au Nid d'Aigle (il saute Col de Voza et Bellevue) — sans passage au Nid d'Aigle, retirez la rotation ou son symbole express",
     );
-    expect(erreurs.filter((e) => e.includes('un express va'))).toHaveLength(6); // 9, 17, 23 et 10, 18 — plus la descente 24 non express : 5 + …
+    // Cinq trains express dans le grand service : montées 9, 17, 23 et
+    // descentes 10, 18 (la descente 24 n'est pas express) — une erreur chacun.
+    expect(erreurs.filter((e) => e.includes('un express va'))).toHaveLength(5);
     // En retirant les trois rotations express, la grille d'hiver est valide
     let g = hiver;
     for (const n of [9, 17, 23]) g = supprimeRotation(g, n);
