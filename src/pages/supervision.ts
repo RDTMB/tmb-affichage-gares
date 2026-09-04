@@ -94,6 +94,7 @@ import {
   decisionBandeauApplication,
   identifiantEcranDeclare,
   recapCycle,
+  resumeJournee,
   routageCirculations,
   initiales,
   libelleUtilisateur,
@@ -736,11 +737,18 @@ const optionsGares = (liste: GareId[], choisie: GareId): string =>
 const rendBlocSection = (): void => {
   const section = sectionAffichee();
   const complete = sectionComplete(section);
-  // Réglage qui n'apparaît que lorsqu'il sert : un simple lien tant que la
-  // ligne est entière (le cas courant), le bloc déplié sinon.
+  // RÈGLE : un réglage ACTIF n'est JAMAIS replié derrière un lien. Le lien
+  // « Restreindre la ligne » ne masque les bornes que si la ligne est
+  // ENTIÈRE. Dès qu'elle est restreinte, elles s'affichent en clair et mises
+  // en évidence : une ligne partiellement exploitée est l'information la plus
+  // importante de la journée, pas une option avancée.
   const deplie = !complete || $('bloc-section').dataset.ouvert === '1';
-  $('bloc-section').style.display = deplie ? '' : 'none';
+  $('bornes-section').style.display = deplie ? '' : 'none';
   $('btn-section').style.display = deplie ? 'none' : '';
+  $('reglage-section').className = `reglage${complete ? '' : ' actif'}`;
+  // La carte (message des gares fermées, rétablissement) ne sert que quand la
+  // ligne est effectivement restreinte ou qu'on vient de déplier.
+  $('bloc-section').style.display = deplie ? '' : 'none';
 
   const selDebut = $('sel-section-debut') as HTMLSelectElement;
   const selFin = $('sel-section-fin') as HTMLSelectElement;
@@ -788,29 +796,36 @@ function rendreCirculations(): void {
   // Les dates à venir sont créées automatiquement à l'ouverture (provider).
   const horsSaison = jour.hors_saison === true;
   const lectureSeule = !horsSaison && jour.enregistre === false;
-  const bandeau = $('bandeau-apercu');
-  bandeau.style.display = lectureSeule ? '' : 'none';
-  bandeau.textContent = '👁 Aperçu théorique — journée non exploitée (lecture seule).';
   ($('chk-terminus') as HTMLInputElement).disabled = horsSaison || lectureSeule;
   ($('sel-terminus-train') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
   ($('btn-reinitialiser') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
+  // « + Train supplémentaire » restait ACTIF sur une journée en lecture seule
+  // ou hors saison, alors que son gestionnaire refuse d'ouvrir le formulaire :
+  // une commande qui ne peut rien faire ne doit pas rester cliquable.
+  ($('btn-train-sup') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
 
-  const service = serviceActif(grilles, dateSel);
-  // Libellé compact : le petit service a DEUX périodes, et le « et » comme
-  // les espaces autour des flèches faisaient déborder la barre.
-  const libelleService = service
-    ? `${service.libelle.split('—')[0]?.trim()} (${service.periodes
-        .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)}→${p.au.slice(8)}/${p.au.slice(5, 7)}`)
-        .join(' · ')})`
-    : 'Hors saison / service hiver';
-  $('service-tag').textContent = libelleService;
-  // Le libellé est tronqué par CSS quand la barre manque de place : les
-  // périodes restent lisibles au survol.
-  $('service-tag').title = libelleService;
+  // RANG 1 — quelle journée : date en toutes lettres, service complet, état.
+  // Tous les libellés viennent de `resumeJournee()`, PURE et testée.
+  const resume = resumeJournee(jour, serviceActif(grilles, dateSel));
+  $('jour-lettres').textContent = resume.jourEnLettres;
+  $('service-tag').textContent = resume.service;
+  // Plus de troncature : l'étiquette a sa propre ligne. Le title reste utile
+  // aux lecteurs d'écran et aux postes très étroits.
+  $('service-tag').title = resume.service;
+  const etatJour = $('etat-jour');
+  etatJour.textContent = resume.etatLibelle;
+  etatJour.className = `etat-jour ${resume.etat}`;
 
-  // Bascule Terminus Bellevue « à partir du TRAIN N »
+  // RANG 2 — compteurs des réglages.
+  $('compte-facultatifs').textContent = resume.facultatifsLibelle;
+  $('compte-sups').textContent = resume.supsLibelle;
+
+  // Bascule Terminus Bellevue « à partir du TRAIN N ». Même règle que la
+  // section : quand elle est ACTIVE, elle est mise en évidence, jamais
+  // discrète.
   const flag = jour.terminus_bellevue;
   ($('chk-terminus') as HTMLInputElement).checked = flag !== false;
+  $('bloc-terminus').className = `terminus${resume.terminusActif ? ' actif' : ''}`;
   const sel = $('sel-terminus-train') as HTMLSelectElement;
   sel.innerHTML = grille.montees
     .map(
@@ -1116,7 +1131,9 @@ function initCirculations(): void {
   });
 
   $('btn-sup-valider').addEventListener('click', () => {
-    if (!jour) return;
+    // Même garde que l'ouverture du formulaire : sans elle, une journée en
+    // lecture seule pouvait encore recevoir un renfort.
+    if (!jour || jour.hors_saison || jour.enregistre === false) return;
     const brut = $('sup-apercu').dataset.rotation;
     if (!brut) {
       toast('Horaires incalculables — vérifiez l’heure de départ et les gares desservies');

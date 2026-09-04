@@ -80,37 +80,58 @@
       <!-- ================= CIRCULATIONS ================= -->
       <section class="onglet on" id="t-circulations">
         <div class="carte">
+          <!-- DEUX rangs, partage sémantique : le rang 1 dit QUELLE journée,
+               le rang 2 ce qui s'applique à elle. Un réglage ACTIF n'est
+               jamais replié derrière un lien (voir #btn-section). -->
           <div class="barre-jour">
-            <div class="nav-date">
-              <button class="leger" id="btn-jour-prec">◀</button>
-              <input type="date" id="date-picker" />
-              <button class="leger" id="btn-jour-suiv">▶</button>
+            <div class="rang rang-journee">
+              <div class="nav-date">
+                <button class="leger" id="btn-jour-prec">◀</button>
+                <input type="date" id="date-picker" />
+                <button class="leger" id="btn-jour-suiv">▶</button>
+              </div>
+              <div class="chips">
+                <button class="chip-btn" id="chip-auj">Aujourd'hui</button>
+                <button class="chip-btn" id="chip-dem">Demain</button>
+              </div>
+              <span class="jour-lettres" id="jour-lettres">—</span>
+              <span class="service-tag" id="service-tag">—</span>
+              <span class="etat-jour" id="etat-jour"></span>
             </div>
-            <div class="chips">
-              <button class="chip-btn" id="chip-auj">Aujourd'hui</button>
-              <button class="chip-btn" id="chip-dem">Demain</button>
+            <div class="rang rang-reglages">
+              <span class="reglage" id="reglage-section">
+                <button class="lien-section" id="btn-section">
+                  Restreindre la ligne (travaux)
+                </button>
+                <span class="bornes" id="bornes-section">
+                  <b>Ligne exploitée</b>
+                  <label
+                    >de
+                    <select id="sel-section-debut"></select
+                  ></label>
+                  <label
+                    >à
+                    <select id="sel-section-fin"></select
+                  ></label>
+                </span>
+              </span>
+              <label class="terminus" id="bloc-terminus">
+                <input type="checkbox" id="chk-terminus" />
+                ⚠ Terminus Bellevue à partir du
+                <select id="sel-terminus-train"></select>
+              </label>
+              <span class="reglage">
+                <button class="leger" id="btn-facultatifs">Trains facultatifs</button>
+                <span class="compte" id="compte-facultatifs"></span>
+              </span>
+              <span class="reglage">
+                <button class="leger" id="btn-train-sup">+ Train supplémentaire</button>
+                <span class="compte" id="compte-sups"></span>
+              </span>
             </div>
-            <span class="service-tag" id="service-tag">—</span>
-            <button class="leger" id="btn-facultatifs">Trains facultatifs</button>
-            <button class="leger" id="btn-train-sup">+ Train supplémentaire</button>
-            <label class="terminus">
-              <input type="checkbox" id="chk-terminus" />
-              ⚠ Terminus Bellevue à partir du
-              <select id="sel-terminus-train"></select>
-            </label>
-            <button class="lien-section" id="btn-section">Restreindre la ligne (travaux)</button>
           </div>
           <div class="carte-section" id="bloc-section" style="display: none">
             <div class="ligne">
-              <b>Ligne exploitée</b>
-              <label
-                >de
-                <select id="sel-section-debut"></select
-              ></label>
-              <label
-                >à
-                <select id="sel-section-fin"></select
-              ></label>
               <button class="leger" id="btn-section-complete">Rétablir la ligne entière</button>
             </div>
             <div class="ligne">
@@ -126,14 +147,9 @@
             <div class="note" id="apercu-troncon"></div>
           </div>
           <div class="note bandeau-report" id="bandeau-report" style="display: none"></div>
-          <div
-            class="note"
-            id="bandeau-apercu"
-            style="display: none; background: #fdf3e0; color: #7a6017; font-weight: 700"
-          >
-            👁 Aperçu théorique — journée pas encore enregistrée en base : votre première
-            modification l'enregistrera automatiquement.
-          </div>
+          <!-- L'état de la journée (« enregistrée » / « aperçu théorique ») vit
+               sur le rang 1 de la barre du jour, et NULLE PART AILLEURS :
+               affiché deux fois, il finirait par diverger. -->
           <div class="note avert-rotation" id="avert-rotation" style="display: none"></div>
           <div class="carte-sup" id="form-train-sup" style="display: none">
             <h3>Train supplémentaire</h3>

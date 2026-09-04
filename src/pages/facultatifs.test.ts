@@ -25,8 +25,9 @@ function circ(j: Jour, numero: number): Circulation {
 
 describe('dateEnToutesLettres', () => {
   it('rend la date en français, sans dérive de fuseau', () => {
-    expect(dateEnToutesLettres('2026-08-25')).toBe('mardi 25 août');
-    expect(dateEnToutesLettres('2026-01-01')).toBe('jeudi 1 janvier');
+    // L'ANNÉE en fait partie : une date d'exploitation doit être sans ambiguïté.
+    expect(dateEnToutesLettres('2026-08-25')).toBe('mardi 25 août 2026');
+    expect(dateEnToutesLettres('2026-01-01')).toBe('jeudi 1 janvier 2026');
   });
 });
 
@@ -40,7 +41,7 @@ describe('action groupée sur les facultatifs', () => {
     expect(a.activer).toBe(true);
     expect(a.numeros).toEqual(facultatifs.map((c) => c.numero).sort((x, y) => x - y));
     expect(a.libelle).toBe(`Activer les ${facultatifs.length} trains facultatifs`);
-    expect(a.confirmation).toContain(`du mardi 25 août ?`);
+    expect(a.confirmation).toContain(`du mardi 25 août 2026 ?`);
     expect(a.confirmation).toContain('apparaîtront immédiatement sur les écrans');
   });
 
