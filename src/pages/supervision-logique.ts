@@ -4,9 +4,19 @@
 // identifiants d'écran.
 import { dureeCycleS } from '../core/cycle-medias';
 import type { ModeMedias } from '../core/cycle-medias';
-import type { Circulation, EcranInfo, GareId, Media, Message, Profil, Sens } from '../core/types';
+import type {
+  Circulation,
+  EcranInfo,
+  GareId,
+  Grille,
+  Jour,
+  Media,
+  Message,
+  Profil,
+  Sens,
+} from '../core/types';
 import { ORDRE_GARES } from '../core/types';
-import { origineReelle, terminusReel } from '../core/horaires';
+import { origineReelle, sectionComplete, terminusReel } from '../core/horaires';
 import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
@@ -334,10 +344,14 @@ export function resumeApplication(
 
 /** « 2026-08-25 » → « mardi 25 août » (midi UTC : insensible au fuseau). */
 export function dateEnToutesLettres(dateISO: string): string {
+  // L'ANNÉE en fait partie : la barre du jour et les confirmations doivent
+  // désigner une date sans ambiguïté possible (un exploitant prépare la
+  // saison suivante en consultant la précédente).
   return new Date(`${dateISO}T12:00:00Z`).toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    year: 'numeric',
     timeZone: 'UTC',
   });
 }
@@ -763,4 +777,77 @@ export function routageCirculations(
   }
 
   return { creations, misesAJour: enAttente.filter((c) => !consommes.has(c.numero)) };
+}
+
+// ---------------------------------------------------------------------------
+// Résumé de la journée affichée (barre du jour, onglet Circulations)
+// ---------------------------------------------------------------------------
+
+export type EtatJournee = 'enregistree' | 'apercu' | 'hors-saison';
+
+export interface ResumeJournee {
+  /** « jeudi 4 septembre 2026 » — le format ISO seul fait travailler sur le mauvais jour. */
+  jourEnLettres: string;
+  /** Étiquette de service COMPLÈTE : elle a sa propre ligne, plus de troncature. */
+  service: string;
+  etat: EtatJournee;
+  etatLibelle: string;
+  /** Trains facultatifs : on compte les CIRCULATIONS, comme le bouton d'action groupée. */
+  facultatifsActifs: number;
+  facultatifsTotal: number;
+  facultatifsLibelle: string;
+  /** Rotations supplémentaires du jour (une rotation = une montée + sa descente). */
+  sups: number;
+  supsLibelle: string;
+  sectionRestreinte: boolean;
+  terminusActif: boolean;
+}
+
+/**
+ * Libellés et compteurs de la barre du jour. PURE : la barre ne fait que
+ * poser ces chaînes, et les tests couvrent les cas d'exploitation réels
+ * (journée non enregistrée, petit service à deux périodes, section
+ * restreinte, aucun facultatif, plusieurs renforts).
+ */
+export function resumeJournee(
+  jour: Jour,
+  service: Pick<Grille, 'libelle' | 'periodes'> | null,
+): ResumeJournee {
+  const facultatifs = jour.circulations.filter((c) => c.facultatif);
+  const actifs = facultatifs.filter((c) => c.facultatif_actif).length;
+  const sups = jour.circulations.filter((c) => c.supplementaire && c.sens === 'montee').length;
+
+  const etat: EtatJournee =
+    jour.hors_saison === true
+      ? 'hors-saison'
+      : jour.enregistre === false
+        ? 'apercu'
+        : 'enregistree';
+
+  return {
+    jourEnLettres: dateEnToutesLettres(jour.date),
+    // Périodes en jj/mm : le petit service en a DEUX, et les écrire en entier
+    // doublerait la longueur de l'étiquette sans rien apprendre.
+    service: service
+      ? `${service.libelle.split('—')[0]?.trim()} (${service.periodes
+          .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)}→${p.au.slice(8)}/${p.au.slice(5, 7)}`)
+          .join(' · ')})`
+      : 'Hors saison / service hiver',
+    etat,
+    etatLibelle:
+      etat === 'hors-saison'
+        ? 'aucun service ne circule'
+        : etat === 'apercu'
+          ? 'aperçu théorique — non enregistrée, lecture seule'
+          : 'journée enregistrée',
+    facultatifsActifs: actifs,
+    facultatifsTotal: facultatifs.length,
+    facultatifsLibelle:
+      facultatifs.length === 0 ? 'aucun ce jour' : `${actifs} activés sur ${facultatifs.length}`,
+    sups,
+    // Vide quand il n'y en a pas : un « (0 ce jour) » permanent est du bruit.
+    supsLibelle: sups === 0 ? '' : `${sups} ce jour`,
+    sectionRestreinte: !sectionComplete(jour),
+    terminusActif: jour.terminus_bellevue !== false,
+  };
 }

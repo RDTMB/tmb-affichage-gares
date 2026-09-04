@@ -324,39 +324,138 @@ input[type='color'] {
 }
 
 /* ------- Barre date + terminus ------- */
+/* DEUX rangs, partage sémantique : le rang 1 dit QUELLE journée, le rang 2
+   ce qui s'applique à elle. `flex-wrap: nowrap` a été retiré : il tronquait
+   l'étiquette de service alors que sept groupes ne tiennent pas sur une
+   ligne. */
 .barre-jour {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 18px 12px;
   border-bottom: 1px solid var(--bord);
-  /* Une seule ligne : en petit service, le libellé de service compte deux
-     périodes et faisait basculer toute la barre sur deux lignes. */
-  flex-wrap: nowrap;
   background: #fbfcfe;
 }
 
-/* Boutons, navigation de date, chips et bloc terminus gardent leur taille… */
-.barre-jour > * {
+.barre-jour .rang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Rang 1 : l'identité de la journée ne se scinde JAMAIS. */
+.barre-jour .rang-journee {
+  flex-wrap: nowrap;
+}
+
+.barre-jour .rang > * {
   flex: 0 0 auto;
 }
 
-/* …#service-tag est le SEUL à céder de la place, et il le fait par
-   troncature. Son texte complet reste lisible au survol (title posé par
-   src/pages/supervision.ts). */
-.barre-jour > .service-tag {
-  flex: 0 1 auto;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Rang 2, visuellement subordonné : filet de séparation, texte plus petit.
+   La gouttière et le corps sont serrés pour que les quatre réglages tiennent
+   sur UNE ligne à 1280 même quand deux d'entre eux sont actifs (donc
+   encadrés) — c'est le pire cas, et c'est celui qui compte. */
+.barre-jour .rang-reglages {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--bord);
+  font-size: 12px;
 }
 
-/* Filet de sécurité : sur un poste étroit, mieux vaut deux lignes qu'une
-   barre écrasée. */
+.barre-jour .rang-reglages select,
+.barre-jour .rang-reglages button {
+  font-size: 12px;
+}
+
+/* Les listes de bornes se contentent de leur contenu : les noms de gares
+   sont courts, un select à largeur automatique gagne 30 px sur la ligne. */
+.barre-jour .bornes select {
+  padding: 3px 6px;
+}
+
+.jour-lettres {
+  font-weight: 900;
+  color: var(--marine);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Seule l'INITIALE prend la majuscule : `text-transform: capitalize` donnait
+   « Vendredi 4 Septembre 2026 », ce qui n'est pas du français. */
+.jour-lettres::first-letter {
+  text-transform: uppercase;
+}
+
+.etat-jour {
+  font-weight: 700;
+  font-size: 12px;
+  border-radius: 99px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.etat-jour.enregistree {
+  background: #e6f4ec;
+  color: #1d6b3f;
+}
+
+.etat-jour.apercu {
+  background: #fdf3e0;
+  color: #7a6017;
+}
+
+.etat-jour.hors-saison {
+  background: var(--alerte-bg);
+  color: var(--alerte);
+}
+
+/* Un réglage groupe sa commande et son compteur. */
+.barre-jour .reglage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.barre-jour .reglage .compte {
+  color: var(--sec);
+  font-weight: 700;
+}
+
+/* Réglage ACTIF : mis en évidence, jamais discret. */
+.barre-jour .reglage.actif {
+  background: var(--alerte-bg);
+  border: 1px solid #f2c9c5;
+  border-radius: 10px;
+  padding: 4px 8px;
+}
+
+.barre-jour .reglage.actif .bornes b {
+  color: var(--alerte);
+}
+
+.barre-jour .bornes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.barre-jour .bornes label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Sous 1100 px, seul le rang 2 a le droit de passer sur deux rangs (il porte
+   déjà `flex-wrap: wrap`). Le rang 1 ne se scinde JAMAIS : il devient
+   défilable horizontalement plutôt que rogné, pour que l'identité de la
+   journée reste entière et atteignable. */
 @media (max-width: 1100px) {
-  .barre-jour {
-    flex-wrap: wrap;
+  .barre-jour .rang-journee {
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 }
 
@@ -396,17 +495,25 @@ input[type='color'] {
   font-size: 13.5px;
 }
 
+/* Au repos, la bascule Terminus Bellevue reste sobre : elle ne crie qu'une
+   fois ACTIVE (`.actif`), sans quoi toute journée normale porterait une
+   alerte permanente et l'agent finirait par ne plus la voir. */
 .terminus {
-  margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--alerte-bg);
-  border: 1px solid #f2c9c5;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--bord);
   border-radius: 10px;
-  padding: 7px 12px;
+  padding: 5px 8px;
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: 12.5px;
+  color: var(--sec);
+}
+
+.terminus.actif {
+  background: var(--alerte-bg);
+  border-color: #f2c9c5;
   color: var(--alerte);
 }
 
