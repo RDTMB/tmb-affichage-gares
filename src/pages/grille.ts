@@ -81,7 +81,9 @@ if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 const idEcran = identifiantEcran('grille', gareParam, url.get('ecran'));
 document.body.dataset.ecran = idEcran;
 
-($('logo') as HTMLImageElement).src = __LOGO_ROND__;
+// Bandeau de titre : logo HORIZONTAL, comme sur l'écran des départs.
+// L'écran neutre garde le rond blanc (voir ecran.ts).
+($('logo') as HTMLImageElement).src = __LOGO_LONG__;
 ($('logo-neutre') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
 
 interface DonneesGrille {

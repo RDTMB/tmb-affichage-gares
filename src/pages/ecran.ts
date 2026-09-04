@@ -106,7 +106,11 @@ if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 const idEcran = identifiantEcran('ecran', gareParam, url.get('ecran'));
 document.body.dataset.ecran = idEcran;
 
-($('logo') as HTMLImageElement).src = __LOGO_ROND__;
+// Bandeau de titre : logo HORIZONTAL. Les écrans CENTRÉS (neutre, fin de
+// service, tronçon fermé) gardent le logo rond blanc — il n'existe pas de
+// version horizontale blanche exploitable, et une marque circulaire au-dessus
+// d'une horloge fonctionne là où un logo étiré en plein écran non.
+($('logo') as HTMLImageElement).src = __LOGO_LONG__;
 ($('logo-neutre') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
 
 interface DonneesEcran {

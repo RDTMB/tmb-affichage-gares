@@ -31,6 +31,20 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   doivent démarrer sans internet).
 - Logo : uniquement les fichiers de `public/logos/`, jamais redessiné,
   jamais déformé (interdits de la charte).
+- `logo-long.svg` = logo HORIZONTAL officiel, porté par le bandeau de titre
+  de l'écran de gare et de la grille du jour. Son `viewBox` (`119 229 1678
+  617`) recadre le dessin : l'export d'origine laissait 46 % de VIDE en
+  hauteur, et sans ce recadrage le logo s'afficherait à 71 px au lieu de 132
+  — plus petit que le rond qu'il remplace. Ce n'est PAS une erreur à
+  « corriger » : le recadrage retire du vide, il ne redimensionne ni ne
+  déforme rien. Le fichier a aussi été débarrassé de cinq calques
+  Illustrator invisibles (441 Ko de rasters hors du viewBox) ; le rendu est
+  identique au pixel, mais leur data URI base64 pesait 427 Ko gzippés dans
+  les bundles écran ET grille.
+- Les écrans CENTRÉS gardent le logo ROND BLANC (écran neutre, fin de
+  service, tronçon fermé, supervision) : il n'existe pas de version
+  horizontale blanche exploitable, et une marque circulaire au-dessus d'une
+  horloge fonctionne là où un logo horizontal étiré en plein écran non.
 
 ## Stack et contraintes
 
