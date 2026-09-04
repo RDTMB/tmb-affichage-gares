@@ -71,10 +71,18 @@ export function videDate(
   brouillonTerminus: BrouillonTerminus,
   date: string,
   brouillonSection?: BrouillonSection,
+  /**
+   * Ensembles de trains sup à purger aussi (suppressions et créations en
+   * attente). Sans eux, une réinitialisation laissait une suppression visant
+   * un train que la régénération vient d'effacer, ou une marque de nouveauté
+   * sans circulation — deux échecs de publication garantis à la fois.
+   */
+  ...ensemblesSup: (BrouillonSupSupprimes | undefined)[]
 ): void {
   brouillonCirc.delete(date);
   brouillonTerminus.delete(date);
   brouillonSection?.delete(date);
+  for (const ensemble of ensemblesSup) ensemble?.delete(date);
 }
 
 /**

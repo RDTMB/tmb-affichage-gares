@@ -703,3 +703,64 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
         : '<span class="term-bv">Départ de Bellevue</span>'
       : '<span class="term-fixe">Le Fayet</span>';
 }
+
+// ---------------------------------------------------------------------------
+// Routage des circulations à la publication
+// ---------------------------------------------------------------------------
+
+/** Rotation supplémentaire à INSÉRER : les deux lignes vont ensemble. */
+export interface CreationSup {
+  montee: Circulation;
+  descente: Circulation;
+}
+
+export interface RoutageCirculations {
+  /** Rotations sup NEUVES → `creerTrainSup()` (insert des deux lignes). */
+  creations: CreationSup[];
+  /** Tout le reste → `saveCirculations()` (upsert sur date + numéro). */
+  misesAJour: Circulation[];
+}
+
+/**
+ * Aiguillage des circulations en attente entre création et mise à jour.
+ *
+ * BUG du 04/09/2026 : le tri se faisait sur `c.supplementaire && sens ===
+ * 'montee'`, qui ne distingue PAS une création d'une modification. Modifier la
+ * rame d'un renfort déjà en base routait sa montée vers `creerTrainSup()`, qui
+ * exige la descente dans le même brouillon — or la rame est portée par la
+ * montée seule. La publication échouait donc systématiquement, et l'échec
+ * conservait tout le brouillon de la date.
+ *
+ * La nouveauté est désormais MARQUÉE (`brouillonSupNeufs`), jamais devinée :
+ * seule la création d'un train sup y inscrit un numéro. Tout le reste part par
+ * `saveCirculations()`, qui gère déjà `passages` et `supplementaire` en
+ * upsertant les objets complets.
+ *
+ * @throws si une montée marquée neuve n'a pas sa descente dans le brouillon :
+ *         c'est une incohérence INTERNE (les deux lignes sont mises en attente
+ *         ensemble), pas une erreur d'exploitation, et le message le dit.
+ */
+export function routageCirculations(
+  enAttente: readonly Circulation[],
+  neufs: ReadonlySet<number> = new Set(),
+): RoutageCirculations {
+  const creations: CreationSup[] = [];
+  const consommes = new Set<number>();
+
+  for (const c of enAttente) {
+    if (!c.supplementaire || c.sens !== 'montee' || !neufs.has(c.numero)) continue;
+    const descente = enAttente.find((x) => x.numero === c.numero + 1);
+    if (!descente) {
+      throw new Error(
+        `Incohérence interne : le train supplémentaire ${c.numero} est marqué comme neuf ` +
+          `mais sa descente ${c.numero + 1} est absente du brouillon. ` +
+          `Rechargez la page et recréez le train.`,
+      );
+    }
+    creations.push({ montee: c, descente });
+    consommes.add(c.numero);
+    consommes.add(descente.numero);
+  }
+
+  return { creations, misesAJour: enAttente.filter((c) => !consommes.has(c.numero)) };
+}
