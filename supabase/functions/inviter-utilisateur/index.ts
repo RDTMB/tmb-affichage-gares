@@ -17,6 +17,17 @@ function entetesCors(req: Request): Record<string, string> {
   return entetes;
 }
 
+/** Adresse de retour acceptée seulement sur une origine connue, sinon undefined. */
+function urlRetourAutorisee(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    return ORIGINES_AUTORISEES.includes(u.origin) ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 Deno.serve(async (req) => {
   const entetes = entetesCors(req);
   if (req.method === 'OPTIONS') {
@@ -44,12 +55,21 @@ Deno.serve(async (req) => {
       return new Response('Réservé aux administrateurs', { status: 403, headers: entetes });
     }
 
-    const { email, nom, role } = (await req.json()) as {
+    const { email, nom, role, redirectTo } = (await req.json()) as {
       email: string;
       nom: string;
       role: 'admin' | 'supervision' | 'caisse';
+      /** Page de supervision qui accueillera la personne pour choisir son mot de passe. */
+      redirectTo?: string;
     };
-    const { data, error } = await admin.auth.admin.inviteUserByEmail(email);
+    // Le lien de l'e-mail doit ramener sur NOTRE page de supervision (et non
+    // sur la « Site URL » du projet) : on ne relaie l'adresse demandée que si
+    // elle appartient à une origine connue — jamais de redirection ouverte.
+    const retour = urlRetourAutorisee(redirectTo);
+    const { data, error } = await admin.auth.admin.inviteUserByEmail(
+      email,
+      retour ? { redirectTo: retour } : undefined,
+    );
     if (error || !data.user) {
       return new Response(error?.message ?? 'Invitation impossible', { status: 400, headers: entetes });
     }

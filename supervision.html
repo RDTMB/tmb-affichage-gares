@@ -30,9 +30,40 @@
           rôle — <code>admin…</code>, <code>caisse…</code>, sinon supervision.
         </p>
         <input type="email" id="login-email" placeholder="adresse@tramwaydumontblanc.fr" required />
-        <input type="password" id="login-mdp" placeholder="Mot de passe" required />
+        <input
+          type="password"
+          id="login-mdp"
+          placeholder="Mot de passe"
+          autocomplete="current-password"
+          required
+        />
         <button class="primaire" type="submit">Se connecter</button>
         <div class="erreur" id="login-erreur"></div>
+      </form>
+
+      <!-- Accueil après un lien reçu par e-mail (invitation, mot de passe oublié) -->
+      <form class="connexion-carte" id="form-mdp" hidden>
+        <h2 id="mdp-titre">Choisissez votre mot de passe</h2>
+        <p class="note" style="padding: 0" id="mdp-consigne"></p>
+        <p class="note" style="padding: 0" id="mdp-compte"></p>
+        <input
+          type="password"
+          id="mdp-nouveau"
+          placeholder="Nouveau mot de passe (8 caractères minimum)"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <input
+          type="password"
+          id="mdp-confirmation"
+          placeholder="Confirmez le mot de passe"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <button class="primaire" type="submit" id="mdp-valider">Enregistrer et entrer</button>
+        <div class="erreur" id="mdp-erreur"></div>
       </form>
     </div>
 

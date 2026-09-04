@@ -1052,6 +1052,10 @@ export class MockProvider implements DataProvider {
     // rien à faire en mode mock
   }
 
+  async definirMotDePasse(): Promise<void> {
+    // rien à faire en mode mock (pas de mot de passe en démo)
+  }
+
   async traduire(): Promise<string | null> {
     return null; // repli : dictionnaire local de phrases types
   }

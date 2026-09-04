@@ -60,6 +60,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
+import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
 import type { ModeMedias } from '../core/cycle-medias';
 import type { EtatBandeauApplication } from './supervision-logique';
 import type { Ecart, EntreesPubliables, Instantane, JourPubliable } from './etat-publiable';
@@ -90,6 +91,13 @@ import {
   valeursFormulaireMessage,
   type FormulaireMessage,
 } from './supervision-logique';
+
+/**
+ * Lien reçu par e-mail (invitation, mot de passe oublié) ? À lire AVANT de
+ * créer le fournisseur : le SDK Supabase ouvre la session depuis le fragment
+ * d'URL puis l'efface.
+ */
+const lienAuth = analyseLienAuth(window.location.hash, window.location.search);
 
 const provider = creeProvider();
 
@@ -3019,19 +3027,12 @@ async function demarre(): Promise<void> {
     e.preventDefault();
   });
 
-  // Session déjà ouverte (Supabase persiste, mock via sessionStorage)
-  try {
-    // Le profil vient de la base, pas de l'onglet : un onglet rouvert
-    // affichait « agent connecté » puisque la clé de session lui manquait.
+  /** Charge le profil de la session ouverte et entre dans la supervision. */
+  async function entreAvecSession(): Promise<void> {
     profilConnecte = await provider.getProfil();
     role = profilConnecte.role;
-    if (role === 'admin' || role === 'supervision' || role === 'caisse') {
-      utilisateurs = await provider.listUsers().catch(() => []);
-      await apresConnexion();
-      return;
-    }
-  } catch {
-    // pas de session : formulaire de connexion
+    utilisateurs = await provider.listUsers().catch(() => []);
+    await apresConnexion();
   }
 
   $('form-connexion').addEventListener('submit', (e) => {
@@ -3041,15 +3042,90 @@ async function demarre(): Promise<void> {
     $('login-erreur').textContent = '';
     void provider
       .signIn(email, mdp)
-      .then(async () => {
-        profilConnecte = await provider.getProfil();
-        role = profilConnecte.role;
-        utilisateurs = await provider.listUsers().catch(() => []);
-        await apresConnexion();
-      })
+      .then(entreAvecSession)
       .catch((erreur: unknown) => {
         $('login-erreur').textContent = String(
           erreur instanceof Error ? erreur.message : 'Connexion refusée',
+        );
+      });
+  });
+
+  // Lien reçu par e-mail refusé par Supabase (expiré, déjà utilisé…) : on le
+  // dit clairement au-dessus du formulaire plutôt que de laisser la personne
+  // chercher un mot de passe qu'elle n'a jamais choisi.
+  if (lienAuth && 'erreur' in lienAuth) {
+    $('login-erreur').textContent = lienAuth.erreur;
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    return;
+  }
+
+  // Invitation ou réinitialisation : la session est ouverte par le jeton du
+  // lien, mais aucun mot de passe n'existe encore — on le fait choisir ici.
+  if (lienAuth && 'type' in lienAuth && lienAuth.type !== 'autre') {
+    await accueilMotDePasse(lienAuth.type, entreAvecSession);
+    return;
+  }
+
+  // Session déjà ouverte (Supabase persiste, mock via sessionStorage)
+  try {
+    // Le profil vient de la base, pas de l'onglet : un onglet rouvert
+    // affichait « agent connecté » puisque la clé de session lui manquait.
+    await entreAvecSession();
+  } catch {
+    // pas de session : formulaire de connexion
+  }
+}
+
+/**
+ * Formulaire « choisissez votre mot de passe » affiché à la place de la
+ * connexion après un lien d'invitation ou de réinitialisation. Une fois le mot
+ * de passe enregistré, on entre directement dans la supervision.
+ */
+async function accueilMotDePasse(
+  type: 'invite' | 'recovery',
+  entreAvecSession: () => Promise<void>,
+): Promise<void> {
+  const textes = texteFormulaireMotDePasse(type);
+  $('form-connexion').hidden = true;
+  $('form-mdp').hidden = false;
+  $('mdp-titre').textContent = textes.titre;
+  $('mdp-consigne').textContent = textes.consigne;
+  ($('mdp-valider') as HTMLButtonElement).textContent = textes.bouton;
+
+  // Rappelle pour quel compte on agit ; si le SDK n'a pas pu ouvrir la
+  // session (jeton mort, horloge fausse), on le signale tout de suite.
+  try {
+    const profil = await provider.getProfil();
+    $('mdp-compte').textContent = `Compte : ${profil.email}`;
+  } catch {
+    $('mdp-compte').textContent = '';
+    $('mdp-erreur').textContent =
+      'Le lien n’a pas permis d’ouvrir votre compte (expiré ou déjà utilisé). ' +
+      'Demandez un nouvel envoi à un administrateur.';
+    ($('mdp-valider') as HTMLButtonElement).disabled = true;
+  }
+
+  $('form-mdp').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const mdp = ($('mdp-nouveau') as HTMLInputElement).value;
+    const confirmation = ($('mdp-confirmation') as HTMLInputElement).value;
+    const probleme = verifieMotDePasse(mdp, confirmation);
+    $('mdp-erreur').textContent = probleme ?? '';
+    if (probleme) return;
+    const bouton = $('mdp-valider') as HTMLButtonElement;
+    bouton.disabled = true;
+    void provider
+      .definirMotDePasse(mdp)
+      .then(async () => {
+        toast('Mot de passe enregistré');
+        await entreAvecSession();
+        $('form-mdp').hidden = true;
+        $('form-connexion').hidden = false;
+      })
+      .catch((erreur: unknown) => {
+        bouton.disabled = false;
+        $('mdp-erreur').textContent = String(
+          erreur instanceof Error ? erreur.message : 'Enregistrement impossible',
         );
       });
   });

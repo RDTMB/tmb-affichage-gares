@@ -92,7 +92,31 @@ on conflict (user_id) do update set role = 'admin', actif = true;
 
 3. (Option, plus tard) Créer les suivants directement depuis
    Supervision → Paramètres → « + Ajouter un utilisateur » — nécessite le
-   déploiement des Edge Functions (étape E).
+   déploiement des Edge Functions (étape E) **et** les adresses de retour
+   du point 4 ci-dessous.
+4. **Authentication → URL Configuration** — indispensable pour que les
+   liens reçus par e-mail (invitation, « mot de passe oublié ») ramènent
+   sur la supervision et non sur une page 404 :
+   - **Site URL** : `https://<organisation>.github.io/tmb-affichage-gares/supervision.html`
+   - **Redirect URLs** (une ligne chacune) :
+     `https://<organisation>.github.io/tmb-affichage-gares/**` et
+     `http://localhost:5173/**` (poste de développement, §H).
+
+   La personne invitée clique sur le lien, arrive sur la supervision qui lui
+   fait **choisir son mot de passe** (8 caractères minimum), puis entre
+   directement. Elle se connectera ensuite avec e-mail + mot de passe. Le
+   bouton « Réinitialiser le mot de passe » de l'onglet Paramètres suit le
+   même chemin.
+
+   > Lien « expiré ou déjà utilisé » alors que la personne vient de le
+   > recevoir : sa messagerie (Outlook / Microsoft 365 « Liens fiables »,
+   > antivirus) a probablement pré-ouvert le lien à sa place, ce qui
+   > consomme le jeton à usage unique. Renvoyer une invitation et ouvrir le
+   > lien directement depuis le message (pas depuis un aperçu) ; si le
+   > problème persiste, définir un mot de passe provisoire depuis
+   > Authentication → Users et le transmettre par un autre canal.
+   > Rappel : sans SMTP personnalisé, Supabase n'envoie que **2 e-mails par
+   > heure** (Authentication → Emails → SMTP Settings pour relever la limite).
 
 ## D. Brancher le site sur Supabase (~5 min)
 

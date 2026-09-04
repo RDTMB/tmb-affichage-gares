@@ -65,6 +65,21 @@ interface LigneJour {
   terminus_bellevue_a_partir_du_train: number | null;
 }
 
+/** Messages d'erreur Supabase les plus courants sur un mot de passe, en français. */
+function traduitErreurMotDePasse(message: string): string {
+  if (/at least (\d+) characters/i.test(message)) {
+    const n = /at least (\d+) characters/i.exec(message)?.[1];
+    return `Le mot de passe doit comporter au moins ${n} caractères.`;
+  }
+  if (/different from the old password/i.test(message)) {
+    return "Le nouveau mot de passe doit être différent de l'ancien.";
+  }
+  if (/Auth session missing|session/i.test(message)) {
+    return 'Le lien a expiré : demandez un nouvel envoi à un administrateur.';
+  }
+  return message;
+}
+
 function verifie(erreur: { message: string } | null): void {
   if (erreur) throw new Error(erreur.message);
 }
@@ -774,17 +789,38 @@ export class SupabaseProvider implements DataProvider {
     if (error) throw new Error(error.message);
   }
 
+  /**
+   * Adresse de retour des liens envoyés par e-mail : CETTE page de
+   * supervision (production ou serveur de développement), qui sait accueillir
+   * la personne et lui faire choisir un mot de passe. Doit figurer dans les
+   * « Redirect URLs » du projet Supabase (docs/mise-en-service.md), sinon
+   * Supabase retombe sur sa « Site URL ».
+   */
+  private static urlRetourAuth(): string {
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+
   async inviteUser(email: string, nom: string, role: Role): Promise<void> {
     // La création de compte exige la clé secrète : Edge Function côté Supabase.
     const { error } = await this.client.functions.invoke('inviter-utilisateur', {
-      body: { email, nom, role },
+      body: { email, nom, role, redirectTo: SupabaseProvider.urlRetourAuth() },
     });
     if (error) throw new Error(error.message);
   }
 
   async resetMotDePasse(email: string): Promise<void> {
-    const { error } = await this.client.auth.resetPasswordForEmail(email);
+    const { error } = await this.client.auth.resetPasswordForEmail(email, {
+      redirectTo: SupabaseProvider.urlRetourAuth(),
+    });
     if (error) throw new Error(error.message);
+  }
+
+  async definirMotDePasse(mdp: string): Promise<void> {
+    // La session a été ouverte par le jeton du lien (fragment d'URL lu par
+    // le SDK au chargement) ; on fixe le mot de passe sur cette session.
+    const { error } = await this.client.auth.updateUser({ password: mdp });
+    if (error) throw new Error(traduitErreurMotDePasse(error.message));
+    this.profilCache = null;
   }
 
   async traduire(texteFr: string): Promise<string | null> {

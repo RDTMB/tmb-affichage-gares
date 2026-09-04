@@ -115,7 +115,16 @@ export interface DataProvider {
   deleteUser(user_id: string): Promise<void>;
   /** Création par invitation email (Edge Function — clé secrète jamais côté front). */
   inviteUser(email: string, nom: string, role: Role): Promise<void>;
+  /**
+   * Envoie le lien « mot de passe oublié » ; la personne revient sur la page
+   * de supervision qui lui propose alors d'en choisir un nouveau.
+   */
   resetMotDePasse(email: string): Promise<void>;
+  /**
+   * Enregistre le mot de passe de la session ouverte par un lien reçu par
+   * e-mail (invitation ou réinitialisation).
+   */
+  definirMotDePasse(mdp: string): Promise<void>;
   /** Traduction FR → EN (Edge Function DeepL ; null = service indisponible, repli local). */
   traduire(texteFr: string): Promise<string | null>;
   logPublication(resume: string): Promise<void>;

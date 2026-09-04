@@ -145,6 +145,10 @@ header .spacer {
   gap: 12px;
 }
 
+.connexion-carte[hidden] {
+  display: none; /* l'attribut hidden doit l'emporter sur display: grid */
+}
+
 .connexion-carte h2 {
   color: var(--marine);
 }
