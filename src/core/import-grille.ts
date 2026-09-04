@@ -627,27 +627,16 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
       if (passage.a !== undefined || passage.d !== undefined) passages.push(passage);
     }
     // Point de départ : jamais d'arrivée ; terminus : jamais de départ.
-    const premier = passages[0];
-    if (premier && premier.a !== undefined && passages.length > 1) {
+    for (const retire of normaliseExtremites(passages)) {
       ctx.avertissements.push(
         probleme(
           'avertissement',
-          `TRAIN ${numero} : heure d'arrivée au point de départ (${nomGare(premier.gare)}) ignorée`,
-          { feuille, train: numero, gare: premier.gare },
+          retire.champ === 'a'
+            ? `TRAIN ${numero} : heure d'arrivée au point de départ (${nomGare(retire.gare)}) ignorée`
+            : `TRAIN ${numero} : heure de départ au terminus (${nomGare(retire.gare)}) ignorée`,
+          { feuille, train: numero, gare: retire.gare },
         ),
       );
-      delete premier.a;
-    }
-    const dernier = passages[passages.length - 1];
-    if (dernier && dernier.d !== undefined && passages.length > 1) {
-      ctx.avertissements.push(
-        probleme(
-          'avertissement',
-          `TRAIN ${numero} : heure de départ au terminus (${nomGare(dernier.gare)}) ignorée`,
-          { feuille, train: numero, gare: dernier.gare },
-        ),
-      );
-      delete dernier.d;
     }
     trains.push({
       numero,
@@ -658,6 +647,30 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
     });
   }
   return trains;
+}
+
+/**
+ * Un train n'a pas d'arrivée à son point de départ ni de départ à son
+ * terminus. Retire ces heures SUR PLACE (import : après lecture des cellules ;
+ * édition : quand le terminus change) et renvoie ce qui a été retiré, pour
+ * que l'appelant puisse le dire à l'agent.
+ */
+export function normaliseExtremites(
+  passages: PassageGrille[],
+): Array<{ gare: GareId; champ: 'a' | 'd' }> {
+  const retires: Array<{ gare: GareId; champ: 'a' | 'd' }> = [];
+  if (passages.length < 2) return retires;
+  const premier = passages[0];
+  if (premier && premier.a !== undefined) {
+    retires.push({ gare: premier.gare, champ: 'a' });
+    delete premier.a;
+  }
+  const dernier = passages[passages.length - 1];
+  if (dernier && dernier.d !== undefined) {
+    retires.push({ gare: dernier.gare, champ: 'd' });
+    delete dernier.d;
+  }
+  return retires;
 }
 
 // ---------------------------------------------------------------------------
@@ -851,6 +864,18 @@ function valideTrain(
       probleme(
         'erreur',
         `TRAIN ${numero} : passage absent à ${autresSautees.map(nomGare).join(' et ')} — tous les trains desservent ${autresSautees.length > 1 ? 'ces gares' : 'cette gare'}`,
+        ou,
+      ),
+    );
+  }
+  // Un express relie Le Fayet au Nid d'Aigle : sans Nid d'Aigle (hiver), il
+  // n'existe pas — il ne desservirait plus que Saint-Gervais et Motivon.
+  const bout = sens === 'montee' ? passages[passages.length - 1] : passages[0];
+  if (train.express && bout && bout.gare !== 'nid-daigle') {
+    erreurs.push(
+      probleme(
+        'erreur',
+        `TRAIN ${numero} : un express va jusqu'au Nid d'Aigle (il saute Col de Voza et Bellevue) — sans passage au Nid d'Aigle, retirez la rotation ou son symbole express`,
         ou,
       ),
     );
