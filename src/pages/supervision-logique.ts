@@ -4,8 +4,10 @@
 // identifiants d'écran.
 import { dureeCycleS } from '../core/cycle-medias';
 import type { ModeMedias } from '../core/cycle-medias';
-import type { Circulation, EcranInfo, GareId, Media, Message, Profil } from '../core/types';
+import type { Circulation, EcranInfo, GareId, Media, Message, Profil, Sens } from '../core/types';
 import { ORDRE_GARES } from '../core/types';
+import { origineReelle, terminusReel } from '../core/horaires';
+import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
 /** État du formulaire Messages (miroir exact des champs de l'onglet). */
@@ -590,4 +592,114 @@ export function bandeauSection(
     `${fermees.length > 1 ? 'gares fermées' : 'gare fermée'} : ${fermees.join(', ')}. ` +
     'Cette restriction est reportée sur les journées suivantes tant qu’elle n’est pas levée.'
   );
+}
+
+// ---------------------------------------------------------------------------
+// Cellule « Terminus » du tableau des circulations
+// ---------------------------------------------------------------------------
+
+export interface EntreesCelluleTerminus {
+  /** La circulation de la ligne rendue. */
+  circulation: Circulation;
+  /** La MONTÉE de la rotation (la ligne elle-même pour une montée). */
+  circulationMontee: Circulation | null;
+  sens: Sens;
+  express: boolean;
+  /** Facultatif non activé : il ne circule pas, il n'y a rien à traiter. */
+  inactif: boolean;
+  lectureSeule: boolean;
+  nomGare: (gare: GareId) => string;
+  /**
+   * Passages tels que le MOTEUR les rendra (`trainsDuJour()`), quand le train
+   * circule vraiment. Ils peuvent être plus courts que ceux enregistrés : une
+   * bascule Terminus Bellevue activée APRÈS la création d'un renfort le
+   * tronque. La supervision doit annoncer le terminus que les écrans
+   * afficheront, pas celui qui dort en base.
+   */
+  passagesEffectifs?: readonly { gare: GareId }[] | null;
+}
+
+/** Infobulle du terminus d'un train supplémentaire : il se change en le recréant. */
+export const AIDE_TERMINUS_SUP =
+  'Terminus défini à la création du train supplémentaire. Pour le modifier, supprimez ce train et recréez-le.';
+
+/**
+ * Contenu de la cellule Terminus. PURE, donc testable : c'est la cellule qui
+ * avait fini par MENTIR sur les trains supplémentaires, en affichant la
+ * colonne `circulations.terminus` ('nid-daigle' ou 'bellevue', imposées par la
+ * contrainte CHECK) au lieu du terminus réellement choisi par l'agent.
+ *
+ * Un train SUPPLÉMENTAIRE est donc traité EN PREMIER, avant toute autre
+ * ramification : son terminus se lit sur ses `passages` (`terminusReel()` /
+ * `origineReelle()`, partagées avec l'écran de gare et la grille du jour) et
+ * s'affiche en TEXTE FIXE. Aucun `<select>` n'est rendu pour ces lignes — pas
+ * même grisé : une écriture sur `circulations.terminus` ne changerait rien aux
+ * écrans et produirait un toast de succès mensonger. Ce projet a déjà payé ce
+ * type de faux succès deux fois ; une commande qui ne peut rien faire ne doit
+ * pas rester cliquable.
+ */
+export function celluleTerminus(e: EntreesCelluleTerminus): string {
+  const {
+    circulation: c,
+    circulationMontee,
+    sens,
+    express,
+    inactif,
+    lectureSeule,
+    nomGare,
+    passagesEffectifs,
+  } = e;
+  const n = c.numero;
+  const verrou = lectureSeule ? ' disabled' : '';
+  const montee = sens === 'montee';
+
+  // --- Train SUPPLÉMENTAIRE : le terminus vient des passages, jamais de la
+  //     colonne. Montée → son terminus ; descente → sa gare de départ, qui
+  //     n'est pas forcément Le Fayet (un renfort peut ne pas redescendre en bas).
+  if (c.supplementaire) {
+    const source =
+      passagesEffectifs && passagesEffectifs.length > 0 ? { passages: passagesEffectifs } : c;
+    const gare = montee ? terminusReel(source) : origineReelle(source);
+    const libelle = gare === null ? '—' : nomGare(gare);
+    const texte = montee ? libelle : `Départ de ${libelle}`;
+    return `<span class="term-fixe" title="${echapper(AIDE_TERMINUS_SUP)}">${echapper(texte)}</span>`;
+  }
+
+  // Rotation limitée = colonne Terminus de la MONTÉE sur Bellevue (pour une
+  // montée, circulationMontee est la ligne elle-même). Un facultatif non
+  // activé ou un train supprimé ne circule pas : plus rien à traiter (sinon
+  // toute journée grand service afficherait le signalement par défaut).
+  const aTraiter =
+    circulationMontee?.terminus === 'bellevue' && c.statut !== 'supprime' && !inactif;
+
+  return montee
+    ? express
+      ? aTraiter
+        ? // Express dans une plage limitée : il n'est jamais tronqué (il ne
+          // dessert pas Bellevue) — l'agent tranche explicitement.
+          `<span class="term-bv" title="Un express ne dessert pas Bellevue : à supprimer, ou à maintenir jusqu'au Nid d'Aigle">À traiter ⚠</span>
+           <span class="a-traiter">
+             <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
+             <button class="leger" data-action="express-maintenir" data-numero="${n}"${verrou}>Maintenir</button>
+           </span>`
+        : c.terminus === 'bellevue'
+          ? '<span class="term-fixe">Rotation limitée</span>'
+          : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
+      : `<select data-action="terminus" data-numero="${n}"${verrou}>
+          <option value="nid-daigle" ${c.terminus === 'nid-daigle' ? 'selected' : ''}>Nid d'Aigle</option>
+          <option value="bellevue" ${c.terminus === 'bellevue' ? 'selected' : ''}>Bellevue ⚠</option>
+        </select>`
+    : circulationMontee?.terminus === 'bellevue'
+      ? express
+        ? // Descente EXPRESS d'une rotation limitée : elle ne dessert pas
+          // Bellevue, elle partirait donc du Nid d'Aigle sur un tronçon fermé.
+          !aTraiter
+          ? '<span class="term-fixe">Rotation limitée</span>'
+          : `<span class="term-bv" title="Un express ne part pas de Bellevue : à supprimer, ou à maintenir depuis le Nid d'Aigle">À traiter ⚠</span>
+             <span class="a-traiter">
+               <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
+               <button class="leger" data-action="express-maintenir-descente" data-numero="${n}"${verrou}>Maintenir</button>
+             </span>`
+        : '<span class="term-bv">Départ de Bellevue</span>'
+      : '<span class="term-fixe">Le Fayet</span>';
 }

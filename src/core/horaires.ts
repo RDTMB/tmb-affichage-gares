@@ -565,6 +565,34 @@ export function monteesSansRetour(grille: Grille, jour: Jour): number[] {
   return sansRetour.sort((a, b) => a - b);
 }
 /**
+ * ORIGINE et TERMINUS RÉELS d'un train, SOURCE UNIQUE pour l'écran de gare,
+ * la grille du jour et la supervision.
+ *
+ * Ils se lisent sur les `passages`, toujours ordonnés dans le SENS DE MARCHE :
+ * une montée va de son origine (premier passage) à son terminus (dernier), une
+ * descente de même. C'est vrai d'un train de grille comme d'un train
+ * SUPPLÉMENTAIRE, qui porte ses propres passages.
+ *
+ * La colonne `circulations.terminus` ne dit RIEN du terminus d'un train sup :
+ * elle vaut 'nid-daigle' ou 'bellevue' (contrainte CHECK) et ne sert qu'à la
+ * bascule Terminus Bellevue. L'afficher pour un train sup annonçait « Nid
+ * d'Aigle » pour un renfort créé jusqu'au Col de Voza — deux sources de vérité
+ * pour la même question, exactement le défaut que ces fonctions suppriment.
+ */
+/** Suite de gares d'un train, dans son sens de marche (grille ou train sup). */
+type SuiteDePassages = readonly { gare: GareId }[] | null | undefined;
+
+export function origineReelle(train: { passages?: SuiteDePassages }): GareId | null {
+  return train.passages?.[0]?.gare ?? null;
+}
+
+export function terminusReel(train: { passages?: SuiteDePassages }): GareId | null {
+  const passages = train.passages;
+  if (!passages || passages.length === 0) return null;
+  return passages[passages.length - 1]?.gare ?? null;
+}
+
+/**
  * Libellé d'un train, SOURCE UNIQUE pour l'écran de gare, la grille du jour
  * et la supervision — pour qu'ils ne divergent jamais.
  *
@@ -638,9 +666,12 @@ export function passagesPourGare(
     const passage = train.passages.find((p) => p.gare === gare);
     if (!passage) continue; // express à Voza/Bellevue, tronçon retiré… : rien à afficher
 
-    const premier = train.passages[0];
-    const dernier = train.passages[train.passages.length - 1];
-    if (!premier || !dernier) continue;
+    // Origine et terminus par les MÊMES fonctions que la supervision : c'est
+    // ce qui garantit que l'écran de gare et le poste de commande annoncent
+    // le même terminus, train supplémentaire compris.
+    const origine = origineReelle(train);
+    const destination = terminusReel(train);
+    if (origine === null || destination === null) continue;
 
     const decalage = decalageSecondes(train);
     passages.push({
@@ -652,8 +683,8 @@ export function passagesPourGare(
       statut: train.statut,
       retard_min: train.retard_min,
       motif: train.motif,
-      origine: premier.gare,
-      destination: dernier.gare,
+      origine,
+      destination,
       terminusExceptionnel: train.terminusExceptionnel,
       supplementaire: train.supplementaire,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,

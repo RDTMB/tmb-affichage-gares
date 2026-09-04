@@ -22,6 +22,7 @@ import {
   sectionComplete,
   sectionDuJour,
   terminusPossiblesSup,
+  trainsDuJour,
   monteesSansRetour,
   serviceActif,
 } from '../core/horaires';
@@ -45,6 +46,7 @@ import type {
   Role,
   SectionJour,
   TrainGrille,
+  TrainJour,
   User,
   EntreeJournal,
   FiltreJournal,
@@ -87,6 +89,7 @@ import {
   ajusteSection,
   bandeauSection,
   bornesSectionPossibles,
+  celluleTerminus,
   datetimeLocalVersIso,
   decisionBandeauApplication,
   identifiantEcranDeclare,
@@ -563,6 +566,13 @@ function optionsMotifs(selection: string | null): string {
     .join('');
 }
 
+/**
+ * Trains effectifs de la journée affichée, indexés par numéro. Recalculés à
+ * chaque rendu du tableau : ils portent les passages APRÈS section et bascule
+ * Bellevue, seule vérité sur ce que les écrans montreront.
+ */
+let trainsEffectifs = new Map<number, TrainJour>();
+
 /** Vue « train de grille » d'un train sup, pour réutiliser le même rendu. */
 function commeTrainGrille(c: Circulation): TrainGrille {
   return {
@@ -608,41 +618,19 @@ function ligneCirculation(
         machine.cercle ? `box-shadow:0 0 0 2px ${machine.cercle};` : ''
       }"></span>${echapper(rameEffective)}<small>(rotation)</small></span>`;
 
-  // Rotation limitée = colonne Terminus de la MONTÉE sur Bellevue (pour une
-  // montée, circMontee est la ligne elle-même). Un facultatif non activé ou
-  // un train supprimé ne circule pas : plus rien à traiter (sinon toute
-  // journée grand service afficherait le signalement par défaut).
-  const aTraiter = circMontee?.terminus === 'bellevue' && c.statut !== 'supprime' && !inactif;
-  const terminus = montee
-    ? train.express
-      ? aTraiter
-        ? // Express dans une plage limitée : il n'est jamais tronqué (il ne
-          // dessert pas Bellevue) — l'agent tranche explicitement.
-          `<span class="term-bv" title="Un express ne dessert pas Bellevue : à supprimer, ou à maintenir jusqu'au Nid d'Aigle">À traiter ⚠</span>
-           <span class="a-traiter">
-             <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
-             <button class="leger" data-action="express-maintenir" data-numero="${n}"${verrou}>Maintenir</button>
-           </span>`
-        : c.terminus === 'bellevue'
-          ? '<span class="term-fixe">Rotation limitée</span>'
-          : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
-      : `<select data-action="terminus" data-numero="${n}"${verrou}>
-          <option value="nid-daigle" ${c.terminus === 'nid-daigle' ? 'selected' : ''}>Nid d'Aigle</option>
-          <option value="bellevue" ${c.terminus === 'bellevue' ? 'selected' : ''}>Bellevue ⚠</option>
-        </select>`
-    : circMontee?.terminus === 'bellevue'
-      ? train.express
-        ? // Descente EXPRESS d'une rotation limitée : elle ne dessert pas
-          // Bellevue, elle partirait donc du Nid d'Aigle sur un tronçon fermé.
-          !aTraiter
-          ? '<span class="term-fixe">Rotation limitée</span>'
-          : `<span class="term-bv" title="Un express ne part pas de Bellevue : à supprimer, ou à maintenir depuis le Nid d'Aigle">À traiter ⚠</span>
-             <span class="a-traiter">
-               <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
-               <button class="leger" data-action="express-maintenir-descente" data-numero="${n}"${verrou}>Maintenir</button>
-             </span>`
-        : '<span class="term-bv">Départ de Bellevue</span>'
-      : '<span class="term-fixe">Le Fayet</span>';
+  // Cellule Terminus : décidée par `celluleTerminus()`, PURE et testée. Un
+  // train supplémentaire y est traité en premier — son terminus vient de ses
+  // passages, pas de la colonne `terminus`, qui ne le concerne pas.
+  const terminus = celluleTerminus({
+    circulation: c,
+    circulationMontee: circMontee,
+    sens,
+    express: train.express,
+    inactif,
+    lectureSeule,
+    nomGare: nomDeGare,
+    passagesEffectifs: trainsEffectifs.get(c.numero)?.passages ?? null,
+  });
 
   const facultatif = c.facultatif
     ? `<label class="switch"><input type="checkbox" data-action="actif" data-numero="${n}" ${
@@ -850,6 +838,12 @@ function rendreCirculations(): void {
       (numero) => `⚠ <b>TRAIN ${numero}</b> monte des voyageurs sans descente voyageurs ensuite.`,
     )
     .join('<br />');
+
+  // Trains tels que le MOTEUR les rendra : la cellule Terminus d'un train
+  // supplémentaire doit annoncer ce que les écrans afficheront, section et
+  // bascule Bellevue appliquées. Les facultatifs non activés et les courses à
+  // vide n'y figurent pas — leur ligne retombe sur les passages enregistrés.
+  trainsEffectifs = new Map(trainsDuJour(grille, jour).map((t) => [t.numero, t]));
 
   // Ordre APPARIÉ : chaque montée suivie de sa descente (même rotation)
   const tbody = document.querySelector('#tab-circ tbody');
@@ -1131,8 +1125,12 @@ function initCirculations(): void {
       facultatif_actif: false,
       velos: false,
       rame: ($('sup-rame') as HTMLSelectElement).value,
-      // La bascule de plage s'applique aussi à un train sup : sa colonne
-      // Terminus suit l'état de la journée.
+      // ATTENTION : cette colonne ne dit RIEN du terminus du renfort, qui est
+      // le dernier de ses `passages`. Elle ne porte que deux valeurs (contrainte
+      // CHECK) et ne sert qu'à la bascule Terminus Bellevue, qui s'applique
+      // aussi à un train sup. Ne JAMAIS l'afficher comme terminus : c'est ce
+      // qui annonçait « Nid d'Aigle » pour un renfort créé jusqu'au Col de
+      // Voza (voir `celluleTerminus()`).
       terminus: jour.terminus_bellevue === false ? 'nid-daigle' : 'bellevue',
       statut: 'ok',
       retard_min: 0,
