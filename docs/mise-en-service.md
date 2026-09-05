@@ -232,24 +232,47 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
    de gare sans source de données afficherait des horaires fictifs (le mode
    démonstration n'existe que sur le poste de développement, §H).
 
-## E. Edge Functions (traduction + invitations) (~10 min, poste avec la CLI)
+## E. Edge Functions (traduction + invitations) (~10 min)
 
-```bash
-npm i -g supabase
-supabase login
-supabase link --project-ref <ref-du-projet>
-supabase functions deploy traduire
-supabase functions deploy inviter-utilisateur
-supabase functions deploy supprimer-utilisateur
-supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
+⚠ **Ne pas installer la CLI avec `npm i -g supabase`** : Supabase refuse cette
+installation globale (« Installing Supabase CLI as a global module is not
+supported »). On la lance sans rien installer durablement, avec `npx`.
+
+Sur le poste de développement, node vit dans un dossier portable qui n'est pas
+dans le PATH : la première ligne l'y ajoute pour la session en cours. À coller
+dans **PowerShell**, une commande à la fois :
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64;$env:Path"
+npx supabase login
+npx supabase link --project-ref <ref-du-projet>
+npx supabase functions deploy traduire
+npx supabase functions deploy inviter-utilisateur
+npx supabase functions deploy supprimer-utilisateur
+npx supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
 ```
 
-Les TROIS fonctions doivent être déployées : `supprimer-utilisateur` était
-absente de cette procédure alors que la supervision l'appelle depuis toujours.
+`npx` propose d'abord de télécharger la CLI : répondre oui. `login` ouvre le
+navigateur pour autoriser le poste. `link` demande le mot de passe de la base,
+celui du coffre.
 
-Sans ces fonctions, la supervision fonctionne quand même : la traduction
-replie sur le dictionnaire local, et la création comme la suppression de
-comptes se font depuis le tableau de bord Supabase (étape C).
+Une fonction se déploie **une par une** : `functions deploy` sans nom déploie
+tout le dossier d'un coup, ce qui est plus rapide mais moins lisible en cas
+d'erreur. Les TROIS doivent y passer — `supprimer-utilisateur` était absente
+de cette procédure alors que la supervision l'appelle depuis toujours.
+
+**Sans CLI du tout** : le tableau de bord Supabase sait aussi déployer une
+fonction (menu Edge Functions → *Deploy a new function* → *Via editor*), en
+collant le contenu du fichier `supabase/functions/<nom>/index.ts`. C'est
+fastidieux pour trois fonctions, et à refaire à chaque modification, mais cela
+dépanne.
+
+**Et si on ne les déploie pas maintenant ?** La supervision fonctionne quand
+même : la traduction replie sur le dictionnaire local, et la création comme la
+suppression de comptes se font depuis le tableau de bord (étape C). Seules
+l'invitation par e-mail et la suppression définitive depuis l'interface
+attendent ces fonctions. Toute la mécanique des rôles — badges, cases à
+cocher, attribution, garde-fous — s'éprouve sans elles.
 
 ## F. Vérifications finales
 
