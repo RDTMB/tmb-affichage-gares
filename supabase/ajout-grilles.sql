@@ -21,6 +21,11 @@
 --   - une version n'est JAMAIS réécrite : réimporter crée « …-v2 ».
 -- =============================================================================
 
+-- Transactionnel : un échec en cours de route ne doit jamais laisser une
+-- table sans politique d'écriture (les politiques sont supprimées avant
+-- d'être recréées).
+begin;
+
 create table if not exists grilles (
   version text primary key,               -- ex : 2026-ete-grand-service, 2026-2027-hiver
   libelle text not null,                  -- « Grand service — été 2026 »
@@ -116,6 +121,8 @@ values (
   'Grille officielle été 2026, reprise du fichier JSON du dépôt (docs/grilles-historique/).'
 )
 on conflict (version) do nothing;
+
+commit;
 
 -- =============================================================================
 -- VÉRIFICATION — à exécuter APRÈS le script.

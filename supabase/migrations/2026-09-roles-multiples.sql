@@ -274,7 +274,13 @@ grant execute on function private.nb_detenteurs_actifs(text) to authenticated;
 create or replace function private.email_appelant()
 returns text language sql stable security definer set search_path = '' as $fn$
   select coalesce(
-    nullif(auth.jwt() ->> 'email', ''),
+    -- Les revendications du jeton, lues directement plutôt que par auth.jwt() :
+    -- même source, sans dépendre d'une fonction du schéma auth dont la
+    -- présence varie selon la version de GoTrue.
+    nullif(
+      (nullif(current_setting('request.jwt.claims', true), '')::jsonb) ->> 'email',
+      ''
+    ),
     (select p.email from public.profils p where p.user_id = auth.uid())
   )
 $fn$;

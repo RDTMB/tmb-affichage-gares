@@ -17,6 +17,11 @@
 -- d'exploitation.
 -- =============================================================================
 
+-- Transactionnel : un échec en cours de route ne doit jamais laisser une
+-- table sans politique d'écriture (les politiques sont supprimées avant
+-- d'être recréées).
+begin;
+
 create table if not exists ciels (
   fr text primary key,
   en text not null default '',
@@ -70,6 +75,8 @@ insert into ciels (fr, en, ordre) values
   ('Neige',      'Snow',     60),
   ('Brouillard', 'Fog',      70)
 on conflict (fr) do nothing;
+
+commit;
 
 -- =============================================================================
 -- VÉRIFICATION — à exécuter APRÈS le script.

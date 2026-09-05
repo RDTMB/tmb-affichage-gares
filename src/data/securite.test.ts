@@ -353,6 +353,9 @@ describe('Les scripts restent applicables sur une base en service', () => {
     'securite-advisors.sql',
     'ajout-bandeau-veille.sql',
     'ajout-journal-exploitation.sql',
+    'ajout-ciels.sql',
+    'ajout-grilles.sql',
+    'ajout-modeles.sql',
     MIGRATION_ROLES,
     NETTOYAGE_ROLES,
   ]) {

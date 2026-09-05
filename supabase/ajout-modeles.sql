@@ -11,6 +11,11 @@
 -- docs/mise-en-service.md, après schema.sql ET securite-advisors.sql).
 -- =============================================================================
 
+-- Transactionnel : un échec en cours de route ne doit jamais laisser une
+-- table sans politique d'écriture (les politiques sont supprimées avant
+-- d'être recréées).
+begin;
+
 create table if not exists modeles_messages (
   id uuid primary key default gen_random_uuid(),
   titre text not null,
@@ -97,3 +102,6 @@ on conflict (titre) do nothing;
 -- l'animation est recalculée selon la longueur du texte).
 insert into params (cle, valeur) values ('vitesse_ticker_px_s', '90')
 on conflict (cle) do nothing;
+
+commit;
+
