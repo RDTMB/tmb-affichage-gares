@@ -14,8 +14,10 @@
       - travaille sans Docker (--use-api) ;
       - n'affiche, ne journalise et ne stocke JAMAIS le jeton d'accès.
 
-    L'authentification se fait une fois pour toutes par « -Connexion », qui ouvre
-    le navigateur. Aucun secret n'est à taper dans le terminal.
+    L'authentification passe par un jeton personnel Supabase, demandé à la
+    frappe invisible et gardé dans le seul environnement de ce processus. La
+    connexion par navigateur, elle, n'est pas utilisable : la CLI la refuse hors
+    d'un vrai terminal.
 
 .PARAMETER Projet
     « test » ou « prod ». Obligatoire : il n'y a pas de valeur par défaut, pour
@@ -33,7 +35,7 @@
     pas seul. En cas d'échec, il affiche tout ce qu'il a essayé.
 
 .PARAMETER Connexion
-    Ouvre le navigateur pour autoriser ce poste, puis s'arrête. À faire une fois.
+    Demande le jeton et l'éprouve sur le projet de test, sans rien déployer.
 
 .PARAMETER Simulation
     Vérifie tout (npx, dossiers, autorisation, projet joignable) et affiche
@@ -211,6 +213,95 @@ function Trouver-Npx {
     return $null
 }
 
+# --- 1 bis. Le jeton d'accès --------------------------------------------------
+<#
+    La CLI Supabase sait ouvrir le navigateur pour autoriser un poste, mais
+    elle s'y REFUSE hors d'un vrai terminal : « Cannot use automatic login flow
+    inside non-TTY environments ». C'est le cas ici. Reste le jeton personnel.
+
+    Un jeton est un secret. Il est donc demandé à la frappe INVISIBLE et posé
+    dans l'environnement de CE SEUL PROCESSUS : il ne passe par aucune ligne de
+    commande (donc n'apparaît dans la liste des processus de personne), ni par
+    l'historique du terminal, ni par un fichier. Il disparaît avec le script.
+
+    Qui déploie souvent peut le poser durablement en variable d'environnement
+    utilisateur ; le script s'en sert alors sans rien demander.
+#>
+function Ecrire-ModeOperatoireJeton {
+    Write-Host ''
+    Write-Host '   Poser le jeton une fois pour toutes, sans passer par le terminal :'
+    Write-Host '     1. Créer le jeton sur https://supabase.com/dashboard/account/tokens'
+    Write-Host '     2. Menu Démarrer, chercher « variables d''environnement », puis'
+    Write-Host '        « Modifier les variables d''environnement pour votre compte »'
+    Write-Host '     3. Variables utilisateur > Nouvelle'
+    Write-Host '        Nom    : SUPABASE_ACCESS_TOKEN'
+    Write-Host '        Valeur : le jeton'
+    Write-Host '     4. Fermer et rouvrir le terminal, puis relancer cette commande.'
+    Write-Host ''
+    Write-Host '   Le jeton vaut un mot de passe : ne le coller ni dans une' -ForegroundColor DarkGray
+    Write-Host '   conversation, ni dans le dépôt, ni dans une ligne de commande.' -ForegroundColor DarkGray
+}
+
+function Assurer-Jeton {
+    if (-not [string]::IsNullOrWhiteSpace($env:SUPABASE_ACCESS_TOKEN)) {
+        Ecrire-Ok 'Jeton d''accès : fourni par l''environnement'
+        return $true
+    }
+
+    Ecrire-Titre 'Jeton d''accès Supabase'
+
+    # Demander une saisie sur une entrée REDIRIGÉE fait attendre le script
+    # indéfiniment : mieux vaut refuser tout de suite et dire quoi faire.
+    $peutDemander = $true
+    try {
+        if ([Console]::IsInputRedirected) { $peutDemander = $false }
+    } catch {
+        $peutDemander = $false
+    }
+    if (-not [Environment]::UserInteractive) { $peutDemander = $false }
+
+    if (-not $peutDemander) {
+        Write-Host '   Ce terminal ne permet pas de saisie au clavier ici.' -ForegroundColor Yellow
+        Ecrire-ModeOperatoireJeton
+        return $false
+    }
+
+    Write-Host '   Le navigateur ne peut pas servir ici : la CLI refuse son ouverture'
+    Write-Host '   automatique en dehors d''un vrai terminal.'
+    Write-Host ''
+    Write-Host '   1. Créer un jeton sur https://supabase.com/dashboard/account/tokens'
+    Write-Host '   2. Le coller ci-dessous. La frappe reste INVISIBLE.'
+    Write-Host ''
+    Write-Host '   Le jeton n''est ni affiché, ni enregistré, ni écrit où que ce soit :' -ForegroundColor DarkGray
+    Write-Host '   il ne vit que le temps de cette commande.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    $secret = $null
+    try {
+        $secret = Read-Host '   Jeton' -AsSecureString
+    } catch {
+        $secret = $null
+    }
+
+    if ($null -eq $secret -or $secret.Length -eq 0) {
+        Write-Host ''
+        Write-Host '   Aucun jeton saisi.' -ForegroundColor Yellow
+        Ecrire-ModeOperatoireJeton
+        return $false
+    }
+
+    # Conversion en clair au dernier moment, et libération immédiate de la
+    # mémoire non managée qui a porté le secret.
+    $pointeur = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret)
+    try {
+        $env:SUPABASE_ACCESS_TOKEN = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointeur)
+    } finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointeur)
+    }
+    Ecrire-Ok 'Jeton reçu, valable le temps de cette commande'
+    return $true
+}
+
 # --- 2. Appel de la CLI -------------------------------------------------------
 function Invoquer-Cli {
     param(
@@ -282,19 +373,24 @@ if ($LASTEXITCODE -ne 0) {
 }
 Ecrire-Ok "CLI Supabase : $version"
 
-# --- Autorisation du poste ----------------------------------------------------
+# --- Vérification du jeton, sans rien déployer --------------------------------
 if ($Connexion) {
-    Ecrire-Titre 'Autorisation de ce poste'
-    Ecrire-Info 'Le navigateur va s''ouvrir. Rien à taper ici.'
-    Invoquer-Cli -Npx $npx -Arguments @('login') | Out-Null
+    if (-not (Assurer-Jeton)) { exit 3 }
+    Ecrire-Titre 'Épreuve du jeton sur le projet de test'
+    $code = Invoquer-Cli -Npx $npx -Arguments @('functions', 'list', '--project-ref', $REFS['test']) -ToleranteALEchec
     Write-Host ''
-    Ecrire-Ok 'Poste autorisé. Relancer avec -Projet test ou -Projet prod.'
+    if ($code -ne 0) {
+        Write-Host 'Le jeton est refusé. Le recréer sur' -ForegroundColor Red
+        Write-Host 'https://supabase.com/dashboard/account/tokens' -ForegroundColor Red
+        exit 3
+    }
+    Ecrire-Ok 'Jeton valide. Relancer avec -Projet test ou -Projet prod.'
     exit 0
 }
 
 if ([string]::IsNullOrWhiteSpace($Projet)) {
     Write-Host ''
-    Write-Host 'Préciser -Projet test ou -Projet prod (ou -Connexion la première fois).' -ForegroundColor Yellow
+    Write-Host 'Préciser -Projet test ou -Projet prod (ou -Connexion pour éprouver le jeton).' -ForegroundColor Yellow
     exit 1
 }
 
@@ -327,12 +423,14 @@ if ($Projet -eq 'prod') {
 Ecrire-Info 'Le ref est passé explicitement à chaque commande : un projet lié'
 Ecrire-Info 'en cache (supabase\.temp) ne peut pas détourner le déploiement.'
 
+if (-not (Assurer-Jeton)) { exit 3 }
+
 Ecrire-Titre 'État actuel des fonctions déployées'
 $code = Invoquer-Cli -Npx $npx -Arguments @('functions', 'list', '--project-ref', $ref) -ToleranteALEchec
 if ($code -ne 0) {
     Write-Host ''
-    Write-Host 'Lecture impossible. Le plus souvent, ce poste n''est pas encore autorisé.' -ForegroundColor Yellow
-    Write-Host 'Lancer une fois :' -ForegroundColor Yellow
+    Write-Host 'Lecture impossible : jeton refusé, ou projet injoignable.' -ForegroundColor Yellow
+    Write-Host 'Éprouver le jeton seul :' -ForegroundColor Yellow
     Write-Host '    .\outils\deployer-edge-functions.cmd -Connexion' -ForegroundColor Yellow
     exit 3
 }

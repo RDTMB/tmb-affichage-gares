@@ -251,14 +251,40 @@ désactivée sur ce système ». Le `.cmd` n'est pas soumis à cette règle ; il
 rouvre PowerShell avec l'autorisation, le temps de cet appel seulement. Il
 prend exactement les mêmes paramètres.
 
-Une seule fois par poste, pour l'autoriser. Le navigateur s'ouvre : rien à
-taper dans le terminal, aucun jeton à manipuler.
+#### D'abord, le jeton d'accès
+
+La connexion par navigateur (`supabase login`) **n'est pas utilisable ici** :
+la CLI la refuse hors d'un vrai terminal — « Cannot use automatic login flow
+inside non-TTY environments ». On passe donc par un jeton personnel.
+
+À faire une seule fois :
+
+1. Créer le jeton sur https://supabase.com/dashboard/account/tokens
+2. Menu Démarrer, chercher « variables d'environnement », ouvrir **Modifier les
+   variables d'environnement pour votre compte**.
+3. Variables utilisateur → **Nouvelle**. Nom : `SUPABASE_ACCESS_TOKEN`.
+   Valeur : le jeton.
+4. Fermer et rouvrir le terminal.
+
+⚠ **Ce jeton vaut un mot de passe.** Il ouvre l'accès à tous les projets
+Supabase de la Régie. Ne jamais le coller dans une conversation, dans le dépôt,
+ni dans une ligne de commande : les lignes de commande sont lisibles par les
+autres programmes du compte, et le terminal en garde l'historique. La fenêtre
+des variables d'environnement, elle, ne laisse aucune trace de ce genre.
+
+Le script sait aussi le demander à la frappe invisible, quand le terminal le
+permet ; il ne le garde alors que le temps de la commande. La variable
+d'environnement reste plus simple, parce qu'elle ne se redemande pas.
+
+Pour vérifier que le jeton est bon, sans rien déployer :
 
 ```powershell
 .\outils\deployer-edge-functions.cmd -Connexion
 ```
 
-Ensuite, à blanc — le script vérifie tout et n'envoie rien :
+#### Ensuite, le déploiement
+
+À blanc — le script vérifie tout et n'envoie rien :
 
 ```powershell
 .\outils\deployer-edge-functions.cmd -Projet test -Simulation
@@ -285,11 +311,13 @@ Ce que le script prend en charge, et pourquoi :
 - Il travaille sans Docker (`--use-api`) : il n'y a rien à installer.
 - Il fige la version de la CLI, pour que la commande de l'an prochain fasse la
   même chose qu'aujourd'hui.
-- Il ne touche jamais au jeton d'accès : ni affiché, ni écrit, ni transmis.
+- Il ne divulgue jamais le jeton : ni affiché, ni écrit dans un fichier, ni
+  posé sur une ligne de commande. Il ne l'enregistre pas non plus de lui-même,
+  parce que c'est une décision qui revient à l'utilisateur.
 
 Codes de sortie : `0` tout va bien ; `1` refus (paramètre absent ou
-annulation) ; `2` poste inutilisable, node introuvable ; `3` poste non
-autorisé, lancer `-Connexion`.
+annulation) ; `2` poste inutilisable, node introuvable ; `3` jeton absent ou
+refusé.
 
 Pour ne déployer qu'une fonction, par exemple après avoir corrigé la seule
 traduction :

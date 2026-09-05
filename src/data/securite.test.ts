@@ -687,7 +687,8 @@ describe('Script de déploiement des Edge Functions', () => {
     // « functions deploy » sans ref explicite y partirait tout seul.
     const appels = script.match(/@\('functions', '(deploy|list)'[^\n]*/g) ?? [];
     expect(appels.length).toBeGreaterThan(0);
-    for (const appel of appels) expect(appel).toContain("'--project-ref', $ref");
+    // Chaque appel nomme le projet ; aucun ne s'en remet au projet lié.
+    for (const appel of appels) expect(appel).toMatch(/'--project-ref', \$(ref|REFS\['test'\])/);
 
     const deploiement = script.match(/\$arguments = @\('functions', 'deploy'\)[^\n]*/)?.[0];
     expect(deploiement).toBeTruthy();
@@ -711,11 +712,44 @@ describe('Script de déploiement des Edge Functions', () => {
     expect(script).toContain("'--use-api'");
   });
 
-  it('n’écrit jamais le jeton d’accès nulle part', () => {
-    // Le jeton est un secret : il ne doit ni s'afficher, ni se journaliser,
-    // ni se retrouver dans le dépôt.
-    expect(script).not.toMatch(/SUPABASE_ACCESS_TOKEN/);
+  it('ne met jamais le jeton sur une ligne de commande', () => {
+    // Les lignes de commande sont lisibles par les autres processus du compte.
+    // Le jeton ne voyage donc que par l'environnement du processus.
     expect(script).not.toMatch(/--token/);
+    // Et on n'appelle pas « supabase login », qui exige un vrai terminal.
+    expect(script).not.toMatch(/Arguments @\('login'/);
+  });
+
+  it('demande le jeton à la frappe invisible et l’efface de la mémoire', () => {
+    expect(script).toContain('-AsSecureString');
+    expect(script).toContain('ZeroFreeBSTR');
+  });
+
+  it('ne conserve le jeton que le temps du processus', () => {
+    // SetEnvironmentVariable en portée User ou Machine l'écrirait dans le
+    // registre : c'est à l'utilisateur de le décider, pas au script.
+    expect(script).not.toMatch(/SetEnvironmentVariable/);
+    // Et il ne part dans aucun fichier.
+    expect(script).not.toMatch(/(Out-File|Set-Content|Add-Content)[^\n]*SUPABASE_ACCESS_TOKEN/);
+  });
+
+  it('n’affiche jamais la valeur du jeton', () => {
+    // Nommer la variable est sans risque ; c'est sa VALEUR qui ne doit jamais
+    // partir vers la sortie. On traque donc $env:SUPABASE_ACCESS_TOKEN, pas le
+    // simple nom cité dans un mode opératoire.
+    const lignes = script.split('\n').filter((l) => l.includes('$env:SUPABASE_ACCESS_TOKEN'));
+    expect(lignes.length).toBeGreaterThan(0);
+    for (const ligne of lignes) {
+      const affichage = /Write-Host|Write-Output|Ecrire-(Ok|Info|Titre)/.test(ligne);
+      expect(affichage, `le jeton ne doit pas s’afficher : ${ligne.trim()}`).toBe(false);
+    }
+  });
+
+  it('refuse au lieu d’attendre quand le terminal ne sait pas lire une saisie', () => {
+    // Sans cette garde, Read-Host sur une entrée redirigée fait attendre le
+    // script indéfiniment — constaté.
+    expect(script).toContain('[Console]::IsInputRedirected');
+    expect(script).toContain('[Environment]::UserInteractive');
   });
 });
 
