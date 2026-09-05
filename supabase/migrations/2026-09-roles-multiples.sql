@@ -1210,7 +1210,14 @@ end $$;
 commit;
 
 -- =============================================================================
--- VÉRIFICATION — à exécuter APRÈS le script, requête par requête.
+-- VÉRIFICATION — voir supabase/verification-roles.sql, qui EXÉCUTE tout ceci
+-- d'un seul coup, résout les identifiants tout seul et rend un tableau avec un
+-- verdict. Ce qui suit en reste la version commentée, de référence.
+--
+-- ⚠ Ne PAS jouer le point (c) tel quel en production : il se termine par un
+-- « commit ». Si le garde-fou avait un défaut, les rôles techniques seraient
+-- réellement supprimés. Le script ci-dessus fait la même épreuve dans un
+-- sous-bloc qui est toujours annulé.
 -- =============================================================================
 --
 -- (a) Reprise : chacun a gardé son rôle, les administrateurs ont l'exploitation,
