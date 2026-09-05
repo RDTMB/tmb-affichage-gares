@@ -24,12 +24,9 @@
 --   pour vérifier que le compte d'amorçage existe bel et bien. Le traiter comme
 --   le reste de l'annuaire — pas de diffusion hors de la Régie.
 
--- Adresse du compte qui doit recevoir le rôle « technique ». Elle doit être
--- IDENTIQUE à celle du §0 de la migration : c'est ce que la section 11
--- vérifie, et c'est la cause n°1 d'un refus au lancement.
-create temporary table if not exists tmb_amorcage_attendu (email text primary key) on commit preserve rows;
-truncate tmb_amorcage_attendu;
-insert into tmb_amorcage_attendu (email) values ('thomas.musset@tramwaydumontblanc.fr');
+-- ⚠ L'adresse du compte qui doit recevoir le rôle « technique » est écrite au
+--   §11 de ce fichier (chercher « ADRESSE D'AMORÇAGE ») et doit être IDENTIQUE
+--   à celle du §5 de la migration. C'est la cause n°1 d'un refus au lancement.
 
 create temporary table if not exists tmb_diagnostic (
   section int,
@@ -403,13 +400,15 @@ begin
   -- La migration s'annule si elle aboutirait à zéro compte technique ou zéro
   -- compte admin. Autant le savoir AVANT de la lancer.
   declare
-    email_attendu text;
+    -- ═════════════════════════════════════════════════════════════════════
+    -- ADRESSE D'AMORÇAGE — doit être IDENTIQUE à celle du §5 de
+    -- supabase/migrations/2026-09-roles-multiples.sql.
+    email_attendu text := 'thomas.musset@tramwaydumontblanc.fr';
+    -- ═════════════════════════════════════════════════════════════════════
     amorcage_ok boolean := false;
     futurs_admin int := 0;
     futurs_technique int := 0;
   begin
-    select email into email_attendu from tmb_amorcage_attendu limit 1;
-
     if to_regclass('public.profils') is not null then
       execute format($q$
         select exists (

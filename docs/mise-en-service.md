@@ -94,6 +94,20 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     Le rejeu de la migration est lui-même un contrôle : relancée en entier,
     elle doit se terminer sans erreur et annoncer « Reprise ignorée ».
 
+    ⚠ **L'éditeur SQL de Supabase ne garantit pas la transaction.** Constaté le
+    05/09/2026 : il valide les instructions une à une, de sorte qu'un `begin;`
+    ne protège pas le script d'un échec en cours de route (c'est ce qui avait
+    laissé la base de test à moitié migrée au premier essai, et ce qui fait
+    disparaître une table temporaire d'une instruction à l'autre). Deux
+    conséquences pratiques :
+
+    - les scripts du chantier n'utilisent AUCUNE table temporaire et placent
+      leurs refus AVANT la moindre modification : quand ils s'arrêtent, ils
+      n'ont rien changé ;
+    - en cas d'interruption malgré tout, **relancer le script entier** est la
+      bonne réaction : il est idempotent, il reprend là où il en est. Le
+      diagnostic dira ce qu'il en est avant et après.
+
     Enchaîner avec le bloc VÉRIFICATION en fin de fichier, puis, sur le projet
     de test uniquement, avec `supabase/tests/roles-rls.sql` : cette recette
     rejoue toute la matrice des droits et se termine par un `rollback`, elle

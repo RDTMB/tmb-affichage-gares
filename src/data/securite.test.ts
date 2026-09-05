@@ -523,6 +523,52 @@ describe('La migration absorbe un ÉTAT PARTIEL', () => {
     // en attribuer un.
     expect(code).toMatch(/if private\.nb_detenteurs_actifs\('technique'\) = 0 then/);
   });
+
+  it('aucune table TEMPORAIRE : l’éditeur SQL de Supabase ne les conserve pas', () => {
+    // Constaté le 05/09/2026 : « relation tmb_amorcage does not exist ». Une
+    // table temporaire créée par une instruction n'existe plus pour les
+    // suivantes — c'est aussi ce qui explique qu'un premier essai ait laissé
+    // des objets derrière lui malgré le begin/commit.
+    expect(code).not.toMatch(/create temporary table/i);
+  });
+
+  it('le quorum est vérifié AVANT la moindre modification', () => {
+    // L'éditeur validant les instructions une à une, un refus tardif
+    // laisserait des tables créées et des politiques déjà retirées.
+    const iPreControle = code.indexOf('MIGRATION REFUSÉE');
+    const iPremiereCreation = code.indexOf('create table if not exists roles');
+    const iRetraitPolitiques = code.indexOf("or policyname like 'roles: %'");
+    expect(iPreControle).toBeGreaterThan(-1);
+    expect(iPreControle).toBeLessThan(iPremiereCreation);
+    expect(iPreControle).toBeLessThan(iRetraitPolitiques);
+  });
+});
+
+describe('L’adresse d’amorçage ne figure qu’en des endroits cohérents', () => {
+  // Elle apparaît dans la migration (pré-contrôle et amorçage) et dans le
+  // diagnostic. Une divergence ferait passer le pré-contrôle puis échouer
+  // l'amorçage — au pire moment, après les premières modifications.
+  const ADRESSE = /'([\w.+-]+@[\w.-]+)'/;
+
+  function adressesDe(fichier: string): string[] {
+    return instructions(sql(fichier))
+      .split('\n')
+      .filter((l) => /email_technique text :=|email_attendu text :=/.test(l))
+      .map((l) => l.match(ADRESSE)?.[1] ?? '')
+      .filter(Boolean);
+  }
+
+  it('la migration en déclare exactement deux, identiques', () => {
+    const adresses = adressesDe(MIGRATION_ROLES);
+    expect(adresses).toHaveLength(2);
+    expect(adresses[0]).toBe(adresses[1]);
+  });
+
+  it('le diagnostic annonce la MÊME adresse que la migration', () => {
+    const [attendue] = adressesDe('diagnostic-roles.sql');
+    expect(attendue).toBeDefined();
+    expect(attendue).toBe(adressesDe(MIGRATION_ROLES)[0]);
+  });
 });
 
 describe('Le script de remise à zéro ne s’exécute pas par mégarde', () => {

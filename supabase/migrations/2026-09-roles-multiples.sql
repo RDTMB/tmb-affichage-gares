@@ -62,15 +62,23 @@
 begin;
 
 -- ---------------------------------------------------------------------------
--- 0. Amorçage et contrôles préalables
+-- 0. Contrôles préalables
 -- ---------------------------------------------------------------------------
--- Adresse du compte Auth (pas celle de `profils`, qu'un administrateur peut
--- écrire : l'appariement doit reposer sur une donnée que seul le titulaire
--- contrôle). Sur un autre projet — base de test, reprise — remplacer cette
--- valeur AVANT d'exécuter le script.
-create temporary table if not exists tmb_amorcage (email text primary key) on commit drop;
-truncate tmb_amorcage;
-insert into tmb_amorcage (email) values ('thomas.musset@tramwaydumontblanc.fr');
+-- ⚠ L'adresse du compte qui recevra le rôle « technique » est écrite UNE SEULE
+--   FOIS dans ce fichier, au §5 (chercher « ADRESSE D'AMORÇAGE »). Sur un autre
+--   projet — base de test, reprise — c'est là qu'il faut la changer, et nulle
+--   part ailleurs.
+--   Pour savoir À L'AVANCE si elle est correcte, passer d'abord
+--   `supabase/diagnostic-roles.sql` : sa section 11 vérifie que le compte
+--   existe et annonce combien de comptes technique et admin resteront.
+--
+-- Aucune table TEMPORAIRE n'est utilisée dans ce script : l'éditeur SQL de
+-- Supabase découpe parfois un script en plusieurs instructions, exécutées sur
+-- des connexions différentes — une table temporaire créée par la première
+-- n'existe alors plus pour les suivantes (constaté le 05/09/2026 :
+-- « relation tmb_amorcage does not exist »). C'est aussi ce qui explique qu'un
+-- premier essai ait laissé des objets derrière lui malgré le begin/commit :
+-- mieux vaut donc compter sur l'idempotence du script que sur sa transaction.
 
 -- (a) La base doit être à jour de tous les scripts précédents
 --     (docs/mise-en-service §B) : ce script recrée LEURS politiques. Sur une
@@ -115,6 +123,63 @@ begin
         using hint = 'Les retirer, ou repartir de supabase/migrations/2026-09-roles-multiples-remise-a-zero.sql.';
     end if;
   end if;
+end $$;
+
+-- (c) PRÉ-CONTRÔLE DU QUORUM — avant la moindre modification.
+--     Le §5 refuse d'aboutir à une base sans compte technique ou sans compte
+--     admin. Mais l'éditeur SQL de Supabase valide les instructions une à une :
+--     un refus à ce moment-là laisserait derrière lui des tables créées et des
+--     politiques déjà retirées. Autant vérifier MAINTENANT, quand refuser ne
+--     coûte rien — la même vérification qu'opère `diagnostic-roles.sql` §11.
+do $$
+declare
+  -- Doit être IDENTIQUE à l'ADRESSE D'AMORÇAGE du §5 (un test du dépôt le
+  -- vérifie : src/data/securite.test.ts).
+  email_technique text := 'thomas.musset@tramwaydumontblanc.fr';
+  aura_technique boolean := false;
+  aura_admin boolean := false;
+begin
+  -- Techniques : ceux déjà attribués, ou le compte d'amorçage s'il existe.
+  if to_regclass('public.profils_roles') is not null then
+    execute $q$
+      select exists (select 1 from public.profils_roles pr
+                     join public.profils p using (user_id)
+                     where pr.role = 'technique' and p.actif)
+    $q$ into aura_technique;
+    execute $q$
+      select exists (select 1 from public.profils_roles pr
+                     join public.profils p using (user_id)
+                     where pr.role = 'admin' and p.actif)
+    $q$ into aura_admin;
+  end if;
+
+  if not aura_technique then
+    execute format($q$
+      select exists (select 1 from public.profils p
+                     join auth.users u on u.id = p.user_id
+                     where lower(u.email) = lower(%L) and p.actif)
+    $q$, email_technique) into aura_technique;
+  end if;
+
+  -- Admins : ceux de l'ancienne colonne, que la reprise va transposer.
+  if not aura_admin
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'profils'
+                    and column_name = 'role')
+  then
+    execute $q$select exists (select 1 from public.profils where role = 'admin' and actif)$q$
+      into aura_admin;
+  end if;
+
+  if not aura_technique then
+    raise exception 'MIGRATION REFUSÉE : aucun compte ne porterait le rôle « technique ».'
+      using hint = 'Le compte « ' || email_technique || ' » doit exister dans Authentication → Users ET dans profils, et être actif. Sur un autre projet, corriger l''ADRESSE D''AMORÇAGE au §5 (et ici même). Rien n''a été modifié.';
+  end if;
+  if not aura_admin then
+    raise exception 'MIGRATION REFUSÉE : aucun compte ne porterait le rôle « admin ».'
+      using hint = 'Créer d''abord un profil administrateur (docs/mise-en-service.md §C). Rien n''a été modifié.';
+  end if;
+  raise notice 'Pré-contrôle du quorum : un compte technique et un compte admin sont bien prévus.';
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -444,13 +509,17 @@ grant update (nom, actif) on profils to authenticated;
 -- ne pourrait pas se le rendre (personne ne modifie ses propres rôles).
 do $$
 declare
-  email_technique text;
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- ADRESSE D'AMORÇAGE — la SEULE de tout le fichier. C'est l'adresse du
+  -- compte **Auth**, et non celle de `profils` qu'un administrateur peut
+  -- écrire : l'appariement doit reposer sur une donnée que seul le titulaire
+  -- contrôle. Sur un autre projet, changer CETTE ligne, et elle seule.
+  email_technique text := 'thomas.musset@tramwaydumontblanc.fr';
+  -- ═══════════════════════════════════════════════════════════════════════
   nb_technique int;
   nb_admin int;
   reprise_faite boolean := false;
 begin
-  select email into email_technique from tmb_amorcage limit 1;
-
   -- (a) Reprise depuis l'ancienne colonne : UNIQUEMENT si la table de liaison
   --     est encore vide. Un rejeu ne doit jamais rendre un rôle retiré depuis.
   if exists (select 1 from public.profils_roles) then
