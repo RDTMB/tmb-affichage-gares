@@ -35,17 +35,22 @@
     Vérifie tout (npx, dossiers, autorisation, projet joignable) et affiche
     l'état actuel des fonctions déployées, mais ne déploie rien.
 
-.EXAMPLE
-    .\outils\deployer-edge-functions.ps1 -Connexion
+.NOTES
+    Windows refuse par défaut d'exécuter un fichier .ps1. Passer par le lanceur
+    outils\deployer-edge-functions.cmd, qui accepte exactement les mêmes
+    paramètres et ne demande aucun droit particulier.
 
 .EXAMPLE
-    .\outils\deployer-edge-functions.ps1 -Projet test -Simulation
+    .\outils\deployer-edge-functions.cmd -Connexion
 
 .EXAMPLE
-    .\outils\deployer-edge-functions.ps1 -Projet test
+    .\outils\deployer-edge-functions.cmd -Projet test -Simulation
 
 .EXAMPLE
-    .\outils\deployer-edge-functions.ps1 -Projet prod
+    .\outils\deployer-edge-functions.cmd -Projet test
+
+.EXAMPLE
+    .\outils\deployer-edge-functions.cmd -Projet prod
 #>
 [CmdletBinding()]
 param(
@@ -139,8 +144,9 @@ if ($null -eq $npx) {
     Write-Host '  2. Il est installé en portable, mais CE terminal n''a pas le droit'
     Write-Host '     de lire le dossier (Test-Path y répond False sans le dire).'
     Write-Host ''
-    Write-Host 'Contournement : relancer ce script depuis le terminal intégré de'
-    Write-Host 'Claude Code / VS Code, qui lui y accède.'
+    Write-Host 'Sans node, ce script ne peut rien faire. Repli : déployer les'
+    Write-Host 'fonctions depuis le tableau de bord Supabase (voir docs/mise-en-service.md,'
+    Write-Host 'section E).'
     exit 2
 }
 Ecrire-Ok "npx : $npx"
@@ -218,14 +224,14 @@ if ($code -ne 0) {
     Write-Host ''
     Write-Host 'Lecture impossible. Le plus souvent, ce poste n''est pas encore autorisé.' -ForegroundColor Yellow
     Write-Host 'Lancer une fois :' -ForegroundColor Yellow
-    Write-Host '    .\outils\deployer-edge-functions.ps1 -Connexion' -ForegroundColor Yellow
+    Write-Host '    .\outils\deployer-edge-functions.cmd -Connexion' -ForegroundColor Yellow
     exit 3
 }
 
 if ($Simulation) {
     Ecrire-Titre 'Simulation'
     Ecrire-Ok 'Tout est en place. Rien n''a été déployé.'
-    Ecrire-Info "Pour déployer : .\outils\deployer-edge-functions.ps1 -Projet $Projet"
+    Ecrire-Info "Pour déployer : .\outils\deployer-edge-functions.cmd -Projet $Projet"
     exit 0
 }
 

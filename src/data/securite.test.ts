@@ -718,3 +718,54 @@ describe('Script de déploiement des Edge Functions', () => {
     expect(script).not.toMatch(/--token/);
   });
 });
+
+describe('Lanceur .cmd : Windows refuse d’exécuter un .ps1 par défaut', () => {
+  const chemin = fileURLToPath(
+    new URL('../../outils/deployer-edge-functions.cmd', import.meta.url),
+  );
+  const brut = readFileSync(chemin, 'latin1');
+  const lanceur = brut.replace(/\r\n/g, '\n');
+
+  it('rouvre PowerShell avec l’autorisation, pour ce seul appel', () => {
+    expect(lanceur).toContain('-ExecutionPolicy Bypass');
+    // -File, pas -Command : un chemin contenant une espace resterait entier.
+    expect(lanceur).toContain('-File "%~dp0deployer-edge-functions.ps1"');
+    // %~dp0 : le lanceur marche depuis n’importe quel dossier courant.
+    expect(lanceur).toContain('%~dp0');
+  });
+
+  it('transmet les paramètres et rend le code de sortie du script', () => {
+    expect(lanceur).toMatch(/deployer-edge-functions\.ps1" %\*/);
+    expect(lanceur).toContain('exit /b %ERRORLEVEL%');
+  });
+
+  it('ne modifie jamais la stratégie d’exécution du poste', () => {
+    // Set-ExecutionPolicy changerait durablement un réglage de sécurité :
+    // le lanceur se contente d’une dérogation limitée à son propre processus.
+    expect(lanceur).not.toMatch(/Set-ExecutionPolicy/i);
+    expect(lanceur).not.toMatch(/RemoteSigned|Unrestricted/i);
+  });
+
+  it('est écrit en fins de ligne Windows, seules lisibles par cmd.exe', () => {
+    // Livré en LF, cmd.exe découpe mal les lignes et répond « 'm' n'est pas
+    // reconnu » sur chaque commentaire rem.
+    expect(brut).toContain('\r\n');
+    expect(brut.replace(/\r\n/g, '')).not.toContain('\n');
+  });
+
+  it('reste en ASCII pur : la console cmd n’a pas la même page de codes', () => {
+    for (const [i, c] of [...brut].entries()) {
+      if (c.charCodeAt(0) > 127) {
+        throw new Error(`caractère non ASCII en position ${i} : ${JSON.stringify(c)}`);
+      }
+    }
+  });
+
+  it('est le chemin indiqué par le script lui-même quand il refuse', () => {
+    const script = readFileSync(
+      fileURLToPath(new URL('../../outils/deployer-edge-functions.ps1', import.meta.url)),
+      'utf-8',
+    );
+    expect(script).toContain('deployer-edge-functions.cmd -Connexion');
+  });
+});

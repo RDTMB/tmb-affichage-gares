@@ -110,8 +110,9 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
 
     Enchaîner avec le bloc VÉRIFICATION en fin de fichier, puis, sur le projet
     de test uniquement, avec `supabase/tests/roles-rls.sql` : cette recette
-    rejoue toute la matrice des droits et se termine par un `rollback`, elle
-    ne laisse donc aucune trace.
+    rejoue toute la matrice des droits sur six comptes fictifs, qu'elle
+    supprime elle-même avant de rendre la main. Elle ne compte PAS sur un
+    `rollback` final, qui ne servirait à rien dans cet éditeur.
 
     Les deux autres scripts du dossier `supabase/migrations/`
     (`2026-08-signal-de-vie-serveur.sql`, `2026-08-train-supplementaire.sql`)
@@ -235,32 +236,38 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
 ## E. Edge Functions (traduction + invitations) (~10 min)
 
 Trois fonctions à déployer : `traduire`, `inviter-utilisateur` et
-`supprimer-utilisateur`. Le dépôt fournit un script qui fait tout,
-`outils/deployer-edge-functions.ps1`. C'est la voie normale ; le tableau de
+`supprimer-utilisateur`. Le dépôt fournit un script qui fait tout, appelé par
+`outils\deployer-edge-functions.cmd`. C'est la voie normale ; le tableau de
 bord n'est qu'un dépannage.
 
 ### La voie normale : le script
 
-À lancer depuis le **terminal intégré** (Claude Code ou VS Code), à la racine
-du dépôt, sur la branche que l'on veut déployer.
+À lancer depuis un terminal ouvert à la racine du dépôt, sur la branche que
+l'on veut déployer.
+
+⚠ **Toujours appeler le `.cmd`, jamais le `.ps1` directement.** Windows refuse
+par défaut d'exécuter un fichier `.ps1` : « l'exécution de scripts est
+désactivée sur ce système ». Le `.cmd` n'est pas soumis à cette règle ; il
+rouvre PowerShell avec l'autorisation, le temps de cet appel seulement. Il
+prend exactement les mêmes paramètres.
 
 Une seule fois par poste, pour l'autoriser. Le navigateur s'ouvre : rien à
 taper dans le terminal, aucun jeton à manipuler.
 
 ```powershell
-.\outils\deployer-edge-functions.ps1 -Connexion
+.\outils\deployer-edge-functions.cmd -Connexion
 ```
 
 Ensuite, à blanc — le script vérifie tout et n'envoie rien :
 
 ```powershell
-.\outils\deployer-edge-functions.ps1 -Projet test -Simulation
+.\outils\deployer-edge-functions.cmd -Projet test -Simulation
 ```
 
 Puis le déploiement lui-même :
 
 ```powershell
-.\outils\deployer-edge-functions.ps1 -Projet test
+.\outils\deployer-edge-functions.cmd -Projet test
 ```
 
 En production, `-Projet prod` : le script affiche un avertissement et exige
@@ -288,7 +295,7 @@ Pour ne déployer qu'une fonction, par exemple après avoir corrigé la seule
 traduction :
 
 ```powershell
-.\outils\deployer-edge-functions.ps1 -Projet test -Fonctions traduire
+.\outils\deployer-edge-functions.cmd -Projet test -Fonctions traduire
 ```
 
 ### Le secret DeepL
@@ -299,15 +306,24 @@ depuis le **tableau de bord** : Edge Functions → Secrets → `DEEPL_API_KEY`.
 On préfère ici le tableau de bord à la ligne de commande : une clé tapée dans
 un terminal reste dans l'historique PowerShell, en clair, pour longtemps.
 
-### Si le poste refuse d'exécuter node
+### Les deux refus de Windows, et leur réponse
 
-Sur ce poste, node est une installation **portable** dans le profil
-utilisateur, et une fenêtre **PowerShell autonome** n'a pas le droit d'y
-accéder : `Test-Path` y répond `False` sur un fichier qui existe pourtant, et
-l'appel direct donne « n'est pas reconnu ». Le terminal intégré, lui, y accède.
+**« L'exécution de scripts est désactivée sur ce système. »** C'est le réglage
+d'usine de Windows, pas une restriction de la Régie : aucune stratégie de
+groupe n'est en cause. La réponse est le lanceur `.cmd`, qui obtient
+l'autorisation pour son seul processus. On ne touche pas au réglage du poste :
+le modifier affaiblirait durablement une protection utile, pour un besoin qui
+dure trois secondes.
 
-Conclusion pratique : lancer ce script depuis le terminal intégré, pas depuis
-une fenêtre PowerShell ouverte à la main. Ne pas s'acharner sur cette dernière.
+**« Le terme node n'est pas reconnu. »** Attendu, et sans conséquence : node
+est installé en version **portable** dans le profil utilisateur, il n'a jamais
+été dans le PATH. Le script va le chercher tout seul et ajoute son dossier au
+PATH de son propre processus. Autrement dit, `node -v` peut très bien échouer
+dans le terminal pendant que le script, lui, fonctionne.
+
+Ce n'est bloquant que si le script affiche lui-même « node/npx est introuvable
+depuis cette fenêtre » et sort en code 2. Il faut alors passer par le tableau
+de bord (plus bas).
 
 ⚠ **Ne jamais installer la CLI avec `npm i -g supabase`** : Supabase refuse
 cette installation globale (« Installing Supabase CLI as a global module is not
@@ -401,7 +417,7 @@ toujours dans cet ordre :
    VÉRIFICATION de chaque script.
 2. **Edge Functions**, si la pull request en modifie une, DANS LA FOULÉE du
    SQL — l'intégration continue ne les déploie pas :
-   `.\outils\deployer-edge-functions.ps1 -Projet prod` (§E). Entre le SQL et ce
+   `.\outils\deployer-edge-functions.cmd -Projet prod` (§E). Entre le SQL et ce
    déploiement,
    l'ancienne version tourne sur le nouveau schéma : c'est court, mais c'est
    le moment le plus fragile du rituel.
