@@ -238,19 +238,35 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
 installation globale (« Installing Supabase CLI as a global module is not
 supported »). On la lance sans rien installer durablement, avec `npx`.
 
-Sur le poste de développement, node vit dans un dossier portable qui n'est pas
-dans le PATH : la première ligne l'y ajoute pour la session en cours. À coller
-dans **PowerShell**, une commande à la fois :
+Sur le poste de développement, node vit dans un dossier portable absent du
+PATH. Plutôt que de modifier le PATH — ce qui ne vaut que pour la fenêtre
+courante et se perd d'une session à l'autre —, on appelle `npx` par son
+CHEMIN COMPLET : la commande marche alors partout, tout le temps.
+
+À coller dans **PowerShell**, une commande à la fois. La première n'est qu'un
+raccourci pour ne pas répéter le chemin :
 
 ```powershell
-$env:Path = "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64;$env:Path"
-npx supabase login
-npx supabase link --project-ref <ref-du-projet>
-npx supabase functions deploy traduire
-npx supabase functions deploy inviter-utilisateur
-npx supabase functions deploy supprimer-utilisateur
-npx supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
+$npx = "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64\npx.cmd"
+& $npx supabase login
+& $npx supabase link --project-ref <ref-du-projet>
+& $npx supabase functions deploy traduire
+& $npx supabase functions deploy inviter-utilisateur
+& $npx supabase functions deploy supprimer-utilisateur
+& $npx supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
 ```
+
+⚠ Les six lignes doivent être tapées dans **la même fenêtre** : `$npx` ne
+survit pas à sa fermeture. Si PowerShell répond « le terme npx n'est pas
+reconnu », c'est que la première ligne n'a pas été jouée dans cette fenêtre-là.
+Pour lever le doute :
+
+```powershell
+& "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64\npx.cmd" --version
+```
+
+Un numéro de version s'affiche : tout est en place. Sinon, c'est que node
+portable n'est pas là où on le croit.
 
 `npx` propose d'abord de télécharger la CLI : répondre oui. `login` ouvre le
 navigateur pour autoriser le poste. `link` demande le mot de passe de la base,
