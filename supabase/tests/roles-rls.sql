@@ -390,6 +390,16 @@ begin
   -------------------------------------------------------------------------
   -- 5. Garde-fou : il reste toujours un technique et un admin
   -------------------------------------------------------------------------
+  -- ⚠ REDEVENIR « SANS VISAGE ». `reset role` remet le rôle Postgres, mais
+  --   LAISSE le jeton posé : `auth.uid()` désigne encore le dernier compte
+  --   incarné, et le déclencheur d'attribution lui applique la matrice — un
+  --   administrateur ne retire pas un rôle « technique », fût-ce depuis
+  --   l'éditeur SQL. C'est le bon comportement du modèle, et c'est ce qui
+  --   faisait échouer cette section : il faut effacer le jeton, PUIS
+  --   revendiquer l'écriture système, comme le ferait un dépannage réel.
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('tmb.attribution_systeme', 'secours', true);
+
   -- Les déclencheurs de quorum sont DIFFÉRÉS (vérifiés au commit) : on force
   -- leur évaluation avec « set constraints all immediate ».
   begin
@@ -429,6 +439,9 @@ begin
 
   -- Supprimer le compte Auth du dernier technique : la cascade rencontre le
   -- même garde-fou (c'est le chemin du tableau de bord Supabase).
+  -- ⚠ Ce cas vise TOUS les comptes techniques, VOTRE compte réel compris. Il
+  --   s'exécute dans une sous-transaction que l'exception annule : le compte
+  --   est rétabli avant la ligne suivante, et le contrôle qui suit le vérifie.
   begin
     delete from auth.users
      where id in (select user_id from public.profils_roles where role = 'technique');
@@ -438,9 +451,23 @@ begin
     raise notice 'OK — impossible de supprimer le DERNIER compte technique (cascade comprise)';
   end;
 
+  -- Ceinture : le compte réel doit être intact. S'il ne l'était pas, on lève
+  -- ici — et le bloc entier étant atomique, rien ne serait conservé.
+  if not exists (
+    select 1 from public.profils_roles pr
+    join public.profils p on p.user_id = pr.user_id
+    where pr.role = 'technique' and p.actif and not (pr.user_id = any (tous))
+  ) then
+    raise exception 'ÉCHEC — le compte technique réel n''a pas été rétabli après le test de cascade';
+  end if;
+  raise notice 'OK — le compte technique réel est intact après les tests de garde-fou';
+
   -------------------------------------------------------------------------
   -- 6. Écriture « sans visage » : elle doit être revendiquée
   -------------------------------------------------------------------------
+  -- On lève la revendication posée en §5 : c'est précisément son ABSENCE que
+  -- ce cas éprouve.
+  perform set_config('tmb.attribution_systeme', '', true);
   begin
     insert into public.profils_roles (user_id, role) values (u_sansrole, 'technique');
     raise exception 'ÉCHEC — une attribution sans utilisateur connecté est passée sans être revendiquée';
@@ -450,12 +477,18 @@ begin
 
   perform set_config('tmb.attribution_systeme', 'secours', true);
   insert into public.profils_roles (user_id, role) values (u_sansrole, 'technique');
-  perform set_config('tmb.attribution_systeme', '', true);
   raise notice 'OK — dépannage SQL revendiqué : attribution acceptée';
 
   -------------------------------------------------------------------------
   -- 7. Nettoyage — la recette ne laisse RIEN derrière elle
   -------------------------------------------------------------------------
+  -- La revendication reste posée : supprimer un compte fait tomber ses lignes
+  -- de `profils_roles` par cascade, et le déclencheur d'attribution s'applique
+  -- à ce chemin comme à tout autre — c'est exactement ce que la §5 vient de
+  -- démontrer.
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('tmb.attribution_systeme', 'secours', true);
+
   delete from public.jours where date = '2099-12-31';
   delete from public.ecrans where id like 'recette-roles-%';
   -- Les comptes d'abord : la cascade emporte profils puis profils_roles. Le
@@ -467,6 +500,7 @@ begin
   if exists (select 1 from public.profils where user_id = any (tous)) then
     raise exception 'ÉCHEC — des comptes de test subsistent après nettoyage';
   end if;
+  perform set_config('tmb.attribution_systeme', '', true);
 
   raise notice '----------------------------------------------------------------';
   raise notice 'RECETTE COMPLÈTE : tous les cas de la matrice se comportent comme prévu.';
