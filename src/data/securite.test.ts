@@ -524,6 +524,19 @@ describe('La migration absorbe un ÉTAT PARTIEL', () => {
     expect(code).toMatch(/if private\.nb_detenteurs_actifs\('technique'\) = 0 then/);
   });
 
+  it('la recette RLS ne compte pas sur un rollback pour se nettoyer', () => {
+    // L'éditeur SQL de Supabase valide les instructions une à une : un
+    // `begin; … rollback;` n'y annule rien, et la recette laisserait ses six
+    // comptes fictifs dans l'annuaire. Elle tient donc dans UN SEUL bloc `do`
+    // — une instruction, donc une transaction — et se nettoie elle-même.
+    const recette = instructions(sql('tests/roles-rls.sql'));
+    expect(recette).not.toMatch(/^rollback;/m);
+    expect(recette).not.toMatch(/^begin;/m);
+    expect((recette.match(/^do \$\$/gm) ?? []).length).toBe(1);
+    expect(recette).toMatch(/delete from auth\.users where id = any \(tous\)/);
+    expect(recette).toMatch(/des comptes de test subsistent après nettoyage/);
+  });
+
   it('aucune table TEMPORAIRE : l’éditeur SQL de Supabase ne les conserve pas', () => {
     // Constaté le 05/09/2026 : « relation tmb_amorcage does not exist ». Une
     // table temporaire créée par une instruction n'existe plus pour les
