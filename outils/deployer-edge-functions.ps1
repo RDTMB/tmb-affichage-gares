@@ -312,12 +312,18 @@ function Invoquer-Cli {
 
     $complets = @('--yes', "supabase@$VersionCli") + $Arguments
     Ecrire-Info "npx $($complets -join ' ')"
-    & $Npx @complets
+
+    # « | Out-Host » n'est PAS décoratif. Sans lui, la sortie de la CLI part
+    # dans le flux de succès de cette fonction : elle disparaît de l'écran ET
+    # se retrouve mêlée au code de retour, qui devient un tableau. Le test
+    # « -ne 0 » sur ce tableau est alors toujours vrai, et tout appel réussi
+    # passe pour un échec. Le [int] de la dernière ligne verrouille le reste.
+    & $Npx @complets | Out-Host
     $code = $LASTEXITCODE
     if ($code -ne 0 -and -not $ToleranteALEchec) {
         throw "La CLI Supabase a échoué (code $code)."
     }
-    return $code
+    return [int]$code
 }
 
 # =============================================================================

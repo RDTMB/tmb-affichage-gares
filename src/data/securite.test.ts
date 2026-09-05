@@ -712,6 +712,18 @@ describe('Script de déploiement des Edge Functions', () => {
     expect(script).toContain("'--use-api'");
   });
 
+  it('ne confond pas la sortie de la CLI avec son code de retour', () => {
+    // Sans « | Out-Host », la sortie du programme part dans le flux de succès
+    // de la fonction : elle disparaît de l'écran et se mêle au code de retour,
+    // qui devient un tableau. « -ne 0 » sur ce tableau est toujours vrai, donc
+    // tout appel RÉUSSI passait pour un échec — et le message d'erreur de la
+    // CLI n'était jamais montré. Constaté sur un jeton pourtant valide.
+    const corps = script.match(/function Invoquer-Cli \{[\s\S]*?\n\}/)?.[0];
+    expect(corps).toBeTruthy();
+    expect(corps).toContain('| Out-Host');
+    expect(corps).toContain('return [int]$code');
+  });
+
   it('ne met jamais le jeton sur une ligne de commande', () => {
     // Les lignes de commande sont lisibles par les autres processus du compte.
     // Le jeton ne voyage donc que par l'environnement du processus.
