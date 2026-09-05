@@ -51,12 +51,14 @@ alter table grilles enable row level security;
 -- Lecture pour tous : les écrans lisent sans compte.
 drop policy if exists "lecture publique" on grilles;
 create policy "lecture publique" on grilles for select using (true);
--- Écriture : admin et supervision (import, activation), jamais la caisse.
--- Toujours private.role_courant() : la fonction publique a été retirée.
-drop policy if exists "exploitation" on grilles;
-create policy "exploitation" on grilles for all to authenticated
-  using (private.role_courant() in ('admin','supervision'))
-  with check (private.role_courant() in ('admin','supervision'));
+-- Écriture : technique, admin et supervision (import, activation) — jamais la
+-- caisse. Les grilles sont PARTAGÉES entre l'informatique et l'exploitation :
+-- un horaire corrigé un matin de service ne doit pas attendre le prestataire
+-- (supabase/migrations/2026-09-roles-multiples.sql).
+drop policy if exists "roles: grilles" on grilles;
+create policy "roles: grilles" on grilles for all to authenticated
+  using ((select private.a_un_des_roles(array['technique','admin','supervision'])))
+  with check ((select private.a_un_des_roles(array['technique','admin','supervision'])));
 
 -- Temps réel : une activation doit atteindre les écrans en quelques secondes.
 do $$
