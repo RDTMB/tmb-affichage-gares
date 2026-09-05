@@ -2,9 +2,13 @@
 -- TMB — RÔLES MULTIPLES ET CUMULABLES (chantier « rôles multiples »)
 -- À exécuter dans l'éditeur SQL, sur le projet de TEST d'abord, puis en
 -- PRODUCTION **AVANT** la fusion de la pull request (docs/mise-en-service.md
--- §I). Transactionnel et rejouable : un second passage ne réattribue AUCUN
--- rôle (la reprise ne s'exécute que sur une base encore dépourvue de la table
--- `profils_roles`).
+-- §I).
+--
+-- AVANT DE LANCER : passer `supabase/diagnostic-roles.sql` (lecture seule) et
+-- lire son VERDICT. Ce script sait repartir d'une base neuve comme d'un ÉTAT
+-- PARTIEL laissé par une exécution interrompue ; si le diagnostic révèle des
+-- objets étrangers au chantier, préférer `2026-09-roles-multiples-remise-a-zero.sql`
+-- puis rejouer celui-ci.
 --
 -- POURQUOI. Le modèle à UN rôle par personne (colonne `profils.role`) ne sait
 -- pas représenter le cumul de fonctions. Le chef d'exploitation est aussi,
@@ -34,6 +38,17 @@
 -- lisent sans compte), le signal de vie anonyme borné par des GRANT de
 -- colonnes, et le principe « la frontière réelle est RLS » (docs/securite.md).
 --
+-- IDEMPOTENCE — ce que ce script garantit, et comment.
+--   Un simple `create table if not exists` NE SUFFIT PAS : si la table existe
+--   déjà avec un schéma DIFFÉRENT (colonne manquante), il ne fait rien et
+--   l'`insert` qui suit échoue. Chaque table est donc CRÉÉE **puis ALIGNÉE**
+--   colonne par colonne et contrainte par contrainte. De même, les fonctions
+--   sont SUPPRIMÉES avant d'être recréées (un `create or replace` refuse de
+--   changer un type de retour), et cette suppression vient APRÈS le retrait
+--   des politiques qui pourraient en dépendre.
+--   Les rôles déjà attribués ne sont JAMAIS réattribués : la reprise depuis
+--   l'ancienne colonne ne s'exécute que sur une table de liaison encore vide.
+--
 -- FENÊTRE DE DÉPLOIEMENT. Ce script tourne AVANT la fusion du code : l'ANCIEN
 -- front doit continuer à connecter tout le monde. La colonne `profils.role`
 -- est donc CONSERVÉE comme MIROIR en lecture seule, recalculé par déclencheur
@@ -47,21 +62,20 @@
 begin;
 
 -- ---------------------------------------------------------------------------
--- 0. Amorçage : le compte qui reçoit le rôle « technique »
+-- 0. Amorçage et contrôles préalables
 -- ---------------------------------------------------------------------------
 -- Adresse du compte Auth (pas celle de `profils`, qu'un administrateur peut
 -- écrire : l'appariement doit reposer sur une donnée que seul le titulaire
 -- contrôle). Sur un autre projet — base de test, reprise — remplacer cette
--- valeur AVANT d'exécuter le script. Si l'adresse est introuvable, la
--- transaction est ANNULÉE : mieux vaut ne rien faire qu'une base sans aucun
--- compte technique, que plus personne ne pourrait ensuite créer.
+-- valeur AVANT d'exécuter le script.
 create temporary table if not exists tmb_amorcage (email text primary key) on commit drop;
-insert into tmb_amorcage (email) values ('thomas.musset@tramwaydumontblanc.fr')
-  on conflict (email) do nothing;
+truncate tmb_amorcage;
+insert into tmb_amorcage (email) values ('thomas.musset@tramwaydumontblanc.fr');
 
--- La base doit être à jour de tous les scripts précédents (docs/mise-en-service
--- §B) : ce script recrée LEURS politiques. Sur une base incomplète, mieux vaut
--- un message clair qu'une erreur « relation does not exist » en plein milieu.
+-- (a) La base doit être à jour de tous les scripts précédents
+--     (docs/mise-en-service §B) : ce script recrée LEURS politiques. Sur une
+--     base incomplète, mieux vaut un message clair qu'une erreur
+--     « relation does not exist » en plein milieu.
 do $$
 declare
   manquantes text[];
@@ -76,38 +90,129 @@ begin
     raise exception 'MIGRATION ANNULÉE : table(s) absente(s) : %.', array_to_string(manquantes, ', ')
       using hint = 'Exécuter d''abord les scripts de docs/mise-en-service.md §B (schema.sql, securite-advisors.sql, ajout-*.sql).';
   end if;
+
+  if to_regprocedure('private.tracer_ecriture()') is null then
+    raise exception 'MIGRATION ANNULÉE : private.tracer_ecriture() est absente.'
+      using hint = 'Exécuter d''abord supabase/ajout-journal-exploitation.sql.';
+  end if;
+end $$;
+
+-- (b) Un catalogue `roles` laissé par une exécution antérieure ne doit pas
+--     contenir de code inconnu : le garde-fou de quorum boucle dessus, et un
+--     rôle « protégé » fantôme rendrait toute la base inutilisable.
+do $$
+declare
+  intrus text[];
+begin
+  if to_regclass('public.roles') is not null then
+    execute $q$
+      select array_agg(code order by code) from public.roles
+       where code not in ('technique','admin','supervision','caisse')
+    $q$ into intrus;
+    if intrus is not null then
+      raise exception 'MIGRATION ANNULÉE : la table roles contient des codes inconnus (%).',
+        array_to_string(intrus, ', ')
+        using hint = 'Les retirer, ou repartir de supabase/migrations/2026-09-roles-multiples-remise-a-zero.sql.';
+    end if;
+  end if;
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 1. Catalogue des rôles — la règle « qui attribue quoi » est une DONNÉE
+-- 1. Tables d'habilitation : créées PUIS alignées
 -- ---------------------------------------------------------------------------
--- Elle est lisible d'un simple SELECT par l'exploitant et par le prestataire,
--- au lieu d'être enfouie dans le corps d'une fonction. Elle n'est modifiable
--- QUE depuis l'éditeur SQL : aucune politique d'écriture n'existe, et les
--- droits par défaut de Supabase sont révoqués (sans quoi n'importe quel compte
--- connecté pourrait s'habiliter lui-même — voir securite-advisors.sql).
+-- Le catalogue : la règle « qui attribue quoi » est une DONNÉE, lisible d'un
+-- simple SELECT par l'exploitant comme par le prestataire, au lieu d'être
+-- enfouie dans le corps d'une fonction.
 create table if not exists roles (
   code text primary key,
-  libelle text not null,
-  -- true : il doit TOUJOURS rester au moins un compte actif portant ce rôle.
+  libelle text,
   protege boolean not null default false,
-  -- Rôles dont la détention permet d'attribuer (et de retirer) celui-ci.
-  attribuable_par text[] not null,
-  -- Ordre d'affichage des badges et des cases à cocher.
+  attribuable_par text[],
   ordre int not null default 0,
-  -- ACCROCHE SSO (Entra ID) : identifiant du groupe qui portera ce rôle.
-  -- Reste NULL tant que le SSO n'est pas en service — voir §11.
   groupe_entra text
 );
 
+-- ALIGNEMENT : une table déjà présente peut avoir été créée par une version
+-- antérieure du chantier, sans certaines colonnes. `add column if not exists`
+-- ne touche à rien quand la colonne est déjà là.
+alter table roles add column if not exists libelle text;
+alter table roles add column if not exists protege boolean not null default false;
+alter table roles add column if not exists attribuable_par text[];
+alter table roles add column if not exists ordre int not null default 0;
+alter table roles add column if not exists groupe_entra text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.roles'::regclass and contype = 'p'
+  ) then
+    alter table roles add primary key (code);
+  end if;
+end $$;
+
 alter table roles enable row level security;
+-- Supabase accorde par défaut TOUS les droits de table : on retire tout, puis
+-- on ne rend que la lecture. Sans ce revoke, n'importe quel compte connecté
+-- réécrirait la matrice et s'habiliterait lui-même.
 revoke all on roles from anon, authenticated;
 grant select on roles to authenticated;
--- Lecture par tout compte connecté : l'interface a besoin des libellés et de
--- la matrice pour griser les cases. Aucune politique d'écriture, volontairement.
-drop policy if exists "roles: catalogue lecture" on roles;
-create policy "roles: catalogue lecture" on roles for select to authenticated using (true);
 
+-- Une ligne = une personne × un rôle. Table de LIAISON plutôt que colonne
+-- `text[]` : RLS s'évalue LIGNE à ligne, donc « l'appelant peut-il attribuer
+-- CE rôle ? » s'écrit directement dans la politique (`with check` à l'INSERT,
+-- `using` au DELETE). Avec un tableau, la seule opération serait un UPDATE du
+-- tableau entier, et `with check` ne voit jamais l'ancienne valeur : la règle
+-- devrait quitter `pg_policies` pour un déclencheur. S'ajoutent la clé
+-- étrangère vers le catalogue, une ligne de journal par rôle accordé ou
+-- retiré, et les métadonnées PAR rôle dont la réconciliation SSO aura besoin.
+create table if not exists profils_roles (
+  user_id uuid not null,
+  role text not null,
+  source text not null default 'manuel',
+  attribue_le timestamptz not null default now(),
+  attribue_par text
+);
+
+alter table profils_roles add column if not exists source text not null default 'manuel';
+alter table profils_roles add column if not exists attribue_le timestamptz not null default now();
+alter table profils_roles add column if not exists attribue_par text;
+
+alter table profils_roles drop constraint if exists profils_roles_source_check;
+alter table profils_roles add constraint profils_roles_source_check
+  check (source in ('manuel', 'entra'));
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.profils_roles'::regclass and contype = 'p'
+  ) then
+    alter table profils_roles add primary key (user_id, role);
+  end if;
+end $$;
+
+-- Clés étrangères NOMMÉES : sans nom explicite, un rejeu en créerait une
+-- seconde à chaque passage.
+alter table profils_roles drop constraint if exists profils_roles_user_id_fkey;
+alter table profils_roles add constraint profils_roles_user_id_fkey
+  foreign key (user_id) references profils(user_id) on delete cascade;
+alter table profils_roles drop constraint if exists profils_roles_role_fkey;
+alter table profils_roles add constraint profils_roles_role_fkey
+  foreign key (role) references roles(code);
+
+create index if not exists idx_profils_roles_role on profils_roles (role);
+
+alter table profils_roles enable row level security;
+revoke all on profils_roles from anon, authenticated;
+-- Pas d'UPDATE : une attribution est IMMUABLE — on retire un rôle, on en
+-- attribue un autre, et chacun des deux gestes passe par sa politique, son
+-- garde-fou et son journal. Les autres colonnes (source, attribue_par) sont
+-- posées par déclencheur, jamais par le client.
+grant select, delete on profils_roles to authenticated;
+grant insert (user_id, role) on profils_roles to authenticated;
+
+-- Le catalogue, alimenté avant que quoi que ce soit ne s'y réfère.
 insert into roles (code, libelle, protege, attribuable_par, ordre) values
   ('technique',   'Technique',      true,  array['technique'], 10),
   ('admin',       'Administrateur', true,  array['admin'],     20),
@@ -119,61 +224,66 @@ on conflict (code) do update set
   attribuable_par = excluded.attribuable_par,
   ordre = excluded.ordre;
 
--- ---------------------------------------------------------------------------
--- 2. Table de liaison : une ligne = une personne × un rôle
--- ---------------------------------------------------------------------------
--- Pourquoi une table de liaison plutôt qu'une colonne `text[]` : RLS s'évalue
--- LIGNE à ligne. Avec une ligne par rôle, « l'appelant peut-il attribuer CE
--- rôle ? » s'écrit directement dans la politique (`with check` à l'INSERT,
--- `using` au DELETE). Avec un tableau, la seule opération serait un UPDATE du
--- tableau entier, et `with check` ne voit jamais l'ancienne valeur : la règle
--- devrait quitter `pg_policies` pour un déclencheur. S'ajoutent la clé
--- étrangère vers le catalogue, une ligne de journal par rôle accordé ou
--- retiré, et les métadonnées PAR rôle dont la réconciliation Entra aura besoin.
-create table if not exists profils_roles (
-  user_id uuid not null references profils(user_id) on delete cascade,
-  role text not null references roles(code),
-  -- 'manuel' : attribué depuis la supervision ; 'entra' : dérivé d'un groupe
-  -- du SSO (§11). Les deux coexistent, la synchro ne touche que les siennes.
-  source text not null default 'manuel' check (source in ('manuel','entra')),
-  attribue_le timestamptz not null default now(),
-  -- Adresse de l'agent qui a accordé le rôle, FORCÉE par déclencheur depuis le
-  -- jeton : jamais une valeur fournie par le client.
-  attribue_par text,
-  primary key (user_id, role)
-);
-
-create index if not exists idx_profils_roles_role on profils_roles (role);
-
-alter table profils_roles enable row level security;
--- Supabase accorde par défaut tous les droits de table : on retire tout, puis
--- on ne rend que l'INSERT (deux colonnes) et le DELETE. Pas d'UPDATE : une
--- ligne est IMMUABLE — on retire un rôle et on en attribue un autre, chacun
--- des deux gestes passant par sa politique et par le journal.
-revoke all on profils_roles from anon, authenticated;
-grant select, delete on profils_roles to authenticated;
-grant insert (user_id, role) on profils_roles to authenticated;
+-- Les colonnes essentielles ne peuvent plus être nulles, maintenant qu'elles
+-- sont renseignées pour les quatre rôles.
+alter table roles alter column libelle set not null;
+alter table roles alter column attribuable_par set not null;
 
 -- ---------------------------------------------------------------------------
--- 3. `profils` : la colonne `role` devient un MIROIR en lecture seule
+-- 2. Retrait des politiques — AVANT de toucher aux fonctions
 -- ---------------------------------------------------------------------------
-alter table profils alter column role drop not null;
-alter table profils alter column role drop default;
-alter table profils drop constraint if exists profils_role_check;
-
--- Plus personne n'écrit `role` ni `email` par l'API : le miroir est tenu par
--- un déclencheur, et l'adresse sert d'identité au journal comme à l'amorçage
--- (même technique de verrouillage par colonnes que `ecrans`, schema.sql).
-revoke insert, update on profils from authenticated;
-grant insert (user_id, nom, email, actif) on profils to authenticated;
-grant update (nom, actif) on profils to authenticated;
+-- L'ordre compte : une politique qui référence une fonction en dépend
+-- (pg_depend), et le DROP FUNCTION de l'étape 3 échouerait — donc, transaction
+-- oblige, annulerait toute la migration.
+--
+-- Suppression DYNAMIQUE plutôt qu'une liste écrite à la main : la production a
+-- déjà connu des objets créés directement dans l'éditeur SQL (la table `ciels`
+-- le 31/08/2026), et une exécution partielle a pu laisser des politiques
+-- « roles: » à moitié posées.
+do $$
+declare
+  pol record;
+  n int := 0;
+begin
+  for pol in
+    select schemaname, tablename, policyname
+      from pg_policies
+     where coalesce(qual, '') like '%role_courant%'
+        or coalesce(with_check, '') like '%role_courant%'
+        or coalesce(qual, '') like '%a_le_role%'
+        or coalesce(with_check, '') like '%a_le_role%'
+        or coalesce(qual, '') like '%a_un_des_roles%'
+        or coalesce(with_check, '') like '%a_un_des_roles%'
+        or coalesce(qual, '') like '%peut_gerer_profil%'
+        or coalesce(with_check, '') like '%peut_gerer_profil%'
+        or coalesce(qual, '') like '%peut_attribuer%'
+        or coalesce(with_check, '') like '%peut_attribuer%'
+        or policyname like 'roles: %'
+  loop
+    execute format('drop policy if exists %I on %I.%I',
+                   pol.policyname, pol.schemaname, pol.tablename);
+    raise notice 'Politique retirée : %.% → %', pol.schemaname, pol.tablename, pol.policyname;
+    n := n + 1;
+  end loop;
+  raise notice '% politique(s) d''habilitation retirée(s) avant reconstruction.', n;
+end $$;
 
 -- ---------------------------------------------------------------------------
--- 4. Fonctions d'autorisation (schéma `private`, hors de portée de PostgREST)
+-- 3. Fonctions d'habilitation (schéma `private`, hors de portée de PostgREST)
 -- ---------------------------------------------------------------------------
 create schema if not exists private;
 revoke all on schema private from public;
 grant usage on schema private to authenticated;
+
+-- SUPPRIMÉES puis recréées : `create or replace` refuse de changer un type de
+-- retour, et une exécution antérieure a pu laisser une signature différente.
+drop function if exists private.roles_courants();
+drop function if exists private.a_le_role(text);
+drop function if exists private.a_un_des_roles(text[]);
+drop function if exists private.peut_attribuer(text);
+drop function if exists private.peut_gerer_profil(uuid);
+drop function if exists private.nb_detenteurs_actifs(text);
+drop function if exists private.email_appelant();
 
 -- Rôles de l'appelant. Tableau VIDE si le profil est absent ou inactif : une
 -- personne désactivée perd tout, immédiatement, sans autre réglage.
@@ -185,8 +295,8 @@ returns text[] language sql stable security definer set search_path = '' as $fn$
    where pr.user_id = auth.uid() and p.actif
 $fn$;
 revoke all on function private.roles_courants() from public;
--- INDISPENSABLE : les politiques évaluent ces fonctions AU NOM de
--- l'utilisateur connecté — sans ce GRANT, toute écriture serait refusée.
+-- INDISPENSABLE : les politiques l'évaluent au nom de l'utilisateur
+-- connecté — sans ce GRANT, toute écriture serait refusée.
 grant execute on function private.roles_courants() to authenticated;
 
 create or replace function private.a_le_role(p_role text)
@@ -218,11 +328,8 @@ revoke all on function private.peut_attribuer(text) from public;
 grant execute on function private.peut_attribuer(text) to authenticated;
 
 -- Peut-on renommer, désactiver ou supprimer CE compte ? Règle STRICTE : il
--- faut pouvoir attribuer TOUS les rôles de la cible. Un administrateur ne
--- touche donc pas au compte du prestataire informatique, et réciproquement —
--- la séparation des fonctions vaut aussi pour la gestion des comptes.
--- Un compte sans aucun rôle (invitation en cours) reste gérable par quiconque
--- attribue au moins un rôle, sinon il deviendrait orphelin dès sa création.
+-- faut pouvoir attribuer TOUS les rôles de la cible — un administrateur ne
+-- touche donc pas au compte du prestataire informatique, et réciproquement.
 -- Son PROPRE compte est toujours exclu : personne ne se modifie soi-même.
 create or replace function private.peut_gerer_profil(p_cible uuid)
 returns boolean language sql stable security definer set search_path = '' as $fn$
@@ -238,7 +345,7 @@ grant execute on function private.peut_gerer_profil(uuid) to authenticated;
 
 -- Combien de comptes RÉELLEMENT utilisables portent ce rôle ? Un profil actif
 -- dont le compte Auth est banni ou supprimé ne peut plus se connecter : le
--- compter satisferait l'invariant avec un fantôme. Les colonnes de `auth.users`
+-- compter satisferait l'invariant avec un fantôme. Les colonnes de auth.users
 -- varient selon la version de GoTrue, d'où la construction dynamique.
 do $$
 declare
@@ -288,141 +395,125 @@ revoke all on function private.email_appelant() from public;
 grant execute on function private.email_appelant() to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- 4. `profils` : la colonne `role` devient un MIROIR en lecture seule
+-- ---------------------------------------------------------------------------
+-- Conditionnel : le script de nettoyage a pu retirer la colonne, et la
+-- migration doit rester rejouable après lui.
+alter table profils add column if not exists email text;
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'profils' and column_name = 'role')
+  then
+    alter table profils alter column role drop not null;
+    alter table profils alter column role drop default;
+    alter table profils drop constraint if exists profils_role_check;
+    raise notice 'Colonne profils.role conservée en miroir (fenêtre de déploiement).';
+  else
+    raise notice 'Colonne profils.role déjà retirée : rien à mettre en miroir.';
+  end if;
+end $$;
+
+-- Plus personne n'écrit `role` ni `email` par l'API : le miroir est tenu par
+-- un déclencheur, et l'adresse sert d'identité au journal comme à l'amorçage
+-- (même technique de verrouillage par colonnes que `ecrans`).
+revoke insert, update on profils from authenticated;
+grant insert (user_id, nom, email, actif) on profils to authenticated;
+grant update (nom, actif) on profils to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- 5. REPRISE de l'existant — une seule fois, jamais au rejeu
 -- ---------------------------------------------------------------------------
 -- Chaque personne conserve exactement son rôle actuel. Les administrateurs
 -- reçoivent EN PLUS « supervision » : sans cela, le chef d'exploitation
 -- perdrait l'onglet Circulations à la seconde même où ce script s'exécute, et
 -- ne pourrait pas se le rendre (personne ne modifie ses propres rôles).
--- Le compte d'amorçage reçoit EN PLUS « technique ».
 do $$
 declare
   email_technique text;
   nb_technique int;
   nb_admin int;
+  reprise_faite boolean := false;
 begin
+  select email into email_technique from tmb_amorcage limit 1;
+
+  -- (a) Reprise depuis l'ancienne colonne : UNIQUEMENT si la table de liaison
+  --     est encore vide. Un rejeu ne doit jamais rendre un rôle retiré depuis.
   if exists (select 1 from public.profils_roles) then
-    raise notice 'Reprise ignorée : profils_roles contient déjà des lignes (rejeu du script).';
+    raise notice 'Reprise ignorée : profils_roles contient déjà des lignes.';
+  elsif exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'profils' and column_name = 'role')
+  then
+    execute $q$
+      insert into public.profils_roles (user_id, role, source, attribue_par)
+        select p.user_id, p.role, 'manuel', 'migration 2026-09-roles-multiples'
+          from public.profils p
+         where p.role is not null and p.role in ('admin','supervision','caisse')
+        on conflict do nothing
+    $q$;
+    execute $q$
+      insert into public.profils_roles (user_id, role, source, attribue_par)
+        select p.user_id, 'supervision', 'manuel', 'migration 2026-09-roles-multiples'
+          from public.profils p
+         where p.role = 'admin'
+        on conflict do nothing
+    $q$;
+    reprise_faite := true;
+    raise notice 'Reprise effectuée depuis profils.role (les administrateurs gardent l''exploitation).';
   else
-    -- Le rôle actuel, à l'identique.
-    insert into public.profils_roles (user_id, role, source, attribue_par)
-      select p.user_id, p.role, 'manuel', 'migration 2026-09-roles-multiples'
-        from public.profils p
-       where p.role is not null and p.role in ('admin','supervision','caisse')
-      on conflict do nothing;
+    raise notice 'Aucune reprise possible : ni liaison peuplée, ni colonne profils.role.';
+  end if;
 
-    -- Les administrateurs gardent l'exploitation.
-    insert into public.profils_roles (user_id, role, source, attribue_par)
-      select p.user_id, 'supervision', 'manuel', 'migration 2026-09-roles-multiples'
-        from public.profils p
-       where p.role = 'admin'
-      on conflict do nothing;
-
-    -- Le compte d'amorçage devient AUSSI technique. On passe par une jointure
-    -- avec `profils` : insérer sur la seule foi de `auth.users` violerait la
-    -- clé étrangère et annulerait toute la migration.
-    select email into email_technique from tmb_amorcage limit 1;
+  -- (b) AMORÇAGE du rôle technique. Il s'exécute dès qu'AUCUN compte technique
+  --     actif n'existe — cas d'une base neuve comme d'un état partiel : sans
+  --     technique, plus personne ne peut en attribuer un, la base serait
+  --     définitivement bloquée. Il ne « rend » donc jamais un rôle retiré
+  --     volontairement : tant qu'un technique subsiste, ce bloc ne fait rien.
+  if private.nb_detenteurs_actifs('technique') = 0 then
     insert into public.profils_roles (user_id, role, source, attribue_par)
       select p.user_id, 'technique', 'manuel', 'migration 2026-09-roles-multiples'
         from public.profils p
         join auth.users u on u.id = p.user_id
        where lower(u.email) = lower(email_technique)
       on conflict do nothing;
-
-    if not found then
+    if found then
+      raise notice 'Rôle « technique » attribué à %.', email_technique;
+    else
       raise notice 'Compte d''amorçage « % » introuvable dans auth.users ∩ profils.', email_technique;
     end if;
   end if;
 
-  -- ASSERTION, dans la transaction : une base sans technique ni admin serait
-  -- définitivement bloquée (seul un technique attribue technique). Le bloc
-  -- VÉRIFICATION de fin de fichier ne remplace pas ce contrôle : il s'exécute
-  -- APRÈS le commit, il constate au lieu d'empêcher.
+  -- (c) ASSERTION, dans la transaction : une base sans technique ni admin
+  --     serait définitivement bloquée (seul un technique attribue technique).
+  --     Le bloc VÉRIFICATION de fin de fichier ne remplace pas ce contrôle :
+  --     il s'exécute APRÈS le commit, il constate au lieu d'empêcher.
   select private.nb_detenteurs_actifs('technique') into nb_technique;
   select private.nb_detenteurs_actifs('admin') into nb_admin;
   if nb_technique = 0 then
     raise exception 'MIGRATION ANNULÉE : aucun compte actif ne porterait le rôle « technique ».'
-      using hint = 'Vérifier l''adresse du §0 (elle doit exister dans Authentication → Users ET dans profils), puis relancer.';
+      using hint = 'Vérifier l''adresse du §0 : elle doit exister dans Authentication → Users ET dans profils. Sur un autre projet, la remplacer avant d''exécuter.';
   end if;
   if nb_admin = 0 then
     raise exception 'MIGRATION ANNULÉE : aucun compte actif ne porterait le rôle « admin ».'
-      using hint = 'Créer d''abord un profil administrateur, puis relancer.';
+      using hint = 'Créer d''abord un profil administrateur (docs/mise-en-service.md §C), puis relancer.';
   end if;
-  raise notice 'Reprise : % compte(s) technique, % compte(s) admin.', nb_technique, nb_admin;
+  raise notice 'Habilitations en place : % compte(s) technique, % compte(s) admin (reprise : %).',
+    nb_technique, nb_admin, case when reprise_faite then 'oui' else 'non' end;
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 6. Retrait de TOUTES les politiques fondées sur l'ancien rôle unique
--- ---------------------------------------------------------------------------
--- Suppression DYNAMIQUE plutôt qu'une liste écrite à la main : la production a
--- déjà connu des objets créés directement dans l'éditeur SQL (la table `ciels`
--- le 31/08/2026). Une politique oubliée ferait échouer le DROP FUNCTION de
--- l'étape 8 — donc, transaction oblige, annulerait toute la migration.
-do $$
-declare
-  pol record;
-  n int := 0;
-begin
-  for pol in
-    select schemaname, tablename, policyname
-      from pg_policies
-     where coalesce(qual, '') like '%role_courant%'
-        or coalesce(with_check, '') like '%role_courant%'
-  loop
-    execute format('drop policy if exists %I on %I.%I',
-                   pol.policyname, pol.schemaname, pol.tablename);
-    raise notice 'Politique retirée : %.% → %', pol.schemaname, pol.tablename, pol.policyname;
-    n := n + 1;
-  end loop;
-  raise notice '% politique(s) fondée(s) sur role_courant() retirée(s).', n;
-end $$;
-
--- Les nouvelles politiques portent toutes le préfixe « roles: ». Un ancien
--- script rejoué par mégarde (securite-advisors.sql, ajout-*.sql d'avant ce
--- chantier) ne peut donc en supprimer aucune : ses `drop policy if exists`
--- visent des noms qui n'existent plus, et son `create policy` échoue
--- bruyamment sur `private.role_courant()`, supprimée à l'étape 8.
-drop policy if exists "roles: jours ecriture" on jours;
-drop policy if exists "roles: jours reinitialisation" on jours;
-drop policy if exists "roles: jours reinitialisation retrait" on jours;
-drop policy if exists "roles: circulations ecriture" on circulations;
-drop policy if exists "roles: circulations regeneration" on circulations;
-drop policy if exists "roles: medias" on medias;
-drop policy if exists "roles: messages" on messages;
-drop policy if exists "roles: machines" on machines;
-drop policy if exists "roles: motifs" on motifs;
-drop policy if exists "roles: ciels" on ciels;
-drop policy if exists "roles: modeles lecture" on modeles_messages;
-drop policy if exists "roles: modeles ecriture" on modeles_messages;
-drop policy if exists "roles: params affichage" on params;
-drop policy if exists "roles: params medias" on params;
-drop policy if exists "roles: params exploitation" on params;
-drop policy if exists "roles: params technique" on params;
-drop policy if exists "roles: profils lecture" on profils;
-drop policy if exists "roles: profils creation" on profils;
-drop policy if exists "roles: profils gestion" on profils;
-drop policy if exists "roles: profils suppression" on profils;
-drop policy if exists "roles: liaison lecture" on profils_roles;
-drop policy if exists "roles: liaison attribution" on profils_roles;
-drop policy if exists "roles: liaison retrait" on profils_roles;
-drop policy if exists "roles: ecrans declarer" on ecrans;
-drop policy if exists "roles: ecrans commander" on ecrans;
-drop policy if exists "roles: ecrans oublier" on ecrans;
-drop policy if exists "roles: grilles" on grilles;
-drop policy if exists "roles: publications ecriture" on publications;
-drop policy if exists "roles: publications lecture" on publications;
-drop policy if exists "roles: journal lecture" on journal_exploitation;
-drop policy if exists "roles: medias lecture" on storage.objects;
-drop policy if exists "roles: medias ecriture" on storage.objects;
-drop policy if exists "roles: medias suppression" on storage.objects;
-
--- ---------------------------------------------------------------------------
--- 7. Politiques rétablies sur les rôles multiples
+-- 6. Politiques rétablies sur les rôles multiples
 -- ---------------------------------------------------------------------------
 -- Forme retenue : `(select private.a_un_des_roles(array[...]))`. L'enveloppe
--- `(select …)` fait évaluer la fonction UNE fois par requête (initplan) et non
--- une fois par ligne. La liste des rôles reste lisible telle quelle dans
--- `pg_policies` : un repreneur voit qui écrit, sans indirection.
+-- `(select …)` fait évaluer la fonction UNE fois par requête et non une fois
+-- par ligne. La liste des rôles reste lisible telle quelle dans `pg_policies` :
+-- un repreneur voit qui écrit, sans indirection.
+--
+-- Toutes portent le préfixe « roles: ». Un ancien script rejoué par mégarde ne
+-- peut donc en supprimer aucune : ses `drop policy if exists` visent des noms
+-- qui n'existent plus, et son `create policy` échoue bruyamment sur
+-- `private.role_courant()`, supprimée à l'étape 7.
 
 -- ── Journées et circulations ──────────────────────────────────────────────
 -- L'exploitation écrit tout ; le technique n'a que la RÉINITIALISATION
@@ -439,24 +530,22 @@ create policy "roles: jours reinitialisation retrait" on jours for delete to aut
 create policy "roles: circulations ecriture" on circulations for all to authenticated
   using ((select private.a_le_role('supervision')))
   with check ((select private.a_le_role('supervision')));
--- Régénération après réinitialisation : le technique réinsère la grille
--- théorique. La suppression, elle, passe par la cascade de `jours`.
+-- Régénération après réinitialisation : la suppression, elle, passe par la
+-- cascade de `jours`.
 create policy "roles: circulations regeneration" on circulations for insert to authenticated
   with check ((select private.a_le_role('technique')));
 
--- ── Médias ────────────────────────────────────────────────────────────────
 create policy "roles: medias" on medias for all to authenticated
   using ((select private.a_un_des_roles(array['admin','supervision'])))
   with check ((select private.a_un_des_roles(array['admin','supervision'])));
 
--- ── Bandeau voyageurs ─────────────────────────────────────────────────────
--- La caisse tient le bandeau au quotidien : elle ne doit dépendre de personne
--- pour corriger un message ou une température.
+-- Bandeau voyageurs : la caisse le tient au quotidien et ne doit dépendre de
+-- personne pour corriger un message ou une température.
 create policy "roles: messages" on messages for all to authenticated
   using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
   with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
--- ── Paramétrage d'exploitation ────────────────────────────────────────────
+-- Paramétrage d'exploitation : le chef d'exploitation.
 create policy "roles: machines" on machines for all to authenticated
   using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
 create policy "roles: motifs" on motifs for all to authenticated
@@ -464,18 +553,9 @@ create policy "roles: motifs" on motifs for all to authenticated
 create policy "roles: ciels" on ciels for all to authenticated
   using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
 
--- ── Bibliothèque de modèles ───────────────────────────────────────────────
--- Proposée à la saisie pour tous ; administrée par le chef d'exploitation.
-create policy "roles: modeles lecture" on modeles_messages for select to authenticated
-  using ((select private.a_un_des_roles(array['technique','admin','supervision','caisse'])));
-create policy "roles: modeles ecriture" on modeles_messages for all to authenticated
-  using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
-
--- ── Paramètres, clé par clé ───────────────────────────────────────────────
--- Quatre politiques PERMISSIVES qui se cumulent en OU : chacune ouvre un jeu
--- de clés à un jeu de rôles. Les clés inconnues ne sont ouvertes qu'au
--- technique — une clé nouvelle est un réglage d'infrastructure jusqu'à preuve
--- du contraire.
+-- Params, clé par clé : quatre politiques PERMISSIVES qui se cumulent en OU.
+-- Les clés inconnues ne sont ouvertes qu'au technique — une clé nouvelle est
+-- un réglage d'infrastructure jusqu'à preuve du contraire.
 create policy "roles: params affichage" on params for all to authenticated
   using (
     cle in ('meteo_sommet', 'vitesse_ticker_px_s')
@@ -501,6 +581,13 @@ create policy "roles: params technique" on params for all to authenticated
   using ((select private.a_le_role('technique')))
   with check ((select private.a_le_role('technique')));
 
+-- Bibliothèque de messages : proposée à la saisie pour tous, administrée par
+-- le chef d'exploitation.
+create policy "roles: modeles lecture" on modeles_messages for select to authenticated
+  using ((select private.a_un_des_roles(array['technique','admin','supervision','caisse'])));
+create policy "roles: modeles ecriture" on modeles_messages for all to authenticated
+  using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
+
 -- ── Comptes et rôles ──────────────────────────────────────────────────────
 -- Chacun lit son profil ; ceux qui gèrent des comptes les lisent tous.
 create policy "roles: profils lecture" on profils for select to authenticated
@@ -516,6 +603,11 @@ create policy "roles: profils gestion" on profils for update to authenticated
 create policy "roles: profils suppression" on profils for delete to authenticated
   using ((select private.peut_gerer_profil(user_id)));
 
+-- Catalogue : lisible par tout compte connecté (l'interface a besoin des
+-- libellés et de la matrice pour griser les cases), modifiable seulement
+-- depuis l'éditeur SQL — aucune politique d'écriture, volontairement.
+create policy "roles: catalogue lecture" on roles for select to authenticated using (true);
+
 -- Les rôles d'un compte se voient dès qu'on voit le compte.
 create policy "roles: liaison lecture" on profils_roles for select to authenticated
   using (user_id = auth.uid() or (select private.a_un_des_roles(array['technique','admin'])));
@@ -528,7 +620,7 @@ create policy "roles: liaison attribution" on profils_roles for insert to authen
     and (select private.peut_attribuer(role))
   );
 -- Retirer : mêmes conditions. Le retrait du DERNIER détenteur d'un rôle
--- protégé est refusé par le déclencheur de contrainte (§9).
+-- protégé est refusé par le déclencheur de contrainte (§8).
 create policy "roles: liaison retrait" on profils_roles for delete to authenticated
   using (
     user_id <> auth.uid()
@@ -538,9 +630,10 @@ create policy "roles: liaison retrait" on profils_roles for delete to authentica
 
 -- ── Écrans ────────────────────────────────────────────────────────────────
 -- L'IDENTITÉ d'un poste (le déclarer, l'oublier) relève de l'informatique ;
--- le COMMANDER (recharger après une mise en ligne, régler sa veille un soir de
--- nocturne) relève de l'exploitation. Le déclencheur `trg_roles_ecrans_identite`
--- (§9) empêche un superviseur de changer la gare ou le type par un UPDATE.
+-- le COMMANDER — recharger après une mise en ligne, régler sa veille un soir
+-- de nocturne — relève de l'exploitation, qui ne doit jamais attendre le
+-- prestataire. RLS ne sait pas quelles COLONNES changent : le déclencheur
+-- `trg_roles_ecrans_identite` (§8) empêche un superviseur de déplacer un écran.
 create policy "roles: ecrans declarer" on ecrans for insert to authenticated
   with check ((select private.a_le_role('technique')));
 create policy "roles: ecrans commander" on ecrans for update to authenticated
@@ -586,7 +679,7 @@ create policy "roles: medias suppression" on storage.objects for delete to authe
   using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
 
 -- ---------------------------------------------------------------------------
--- 8. L'ancienne fonction disparaît — APRÈS les politiques qui en dépendaient
+-- 7. L'ancienne fonction disparaît — APRÈS les politiques qui en dépendaient
 -- ---------------------------------------------------------------------------
 -- Pas de « shim » de compatibilité : un ancien script rejoué par erreur doit
 -- échouer BRUYAMMENT (« function private.role_courant() does not exist »)
@@ -594,16 +687,16 @@ create policy "roles: medias suppression" on storage.objects for delete to authe
 drop function if exists private.role_courant();
 
 -- ---------------------------------------------------------------------------
--- 9. Garde-fous — EN BASE, jamais seulement dans l'interface
+-- 8. Garde-fous — EN BASE, jamais seulement dans l'interface
 -- ---------------------------------------------------------------------------
 -- Ces déclencheurs s'appliquent à TOUS les chemins : l'application, une Edge
 -- Function à clé secrète, l'éditeur SQL et la cascade déclenchée par la
--- suppression d'un compte depuis le tableau de bord Supabase. C'est le même
--- principe que le journal d'exploitation : rien n'y échappe.
+-- suppression d'un compte depuis le tableau de bord Supabase. RLS, elle, ne
+-- s'applique ni à `service_role` ni au propriétaire des tables — c'est le même
+-- principe que le journal d'exploitation : rien ne doit y échapper.
 
--- (a) Attribution : la matrice est REJOUÉE ici, en plus de la politique RLS.
---     Indispensable, car RLS ne s'applique ni à `service_role` ni au
---     propriétaire des tables.
+-- (a) Attribution : la matrice du catalogue est REJOUÉE ici, en plus de la
+--     politique RLS.
 create or replace function private.proteger_profils_roles()
 returns trigger language plpgsql security definer set search_path = '' as $fn$
 declare
@@ -632,7 +725,7 @@ begin
     if contexte is null or contexte not in ('migration', 'entra', 'secours') then
       raise exception 'Attribution de rôle sans utilisateur connecté refusée.'
         using errcode = 'check_violation',
-              hint = 'Depuis l''éditeur SQL : set local tmb.attribution_systeme = ''secours''; (voir docs/mise-en-service.md §J)';
+              hint = 'Depuis l''éditeur SQL : set local tmb.attribution_systeme = ''secours''; (voir docs/securite.md §2)';
     end if;
     if tg_op = 'INSERT' then
       new.source := case when contexte = 'entra' then 'entra' else 'manuel' end;
@@ -728,7 +821,7 @@ create constraint trigger trg_roles_quorum_profils
   for each row execute function private.verifier_quorum_roles();
 
 -- (c) On ne se désactive pas soi-même (ceinture et bretelles : la politique
---     `roles: profils gestion` l'interdit déjà par `peut_gerer_profil`).
+--     « roles: profils gestion » l'interdit déjà par peut_gerer_profil).
 create or replace function private.interdire_auto_desactivation()
 returns trigger language plpgsql security definer set search_path = '' as $fn$
 begin
@@ -748,7 +841,7 @@ create trigger trg_roles_auto_desactivation before update of actif on profils
 
 -- (d) Identité d'un écran : la politique UPDATE ouvre la table au technique ET
 --     à l'exploitation, mais RLS ne sait pas quelles COLONNES changent. Seul
---     le technique peut déplacer un poste ou en changer le type.
+--     le technique déplace un poste ou en change le type.
 create or replace function private.proteger_identite_ecran()
 returns trigger language plpgsql security definer set search_path = '' as $fn$
 begin
@@ -766,7 +859,7 @@ create trigger trg_roles_ecrans_identite before update of gare, type on ecrans
   for each row execute function private.proteger_identite_ecran();
 
 -- ---------------------------------------------------------------------------
--- 10. Miroir `profils.role` et journal d'exploitation
+-- 9. Miroir `profils.role` et journal d'exploitation
 -- ---------------------------------------------------------------------------
 -- (a) Le miroir sert UNIQUEMENT à l'ancien front pendant la fenêtre de
 --     déploiement : il n'ouvre aucun droit (les politiques lisent
@@ -781,13 +874,13 @@ declare
   cible uuid;
   principal text;
 begin
-  -- NEW n'est pas assigné sur un DELETE : jamais de `case` mêlant les deux.
-  if tg_op = 'DELETE' then cible := old.user_id; else cible := new.user_id; end if;
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'profils'
                     and column_name = 'role') then
     return null;   -- colonne déjà retirée : plus rien à tenir à jour
   end if;
+  -- NEW n'est pas assigné sur un DELETE : jamais de `case` mêlant les deux.
+  if tg_op = 'DELETE' then cible := old.user_id; else cible := new.user_id; end if;
   select pr.role into principal
     from public.profils_roles pr
    where pr.user_id = cible and pr.role in ('admin','supervision','caisse')
@@ -803,23 +896,31 @@ drop trigger if exists trg_roles_miroir on profils_roles;
 create trigger trg_roles_miroir after insert or delete on profils_roles
   for each row execute function private.miroir_role_principal();
 
--- Alignement immédiat du miroir sur la reprise du §5.
-update profils p set role = coalesce((
-  select pr.role from profils_roles pr
-   where pr.user_id = p.user_id and pr.role in ('admin','supervision','caisse')
-   order by case pr.role when 'admin' then 1 when 'supervision' then 2 else 3 end
-   limit 1
-), 'caisse')
-where role is distinct from coalesce((
-  select pr.role from profils_roles pr
-   where pr.user_id = p.user_id and pr.role in ('admin','supervision','caisse')
-   order by case pr.role when 'admin' then 1 when 'supervision' then 2 else 3 end
-   limit 1
-), 'caisse');
+-- Alignement immédiat du miroir, seulement si la colonne existe encore.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'profils' and column_name = 'role')
+  then
+    execute $q$
+      update public.profils p set role = coalesce((
+        select pr.role from public.profils_roles pr
+         where pr.user_id = p.user_id and pr.role in ('admin','supervision','caisse')
+         order by case pr.role when 'admin' then 1 when 'supervision' then 2 else 3 end
+         limit 1
+      ), 'caisse')
+      where role is distinct from coalesce((
+        select pr.role from public.profils_roles pr
+         where pr.user_id = p.user_id and pr.role in ('admin','supervision','caisse')
+         order by case pr.role when 'admin' then 1 when 'supervision' then 2 else 3 end
+         limit 1
+      ), 'caisse')
+    $q$;
+  end if;
+end $$;
 
 -- (b) Journal : une ligne par rôle accordé ou retiré, avec l'adresse de la
---     PERSONNE CONCERNÉE en clé — un uuid ne dit rien à l'exploitant, c'est
---     déjà la raison d'être de `qui` dans `tracer_ecriture`.
+--     PERSONNE CONCERNÉE en clé — un uuid ne dirait rien à l'exploitant.
 create or replace function private.tracer_role()
 returns trigger language plpgsql security definer set search_path = '' as $fn$
 declare
@@ -955,12 +1056,11 @@ end $fn$;
 revoke all on function private.tracer_ecriture() from public;
 
 -- ---------------------------------------------------------------------------
--- 11. Purge du journal : réservée au rôle technique
+-- 10. Purge du journal : réservée au rôle technique
 -- ---------------------------------------------------------------------------
--- Le GRANT EXECUTE reste ouvert à `authenticated` (les politiques et les RPC
--- s'évaluent au nom de l'appelant), mais la fonction refuse désormais tout
--- appelant qui n'est pas technique : effacer douze mois de traces n'est pas un
--- geste d'exploitation.
+-- Le GRANT EXECUTE reste ouvert à `authenticated` (la fonction s'évalue au nom
+-- de l'appelant), mais elle refuse désormais tout appelant qui n'est pas
+-- technique : effacer douze mois de traces n'est pas un geste d'exploitation.
 create or replace function private.purge_journal_exploitation(mois int default 12)
 returns bigint language plpgsql security definer set search_path = '' as $fn$
 declare
@@ -979,16 +1079,20 @@ revoke all on function private.purge_journal_exploitation(int) from public;
 grant execute on function private.purge_journal_exploitation(int) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 12. Réplication temps réel et contrôle final
+-- 11. Réplication temps réel et contrôle final
 -- ---------------------------------------------------------------------------
--- `profils` et `profils_roles` restent HORS de la publication temps réel :
--- l'annuaire du personnel n'a pas à être diffusé aux écrans.
+-- `profils`, `profils_roles` et `roles` restent HORS de la publication temps
+-- réel : l'annuaire du personnel et ses habilitations n'ont pas à être
+-- diffusés aux écrans.
 
--- Rien ne doit plus dépendre de l'ancien rôle unique. Ce contrôle est DANS la
--- transaction : s'il échoue, tout est annulé et la base reste intacte.
+-- Rien ne doit plus dépendre de l'ancien rôle unique, et aucune table
+-- d'exploitation ne doit se retrouver sans politique d'écriture. Ce contrôle
+-- est DANS la transaction : s'il échoue, tout est annulé et la base reste
+-- intacte.
 do $$
 declare
   restantes int;
+  muettes text[];
 begin
   select count(*) into restantes from pg_policies
    where coalesce(qual, '') like '%role_courant%'
@@ -996,10 +1100,28 @@ begin
   if restantes > 0 then
     raise exception 'MIGRATION ANNULÉE : % politique(s) référencent encore role_courant().', restantes;
   end if;
-  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname = 'private' and p.proname = 'role_courant') then
+  if to_regprocedure('private.role_courant()') is not null then
     raise exception 'MIGRATION ANNULÉE : private.role_courant() existe encore.';
   end if;
+
+  -- Le dégât le plus probable d'une exécution interrompue : des politiques
+  -- supprimées et jamais recréées, donc une table que plus personne n'écrit.
+  select array_agg(c.relname order by c.relname) into muettes
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity
+     and c.relname in ('jours','circulations','messages','medias','machines','motifs',
+                       'ciels','modeles_messages','params','ecrans','publications',
+                       'grilles','profils','profils_roles')
+     and not exists (
+       select 1 from pg_policy p
+        where p.polrelid = c.oid and p.polcmd in ('a', 'w', 'd', '*')
+     );
+  if muettes is not null then
+    raise exception 'MIGRATION ANNULÉE : table(s) sans politique d''écriture : %.',
+      array_to_string(muettes, ', ');
+  end if;
+
   raise notice 'Rôles multiples en place. Déployer les Edge Functions, puis fusionner la pull request.';
 end $$;
 
@@ -1062,3 +1184,7 @@ commit;
 --     en ligne, vérifier que les onglets s'affichent et qu'une modification de
 --     circulation passe. La gestion des utilisateurs, elle, est fermée : le
 --     changement de rôle y échoue avec « écriture refusée », c'est attendu.
+--
+-- (k) REJEU : relancer ce script en entier doit se terminer sans erreur, sans
+--     rien réattribuer (le notice dit « Reprise ignorée »). C'est le contrôle
+--     qui prouve l'idempotence.

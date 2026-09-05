@@ -62,12 +62,37 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     les scripts précédents. Sur une base NEUVE, `schema.sql` contient déjà
     tout : le script n'a alors rien à reprendre et le signale.
 
-    ⚠ **Avant de l'exécuter**, vérifier le §0 en tête du fichier : il porte
-    l'adresse du compte qui recevra le rôle « technique ». Sur le projet de
-    test, remplacer par l'adresse d'un compte qui y existe RÉELLEMENT.
-    Si l'adresse est introuvable, le script s'annule tout entier plutôt que
-    de laisser une base sans aucun compte technique — que plus personne ne
-    pourrait alors débloquer depuis l'application.
+    ⚠ **Avant de l'exécuter**, deux gestes :
+
+    1. Passer `supabase/diagnostic-roles.sql` — LECTURE SEULE, il n'écrit
+       rien — et lire son VERDICT en dernière ligne. Il dit exactement où en
+       est la base : tables et colonnes présentes, fonctions, déclencheurs,
+       politiques restées sur l'ancien modèle, et surtout les tables qui se
+       retrouveraient SANS politique d'écriture.
+    2. Vérifier le §0 en tête du fichier de migration : il porte l'adresse du
+       compte qui recevra le rôle « technique ». Sur le projet de test,
+       remplacer par l'adresse d'un compte qui y existe RÉELLEMENT. Si
+       l'adresse est introuvable, le script s'annule tout entier plutôt que de
+       laisser une base sans aucun compte technique — que plus personne ne
+       pourrait alors débloquer depuis l'application.
+
+    **Si le diagnostic annonce « ÉTAT PARTIEL »**, c'est qu'une exécution
+    précédente s'est interrompue. Deux voies :
+
+    - **rejouer simplement la migration** : elle sait repartir d'un état
+      partiel. Chaque table est créée PUIS alignée colonne par colonne, les
+      fonctions sont supprimées avant d'être recréées, et les rôles déjà
+      attribués ne sont jamais réattribués. C'est la voie normale, et la SEULE
+      en production ;
+    - **repartir de zéro**, réservé à la base de TEST :
+      `supabase/migrations/2026-09-roles-multiples-remise-a-zero.sql` puis, SANS
+      RIEN FAIRE ENTRE LES DEUX, la migration. Le premier script efface les
+      politiques d'écriture sans les remplacer : entre les deux, la base
+      n'accepte plus aucune écriture d'exploitation. Il refuse de s'exécuter
+      tant qu'on n'a pas décommenté sa ligne de confirmation.
+
+    Le rejeu de la migration est lui-même un contrôle : relancée en entier,
+    elle doit se terminer sans erreur et annoncer « Reprise ignorée ».
 
     Enchaîner avec le bloc VÉRIFICATION en fin de fichier, puis, sur le projet
     de test uniquement, avec `supabase/tests/roles-rls.sql` : cette recette

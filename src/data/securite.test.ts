@@ -37,6 +37,7 @@ function tousLesScripts(): string[] {
 
 const MIGRATION_ROLES = 'migrations/2026-09-roles-multiples.sql';
 const NETTOYAGE_ROLES = 'migrations/2026-09-roles-multiples-nettoyage.sql';
+const REMISE_A_ZERO = 'migrations/2026-09-roles-multiples-remise-a-zero.sql';
 
 /** Scripts qui posent des politiques ou des fonctions d'habilitation. */
 const FICHIERS = ['schema.sql', 'securite-advisors.sql', MIGRATION_ROLES];
@@ -407,6 +408,144 @@ describe('Les scripts restent applicables sur une base en service', () => {
     const code = instructions(sql(MIGRATION_ROLES));
     expect(code).toMatch(/if exists \(select 1 from public\.profils_roles\) then/);
     expect(code).toMatch(/drop function if exists private\.role_courant\(\)/);
+  });
+});
+
+describe('La migration absorbe un ÉTAT PARTIEL', () => {
+  // Une exécution interrompue laisse des objets derrière elle. Un simple
+  // `create table if not exists` ne rattrape PAS une table déjà présente au
+  // schéma différent : il ne fait rien, et l'`insert` qui suit échoue sur une
+  // colonne absente. C'est exactement ce qui s'est produit sur la base de test.
+  const code = instructions(sql(MIGRATION_ROLES));
+
+  it('chaque colonne du catalogue est alignée, pas seulement créée', () => {
+    for (const colonne of ['libelle', 'protege', 'attribuable_par', 'ordre', 'groupe_entra']) {
+      expect(code, `roles.${colonne} n’est pas alignée`).toMatch(
+        new RegExp(`alter table roles add column if not exists ${colonne}\\b`),
+      );
+    }
+  });
+
+  it('chaque colonne de la table de liaison est alignée', () => {
+    for (const colonne of ['source', 'attribue_le', 'attribue_par']) {
+      expect(code, `profils_roles.${colonne} n’est pas alignée`).toMatch(
+        new RegExp(`alter table profils_roles add column if not exists ${colonne}\\b`),
+      );
+    }
+  });
+
+  it('les clés et contraintes sont posées de façon rejouable', () => {
+    // Une clé étrangère anonyme serait recréée à chaque passage ; une clé
+    // primaire absente ferait échouer les `on conflict`.
+    expect(code).toMatch(/where conrelid = 'public\.roles'::regclass and contype = 'p'/);
+    expect(code).toMatch(/where conrelid = 'public\.profils_roles'::regclass and contype = 'p'/);
+    for (const contrainte of [
+      'profils_roles_source_check',
+      'profils_roles_user_id_fkey',
+      'profils_roles_role_fkey',
+    ]) {
+      expect(code).toMatch(new RegExp(`drop constraint if exists ${contrainte}`));
+      expect(code).toMatch(new RegExp(`add constraint ${contrainte}`));
+    }
+  });
+
+  it('les fonctions sont SUPPRIMÉES avant d’être recréées', () => {
+    // `create or replace` refuse de changer un type de retour : une signature
+    // laissée par une exécution antérieure bloquerait toute la migration.
+    for (const signature of [
+      'private\\.roles_courants\\(\\)',
+      'private\\.a_le_role\\(text\\)',
+      'private\\.a_un_des_roles\\(text\\[\\]\\)',
+      'private\\.peut_attribuer\\(text\\)',
+      'private\\.peut_gerer_profil\\(uuid\\)',
+      'private\\.nb_detenteurs_actifs\\(text\\)',
+      'private\\.email_appelant\\(\\)',
+    ]) {
+      expect(code).toMatch(new RegExp(`drop function if exists ${signature}`));
+    }
+  });
+
+  it('les politiques sont retirées AVANT que les fonctions ne soient supprimées', () => {
+    // Une politique dépend de la fonction qu'elle appelle : le DROP FUNCTION
+    // échouerait, donc annulerait la transaction entière.
+    const iRetraitPolitiques = code.indexOf("or policyname like 'roles: %'");
+    const iDropFonctions = code.indexOf('drop function if exists private.roles_courants()');
+    expect(iRetraitPolitiques).toBeGreaterThan(-1);
+    expect(iDropFonctions).toBeGreaterThan(iRetraitPolitiques);
+  });
+
+  it('le retrait des politiques couvre AUSSI les fonctions du nouveau modèle', () => {
+    // Sinon un rejeu buterait sur les politiques « roles: » déjà en place.
+    for (const nom of ['a_le_role', 'a_un_des_roles', 'peut_gerer_profil', 'peut_attribuer']) {
+      expect(code).toMatch(new RegExp(`like '%${nom}%'`));
+    }
+  });
+
+  it('tout ce qui dépend de profils.role est conditionnel', () => {
+    // Le script de nettoyage a pu retirer la colonne : la migration doit
+    // rester rejouable après lui.
+    const blocs = code.match(/column_name = 'role'/g) ?? [];
+    expect(blocs.length).toBeGreaterThanOrEqual(3);
+    expect(code).toMatch(/alter table profils add column if not exists email text/);
+  });
+
+  it('le contrôle final refuse de laisser une table sans politique d’écriture', () => {
+    // Le dégât le plus probable d'une exécution interrompue.
+    expect(code).toMatch(/table\(s\) sans politique d''écriture/);
+    expect(code).toMatch(/p\.polcmd in \('a', 'w', 'd', '\*'\)/);
+  });
+
+  it('un catalogue contenant un rôle inconnu arrête la migration', () => {
+    // Le garde-fou de quorum boucle sur les rôles protégés : un code fantôme
+    // rendrait la base inutilisable.
+    expect(code).toMatch(/la table roles contient des codes inconnus/);
+  });
+
+  it('l’amorçage du rôle technique se déclenche dès qu’aucun n’existe', () => {
+    // Cas d'un état partiel : la reprise est sautée (liaison non vide), mais
+    // il ne doit pas rester zéro technique — plus personne ne pourrait alors
+    // en attribuer un.
+    expect(code).toMatch(/if private\.nb_detenteurs_actifs\('technique'\) = 0 then/);
+  });
+});
+
+describe('Le script de remise à zéro ne s’exécute pas par mégarde', () => {
+  const code = instructions(sql(REMISE_A_ZERO));
+
+  it('exige une confirmation explicite', () => {
+    expect(code).toMatch(/REMISE À ZÉRO REFUSÉE/);
+    expect(code).toMatch(/current_setting\('tmb\.remise_a_zero', true\)/);
+  });
+
+  it('la ligne qui confirme reste COMMENTÉE dans le dépôt', () => {
+    // Une instruction, pas une mention dans un message d'aide : on ne regarde
+    // que les lignes qui COMMENCENT par l'ordre SQL.
+    const instructionActive = sql(REMISE_A_ZERO)
+      .split('\n')
+      .map((l) => l.trim())
+      .some((l) => l.startsWith('set local tmb.remise_a_zero'));
+    expect(instructionActive).toBe(false);
+  });
+
+  it('rend au journal une fonction autonome du chantier', () => {
+    // `tracer_ecriture` avait été réécrite pour appeler email_appelant(), que
+    // ce script supprime : sans remise en état, toute écriture d'exploitation
+    // tomberait en erreur. La version restaurée doit relire l'adresse dans
+    // `profils`, comme avant le chantier.
+    expect(code).toMatch(/create or replace function private\.tracer_ecriture\(\)/);
+    const corps = code.match(
+      /create or replace function private\.tracer_ecriture\(\)[\s\S]*?\$fn\$;/,
+    )?.[0];
+    expect(corps).toBeDefined();
+    expect(corps).toMatch(/select p\.email into v_qui from public\.profils/);
+    expect(corps).not.toMatch(/email_appelant/);
+  });
+
+  it('contrôle son propre résultat avant de commiter', () => {
+    const iControle = code.indexOf('REMISE À ZÉRO INCOMPLÈTE');
+    const iCommit = code.indexOf('\ncommit;');
+    expect(iControle).toBeGreaterThan(-1);
+    expect(iCommit).toBeGreaterThan(iControle);
   });
 
   it('la migration contrôle son propre résultat avant de commiter', () => {
