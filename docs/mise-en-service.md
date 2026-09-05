@@ -55,6 +55,25 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     À passer en DERNIER : il s'appuie sur le schéma `private` et sur le
     journal d'exploitation.
 
+14. Nouvelle requête → coller
+    `supabase/migrations/2026-09-roles-multiples.sql` → **Run** (rôles
+    multiples et cumulables : catalogue `roles`, table `profils_roles`,
+    garde-fous). À passer **en dernier** : il recrée les politiques de tous
+    les scripts précédents. Sur une base NEUVE, `schema.sql` contient déjà
+    tout : le script n'a alors rien à reprendre et le signale.
+
+    ⚠ **Avant de l'exécuter**, vérifier le §0 en tête du fichier : il porte
+    l'adresse du compte qui recevra le rôle « technique ». Sur le projet de
+    test, remplacer par l'adresse d'un compte qui y existe RÉELLEMENT.
+    Si l'adresse est introuvable, le script s'annule tout entier plutôt que
+    de laisser une base sans aucun compte technique — que plus personne ne
+    pourrait alors débloquer depuis l'application.
+
+    Enchaîner avec le bloc VÉRIFICATION en fin de fichier, puis, sur le projet
+    de test uniquement, avec `supabase/tests/roles-rls.sql` : cette recette
+    rejoue toute la matrice des droits et se termine par un `rollback`, elle
+    ne laisse donc aucune trace.
+
     Les deux autres scripts du dossier `supabase/migrations/`
     (`2026-08-signal-de-vie-serveur.sql`, `2026-08-train-supplementaire.sql`)
     sont déjà intégrés à `schema.sql` : inutiles sur une base neuve,
@@ -62,33 +81,74 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     des scripts le 02/09/2026 ; le projet de test (§H) sert à le confirmer
     avant toute production.
 
-14. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
+    ⚠ **Ne jamais rejouer une copie ANTÉRIEURE à septembre 2026** de
+    `securite-advisors.sql` ou d'un `ajout-*.sql` : elle réinstallerait le
+    modèle à rôle unique. Les scripts du dépôt à jour, eux, sont rejouables.
+
+15. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
     schéma), public, limite 20 Mo.
-15. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
+16. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
     publication `supabase_realtime` contient bien les tables (fait par le
     schéma).
-16. Menu **Project Settings → API keys** : noter
+17. Menu **Project Settings → API keys** : noter
    - l'**URL du projet** (https://xxxx.supabase.co) ;
    - la clé **publishable** (`sb_publishable_…`) — PUBLIQUE par conception,
      la sécurité repose sur RLS ;
    - ⚠ la clé **secret** (`sb_secret_…`) ne doit JAMAIS être copiée dans le
      dépôt ni dans le front (voir `supabase/INFOS-PROJET.md`).
 
-## C. Les trois comptes (~10 min)
+## C. Les premiers comptes (~10 min)
 
-1. Menu **Authentication → Users → Add user → Create new user** (trois
-   fois), avec les adresses réelles des agents : `prenom.nom@exemple.fr`
-   (administrateur), `<compte-supervision>`, `<compte-caisse>`,
-   avec mots de passe provisoires (cocher « Auto Confirm User »).
-2. **SQL Editor** — relier les comptes aux rôles :
+Les rôles sont MULTIPLES et CUMULABLES (docs/01 §5.5) : une même personne peut
+être à la fois chef d'exploitation et responsable informatique, une autre l'un
+sans l'autre.
+
+1. Menu **Authentication → Users → Add user → Create new user**, avec les
+   adresses réelles des agents et des mots de passe provisoires (cocher
+   « Auto Confirm User »). Au minimum : le compte qui portera **technique +
+   admin**, un compte **supervision**, un compte **caisse**.
+2. **SQL Editor** — créer les profils, puis leur attribuer leurs rôles.
+   Une attribution faite depuis l'éditeur SQL doit être REVENDIQUÉE
+   (`tmb.attribution_systeme`) : c'est ce qui empêche une écriture sans
+   utilisateur connecté d'accorder un rôle en douce. Remplacer les adresses,
+   puis exécuter d'un seul bloc :
 
 ```sql
-insert into profils (user_id, nom, email, role)
-select id, 'Prénom Nom', email, 'admin' from auth.users
-  where email = 'prenom.nom@exemple.fr'
-on conflict (user_id) do update set role = 'admin', actif = true;
--- répéter avec role = 'supervision' puis role = 'caisse' pour les 2 autres
+begin;
+  set local tmb.attribution_systeme = 'secours';
+
+  -- Les profils (le nom s'affiche dans l'en-tête de la supervision)
+  insert into profils (user_id, nom, email)
+  select id, 'Prénom Nom', email from auth.users
+    where email in ('prenom.nom@exemple.fr', 'supervision@exemple.fr', 'caisse@exemple.fr')
+  on conflict (user_id) do update set actif = true;
+
+  -- Les rôles, un par ligne : le premier compte en cumule trois
+  insert into profils_roles (user_id, role)
+  select p.user_id, r.role
+    from profils p
+    join auth.users u on u.id = p.user_id
+    join (values
+      ('prenom.nom@exemple.fr',   'technique'),
+      ('prenom.nom@exemple.fr',   'admin'),
+      ('prenom.nom@exemple.fr',   'supervision'),
+      ('supervision@exemple.fr',  'supervision'),
+      ('caisse@exemple.fr',       'caisse')
+    ) as r(email, role) on lower(r.email) = lower(u.email)
+  on conflict do nothing;
+commit;
+
+-- Contrôle : qui porte quoi
+select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
+  from profils p left join profils_roles pr using (user_id)
+ group by p.email, p.actif order by p.email;
 ```
+
+   ⚠ Il doit TOUJOURS rester au moins un compte actif « technique » et un
+   compte actif « admin » : la base refuse de retirer, de désactiver ou de
+   supprimer le dernier, y compris depuis le tableau de bord. Procédure de
+   secours si cela arrivait quand même (compte banni, départ non préparé) :
+   `docs/securite.md` §2, qui donne la commande exacte.
 
 3. (Option, plus tard) Créer les suivants directement depuis
    Supervision → Paramètres → « + Ajouter un utilisateur » — nécessite le
@@ -103,7 +163,8 @@ on conflict (user_id) do update set role = 'admin', actif = true;
      `http://localhost:5173/**` (poste de développement, §H).
 
    La personne invitée clique sur le lien, arrive sur la supervision qui lui
-   fait **choisir son mot de passe** (8 caractères minimum), puis entre
+   fait **choisir son mot de passe** (12 caractères minimum, comme l'annonce
+   `docs/securite.md` §4), puis entre
    directement. Elle se connectera ensuite avec e-mail + mot de passe. Le
    bouton « Réinitialiser le mot de passe » de l'onglet Paramètres suit le
    même chemin.
@@ -140,12 +201,16 @@ supabase login
 supabase link --project-ref <ref-du-projet>
 supabase functions deploy traduire
 supabase functions deploy inviter-utilisateur
+supabase functions deploy supprimer-utilisateur
 supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
 ```
 
+Les TROIS fonctions doivent être déployées : `supprimer-utilisateur` était
+absente de cette procédure alors que la supervision l'appelle depuis toujours.
+
 Sans ces fonctions, la supervision fonctionne quand même : la traduction
-replie sur le dictionnaire local et la création d'utilisateur se fait
-depuis le tableau de bord Supabase (étape C).
+replie sur le dictionnaire local, et la création comme la suppression de
+comptes se font depuis le tableau de bord Supabase (étape C).
 
 ## F. Vérifications finales
 
@@ -154,7 +219,19 @@ depuis le tableau de bord Supabase (étape C).
 - [ ] `…/grille.html?gare=saint-gervais` : tableaux montée/descente.
 - [ ] `…/supervision.html` : connexion admin OK ; retarder un train →
       l'écran l'affiche en ≤ 2 s.
-- [ ] Compte caisse : seul l'onglet Messages est visible.
+- [ ] Pastille de l'en-tête : « PRODUCTION » en rouge sur le vrai projet,
+      « BASE DE TEST » en jaune sur le projet d'essai (§H).
+- [ ] Compte caisse : seuls les onglets Bandeau et Horaires sont visibles, et
+      les horaires en lecture (aucun bouton « Charger un fichier Excel »).
+- [ ] Compte supervision : Circulations, Horaires, Bandeau, Médias, Écrans —
+      mais ni « Déclarer un poste », ni la veille de nuit globale.
+- [ ] Compte technique : Horaires, Écrans, Paramètres ; il voit la carte
+      Utilisateurs mais ni Machines, ni Motifs, ni États du ciel.
+- [ ] Paramètres → Utilisateurs : une ligne porte autant de badges que de
+      rôles ; sur SA PROPRE ligne, toutes les cases sont grisées ; un
+      administrateur ne peut pas cocher « Technique ».
+- [ ] Matrice complète des droits, sur le projet de test :
+      `supabase/tests/roles-rls.sql` (se termine par un rollback).
 - [ ] Écriture anonyme rejetée : depuis un terminal,
       `curl -X POST "https://xxxx.supabase.co/rest/v1/messages" -H "apikey: sb_publishable_…" -H "Content-Type: application/json" -d "{\"texte_fr\":\"test\"}"`
       doit répondre **401/403** (RLS).
@@ -204,14 +281,19 @@ toujours dans cet ordre :
    AVANT le code : l'ancien front ignore une table qu'il ne connaît pas,
    alors que le nouveau front échouerait sans elle. Enchaîner avec le bloc
    VÉRIFICATION de chaque script.
-2. **Fusion de la pull request** sur GitHub, tests verts obligatoires.
-3. **Déploiement automatique** : onglet Actions, workflow « Tests et
+2. **Edge Functions**, si la pull request en modifie une, DANS LA FOULÉE du
+   SQL — l'intégration continue ne les déploie pas :
+   `supabase functions deploy <nom>`. Entre le SQL et ce déploiement,
+   l'ancienne version tourne sur le nouveau schéma : c'est court, mais c'est
+   le moment le plus fragile du rituel.
+3. **Fusion de la pull request** sur GitHub, tests verts obligatoires.
+4. **Déploiement automatique** : onglet Actions, workflow « Tests et
    déploiement GitHub Pages ». À la fin, l'URL de production sert la
    nouvelle version.
-4. **Ctrl+F5 sur la Supervision** (rechargement complet, sans cache), puis
+5. **Ctrl+F5 sur la Supervision** (rechargement complet, sans cache), puis
    vérification : connexion, onglet concerné par l'évolution, une
    modification d'essai annulée aussitôt.
-5. **« Recharger » les écrans** depuis Supervision → Écrans, à un moment
+6. **« Recharger » les écrans** depuis Supervision → Écrans, à un moment
    calme (aucun départ dans les cinq minutes) : chaque poste recharge la
    nouvelle version à son prochain signal de vie (moins d'une minute). Sans
    cette étape, les écrans gardent l'ancienne version jusqu'au redémarrage

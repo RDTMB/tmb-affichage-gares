@@ -1199,6 +1199,13 @@ tr.paire-fin td {
   gap: 18px;
 }
 
+/* La carte des utilisateurs prend toute la largeur : une ligne y porte le nom,
+   l'adresse, plusieurs badges de rôle, quatre cases à cocher et trois
+   commandes — en demi-largeur, les cases se scindaient sur deux rangs. */
+#carte-users {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1150px) {
   .param-grid {
     grid-template-columns: 1fr;

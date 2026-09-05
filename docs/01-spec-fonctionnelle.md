@@ -147,7 +147,8 @@ publication.
 texte_fr, texte_en, catégorie, ordre, actif) : un sélecteur « Modèle… » en
 tête du formulaire remplit le français ET l'anglais, qui restent modifiables
 avant publication ; la cible, la priorité et l'expiration se choisissent
-normalement ensuite. La bibliothèque est gérée dans Paramètres (admin).
+normalement ensuite. La bibliothèque s’administre dans l’onglet Bandeau, et
+seul le chef d’exploitation la voit (§5.5).
 
 ### 2.5 Médias
 
@@ -352,8 +353,9 @@ gare (messages + météo).
 
 ## 5. Supervision (`supervision.html`) — onglets
 
-Reproduit `maquettes/supervision.html`. Connexion obligatoire ; le rôle
-détermine les onglets accessibles (§ docs/02 sécurité).
+Reproduit `maquettes/supervision.html`. Connexion obligatoire ; les RÔLES de
+l’agent, multiples et cumulables, déterminent les onglets et les commandes
+accessibles (§5.5 ci-dessous, et docs/02 sécurité).
 
 1. **Circulations** : navigation par date (◀ ▶, saisie calendrier, raccourcis
    Aujourd'hui/Demain) ; libellé du service auto (grand/petit/hiver selon
@@ -499,7 +501,8 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    enregistré nulle part. Cartes (gare, type, en ligne/hors ligne — silence > 150 s,
    réseau fibre/5G, mention alimentation solaire pour le Nid d'Aigle,
    dernière vue, version) ; bouton « Recharger l'écran ».
-   **Veille de nuit** (admin/supervision) : un réglage GLOBAL en tête de
+   **Veille de nuit** : le réglage GLOBAL relève du rôle technique, la veille
+   propre à un poste de l’exploitation. Un réglage GLOBAL en tête de
    l'onglet (heure de début / heure de fin), et sur chaque carte la
    possibilité de lui donner son propre horaire. La carte indique clairement
    « Suit le réglage global » ou « Réglage propre 19:00 → 06:30 », et un
@@ -509,17 +512,69 @@ détermine les onglets accessibles (§ docs/02 sécurité).
    sa veille par son propre signal de vie : la modification est prise en
    compte sans rechargement, au plus tard au cycle suivant (60 s).
    _(Évolution validée par l'exploitant le 29/08/2026.)_
-5. **Paramètres** (admin) : Machines (ajouter/renommer/couleur/en service/
-   retirer) ; Motifs (liste modifiable) ; Utilisateurs (créer, attribuer un
-   rôle, réinitialiser mot de passe, désactiver — v1 : rôles Administrateur
-   / Supervision / Caisse ; le détail fin des droits par catégorie et la
-   création de nouvelles catégories — Gestionnaire, Lecteur… — sont prévus
-   dans le modèle mais seront précisés plus tard avec l'exploitant) ;
+5. **Paramètres** : Machines (ajouter/renommer/couleur/en service/retirer) ;
+   Motifs (liste modifiable) ; États du ciel ; Utilisateurs et droits (§5.5) ;
    Saisons et services (grilles chargées + périodes) ; délai
-   **« à quai » en gare d'origine** (`a_quai_origine_s`, défaut 5 min, §3).
-   La bibliothèque de modèles est passée dans l'onglet Bandeau, la veille de
-   nuit dans l'onglet Écrans, la vitesse du bandeau et la météo dans
-   l'onglet Bandeau.
+   **« à quai » en gare d'origine** (`a_quai_origine_s`, défaut 5 min, §3) ;
+   Journal d'exploitation (§7). Chaque carte n'apparaît qu'aux rôles qui
+   peuvent l'écrire : le paramétrage d'exploitation au chef d'exploitation,
+   la purge du journal au rôle technique. La bibliothèque de modèles est
+   passée dans l'onglet Bandeau, la veille de nuit dans l'onglet Écrans, la
+   vitesse du bandeau et la météo dans l'onglet Bandeau.
+
+   **Pastille de la base servie** (en-tête, à gauche des autres) :
+   « PRODUCTION » en rouge, « BASE DE TEST » en jaune, « DÉMONSTRATION » en
+   gris. Rien à l'écran ne disait sur quelle base on travaillait, alors que
+   la mise au point d'une évolution fait alterner les deux projets Supabase.
+   Tout ce qui n'est pas la production est annoncé comme un essai : une base
+   inconnue n'est jamais présentée comme la vraie.
+
+### 5.5 Utilisateurs et droits — rôles MULTIPLES et CUMULABLES
+
+Une personne porte un **ensemble** de rôles, pas un seul. Un droit est accordé
+si **au moins un** de ses rôles le donne (union). **Aucun rôle n'en implique un
+autre** : « technique » ne donne pas l'exploitation, et réciproquement.
+
+Ce modèle existe parce que les fonctions se cumulent et se séparent selon les
+personnes : le chef d'exploitation assure aussi, temporairement, la
+responsabilité informatique ; le prestataire informatique ne sera pas
+exploitant ; son successeur à l'exploitation ne sera pas informaticien. Une
+hiérarchie linéaire ne sait dire aucune de ces trois situations.
+
+| Rôle | Pour qui | Ce qu'il ouvre |
+| --- | --- | --- |
+| **Technique** | Responsable informatique, prestataire | Grilles horaires ; identité des écrans (déclarer, oublier) ; rechargement et veille d'un poste ; veille de nuit globale et durée du cache ; réinitialisation d'une journée ; comptes techniques ; journal, y compris les lignes de rôles, et sa purge |
+| **Administrateur** | Chef d'exploitation | Comptes d'exploitation ; bibliothèque de modèles ; médias et cycle d'affichage ; machines, motifs, états du ciel, délai « à quai » ; grilles horaires ; bandeau ; journal, y compris les lignes de rôles |
+| **Supervision** | Exploitation courante | Circulations et journées ; grilles horaires ; bandeau ; médias ; rechargement et veille d'un poste ; réinitialisation d'une journée ; publication |
+| **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; grille du jour en lecture |
+
+Trois droits sont **délibérément partagés** avec l'exploitation — grilles,
+rechargement d'un écran, réinitialisation d'une journée : un matin de service,
+l'exploitation ne doit jamais attendre l'informatique. Ne restent exclusifs au
+rôle technique que les réglages d'infrastructure, qui n'ont pas d'urgence
+d'exploitation.
+
+**Qui attribue quoi.** Le rôle technique s'attribue depuis un compte technique ;
+les rôles admin, supervision et caisse depuis un compte administrateur. Personne
+d'autre n'attribue rien, et **personne ne modifie ses propres rôles**. Renommer,
+désactiver ou supprimer un compte exige de pouvoir attribuer **tous** ses rôles :
+un administrateur ne touche donc pas au compte du prestataire informatique, et
+réciproquement.
+
+**Garde-fous.** Il doit toujours rester **au moins un compte actif Technique et
+un compte actif Administrateur** : la base refuse le retrait, la désactivation
+ou la suppression du dernier — y compris depuis le tableau de bord Supabase.
+Pour transmettre un rôle, on l'**attribue d'abord** à la personne suivante, on
+le retire ensuite.
+
+**Dans l'écran.** Une ligne d'utilisateur porte autant de badges que de rôles et
+quatre cases à cocher. Seules les cases que l'agent connecté a le droit
+d'attribuer sont actives ; une case verrouillée dit pourquoi au survol (rôle
+hors de son périmètre, propre compte, dernier détenteur). Les onglets et les
+cartes suivent la même règle. Ce n'est qu'un confort : la base refuse de toute
+façon ce qu'elle doit refuser.
+
+_(Modèle validé par l'exploitant le 05/09/2026 ; détail technique docs/02 §5.)_
 6. **Publication**. Le compteur affiche le nombre d'ÉCARTS RÉELS avec un
    état de référence, pris au chargement de la page et après chaque
    publication — et non le nombre de clics : ramener une température de 12 à

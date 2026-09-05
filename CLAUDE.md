@@ -159,7 +159,11 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   conception — la sécurité repose sur RLS ; la clé « secret »
   (`sb_secret_…`) ne doit JAMAIS apparaître nulle part côté front.
 - Écrans en lecture seule ; écritures réservées aux sessions authentifiées
-  (RLS) ; rôles Administrateur / Supervision / Caisse (voir docs/02 §5).
+  (RLS) ; rôles MULTIPLES et CUMULABLES — technique, admin, supervision,
+  caisse — dont les droits s'additionnent sans qu'aucun n'implique un autre
+  (table `profils_roles`, `private.a_le_role()` ; matrice docs/01 §5.5,
+  docs/02 §5, docs/securite.md §2). Miroir de confort du front dans
+  `src/core/roles.ts` ; recette RLS dans `supabase/tests/roles-rls.sql`.
 - Supervision derrière connexion obligatoire.
 
 ## Commandes

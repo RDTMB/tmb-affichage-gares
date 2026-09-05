@@ -93,8 +93,9 @@ rechargement.
 ```
 Lis docs/02 §1, §2, §5. Crée src/data/provider.ts (interface exacte),
 src/data/supabase.ts, sélection par window.TMB_CONFIG (mock si vide).
-Fournis supabase/schema.sql (TOUTES les tables + fonction role_courant() +
-policies RLS par rôle du §2, + bucket medias) et supabase/seed.sql
+Fournis supabase/schema.sql (TOUTES les tables + fonctions d'habilitation
+private.roles_courants()/a_le_role() + policies RLS par rôle du §2,
++ bucket medias) et supabase/seed.sql
 (machines, motifs, params, jour de démonstration). Realtime : canal unique
 + refresh complet + repli polling 30 s. Heartbeat 30 s + commande
 recharger. Aucune clé dans le code. Rédige le brouillon
@@ -129,7 +130,8 @@ Publier = logPublication + toast ; compteur de modifications.
 
 **Acceptation** : scénario complet < 2 min : connexion → activer le
 facultatif n° 23 → retarder le 11 de 10 min Météo → publier → l'écran
-mock… réel affiche tout < 2 s ; un compte « caisse » ne voit que Messages.
+mock… réel affiche tout < 2 s ; un compte « caisse » ne voit que le Bandeau
+et les Horaires en lecture.
 
 ## Étape 7 — Médias
 
@@ -151,18 +153,34 @@ avec les médias déjà vus.
 ## Étape 8 — Paramètres, utilisateurs et rôles
 
 ```
-Lis docs/01 §5.5 et docs/02 §2/§5. Onglet Paramètres (admin uniquement) :
-Machines (CRUD nom/couleur/cercle/en service — répercuté partout),
-Motifs (CRUD fr/en), Utilisateurs (liste des profils, création par
-invitation email, rôle, désactivation, réinit. mot de passe), Saisons
-(grilles présentes + périodes, lecture seule + veille nuit), Météo sommet
-(t°, ciel FR/EN). Applique le filtrage par rôle sur TOUS les onglets
+Lis docs/01 §5.5 et docs/02 §2/§5. Onglet Paramètres, carte par carte selon
+les droits : Machines (CRUD nom/couleur/cercle/en service — répercuté
+partout), Motifs (CRUD fr/en), États du ciel, Utilisateurs et droits
+(liste des comptes avec LEURS RÔLES, création par invitation email,
+attribution par cases à cocher, désactivation, réinit. mot de passe),
+Saisons (grilles présentes + périodes), Météo sommet (t°, ciel FR/EN).
+Applique le filtrage par UNION DES DROITS sur TOUS les onglets
 (interface ET policies déjà en place — vérifier les deux).
 ```
 
 **Acceptation** : un compte supervision ne voit pas Paramètres ; une
 machine renommée/re-colorée apparaît sur les écrans < 2 s ; création d'un
 utilisateur caisse fonctionnelle de bout en bout.
+
+### Étape 8 bis (septembre 2026) — rôles MULTIPLES et cumulables
+
+Le rôle unique ne savait pas dire qu'une même personne cumule l'exploitation
+et l'informatique, ni que le prestataire aura l'une sans l'autre. Le modèle
+devient : quatre rôles cumulables (technique, admin, supervision, caisse),
+union des droits, aucun n'impliquant un autre — table de liaison
+`profils_roles`, catalogue `roles` portant la matrice « qui attribue quoi »,
+garde-fous en base (au moins un technique et un admin actifs, personne ne
+modifie ses propres rôles). Voir docs/01 §5.5, docs/02 §5 et docs/securite.md §2.
+
+**Acceptation** : `supabase/tests/roles-rls.sql` passe sans erreur sur le
+projet de test ; un administrateur ne peut pas fabriquer un compte technique ;
+le retrait du dernier compte technique est refusé, y compris en supprimant le
+compte depuis le tableau de bord Supabase.
 
 ## Étape 9 — Déploiement GitHub Pages + docs d'exploitation
 
@@ -180,14 +198,15 @@ orientation, test plein soleil). README.md court avec liens.
 **Acceptation** : URL Pages opérationnelle sur les 4 pages ; échec de test
 = pas de déploiement ; un Pi suivant kiosque.md démarre seul sur sa gare.
 
-## Étape 10 (phase 2, plus tard) — Serveur interne Windows + SSO AD
+## Étape 10 (phase 2, plus tard) — Serveur interne Windows + SSO
 
 ```
 Lis docs/02 §7. Crée server/ : Fastify + better-sqlite3 + SSE /api/events,
 routes miroir du DataProvider, service des fichiers dist/ et
 server/medias/, sessions cookie. Authentification : comptes locaux argon2
-ET option LDAP Active Directory (ldapts) avec mapping groupes AD → rôles
-(config server/config.json). src/data/api.ts (ApiProvider, SSE + repli
+ET option SSO Entra ID avec mapping groupes → rôles (point d'accroche déjà
+en place : roles.groupe_entra, profils_roles.source — docs/02 §7).
+src/data/api.ts (ApiProvider, SSE + repli
 polling). Scripts : import-supabase.mjs (données + médias), creer-compte.mjs.
 Rédige docs/phase2-windows.md : Node LTS sur Windows Server 2019, service
 via nssm, port 8080, pare-feu intranet, sauvegardes quotidiennes, bascule
@@ -198,7 +217,8 @@ src/ hors src/data/.
 
 **Acceptation** : `node server` sert tout sans internet ; écriture
 supervision → écran < 2 s via SSE ; import Supabase rejouable sans
-doublon ; connexion par compte local ET par LDAP simulé.
+doublon ; connexion par compte local ET par SSO simulé, un compte membre de
+deux groupes portant bien deux rôles.
 
 ---
 

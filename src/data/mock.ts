@@ -730,11 +730,22 @@ export class MockProvider implements DataProvider {
   // -------------------------------------------------------------- supervision
 
   async signIn(email: string, _mdp: string): Promise<Session> {
-    // Le préfixe de l'adresse fixe les rôles, « + » permettant le CUMUL :
-    // « technique+admin@demo » ouvre une session portant les deux.
-    const roles = rolesDemoDepuisEmail(email);
+    const roles = this.rolesDeDemonstration(email);
     sessionStorage.setItem(CLE_SESSION, JSON.stringify({ email, roles }));
     return { user_id: `mock-${roles.join('+')}`, email };
+  }
+
+  /**
+   * Rôles d'une adresse en démonstration. L'ANNUAIRE fait foi quand l'adresse
+   * y figure : ses rôles ont pu être modifiés dans l'onglet Utilisateurs, et
+   * deux sources de vérité divergentes donneraient une démo incohérente.
+   * Sinon, le préfixe décide, « + » permettant le cumul
+   * (« technique+admin@… » ouvre une session portant les deux).
+   */
+  private rolesDeDemonstration(email: string): Role[] {
+    const connu = (litEtat().utilisateurs ?? UTILISATEURS_DEMO).find((u) => u.email === email);
+    if (connu) return connu.actif ? connu.roles : [];
+    return rolesDemoDepuisEmail(email);
   }
 
   async getRoles(): Promise<Role[]> {
@@ -745,18 +756,30 @@ export class MockProvider implements DataProvider {
     const brut = sessionStorage.getItem(CLE_SESSION);
     if (!brut) throw new Error('Non connecté');
     const session = JSON.parse(brut) as { email: string; roles?: Role[]; role?: Role };
-    // `role` au singulier : session ouverte avant le passage aux rôles
-    // multiples et restée dans sessionStorage.
-    const roles = session.roles ?? (session.role ? [session.role] : ['supervision']);
+    // L'annuaire fait foi : les rôles de l'agent connecté ont pu changer depuis
+    // l'ouverture de sa session. `role` au singulier = session ouverte avant le
+    // passage aux rôles multiples et restée dans sessionStorage.
+    const roles = this.rolesDeDemonstration(session.email).length
+      ? this.rolesDeDemonstration(session.email)
+      : (session.roles ?? (session.role ? [session.role] : []));
+    // Quand l'adresse correspond à un compte de l'annuaire de démonstration, on
+    // reprend SON identifiant : sans cela, l'interface ne reconnaîtrait pas sa
+    // propre ligne dans la liste des utilisateurs et laisserait l'agent croire
+    // qu'il peut modifier ses propres rôles.
+    const connu = (litEtat().utilisateurs ?? UTILISATEURS_DEMO).find(
+      (u) => u.email === session.email,
+    );
     return {
-      user_id: `mock-${roles.join('+')}`,
+      user_id: connu?.user_id ?? `mock-${roles.join('+')}`,
       // Faute d'annuaire, la démo déduit un nom présentable de l'e-mail :
       // « marie-claire.dupond@… » → « Marie Claire Dupond ».
-      nom: (session.email.split('@')[0] ?? '')
-        .split(/[.\-_+]+/)
-        .filter(Boolean)
-        .map((mot) => mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1))
-        .join(' '),
+      nom:
+        connu?.nom ??
+        (session.email.split('@')[0] ?? '')
+          .split(/[.\-_+]+/)
+          .filter(Boolean)
+          .map((mot) => mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1))
+          .join(' '),
       email: session.email,
       roles,
     };
@@ -1226,10 +1249,7 @@ export class MockProvider implements DataProvider {
     ecritEtat(etat);
   }
 
-  /**
-   * Identifiant du compte connecté DANS la liste de démonstration : la session
-   * mock n'est identifiée que par son e-mail, il faut donc le rapprocher.
-   */
+  /** Identifiant du compte connecté dans l'annuaire de démonstration. */
   private async identifiantMock(liste: User[]): Promise<string> {
     const profil = await this.getProfil();
     return liste.find((u) => u.email === profil.email)?.user_id ?? profil.user_id;
