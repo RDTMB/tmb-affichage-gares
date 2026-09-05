@@ -265,8 +265,24 @@ Pour lever le doute :
 & "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64\npx.cmd" --version
 ```
 
-Un numéro de version s'affiche : tout est en place. Sinon, c'est que node
-portable n'est pas là où on le croit.
+Un numéro de version s'affiche : tout est en place.
+
+Si PowerShell répond « n'est pas reconnu » **alors que le chemin affiché dans
+le message est le bon**, le fichier est là mais le poste refuse de l'exécuter :
+c'est en général une stratégie d'entreprise qui interdit de lancer des
+programmes depuis le profil utilisateur. Ne pas s'acharner — passer par le
+tableau de bord (ci-dessous), et signaler le point au service informatique si
+la CLI doit servir régulièrement. Pour lever le doute :
+
+```powershell
+Test-Path "$env:LOCALAPPDATA
+odejs-portable
+ode-v24.19.0-win-x64
+px.cmd"
+```
+
+`True` = le fichier existe et c'est bien l'exécution qui est bloquée ;
+`False` = node portable n'est pas là où on le croit.
 
 `npx` propose d'abord de télécharger la CLI : répondre oui. `login` ouvre le
 navigateur pour autoriser le poste. `link` demande le mot de passe de la base,
