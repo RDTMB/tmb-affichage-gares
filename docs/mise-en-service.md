@@ -234,77 +234,101 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
 
 ## E. Edge Functions (traduction + invitations) (~10 min)
 
-⚠ **Ne pas installer la CLI avec `npm i -g supabase`** : Supabase refuse cette
-installation globale (« Installing Supabase CLI as a global module is not
-supported »). On la lance sans rien installer durablement, avec `npx`.
+Trois fonctions à déployer : `traduire`, `inviter-utilisateur` et
+`supprimer-utilisateur`. Le dépôt fournit un script qui fait tout,
+`outils/deployer-edge-functions.ps1`. C'est la voie normale ; le tableau de
+bord n'est qu'un dépannage.
 
-Sur le poste de développement, node vit dans un dossier portable absent du
-PATH. Plutôt que de modifier le PATH — ce qui ne vaut que pour la fenêtre
-courante et se perd d'une session à l'autre —, on appelle `npx` par son
-CHEMIN COMPLET : la commande marche alors partout, tout le temps.
+### La voie normale : le script
 
-À coller dans **PowerShell**, une commande à la fois. La première n'est qu'un
-raccourci pour ne pas répéter le chemin :
+À lancer depuis le **terminal intégré** (Claude Code ou VS Code), à la racine
+du dépôt, sur la branche que l'on veut déployer.
 
-```powershell
-$npx = "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64\npx.cmd"
-& $npx supabase login
-& $npx supabase link --project-ref <ref-du-projet>
-& $npx supabase functions deploy traduire
-& $npx supabase functions deploy inviter-utilisateur
-& $npx supabase functions deploy supprimer-utilisateur
-& $npx supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
-```
-
-⚠ Les six lignes doivent être tapées dans **la même fenêtre** : `$npx` ne
-survit pas à sa fermeture. Si PowerShell répond « le terme npx n'est pas
-reconnu », c'est que la première ligne n'a pas été jouée dans cette fenêtre-là.
-Pour lever le doute :
+Une seule fois par poste, pour l'autoriser. Le navigateur s'ouvre : rien à
+taper dans le terminal, aucun jeton à manipuler.
 
 ```powershell
-& "$env:LOCALAPPDATA\nodejs-portable\node-v24.19.0-win-x64\npx.cmd" --version
+.\outils\deployer-edge-functions.ps1 -Connexion
 ```
 
-Un numéro de version s'affiche : tout est en place.
-
-Si PowerShell répond « n'est pas reconnu » **alors que le chemin affiché dans
-le message est le bon**, le fichier est là mais le poste refuse de l'exécuter :
-c'est en général une stratégie d'entreprise qui interdit de lancer des
-programmes depuis le profil utilisateur. Ne pas s'acharner — passer par le
-tableau de bord (ci-dessous), et signaler le point au service informatique si
-la CLI doit servir régulièrement. Pour lever le doute :
+Ensuite, à blanc — le script vérifie tout et n'envoie rien :
 
 ```powershell
-Test-Path "$env:LOCALAPPDATA
-odejs-portable
-ode-v24.19.0-win-x64
-px.cmd"
+.\outils\deployer-edge-functions.ps1 -Projet test -Simulation
 ```
 
-`True` = le fichier existe et c'est bien l'exécution qui est bloquée ;
-`False` = node portable n'est pas là où on le croit.
+Puis le déploiement lui-même :
 
-`npx` propose d'abord de télécharger la CLI : répondre oui. `login` ouvre le
-navigateur pour autoriser le poste. `link` demande le mot de passe de la base,
-celui du coffre.
+```powershell
+.\outils\deployer-edge-functions.ps1 -Projet test
+```
 
-Une fonction se déploie **une par une** : `functions deploy` sans nom déploie
-tout le dossier d'un coup, ce qui est plus rapide mais moins lisible en cas
-d'erreur. Les TROIS doivent y passer — `supprimer-utilisateur` était absente
-de cette procédure alors que la supervision l'appelle depuis toujours.
+En production, `-Projet prod` : le script affiche un avertissement et exige
+que l'on tape `PRODUCTION` en toutes lettres avant d'envoyer quoi que ce soit.
 
-**Sans CLI du tout** : le tableau de bord Supabase sait aussi déployer une
-fonction (menu Edge Functions → *Deploy a new function* → *Via editor*), en
-collant le contenu du fichier `supabase/functions/<nom>/index.ts`. C'est
-fastidieux pour trois fonctions, et à refaire à chaque modification, mais cela
-dépanne.
+Ce que le script prend en charge, et pourquoi :
 
-**Et si on ne les déploie pas maintenant ?** La supervision fonctionne quand
-même : la traduction replie sur le dictionnaire local, et la création comme la
-suppression de comptes se font depuis le tableau de bord (étape C). Seules
-l'invitation par e-mail et la suppression définitive depuis l'interface
-attendent ces fonctions. Toute la mécanique des rôles — badges, cases à
-cocher, attribution, garde-fous — s'éprouve sans elles.
+- Il retrouve `node`/`npx` même absents du PATH, puis ajoute leur dossier au
+  PATH du processus. Trouver `npx.cmd` ne suffit pas : ce n'est qu'un lanceur,
+  qui appelle `node` à son tour et échoue si celui-ci reste invisible.
+- Il passe **toujours** `--project-ref`. C'est son garde-fou le plus
+  important : `supabase/.temp/linked-project.json` garde en cache le dernier
+  projet lié, qui est la PRODUCTION. Un `functions deploy` sans référence
+  explicite y partirait tout seul, sans rien demander.
+- Il travaille sans Docker (`--use-api`) : il n'y a rien à installer.
+- Il fige la version de la CLI, pour que la commande de l'an prochain fasse la
+  même chose qu'aujourd'hui.
+- Il ne touche jamais au jeton d'accès : ni affiché, ni écrit, ni transmis.
+
+Codes de sortie : `0` tout va bien ; `1` refus (paramètre absent ou
+annulation) ; `2` poste inutilisable, node introuvable ; `3` poste non
+autorisé, lancer `-Connexion`.
+
+Pour ne déployer qu'une fonction, par exemple après avoir corrigé la seule
+traduction :
+
+```powershell
+.\outils\deployer-edge-functions.ps1 -Projet test -Fonctions traduire
+```
+
+### Le secret DeepL
+
+Une seule fois par projet, sans quoi `traduire` répond en erreur. Le poser
+depuis le **tableau de bord** : Edge Functions → Secrets → `DEEPL_API_KEY`.
+
+On préfère ici le tableau de bord à la ligne de commande : une clé tapée dans
+un terminal reste dans l'historique PowerShell, en clair, pour longtemps.
+
+### Si le poste refuse d'exécuter node
+
+Sur ce poste, node est une installation **portable** dans le profil
+utilisateur, et une fenêtre **PowerShell autonome** n'a pas le droit d'y
+accéder : `Test-Path` y répond `False` sur un fichier qui existe pourtant, et
+l'appel direct donne « n'est pas reconnu ». Le terminal intégré, lui, y accède.
+
+Conclusion pratique : lancer ce script depuis le terminal intégré, pas depuis
+une fenêtre PowerShell ouverte à la main. Ne pas s'acharner sur cette dernière.
+
+⚠ **Ne jamais installer la CLI avec `npm i -g supabase`** : Supabase refuse
+cette installation globale (« Installing Supabase CLI as a global module is not
+supported »). Le script la lance par `npx`, sans rien installer durablement.
+
+### Sans CLI du tout : le tableau de bord
+
+Le tableau de bord Supabase sait aussi déployer une fonction : Edge Functions →
+*Deploy a new function* → *Via editor*, en collant le contenu de
+`supabase/functions/<nom>/index.ts`. C'est fastidieux pour trois fonctions, et
+à refaire à chaque modification, mais cela dépanne. Attention à bien vérifier
+en haut de page que le projet affiché est le bon.
+
+### Et si on ne les déploie pas maintenant ?
+
+La supervision fonctionne quand même : la traduction replie sur le
+dictionnaire local, et la création comme la suppression de comptes se font
+depuis le tableau de bord (étape C). Seules l'invitation par e-mail et la
+suppression définitive depuis l'interface attendent ces fonctions. Toute la
+mécanique des rôles — badges, cases à cocher, attribution, garde-fous —
+s'éprouve sans elles.
 
 ## F. Vérifications finales
 
@@ -377,7 +401,8 @@ toujours dans cet ordre :
    VÉRIFICATION de chaque script.
 2. **Edge Functions**, si la pull request en modifie une, DANS LA FOULÉE du
    SQL — l'intégration continue ne les déploie pas :
-   `supabase functions deploy <nom>`. Entre le SQL et ce déploiement,
+   `.\outils\deployer-edge-functions.ps1 -Projet prod` (§E). Entre le SQL et ce
+   déploiement,
    l'ancienne version tourne sur le nouveau schéma : c'est court, mais c'est
    le moment le plus fragile du rituel.
 3. **Fusion de la pull request** sur GitHub, tests verts obligatoires.

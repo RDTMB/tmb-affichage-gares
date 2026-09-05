@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { ATTRIBUABLE_PAR, LIBELLE_ROLE, ROLES, ROLES_PROTEGES } from '../core/roles';
+import { REF_PROJET_PRODUCTION } from './config';
 
 function chemin(fichier: string): string {
   return fileURLToPath(new URL(`../../supabase/${fichier}`, import.meta.url));
@@ -666,5 +667,54 @@ describe('Le catalogue SQL et le miroir TypeScript disent la même chose', () =>
   it('aucun rôle du seed n’est absent du miroir', () => {
     const codes = [...(seed ?? '').matchAll(/\('([a-z]+)',/g)].map((m) => m[1]);
     expect(codes.sort()).toEqual([...ROLES].sort());
+  });
+});
+
+describe('Script de déploiement des Edge Functions', () => {
+  const script = readFileSync(
+    fileURLToPath(new URL('../../outils/deployer-edge-functions.ps1', import.meta.url)),
+    'utf-8',
+  ).replace(/\r\n/g, '\n');
+
+  it('vise la production sur le ref que connaît le front, sans divergence possible', () => {
+    // Deux endroits nomment la production : si l'un dérive, un déploiement
+    // « en prod » partirait ailleurs sans que rien ne le signale.
+    expect(script).toContain(`prod = '${REF_PROJET_PRODUCTION}'`);
+  });
+
+  it('passe TOUJOURS --project-ref, même si un projet est lié en cache', () => {
+    // supabase/.temp/linked-project.json pointe sur la production : un
+    // « functions deploy » sans ref explicite y partirait tout seul.
+    const appels = script.match(/@\('functions', '(deploy|list)'[^\n]*/g) ?? [];
+    expect(appels.length).toBeGreaterThan(0);
+    for (const appel of appels) expect(appel).toContain("'--project-ref', $ref");
+
+    const deploiement = script.match(/\$arguments = @\('functions', 'deploy'\)[^\n]*/)?.[0];
+    expect(deploiement).toBeTruthy();
+    expect(deploiement).toContain("'--project-ref', $ref");
+  });
+
+  it('n’accepte que « test » ou « prod », jamais un ref tapé à la main', () => {
+    expect(script).toMatch(/\[ValidateSet\('test', 'prod'\)\]/);
+    expect(script).toMatch(/\[ValidateSet\('test', 'prod'\)\]\s*\n\s*\[string\] \$Projet/);
+  });
+
+  it('exige une confirmation tapée avant tout envoi en production', () => {
+    const gardeFou = script.indexOf("Read-Host 'Déploiement en PRODUCTION");
+    const deploiement = script.indexOf("$arguments = @('functions', 'deploy')");
+    expect(gardeFou).toBeGreaterThan(0);
+    expect(gardeFou).toBeLessThan(deploiement);
+    expect(script).toContain("-cne 'PRODUCTION'");
+  });
+
+  it('se passe de Docker', () => {
+    expect(script).toContain("'--use-api'");
+  });
+
+  it('n’écrit jamais le jeton d’accès nulle part', () => {
+    // Le jeton est un secret : il ne doit ni s'afficher, ni se journaliser,
+    // ni se retrouver dans le dépôt.
+    expect(script).not.toMatch(/SUPABASE_ACCESS_TOKEN/);
+    expect(script).not.toMatch(/--token/);
   });
 });
