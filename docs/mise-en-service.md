@@ -321,9 +321,23 @@ est installé en version **portable** dans le profil utilisateur, il n'a jamais
 PATH de son propre processus. Autrement dit, `node -v` peut très bien échouer
 dans le terminal pendant que le script, lui, fonctionne.
 
-Ce n'est bloquant que si le script affiche lui-même « node/npx est introuvable
-depuis cette fenêtre » et sort en code 2. Il faut alors passer par le tableau
-de bord (plus bas).
+Encore faut-il qu'il le trouve, et un piège s'y cache. L'application Claude est
+installée en **paquet Windows** : un terminal ouvert depuis elle tourne dans le
+conteneur du paquet, où `LOCALAPPDATA` ne désigne plus `…\AppData\Local` mais
+`…\AppData\Local\Packages\<paquet>\LocalCache\Local`. Le dossier de node paraît
+alors absent, alors qu'il est simplement un cran plus haut. Le script tient
+compte de cette redirection, essaie quatre façons de nommer le même dossier et
+n'exige plus une version précise de node.
+
+S'il échoue malgré tout, il n'écrit pas « introuvable » et s'arrête là : il
+affiche ce que le terminal résout et la liste des emplacements essayés. Dernier
+recours, on lui désigne le dossier à la main :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Projet test -Simulation -Node "C:\chemin\vers\node"
+```
+
+Et si vraiment rien ne marche, il reste le tableau de bord (plus bas).
 
 ⚠ **Ne jamais installer la CLI avec `npm i -g supabase`** : Supabase refuse
 cette installation globale (« Installing Supabase CLI as a global module is not

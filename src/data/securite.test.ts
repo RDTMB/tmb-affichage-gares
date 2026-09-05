@@ -769,3 +769,41 @@ describe('Lanceur .cmd : Windows refuse d’exécuter un .ps1 par défaut', () =
     expect(script).toContain('deployer-edge-functions.cmd -Connexion');
   });
 });
+
+describe('Localisation de node : le terminal peut mentir sur LOCALAPPDATA', () => {
+  const script = readFileSync(
+    fileURLToPath(new URL('../../outils/deployer-edge-functions.ps1', import.meta.url)),
+    'utf-8',
+  ).replace(/\r\n/g, '\n');
+
+  it('remonte au-dessus du dossier Packages, où un terminal empaqueté est enfermé', () => {
+    // L'application Claude est un paquet MSIX : un terminal ouvert depuis elle
+    // voit LOCALAPPDATA pointer sur …\Packages\<paquet>\LocalCache\Local, et
+    // le dossier node paraît absent alors qu'il est un cran plus haut.
+    expect(script).toContain(String.raw`IndexOf('\Packages\')`);
+    expect(script).toContain('$r.Substring(0, $i)');
+  });
+
+  it('essaie plusieurs façons de nommer le même dossier', () => {
+    expect(script).toContain('$env:LOCALAPPDATA');
+    expect(script).toContain("[Environment]::GetFolderPath('LocalApplicationData')");
+    expect(script).toContain(String.raw`Join-Path $env:USERPROFILE 'AppData\Local'`);
+    expect(script).toContain(String.raw`C:\Users\$env:USERNAME`);
+  });
+
+  it('ne fige pas la version de node : elle changera', () => {
+    expect(script).toContain("-Filter 'node-v*-win-x64'");
+  });
+
+  it('dit ce qu’il a essayé quand il ne trouve rien', () => {
+    // Un « introuvable » sec n'apprend rien et coûte un aller-retour.
+    expect(script).toContain('Emplacements essayés');
+    expect(script).toContain('$script:Essais');
+    expect(script).toContain('Ce que ce terminal résout');
+  });
+
+  it('laisse désigner le dossier à la main en dernier recours', () => {
+    expect(script).toMatch(/\[string\] \$Node,/);
+    expect(script).toContain('Trouver-Npx -Impose $Node');
+  });
+});

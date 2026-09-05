@@ -28,6 +28,10 @@
     Version de la CLI Supabase. Figée pour être reproductible ; « latest » est
     accepté pour un dépannage ponctuel.
 
+.PARAMETER Node
+    Dossier contenant npx.cmd, à indiquer seulement si le script ne le trouve
+    pas seul. En cas d'échec, il affiche tout ce qu'il a essayé.
+
 .PARAMETER Connexion
     Ouvre le navigateur pour autoriser ce poste, puis s'arrête. À faire une fois.
 
@@ -61,6 +65,8 @@ param(
 
     [string] $VersionCli = '2.116.0',
 
+    [string] $Node,
+
     [switch] $Connexion,
 
     [switch] $Simulation
@@ -90,26 +96,91 @@ function Ecrire-Info($texte) {
 }
 
 # --- 1. Retrouver npx ---------------------------------------------------------
+# Chaque emplacement essayé est consigné : quand rien n'est trouvé, le script
+# affiche la liste plutôt qu'un « introuvable » qui n'apprend rien.
+$script:Essais = New-Object System.Collections.Generic.List[object]
+
+function Tester-Dossier {
+    param([string] $Dossier)
+
+    if ([string]::IsNullOrWhiteSpace($Dossier)) { return $null }
+    $chemin = Join-Path $Dossier 'npx.cmd'
+    $vu = $false
+    try {
+        # Test-Path répond aussi False quand l'accès est REFUSÉ, sans le dire.
+        $vu = Test-Path -LiteralPath $chemin
+    } catch {
+        $vu = $false
+    }
+    $script:Essais.Add([pscustomobject]@{ Chemin = $chemin; Trouve = $vu })
+    if ($vu) { return $chemin }
+    return $null
+}
+
+<#
+    Racines où chercher une installation portable.
+
+    Le piège du poste : l'application Claude est un paquet MSIX. Un terminal
+    ouvert DEPUIS elle tourne dans le conteneur du paquet, où LOCALAPPDATA ne
+    désigne plus « …\AppData\Local » mais
+    « …\AppData\Local\Packages\<paquet>\LocalCache\Local ». Le dossier node y
+    paraît absent alors qu'il est bien là, un cran plus haut. On essaie donc
+    aussi la racine située AVANT « \Packages\ ».
+#>
+function Racines-Candidates {
+    $racines = New-Object System.Collections.Generic.List[string]
+    $bruts = @(
+        $env:LOCALAPPDATA,
+        [Environment]::GetFolderPath('LocalApplicationData'),
+        (Join-Path $env:USERPROFILE 'AppData\Local'),
+        (Join-Path "C:\Users\$env:USERNAME" 'AppData\Local')
+    )
+    foreach ($r in $bruts) {
+        if ([string]::IsNullOrWhiteSpace($r)) { continue }
+        $racines.Add($r)
+        $i = $r.IndexOf('\Packages\')
+        if ($i -gt 0) { $racines.Add($r.Substring(0, $i)) }
+    }
+    return ($racines | Select-Object -Unique)
+}
+
 function Trouver-Npx {
+    param([string] $Impose)
+
+    if (-not [string]::IsNullOrWhiteSpace($Impose)) {
+        # Chemin donné à la main : accepter le dossier comme le fichier.
+        if ($Impose -like '*npx.cmd') { $Impose = Split-Path -Parent $Impose }
+        return (Tester-Dossier $Impose)
+    }
+
     $trouve = Get-Command 'npx.cmd' -ErrorAction SilentlyContinue
     if ($null -ne $trouve) { return $trouve.Source }
 
-    $candidats = @(
-        (Join-Path $env:LOCALAPPDATA 'nodejs-portable\node-v24.19.0-win-x64'),
-        (Join-Path $env:ProgramFiles 'nodejs'),
-        (Join-Path ${env:ProgramFiles(x86)} 'nodejs'),
-        (Join-Path $env:APPDATA 'npm')
-    )
-
-    foreach ($dossier in $candidats) {
-        if ([string]::IsNullOrWhiteSpace($dossier)) { continue }
-        $chemin = Join-Path $dossier 'npx.cmd'
+    # Installation portable, version NON figée : on prend celle qui est là.
+    foreach ($racine in Racines-Candidates) {
+        $portable = Join-Path $racine 'nodejs-portable'
+        $versions = @()
         try {
-            if (Test-Path -LiteralPath $chemin) { return $chemin }
+            $versions = Get-ChildItem -LiteralPath $portable -Directory -Filter 'node-v*-win-x64' -ErrorAction Stop
         } catch {
-            # Test-Path répond aussi False quand l'accès est refusé : on passe.
+            $script:Essais.Add([pscustomobject]@{ Chemin = "$portable\node-v*-win-x64"; Trouve = $false })
+        }
+        foreach ($v in $versions) {
+            $r = Tester-Dossier $v.FullName
+            if ($null -ne $r) { return $r }
         }
     }
+
+    # Installations classiques.
+    foreach ($dossier in @(
+            (Join-Path $env:ProgramFiles 'nodejs'),
+            (Join-Path ${env:ProgramFiles(x86)} 'nodejs'),
+            (Join-Path $env:APPDATA 'npm'),
+            (Join-Path $env:ProgramData 'chocolatey\bin'))) {
+        $r = Tester-Dossier $dossier
+        if ($null -ne $r) { return $r }
+    }
+
     return $null
 }
 
@@ -134,19 +205,32 @@ function Invoquer-Cli {
 # =============================================================================
 Ecrire-Titre 'Poste de travail'
 
-$npx = Trouver-Npx
+$npx = Trouver-Npx -Impose $Node
 if ($null -eq $npx) {
     Write-Host ''
     Write-Host 'node/npx est introuvable depuis cette fenêtre.' -ForegroundColor Red
     Write-Host ''
-    Write-Host 'Deux causes possibles :'
-    Write-Host '  1. Node n''est pas installé sur ce poste.'
-    Write-Host '  2. Il est installé en portable, mais CE terminal n''a pas le droit'
-    Write-Host '     de lire le dossier (Test-Path y répond False sans le dire).'
+    Write-Host 'Ce que ce terminal résout :' -ForegroundColor Yellow
+    Write-Host "  USERNAME                 $env:USERNAME"
+    Write-Host "  USERPROFILE              $env:USERPROFILE"
+    Write-Host "  LOCALAPPDATA             $env:LOCALAPPDATA"
+    Write-Host ("  API .NET                 " + [Environment]::GetFolderPath('LocalApplicationData'))
+    if ($env:LOCALAPPDATA -like '*\Packages\*') {
+        Write-Host ''
+        Write-Host '  Ce terminal tourne DANS un paquet Windows : son LOCALAPPDATA est' -ForegroundColor Yellow
+        Write-Host '  redirigé. Le script a tenu compte de cette redirection.' -ForegroundColor Yellow
+    }
     Write-Host ''
-    Write-Host 'Sans node, ce script ne peut rien faire. Repli : déployer les'
-    Write-Host 'fonctions depuis le tableau de bord Supabase (voir docs/mise-en-service.md,'
-    Write-Host 'section E).'
+    Write-Host 'Emplacements essayés :' -ForegroundColor Yellow
+    foreach ($e in $script:Essais) {
+        Write-Host ("  {0,-6} {1}" -f $(if ($e.Trouve) { 'vu' } else { 'non' }), $e.Chemin)
+    }
+    Write-Host ''
+    Write-Host 'Deux voies :'
+    Write-Host '  1. Indiquer le dossier de npx.cmd à la main, en une seule ligne :'
+    Write-Host '     .\outils\deployer-edge-functions.cmd -Projet test -Simulation -Node "C:\chemin\vers\node"'
+    Write-Host '  2. Déployer depuis le tableau de bord Supabase'
+    Write-Host '     (docs/mise-en-service.md, section E).'
     exit 2
 }
 Ecrire-Ok "npx : $npx"
