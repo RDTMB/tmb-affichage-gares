@@ -81,9 +81,9 @@ do $$
 begin
   if private.roles_courants() @> array['technique','admin']
      and not private.a_le_role('supervision') then
-    perform pg_temp.ok('cumul : roles_courants() renvoie technique ET admin, pas supervision');
+    perform pg_temp.ok('cumul : private.roles_courants() renvoie technique ET admin, pas supervision');
   else
-    perform pg_temp.echec('cumul : roles_courants() = ' || private.roles_courants()::text);
+    perform pg_temp.echec('cumul : rôles = ' || private.roles_courants()::text);
   end if;
 end $$;
 
@@ -94,7 +94,7 @@ begin
   if private.roles_courants() = array['supervision'] then
     perform pg_temp.ok('supervision : un seul rôle, aucun héritage');
   else
-    perform pg_temp.echec('supervision : roles_courants() = ' || private.roles_courants()::text);
+    perform pg_temp.echec('supervision : rôles = ' || private.roles_courants()::text);
   end if;
 end $$;
 
@@ -110,7 +110,7 @@ begin
   if private.roles_courants() = array[]::text[] then
     perform pg_temp.ok('compte désactivé : aucun rôle, donc aucun droit');
   else
-    perform pg_temp.echec('compte désactivé : roles_courants() = ' || private.roles_courants()::text);
+    perform pg_temp.echec('compte désactivé : rôles = ' || private.roles_courants()::text);
   end if;
 end $$;
 reset role;

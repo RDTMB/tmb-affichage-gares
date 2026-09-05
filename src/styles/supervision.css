@@ -1259,10 +1259,26 @@ tr.paire-fin td {
   display: inline-block;
   box-sizing: border-box;
   /* Largeur fixe : « SUPERVISION » est bien plus long qu'« ADMIN »/« CAISSE »,
-     ce qui décalait le select et les boutons des lignes utilisateur les uns
-     par rapport aux autres selon le rôle affiché. */
+     ce qui décalait les commandes des lignes utilisateur les unes par rapport
+     aux autres selon le rôle affiché. Elle vaut aussi quand une personne CUMULE
+     plusieurs rôles : les badges s'empilent alors en colonnes régulières. */
   width: 108px;
   text-align: center;
+}
+
+/* Plusieurs badges sur une même ligne : ils passent à la ligne proprement
+   plutôt que d'écraser le reste de la ligne utilisateur. */
+.user-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 116px;
+  flex: 0 0 auto;
+}
+
+.role-technique {
+  background: #e8e2f4;
+  color: #4a3b7a;
 }
 
 .role-admin {
@@ -1278,6 +1294,75 @@ tr.paire-fin td {
 .role-caisse {
   background: var(--ok-bg);
   color: var(--ok);
+}
+
+/* Compte sans aucun rôle : il ne peut rien faire, l'interface le DIT plutôt
+   que de laisser une ligne muette. */
+.role-aucun {
+  background: #eef2f6;
+  color: var(--sec);
+}
+
+/* Cases à cocher des rôles (ligne utilisateur et formulaire d'invitation). */
+.user-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  flex: 1 1 260px;
+}
+
+.case-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Une case verrouillée reste LISIBLE : son infobulle explique pourquoi, et la
+   masquer laisserait croire que le rôle n'existe pas. */
+.case-role.verrouillee {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.user-identite {
+  display: flex;
+  flex-direction: column;
+  width: 190px;
+  flex: 0 0 auto;
+}
+
+.user-email {
+  color: var(--sec);
+  font-size: 12.5px;
+}
+
+/* Pastille de l'en-tête : sur quelle base travaille-t-on ? La production est
+   signalée en rouge charte, un projet d'essai en jaune franc — on ne doit
+   jamais croire tester alors qu'on publie en gare. */
+.pill.base {
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.pill.base-prod {
+  background: var(--alerte-bg);
+  color: var(--alerte);
+  border-color: var(--alerte);
+}
+
+.pill.base-test {
+  background: #fff4d6;
+  color: #8a6100;
+  border-color: #e0b350;
+}
+
+.pill.base-demo {
+  background: #eef2f6;
+  color: var(--sec);
 }
 
 .note {

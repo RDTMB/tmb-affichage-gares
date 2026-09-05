@@ -9,10 +9,12 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
 
 function sql(fichier: string): string {
+  // Fins de ligne normalisées : le dépôt mêle des fichiers écrits sous Windows
+  // et sous Unix, et les expressions régulières ci-dessous raisonnent en « \n ».
   return readFileSync(
     fileURLToPath(new URL(`../../supabase/${fichier}`, import.meta.url)),
     'utf-8',
-  );
+  ).replace(/\r\n/g, '\n');
 }
 
 /** Retire les commentaires SQL : seules les instructions réelles comptent. */
@@ -27,8 +29,13 @@ describe('Scripts d’ajout : politiques toujours qualifiées private., RLS acti
   for (const fichier of ['ajout-grilles.sql', 'ajout-ciels.sql']) {
     it(`${fichier}`, () => {
       const code = instructions(sql(fichier));
-      expect([...code.matchAll(/(^|[^.\w])role_courant\s*\(/g)]).toEqual([]);
-      expect(code).toMatch(/private\.role_courant\(\)/);
+      // Une fonction d'habilitation appelée sans son schéma échouerait : le
+      // schéma `private` n'est pas dans le search_path (piège déjà rencontré
+      // avec ajout-modeles.sql, relancé après securite-advisors.sql).
+      for (const nom of ['a_le_role', 'a_un_des_roles', 'roles_courants']) {
+        expect([...code.matchAll(new RegExp(`(^|[^.\\w])${nom}\\s*\\(`, 'g'))]).toEqual([]);
+      }
+      expect(code).toMatch(/private\.a_(le_role|un_des_roles)\(/);
       expect(code).toMatch(/enable row level security/);
       // Rejouable : chaque politique est supprimée avant d'être recréée
       expect(code).toMatch(/drop policy if exists/);
@@ -40,10 +47,12 @@ describe('Scripts d’ajout : politiques toujours qualifiées private., RLS acti
 describe('ajout-grilles.sql : droits et contenu', () => {
   const code = instructions(sql('ajout-grilles.sql'));
 
-  it('lecture publique (les écrans sont anonymes), écriture admin et supervision seulement', () => {
+  it('lecture publique (les écrans sont anonymes), écriture partagée sauf la caisse', () => {
     expect(code).toMatch(/create policy "lecture publique" on grilles for select using \(true\)/);
+    // Les grilles sont PARTAGÉES entre l'informatique et l'exploitation : un
+    // horaire corrigé un matin de service ne doit pas attendre le prestataire.
     expect(code).toMatch(
-      /create policy "exploitation" on grilles for all to authenticated\s*\n?\s*using \(private\.role_courant\(\) in \('admin','supervision'\)\)/,
+      /create policy "roles: grilles" on grilles for all to authenticated\s*\n?\s*using \(\(select private\.a_un_des_roles\(array\['technique','admin','supervision'\]\)\)\)/,
     );
     expect(code).not.toMatch(/'caisse'/);
   });

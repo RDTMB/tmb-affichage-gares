@@ -5,8 +5,9 @@
 // Démo par défaut (maquette validée) : facultatifs 3/4/9/10/17/18 activés,
 // retard +10 min (Météo) sur le TRAIN 11, descente 16 supprimée (Météo).
 // Paramètre d'URL écran : ?terminus=N (bascule « à partir du TRAIN N »).
-// Connexion mock : le début de l'email fixe le rôle (admin… → admin,
-// caisse… → caisse, sinon supervision) ; mot de passe libre.
+// Connexion mock : le préfixe de l'e-mail fixe les RÔLES, « + » permettant le
+// cumul (« technique+admin@demo » ouvre une session portant les deux ; un
+// préfixe inconnu retombe sur « supervision ») ; mot de passe libre.
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   appliqueTerminusBellevue,
@@ -16,6 +17,15 @@ import {
   serviceActif,
 } from '../core/horaires';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
+import {
+  LIBELLE_ROLE,
+  ROLES,
+  estDernierDetenteur,
+  motifCompteVerrouille,
+  peutAttribuer,
+  peutGererProfil,
+  rolesDemoDepuisEmail,
+} from '../core/roles';
 import { paramsValides } from '../core/params';
 import type {
   Circulation,
@@ -204,20 +214,43 @@ const PARAMS_DEMO: Params = {
   ],
 };
 
+// Les comptes de démonstration illustrent le CUMUL : le premier porte les deux
+// rôles de gouvernance, comme le compte réel du chef d'exploitation qui assure
+// aussi, temporairement, la fonction informatique.
 const UTILISATEURS_DEMO: User[] = [
-  { user_id: 'demo-admin', nom: 'Thomas (démo)', email: 'admin@demo', role: 'admin', actif: true },
+  {
+    user_id: 'demo-technique-admin',
+    nom: 'Thomas (démo)',
+    email: 'technique+admin@demo',
+    roles: ['technique', 'admin'],
+    actif: true,
+  },
+  {
+    user_id: 'demo-technique',
+    nom: 'Prestataire informatique (démo)',
+    email: 'technique@demo',
+    roles: ['technique'],
+    actif: true,
+  },
+  {
+    user_id: 'demo-admin',
+    nom: 'Chef d’exploitation (démo)',
+    email: 'admin@demo',
+    roles: ['admin', 'supervision'],
+    actif: true,
+  },
   {
     user_id: 'demo-sup',
     nom: 'Supervision (démo)',
     email: 'supervision@demo',
-    role: 'supervision',
+    roles: ['supervision'],
     actif: true,
   },
   {
     user_id: 'demo-caisse',
     nom: 'Caisse (démo)',
     email: 'caisse@demo',
-    role: 'caisse',
+    roles: ['caisse'],
     actif: true,
   },
 ];
@@ -697,35 +730,41 @@ export class MockProvider implements DataProvider {
   // -------------------------------------------------------------- supervision
 
   async signIn(email: string, _mdp: string): Promise<Session> {
-    const role: Role = email.startsWith('admin')
-      ? 'admin'
-      : email.startsWith('caisse')
-        ? 'caisse'
-        : 'supervision';
-    sessionStorage.setItem(CLE_SESSION, JSON.stringify({ email, role }));
-    return { user_id: `mock-${role}`, email };
+    // Le préfixe de l'adresse fixe les rôles, « + » permettant le CUMUL :
+    // « technique+admin@demo » ouvre une session portant les deux.
+    const roles = rolesDemoDepuisEmail(email);
+    sessionStorage.setItem(CLE_SESSION, JSON.stringify({ email, roles }));
+    return { user_id: `mock-${roles.join('+')}`, email };
   }
 
-  async getRole(): Promise<Role> {
-    return (await this.getProfil()).role;
+  async getRoles(): Promise<Role[]> {
+    return (await this.getProfil()).roles;
   }
 
   async getProfil(): Promise<Profil> {
     const brut = sessionStorage.getItem(CLE_SESSION);
     if (!brut) throw new Error('Non connecté');
-    const session = JSON.parse(brut) as { email: string; role: Role };
+    const session = JSON.parse(brut) as { email: string; roles?: Role[]; role?: Role };
+    // `role` au singulier : session ouverte avant le passage aux rôles
+    // multiples et restée dans sessionStorage.
+    const roles = session.roles ?? (session.role ? [session.role] : ['supervision']);
     return {
-      user_id: `mock-${session.role}`,
+      user_id: `mock-${roles.join('+')}`,
       // Faute d'annuaire, la démo déduit un nom présentable de l'e-mail :
       // « marie-claire.dupond@… » → « Marie Claire Dupond ».
       nom: (session.email.split('@')[0] ?? '')
-        .split(/[.-_]+/)
+        .split(/[.\-_+]+/)
         .filter(Boolean)
         .map((mot) => mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1))
         .join(' '),
       email: session.email,
-      role: session.role,
+      roles,
     };
+  }
+
+  /** Le mock relit la session : rien à rafraîchir, mais l'interface l'appelle. */
+  async rafraichitProfil(): Promise<Profil> {
+    return this.getProfil();
   }
 
   async genererJour(date: string): Promise<void> {
@@ -1072,26 +1111,128 @@ export class MockProvider implements DataProvider {
     return litEtat().utilisateurs ?? UTILISATEURS_DEMO;
   }
 
+  /**
+   * Nom et activation UNIQUEMENT (les rôles passent par setRolesUser), sous
+   * les MÊMES règles que la base : règle stricte de gestion, refus de se
+   * modifier soi-même, refus de désactiver le dernier détenteur d'un rôle
+   * protégé. Le mock doit refuser ce que RLS refuserait, sinon la démo
+   * enseignerait de mauvaises habitudes.
+   */
   async saveUser(u: User): Promise<void> {
     const etat = litEtat();
     const liste = etat.utilisateurs ?? [...UTILISATEURS_DEMO];
     const index = liste.findIndex((x) => x.user_id === u.user_id);
-    if (index >= 0) liste[index] = u;
-    else liste.push(u);
+    const avant = index >= 0 ? liste[index] : null;
+    if (avant) {
+      const mesRoles = (await this.getProfil()).roles;
+      const moi = await this.identifiantMock(liste);
+      const motif = motifCompteVerrouille(mesRoles, moi, { ...avant }, liste);
+      // Un simple renommage d'un compte que l'on gère reste possible ; c'est la
+      // DÉSACTIVATION du dernier détenteur, ou la gestion d'un compte hors de
+      // son périmètre, que la base refuse.
+      if (motif && (avant.actif !== u.actif || !peutGererProfil(mesRoles, avant.roles))) {
+        throw new Error(motif);
+      }
+      trace(
+        etat,
+        'profils',
+        u.email,
+        { nom: avant.nom, actif: avant.actif },
+        { nom: u.nom, actif: u.actif },
+        ['nom', 'actif'],
+      );
+      liste[index] = { ...u, roles: avant.roles };
+    } else {
+      liste.push(u);
+    }
+    etat.utilisateurs = liste;
+    ecritEtat(etat);
+  }
+
+  async setRolesUser(user_id: string, roles: Role[]): Promise<void> {
+    const etat = litEtat();
+    const liste = etat.utilisateurs ?? [...UTILISATEURS_DEMO];
+    const index = liste.findIndex((x) => x.user_id === user_id);
+    const cible = index >= 0 ? liste[index] : undefined;
+    if (!cible) throw new Error('Compte introuvable');
+
+    const mesRoles = (await this.getProfil()).roles;
+    const moi = await this.identifiantMock(liste);
+    if (cible.user_id === moi) throw new Error('Personne ne modifie ses propres rôles.');
+
+    const voulus = ROLES.filter((r) => roles.includes(r));
+    const aAjouter = voulus.filter((r) => !cible.roles.includes(r));
+    const aRetirer = cible.roles.filter((r) => !voulus.includes(r));
+    for (const role of [...aAjouter, ...aRetirer]) {
+      if (!peutAttribuer(mesRoles, role)) {
+        throw new Error(
+          `Le rôle « ${LIBELLE_ROLE[role]} » ne fait pas partie de ceux que vous pouvez attribuer.`,
+        );
+      }
+    }
+    // Attribuer d'abord, retirer ensuite : c'est l'ordre qu'impose la base.
+    for (const role of aRetirer) {
+      if (estDernierDetenteur(liste, user_id, role)) {
+        throw new Error(
+          `Refusé : il doit toujours rester au moins un compte actif « ${LIBELLE_ROLE[role]} ».`,
+        );
+      }
+    }
+    for (const role of aAjouter)
+      trace(etat, 'profils_roles', cible.email, null, { role }, ['role']);
+    for (const role of aRetirer)
+      trace(etat, 'profils_roles', cible.email, { role }, null, ['role']);
+
+    liste[index] = { ...cible, roles: voulus };
     etat.utilisateurs = liste;
     ecritEtat(etat);
   }
 
   async deleteUser(user_id: string): Promise<void> {
     const etat = litEtat();
-    etat.utilisateurs = (etat.utilisateurs ?? [...UTILISATEURS_DEMO]).filter(
-      (u) => u.user_id !== user_id,
-    );
+    const liste = etat.utilisateurs ?? [...UTILISATEURS_DEMO];
+    const cible = liste.find((u) => u.user_id === user_id);
+    if (cible) {
+      const mesRoles = (await this.getProfil()).roles;
+      const moi = await this.identifiantMock(liste);
+      const motif = motifCompteVerrouille(mesRoles, moi, cible, liste);
+      if (motif) throw new Error(motif);
+      trace(etat, 'profils', cible.email, { nom: cible.nom, actif: cible.actif }, null, [
+        'nom',
+        'actif',
+      ]);
+    }
+    etat.utilisateurs = liste.filter((u) => u.user_id !== user_id);
     ecritEtat(etat);
   }
 
-  async inviteUser(email: string, nom: string, role: Role): Promise<void> {
-    await this.saveUser({ user_id: `mock-${Date.now()}`, nom, email, role, actif: true });
+  async inviteUser(email: string, nom: string, roles: Role[]): Promise<void> {
+    const mesRoles = (await this.getProfil()).roles;
+    const voulus = ROLES.filter((r) => roles.includes(r));
+    if (voulus.length === 0) throw new Error('Au moins un rôle est requis');
+    for (const role of voulus) {
+      if (!peutAttribuer(mesRoles, role)) {
+        throw new Error(
+          `Le rôle « ${LIBELLE_ROLE[role]} » ne fait pas partie de ceux que vous pouvez attribuer.`,
+        );
+      }
+    }
+    const etat = litEtat();
+    const liste = etat.utilisateurs ?? [...UTILISATEURS_DEMO];
+    liste.push({ user_id: `mock-${Date.now()}`, nom, email, roles: voulus, actif: true });
+    trace(etat, 'profils', email, null, { nom, actif: true }, ['nom', 'actif']);
+    for (const role of voulus) trace(etat, 'profils_roles', email, null, { role }, ['role']);
+    etat.utilisateurs = liste;
+    ecritEtat(etat);
+  }
+
+  /**
+   * Identifiant du compte connecté DANS la liste de démonstration : la session
+   * mock n'est identifiée que par son e-mail, il faut donc le rapprocher.
+   */
+  private async identifiantMock(liste: User[]): Promise<string> {
+    const profil = await this.getProfil();
+    return liste.find((u) => u.email === profil.email)?.user_id ?? profil.user_id;
   }
 
   async resetMotDePasse(): Promise<void> {

@@ -31,6 +31,7 @@ import type {
   FiltreJournal,
 } from '../core/types';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
+import { ROLES, aLeDroit } from '../core/roles';
 import { paramsValides } from '../core/params';
 import {
   contenuSansMetadonnees,
@@ -99,11 +100,17 @@ function verifie(erreur: { message: string } | null): void {
 export function exigeLignes(
   resultat: { data: unknown[] | null; error: { message: string } | null },
   contexte: string,
+  attendues = 1,
 ): void {
   if (resultat.error) throw new Error(resultat.error.message);
-  if (!resultat.data || resultat.data.length === 0) {
+  if (!resultat.data || resultat.data.length < attendues) {
     throw new Error(`Modification non enregistrée — ${contexte}`);
   }
+}
+
+/** Rôles rangés dans l'ordre d'affichage des badges (src/core/roles.ts). */
+function ordonneRoles(roles: readonly string[]): Role[] {
+  return ROLES.filter((r) => roles.includes(r));
 }
 
 export class SupabaseProvider implements DataProvider {
@@ -317,20 +324,22 @@ export class SupabaseProvider implements DataProvider {
    */
   private readonly joursAssures = new Set<string>();
 
-  /** Rôle mémorisé pour éviter une requête à chaque getJour. */
-  private roleCache: Role | null = null;
   private profilCache: Profil | null = null;
 
-  /** true si une session ouverte peut écrire l'exploitation (admin ou supervision). */
+  /**
+   * true si la session ouverte peut créer une journée : c'est le droit
+   * `circulations` (supervision) ou celui de réinitialiser (technique), les
+   * deux seuls à écrire dans `jours`.
+   */
   private async peutEcrireExploitation(): Promise<boolean> {
     const { data } = await this.client.auth.getSession(); // lecture locale, pas d'appel réseau
     if (!data.session) return false;
     try {
-      this.roleCache ??= await this.getRole();
+      const roles = await this.getRoles();
+      return aLeDroit(roles, 'circulations') || aLeDroit(roles, 'journee.reinitialiser');
     } catch {
       return false; // profil absent ou inactif
     }
-    return this.roleCache === 'admin' || this.roleCache === 'supervision';
   }
 
   private async assureJour(date: string): Promise<void> {
@@ -508,27 +517,44 @@ export class SupabaseProvider implements DataProvider {
     if (this.profilCache) return this.profilCache;
     const { data: auth } = await this.client.auth.getUser();
     if (!auth.user) throw new Error('Session expirée');
+    // Les rôles arrivent par jointure (clé étrangère profils_roles → profils) :
+    // une seule requête, une seule source de vérité.
     const { data, error } = await this.client
       .from('profils')
-      .select('nom, email, role, actif')
+      .select('nom, email, actif, profils_roles(role)')
       .eq('user_id', auth.user.id)
       .maybeSingle();
     verifie(error);
-    const profil = data as { nom: string; email: string; role: Role; actif: boolean } | null;
+    const profil = data as {
+      nom: string;
+      email: string;
+      actif: boolean;
+      profils_roles: { role: Role }[] | null;
+    } | null;
     if (!profil?.actif) throw new Error('Profil inactif ou absent');
     this.profilCache = {
       user_id: auth.user.id,
       nom: profil.nom,
       // L'e-mail du profil fait foi ; celui du compte Auth n'est qu'un repli.
       email: profil.email ?? auth.user.email ?? '',
-      role: profil.role,
+      roles: ordonneRoles((profil.profils_roles ?? []).map((r) => r.role)),
     };
     return this.profilCache;
   }
 
-  /** Le rôle vient du profil : une seule requête, une seule source de vérité. */
-  async getRole(): Promise<Role> {
-    return (await this.getProfil()).role;
+  /** Les rôles viennent du profil : une seule requête, une seule source de vérité. */
+  async getRoles(): Promise<Role[]> {
+    return (await this.getProfil()).roles;
+  }
+
+  /**
+   * Relit le profil et ses rôles depuis la base. La supervision s'en sert à
+   * chaque rafraîchissement : un rôle retiré pendant la session doit se voir
+   * dans l'interface, et pas seulement être refusé par la base au premier clic.
+   */
+  async rafraichitProfil(): Promise<Profil> {
+    this.profilCache = null;
+    return this.getProfil();
   }
 
   async genererJour(date: string): Promise<void> {
@@ -565,7 +591,13 @@ export class SupabaseProvider implements DataProvider {
   async reinitialiseJour(date: string): Promise<void> {
     // Retour à l'horaire théorique : suppression de la journée (les
     // circulations suivent par cascade) puis régénération depuis la grille.
-    verifie((await this.client.from('jours').delete().eq('date', date)).error);
+    // `.select()` + exigeLignes : une politique RLS ne lève pas, elle FILTRE —
+    // sans ce contrôle, un agent non habilité verrait « journée réinitialisée »
+    // alors que rien n'aurait bougé (bug exploitant du 25/08/2026).
+    exigeLignes(
+      await this.client.from('jours').delete().eq('date', date).select('date'),
+      'journée absente, ou réinitialisation non autorisée pour vos rôles',
+    );
     this.joursAssures.delete(date);
     await this.genererJour(date);
     this.joursAssures.add(date);
@@ -815,20 +847,73 @@ export class SupabaseProvider implements DataProvider {
   }
 
   async listUsers(): Promise<User[]> {
-    const { data, error } = await this.client.from('profils').select('*').order('nom');
+    const { data, error } = await this.client
+      .from('profils')
+      .select('user_id, nom, email, actif, profils_roles(role)')
+      .order('nom');
     verifie(error);
-    return (data ?? []) as User[];
+    const lignes = (data ?? []) as {
+      user_id: string;
+      nom: string;
+      email: string;
+      actif: boolean;
+      profils_roles: { role: Role }[] | null;
+    }[];
+    return lignes.map((l) => ({
+      user_id: l.user_id,
+      nom: l.nom,
+      email: l.email,
+      actif: l.actif,
+      roles: ordonneRoles((l.profils_roles ?? []).map((r) => r.role)),
+    }));
   }
 
+  /** Nom et activation UNIQUEMENT : les rôles passent par setRolesUser(). */
   async saveUser(u: User): Promise<void> {
     exigeLignes(
       await this.client
         .from('profils')
-        .update({ nom: u.nom, role: u.role, actif: u.actif })
+        .update({ nom: u.nom, actif: u.actif })
         .eq('user_id', u.user_id)
         .select(),
       'profil introuvable ou écriture refusée',
     );
+  }
+
+  async setRolesUser(user_id: string, roles: Role[]): Promise<void> {
+    const { data, error } = await this.client
+      .from('profils_roles')
+      .select('role')
+      .eq('user_id', user_id);
+    verifie(error);
+    const actuels = ((data ?? []) as { role: Role }[]).map((r) => r.role);
+    const aAjouter = roles.filter((r) => !actuels.includes(r));
+    const aRetirer = actuels.filter((r) => !roles.includes(r));
+
+    // ATTRIBUER D'ABORD, RETIRER ENSUITE. La base refuse de laisser un rôle
+    // protégé sans détenteur actif ; l'ordre inverse ferait échouer tout
+    // échange (« retirer technique à A pour le donner à B »).
+    if (aAjouter.length > 0) {
+      exigeLignes(
+        await this.client
+          .from('profils_roles')
+          .insert(aAjouter.map((role) => ({ user_id, role })))
+          .select(),
+        'attribution refusée : vous n’êtes pas habilité à donner ce rôle',
+        aAjouter.length,
+      );
+    }
+    for (const role of aRetirer) {
+      exigeLignes(
+        await this.client
+          .from('profils_roles')
+          .delete()
+          .eq('user_id', user_id)
+          .eq('role', role)
+          .select(),
+        `retrait du rôle « ${role} » refusé`,
+      );
+    }
   }
 
   async deleteUser(user_id: string): Promise<void> {
@@ -850,10 +935,10 @@ export class SupabaseProvider implements DataProvider {
     return `${window.location.origin}${window.location.pathname}`;
   }
 
-  async inviteUser(email: string, nom: string, role: Role): Promise<void> {
+  async inviteUser(email: string, nom: string, roles: Role[]): Promise<void> {
     // La création de compte exige la clé secrète : Edge Function côté Supabase.
     const { error } = await this.client.functions.invoke('inviter-utilisateur', {
-      body: { email, nom, role, redirectTo: SupabaseProvider.urlRetourAuth() },
+      body: { email, nom, roles, redirectTo: SupabaseProvider.urlRetourAuth() },
     });
     if (error) throw new Error(error.message);
   }

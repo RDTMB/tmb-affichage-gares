@@ -51,3 +51,70 @@ export function modeDonnees(configPresente: boolean, demoDemandee: boolean): Mod
   if (configPresente) return 'reel';
   return demoDemandee ? 'demo' : 'aucune';
 }
+
+// ---------------------------------------------------------------------------
+// Quelle base sert la supervision ?
+// ---------------------------------------------------------------------------
+
+/**
+ * Référence du projet Supabase de PRODUCTION (supabase/INFOS-PROJET.md). Elle
+ * fait partie de l'URL publique, elle n'est donc pas un secret ; elle sert
+ * uniquement à distinguer la production d'un projet d'essai à l'écran.
+ * À mettre à jour si le projet de production change un jour.
+ */
+export const REF_PROJET_PRODUCTION = 'csstkdcqdzaiibfqrscv';
+
+export interface BaseServie {
+  /** Ce que porte la pastille : « PRODUCTION », « BASE DE TEST », « DÉMONSTRATION ». */
+  libelle: string;
+  /** Suffixe de classe CSS : `base-prod`, `base-test`, `base-demo`. */
+  classe: 'base-prod' | 'base-test' | 'base-demo';
+  /** Détail au survol : la référence du projet, ou l'absence de source. */
+  detail: string;
+}
+
+/** Référence du projet dans une URL Supabase, ou null si elle n'a pas cette forme. */
+export function refProjet(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const hote = new URL(url).hostname;
+    const ref = hote.split('.')[0] ?? '';
+    return ref.length > 0 && hote.includes('supabase') ? ref : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Base réellement servie, pour la pastille de l'en-tête de supervision.
+ *
+ * POURQUOI. Rien à l'écran ne disait jusqu'ici sur quelle base on travaillait.
+ * Or la mise au point d'une évolution fait alterner le projet de test et la
+ * production (docs/mise-en-service.md §H et §I) : publier un message de test
+ * en gare, ou croire tester alors qu'on est en production, ne doit pas tenir à
+ * la mémoire de l'agent. Tout ce qui n'est PAS la production est annoncé comme
+ * un essai — c'est le sens de prudence utile : une base inconnue n'est jamais
+ * présentée comme la vraie.
+ */
+export function baseServie(url: string | undefined): BaseServie {
+  const ref = refProjet(url);
+  if (!ref) {
+    return {
+      libelle: 'DÉMONSTRATION',
+      classe: 'base-demo',
+      detail: 'Aucune base : les données sont fictives et ne quittent pas ce navigateur.',
+    };
+  }
+  if (ref === REF_PROJET_PRODUCTION) {
+    return {
+      libelle: 'PRODUCTION',
+      classe: 'base-prod',
+      detail: `Base de production (${ref}) : tout ce que vous publiez part sur les écrans en gare.`,
+    };
+  }
+  return {
+    libelle: 'BASE DE TEST',
+    classe: 'base-test',
+    detail: `Projet d’essai (${ref}) : aucun écran en gare ne lit cette base.`,
+  };
+}

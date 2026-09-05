@@ -190,9 +190,7 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
 /** Onglets visibles pour un ensemble de rôles, dans l'ordre de la barre. */
 export function ongletsVisibles(roles: readonly Role[]): Onglet[] {
   const acquis = droits(roles);
-  return ONGLETS.filter((onglet) =>
-    DROITS_DE_L_ONGLET[onglet].some((droit) => acquis.has(droit)),
-  );
+  return ONGLETS.filter((onglet) => DROITS_DE_L_ONGLET[onglet].some((droit) => acquis.has(droit)));
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +275,8 @@ export function motifCompteVerrouille(
   cible: { user_id: string; roles: readonly Role[]; actif: boolean },
   comptes: readonly { user_id: string; roles: readonly Role[]; actif: boolean }[],
 ): string | null {
-  if (cible.user_id === moi) return 'Vous ne pouvez pas désactiver ni supprimer votre propre compte.';
+  if (cible.user_id === moi)
+    return 'Vous ne pouvez pas désactiver ni supprimer votre propre compte.';
   if (!peutGererProfil(mesRoles, cible.roles)) {
     return 'Ce compte porte un rôle que vous n’attribuez pas : sa gestion revient au rôle correspondant.';
   }

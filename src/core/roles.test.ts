@@ -244,7 +244,13 @@ describe('Cases à cocher : motifs de verrouillage', () => {
   const cible = (id: string) => equipe.find((c) => c.user_id === id)!;
 
   it('personne ne modifie ses propres rôles', () => {
-    const motif = motifCaseVerrouillee(['technique', 'admin'], 'thomas', cible('thomas'), 'admin', equipe);
+    const motif = motifCaseVerrouillee(
+      ['technique', 'admin'],
+      'thomas',
+      cible('thomas'),
+      'admin',
+      equipe,
+    );
     expect(motif).toMatch(/propres rôles/);
   });
 
@@ -255,13 +261,7 @@ describe('Cases à cocher : motifs de verrouillage', () => {
 
   it('la case du dernier détenteur est verrouillée', () => {
     const duo = [compte('thomas', ['technique']), compte('chef', ['admin'])];
-    const motif = motifCaseVerrouillee(
-      ['technique', 'admin'],
-      'chef',
-      duo[0]!,
-      'technique',
-      duo,
-    );
+    const motif = motifCaseVerrouillee(['technique', 'admin'], 'chef', duo[0]!, 'technique', duo);
     expect(motif).toMatch(/Dernier compte actif/);
   });
 

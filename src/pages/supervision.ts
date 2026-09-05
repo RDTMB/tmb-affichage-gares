@@ -51,8 +51,19 @@ import type {
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
+import {
+  DESCRIPTION_ROLE,
+  LIBELLE_ROLE,
+  ROLES,
+  aLeDroit,
+  motifCaseVerrouillee,
+  motifCompteVerrouille,
+  ongletsVisibles,
+  rolesAttribuables,
+  type Droit,
+} from '../core/roles';
 import { creeProvider } from '../data';
-import { configSupabasePresente } from '../data/config';
+import { baseServie, configSupabasePresente } from '../data/config';
 import { initOngletHoraires, type OngletHoraires } from './onglet-horaires';
 import {
   appliqueBrouillonJour,
@@ -132,19 +143,21 @@ function $(id: string): HTMLElement {
   return el;
 }
 
-const ONGLET_PAR_ROLE: Record<Role, string[]> = {
-  admin: ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans', 'parametres'],
-  supervision: ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans'],
-  // La caisse tient le bandeau voyageurs : messages, vitesse et météo. Elle
-  // voit aussi les grilles horaires, en lecture seule (« Voir » uniquement).
-  caisse: ['bandeau', 'horaires'],
-};
-
 // ---------------------------------------------------------------------------
 // État
 // ---------------------------------------------------------------------------
 
-let role: Role | null = null;
+/**
+ * Rôles CUMULABLES de l'agent connecté. Les onglets et les commandes s'en
+ * déduisent par UNION des droits (src/core/roles.ts) ; ce n'est qu'un confort,
+ * la base refuse de toute façon ce qu'elle doit refuser.
+ */
+let roles: Role[] = [];
+
+/** Raccourci de lecture : l'agent connecté a-t-il ce droit ? */
+function peut(droit: Droit): boolean {
+  return aLeDroit(roles, droit);
+}
 /** Profil de l'agent connecté, lu en base : survit à la réouverture d'un onglet. */
 let profilConnecte: Profil | null = null;
 /** Grilles ACTIVES (celles que voient les écrans) ; l'onglet Horaires lit, lui, toutes les grilles. */
@@ -486,8 +499,26 @@ function rendreEnTete(): void {
   $('pill-service').textContent = grille ? grille.libelle : 'Hors saison';
 }
 
-function appliqueRole(r: Role): void {
-  const visibles = ONGLET_PAR_ROLE[r];
+/**
+ * Pastille « PRODUCTION / BASE DE TEST / DÉMONSTRATION ». Posée une fois au
+ * chargement : la source de données ne change pas en cours de session.
+ */
+function rendreBaseServie(): void {
+  const base = baseServie(window.TMB_CONFIG?.supabaseUrl);
+  const pastille = $('pill-base');
+  pastille.textContent = base.libelle;
+  pastille.title = base.detail;
+  pastille.className = `pill base ${base.classe}`;
+  pastille.style.display = '';
+}
+
+/**
+ * Applique les rôles CUMULÉS de l'agent : onglets visibles par union des
+ * droits, puis cartes et commandes que ses rôles n'ouvrent pas. Masquer vaut
+ * mieux que laisser échouer — mais ce n'est qu'un confort : RLS tranche.
+ */
+function appliqueRoles(): void {
+  const visibles: string[] = ongletsVisibles(roles);
   document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
     const nom = b.dataset.t ?? '';
     b.style.display = visibles.includes(nom) ? '' : 'none';
@@ -496,10 +527,107 @@ function appliqueRole(r: Role): void {
   document.querySelectorAll('.onglet').forEach((o) => {
     o.classList.toggle('on', o.id === `t-${visibles[0]}`);
   });
-  // L'onglet Bandeau est ouvert à tous les rôles, mais la BIBLIOTHÈQUE de
-  // modèles reste administrable par le seul admin (RLS sur modeles_messages) :
-  // mieux vaut masquer les commandes que de les laisser échouer.
-  $('carte-modeles').style.display = r === 'admin' ? '' : 'none';
+
+  // Bandeau : la bibliothèque de modèles est proposée à la saisie pour tous,
+  // mais son ADMINISTRATION revient au chef d'exploitation.
+  montreSi('carte-modeles', peut('modeles'));
+
+  // Écrans : déclarer ou oublier un poste relève de l'informatique, tout comme
+  // la veille de nuit GLOBALE — la veille propre à un poste, elle, reste à
+  // l'exploitation, sur la carte de l'écran.
+  montreSi('declaration-ecran', peut('ecrans.declarer'));
+  montreSi('veille-globale', peut('parametres.technique'));
+
+  // Paramètres : chaque carte a son droit.
+  montreSi('carte-machines', peut('parametres.exploitation'));
+  montreSi('carte-motifs', peut('parametres.exploitation'));
+  montreSi('carte-ciels', peut('parametres.exploitation'));
+  montreSi('carte-a-quai', peut('parametres.exploitation'));
+  montreSi('carte-users', peut('comptes.lire'));
+  montreSi('carte-journal', peut('journal'));
+  montreSi('carte-purge', peut('journal.purger'));
+}
+
+/** Affiche ou masque un bloc, sans lever si la page ne le contient pas. */
+function montreSi(id: string, visible: boolean): void {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+/**
+ * Badges de rôle d'un compte. Chacun garde la largeur fixe qui aligne les
+ * colonnes des lignes utilisateur ; ils passent à la ligne proprement quand un
+ * compte en cumule plusieurs. Un compte sans aucun rôle le dit, plutôt que de
+ * n'afficher rien du tout.
+ */
+/**
+ * Une ligne de l'annuaire : badges, cases à cocher des rôles, activation et
+ * commandes. Tout ce que l'agent connecté n'a pas le droit de faire est
+ * désactivé ET expliqué — un bouton qui échoue sans dire pourquoi envoie
+ * l'agent chercher une panne qui n'existe pas.
+ */
+function ligneUtilisateur(u: User): string {
+  const moi = profilConnecte?.user_id ?? '';
+  const cases = ROLES.map((r) => {
+    const motif = motifCaseVerrouillee(roles, moi, u, r, utilisateurs);
+    const coche = u.roles.includes(r) ? 'checked' : '';
+    const bloque = motif ? 'disabled' : '';
+    const titre = motif ?? DESCRIPTION_ROLE[r];
+    return `<label class="case-role${motif ? ' verrouillee' : ''}" title="${echapper(titre)}">
+        <input type="checkbox" data-role="${r}" ${coche} ${bloque} />${echapper(LIBELLE_ROLE[r])}
+      </label>`;
+  }).join('');
+
+  const motifCompte = motifCompteVerrouille(roles, moi, u, utilisateurs);
+  const verrou = motifCompte ? 'disabled' : '';
+  const titreCompte = motifCompte ? ` title="${echapper(motifCompte)}"` : '';
+  return `
+    <div class="user-row" data-user="${echapper(u.user_id)}">
+      <div class="user-identite">
+        <b>${echapper(u.nom)}</b>
+        <span class="user-email">${echapper(u.email)}</span>
+      </div>
+      <div class="user-badges">${badgesRoles(u.roles)}</div>
+      <div class="user-roles">${cases}</div>
+      <label class="switch"${titreCompte}><input type="checkbox" ${u.actif ? 'checked' : ''} data-champ="actif" ${verrou} />Actif</label>
+      <button class="leger" data-champ="reset">Réinit. mdp</button>
+      <button class="leger danger" data-champ="supprimer" ${verrou}${titreCompte}>Supprimer</button>
+    </div>`;
+}
+
+/**
+ * Cases à cocher du formulaire d'invitation : uniquement les rôles que l'agent
+ * connecté peut attribuer. Un administrateur ne peut donc pas inviter un
+ * compte technique, et réciproquement.
+ */
+function rendreCasesInvitation(): void {
+  const bloc = document.getElementById('user-nouveau-roles');
+  if (!bloc) return;
+  const attribuables = rolesAttribuables(roles);
+  bloc.innerHTML =
+    attribuables.length === 0
+      ? '<span class="sous">Vos rôles ne vous permettent d’attribuer aucun rôle.</span>'
+      : attribuables
+          .map(
+            (r) =>
+              `<label class="case-role" title="${echapper(DESCRIPTION_ROLE[r])}">
+                 <input type="checkbox" data-role="${r}" />${echapper(LIBELLE_ROLE[r])}
+               </label>`,
+          )
+          .join('');
+  ($('btn-user-inviter') as HTMLButtonElement).disabled = attribuables.length === 0;
+}
+
+function badgesRoles(liste: readonly Role[]): string {
+  if (liste.length === 0) return '<span class="role-tag role-aucun">SANS RÔLE</span>';
+  return liste
+    .map(
+      (r) =>
+        `<span class="role-tag role-${r}" title="${echapper(DESCRIPTION_ROLE[r])}">${LIBELLE_ROLE[
+          r
+        ].toUpperCase()}</span>`,
+    )
+    .join('');
 }
 
 function initOnglets(): void {
@@ -527,10 +655,8 @@ async function apresConnexion(): Promise<void> {
   $('user-nom').textContent = libelleUtilisateur(profilConnecte);
   $('user-nom').title = profilConnecte?.email ?? '';
   $('avatar').textContent = initiales(profilConnecte);
-  const tag = $('user-role');
-  tag.textContent = (role ?? '').toUpperCase();
-  tag.className = `role-tag role-${role}`;
-  appliqueRole(role ?? 'caisse');
+  $('user-role').innerHTML = badgesRoles(roles);
+  appliqueRoles();
   try {
     await chargeTout();
   } catch (erreur) {
@@ -2561,25 +2687,11 @@ function rendreParametres(): void {
     </div>`,
     )
     .join('');
-  // Utilisateurs
-  $('users').innerHTML = utilisateurs
-    .map(
-      (u) => `
-    <div class="user-row" data-user="${echapper(u.user_id)}">
-      <b style="width:140px">${echapper(u.nom)}</b>
-      <span style="color:var(--sec);font-size:13px;flex:1">${echapper(u.email)}</span>
-      <span class="role-tag role-${u.role}">${u.role.toUpperCase()}</span>
-      <select data-champ="role">
-        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrateur</option>
-        <option value="supervision" ${u.role === 'supervision' ? 'selected' : ''}>Supervision</option>
-        <option value="caisse" ${u.role === 'caisse' ? 'selected' : ''}>Caisse</option>
-      </select>
-      <label class="switch"><input type="checkbox" ${u.actif ? 'checked' : ''} data-champ="actif" />Actif</label>
-      <button class="leger" data-champ="reset">Réinit. mdp</button>
-      <button class="leger danger" data-champ="supprimer">Supprimer</button>
-    </div>`,
-    )
-    .join('');
+  // Utilisateurs : une ligne peut porter PLUSIEURS badges, et l'édition des
+  // rôles se fait par cases à cocher — seules celles que l'agent connecté a le
+  // droit d'attribuer sont actives, chaque case verrouillée disant pourquoi.
+  $('users').innerHTML = utilisateurs.map((u) => ligneUtilisateur(u)).join('');
+  rendreCasesInvitation();
   // Grilles horaires : elles se gèrent dans l'onglet Horaires (chargement
   // depuis l'Excel exploitation, activation, retour arrière). Ici, un simple
   // renvoi, avec la grille en service aujourd'hui.
@@ -2993,13 +3105,19 @@ function initParametres(): void {
   $('btn-user-inviter').addEventListener('click', () => {
     const nom = ($('user-nouveau-nom') as HTMLInputElement).value.trim();
     const email = ($('user-nouveau-email') as HTMLInputElement).value.trim();
-    const r = ($('user-nouveau-role') as HTMLSelectElement).value as Role;
+    const choisis = [
+      ...document.querySelectorAll<HTMLInputElement>('#user-nouveau-roles input:checked'),
+    ].map((c) => c.dataset.role as Role);
     if (!nom || !email) {
       toast('Nom et email requis');
       return;
     }
+    if (choisis.length === 0) {
+      toast('Cochez au moins un rôle pour cette personne');
+      return;
+    }
     void provider
-      .inviteUser(email, nom, r)
+      .inviteUser(email, nom, choisis)
       .then(() => provider.listUsers())
       .then((liste) => {
         utilisateurs = liste;
@@ -3014,13 +3132,49 @@ function initParametres(): void {
     const id = (champ.closest('.user-row') as HTMLElement | null)?.dataset.user;
     const u = utilisateurs.find((x) => x.user_id === id);
     if (!u) return;
-    if (champ.dataset.champ === 'role') u.role = champ.value as Role;
-    if (champ.dataset.champ === 'actif') u.actif = champ.checked;
-    void provider
-      .saveUser(u)
-      .then(() => bump(`profil ${u.email} mis à jour`))
-      .then(() => rendreParametres())
-      .catch(erreurVersToast);
+
+    // Rôles : on envoie l'ENSEMBLE voulu, le fournisseur en déduit ce qu'il
+    // faut attribuer puis retirer — dans cet ordre, celui qu'impose la base.
+    if (champ.dataset.role) {
+      const role = champ.dataset.role as Role;
+      const voulus = champ.checked ? [...u.roles, role] : u.roles.filter((r) => r !== role);
+      void provider
+        .setRolesUser(u.user_id, voulus)
+        .then(() => provider.listUsers())
+        .then((liste) => {
+          utilisateurs = liste;
+          bump(
+            `${champ.checked ? 'rôle attribué' : 'rôle retiré'} : ${LIBELLE_ROLE[role]} — ${u.email}`,
+          );
+          toast(
+            champ.checked
+              ? `${LIBELLE_ROLE[role]} attribué à ${u.nom}`
+              : `${LIBELLE_ROLE[role]} retiré à ${u.nom}`,
+          );
+          rendreParametres();
+        })
+        .catch((erreur: unknown) => {
+          erreurVersToast(erreur);
+          rendreParametres(); // la case revient à l'état réel
+        });
+      return;
+    }
+
+    if (champ.dataset.champ === 'actif') {
+      const voulu = { ...u, actif: champ.checked };
+      void provider
+        .saveUser(voulu)
+        .then(() => provider.listUsers())
+        .then((liste) => {
+          utilisateurs = liste;
+          bump(`compte ${champ.checked ? 'réactivé' : 'désactivé'} : ${u.email}`);
+          rendreParametres();
+        })
+        .catch((erreur: unknown) => {
+          erreurVersToast(erreur);
+          rendreParametres();
+        });
+    }
   });
   $('users').addEventListener('click', (e) => {
     const bouton = e.target as HTMLElement;
@@ -3276,6 +3430,7 @@ function initPublication(): void {
 
 async function demarre(): Promise<void> {
   ($('logo') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+  rendreBaseServie();
   initOnglets();
   initCirculations();
   initMessages();
@@ -3291,7 +3446,7 @@ async function demarre(): Promise<void> {
     $,
     toast,
     erreurVersToast,
-    role: () => role,
+    roles: () => roles,
     // Une grille chargée ou (dés)activée change les grilles ACTIVES et donc
     // la journée affichée : on relit tout, comme après une publication.
     apresChangement: async () => {
@@ -3324,7 +3479,7 @@ async function demarre(): Promise<void> {
   /** Charge le profil de la session ouverte et entre dans la supervision. */
   async function entreAvecSession(): Promise<void> {
     profilConnecte = await provider.getProfil();
-    role = profilConnecte.role;
+    roles = profilConnecte.roles;
     utilisateurs = await provider.listUsers().catch(() => []);
     await apresConnexion();
   }

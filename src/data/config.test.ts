@@ -6,7 +6,7 @@
 // crédible et pourtant faux.
 import { describe, expect, it } from 'vitest';
 
-import { estModeDemo, modeDonnees } from './config';
+import { REF_PROJET_PRODUCTION, baseServie, estModeDemo, modeDonnees, refProjet } from './config';
 
 describe('estModeDemo — la démonstration se demande EXPLICITEMENT', () => {
   it('reconnaît `?demo=1`, et lui seul', () => {
@@ -40,5 +40,40 @@ describe('modeDonnees — que fait une page d’affichage selon ce dont elle dis
     // Un paramètre d'URL ne doit pas pouvoir substituer des horaires fictifs à
     // des horaires réels sur un écran qui dispose de la vraie source.
     expect(modeDonnees(true, true)).toBe('reel');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quelle base sert la supervision ? (pastille TEST / PROD de l'en-tête)
+// ---------------------------------------------------------------------------
+describe('baseServie', () => {
+  it('reconnaît la production à la référence du projet', () => {
+    const base = baseServie(`https://${REF_PROJET_PRODUCTION}.supabase.co`);
+    expect(base.libelle).toBe('PRODUCTION');
+    expect(base.classe).toBe('base-prod');
+    expect(base.detail).toMatch(/écrans en gare/);
+  });
+
+  it('annonce tout AUTRE projet comme un essai', () => {
+    // Prudence utile : une base inconnue n'est jamais présentée comme la vraie.
+    const base = baseServie('https://wyltzhggbyfteojbfoup.supabase.co');
+    expect(base.libelle).toBe('BASE DE TEST');
+    expect(base.classe).toBe('base-test');
+    expect(base.detail).toContain('wyltzhggbyfteojbfoup');
+  });
+
+  it('sans configuration : démonstration', () => {
+    for (const url of [undefined, '', 'pas une url']) {
+      const base = baseServie(url);
+      expect(base.libelle).toBe('DÉMONSTRATION');
+      expect(base.classe).toBe('base-demo');
+    }
+  });
+
+  it('extrait la référence du projet, et seulement d’une URL Supabase', () => {
+    expect(refProjet('https://abcdef.supabase.co')).toBe('abcdef');
+    expect(refProjet('https://exemple.fr')).toBeNull();
+    expect(refProjet('')).toBeNull();
+    expect(refProjet(undefined)).toBeNull();
   });
 });
