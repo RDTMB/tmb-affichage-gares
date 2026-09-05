@@ -143,8 +143,24 @@ describe('Les tables d’habilitation ne sont pas modifiables par l’API', () =
 
     it(`${fichier} : la colonne email et le miroir de rôle ne sont pas réécrivables`, () => {
       // L'adresse sert d'identité au journal et à l'amorçage de la migration.
-      expect(code).toMatch(/revoke insert, update on profils from authenticated/);
+      expect(code).toMatch(/revoke all on profils from anon, authenticated/);
       expect(code).toMatch(/grant update \(nom, actif\) on profils to authenticated/);
+      expect(code).toMatch(
+        /grant insert \(user_id, nom, email, actif\) on profils to authenticated/,
+      );
+    });
+
+    it(`${fichier} : TRUNCATE n'est accordé sur aucune table d'habilitation`, () => {
+      // C'est le SEUL ordre d'écriture que RLS ne filtre pas : tant qu'il est
+      // accordé, aucune politique ne protège la table de son vidage.
+      for (const table of ['profils', 'profils_roles', 'roles']) {
+        const accords = [
+          ...code.matchAll(new RegExp(`grant ([^;]*) on ${table} to ([^;]*);`, 'g')),
+        ];
+        for (const accord of accords) {
+          expect(accord[1], `TRUNCATE accordé sur ${table}`).not.toMatch(/truncate|all/i);
+        }
+      }
     });
   }
 });

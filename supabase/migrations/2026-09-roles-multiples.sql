@@ -415,21 +415,25 @@ begin
   end if;
 end $$;
 
--- Plus personne n'écrit `role` ni `email` par l'API : le miroir est tenu par
--- un déclencheur, et l'adresse sert d'identité au journal comme à l'amorçage
--- (même technique de verrouillage par colonnes que `ecrans`).
-revoke insert, update on profils from authenticated;
+-- L'annuaire du personnel ne garde QUE les droits dont il a besoin.
+-- Supabase accorde par défaut TOUS les droits de table sur `public` — SELECT,
+-- INSERT, UPDATE, DELETE, mais aussi REFERENCES, TRIGGER et TRUNCATE. On
+-- retire tout, puis on rend le strict nécessaire :
+--   * `anon` n'a RIEN à y faire : les écrans ne lisent jamais les comptes ;
+--   * `authenticated` lit (politique « lire son profil »), crée et gère des
+--     comptes selon ses rôles, mais n'écrit ni `role` — le miroir est tenu par
+--     un déclencheur — ni `email`, qui sert d'identité au journal comme à
+--     l'amorçage.
+-- TRUNCATE mérite une mention à part : c'est le SEUL ordre d'écriture que RLS
+-- ne filtre PAS. Tant qu'il est accordé, aucune politique ne protège la table
+-- de son vidage — le laisser reviendrait à ne compter que sur le fait que
+-- PostgREST ne l'expose pas. Même raisonnement que pour `ecrans` dans
+-- securite-advisors.sql. Constaté sur le projet de test le 05/09/2026
+-- (diagnostic §8 : anon comme authenticated détenaient tout).
+revoke all on profils from anon, authenticated;
+grant select, delete on profils to authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
-
--- ANON n'a RIEN à faire dans l'annuaire du personnel. Supabase lui accorde
--- pourtant, par défaut, tous les droits de table sur `public` — y compris
--- DELETE et TRUNCATE. RLS les refuse déjà (aucune politique ne vise `anon`
--- sur cette table), mais s'en remettre à une seule barrière quand la seconde
--- ne coûte qu'une ligne serait une négligence : c'est exactement le
--- raisonnement tenu pour `ecrans` dans securite-advisors.sql.
--- Constaté sur le projet de test le 05/09/2026 (diagnostic §8).
-revoke all on profils from anon;
 
 -- ---------------------------------------------------------------------------
 -- 5. REPRISE de l'existant — une seule fois, jamais au rejeu

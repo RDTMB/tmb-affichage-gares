@@ -398,16 +398,17 @@ revoke all on profils_roles from anon, authenticated;
 -- déclencheur, jamais par le client.
 grant select, delete on profils_roles to authenticated;
 grant insert (user_id, role) on profils_roles to authenticated;
--- La colonne `email` sert d'identité au journal : elle se renseigne à la
--- création du profil et ne se réécrit plus.
-revoke insert, update on profils from authenticated;
+-- L'annuaire du personnel ne garde QUE les droits dont il a besoin : `anon`
+-- n'a rien à y faire (les écrans ne lisent jamais les comptes), et
+-- `authenticated` n'écrit ni `role` — le miroir est tenu par un déclencheur —
+-- ni `email`, qui sert d'identité au journal.
+-- TRUNCATE mérite une mention à part : c'est le SEUL ordre d'écriture que RLS
+-- ne filtre PAS. Tant qu'il est accordé, aucune politique ne protège la table
+-- de son vidage.
+revoke all on profils from anon, authenticated;
+grant select, delete on profils to authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
--- ANON n'a RIEN à faire dans l'annuaire du personnel. RLS le refuse déjà
--- (aucune politique ne le vise sur cette table), mais s'en remettre à une
--- seule barrière quand la seconde ne coûte qu'une ligne serait une
--- négligence : même raisonnement que pour `ecrans`.
-revoke all on profils from anon;
 
 -- Lecture publique (les écrans lisent sans compte)
 create policy "lecture publique" on jours for select using (true);
