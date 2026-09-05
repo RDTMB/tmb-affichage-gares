@@ -422,6 +422,15 @@ revoke insert, update on profils from authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
 
+-- ANON n'a RIEN à faire dans l'annuaire du personnel. Supabase lui accorde
+-- pourtant, par défaut, tous les droits de table sur `public` — y compris
+-- DELETE et TRUNCATE. RLS les refuse déjà (aucune politique ne vise `anon`
+-- sur cette table), mais s'en remettre à une seule barrière quand la seconde
+-- ne coûte qu'une ligne serait une négligence : c'est exactement le
+-- raisonnement tenu pour `ecrans` dans securite-advisors.sql.
+-- Constaté sur le projet de test le 05/09/2026 (diagnostic §8).
+revoke all on profils from anon;
+
 -- ---------------------------------------------------------------------------
 -- 5. REPRISE de l'existant — une seule fois, jamais au rejeu
 -- ---------------------------------------------------------------------------

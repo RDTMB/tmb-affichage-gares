@@ -403,6 +403,11 @@ grant insert (user_id, role) on profils_roles to authenticated;
 revoke insert, update on profils from authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
+-- ANON n'a RIEN à faire dans l'annuaire du personnel. RLS le refuse déjà
+-- (aucune politique ne le vise sur cette table), mais s'en remettre à une
+-- seule barrière quand la seconde ne coûte qu'une ligne serait une
+-- négligence : même raisonnement que pour `ecrans`.
+revoke all on profils from anon;
 
 -- Lecture publique (les écrans lisent sans compte)
 create policy "lecture publique" on jours for select using (true);

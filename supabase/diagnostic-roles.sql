@@ -20,6 +20,17 @@
 -- avant même d'être exécutée.
 -- =============================================================================
 
+-- ⚠ Le rapport nomme les COMPTES (adresses du personnel) : c'est indispensable
+--   pour vérifier que le compte d'amorçage existe bel et bien. Le traiter comme
+--   le reste de l'annuaire — pas de diffusion hors de la Régie.
+
+-- Adresse du compte qui doit recevoir le rôle « technique ». Elle doit être
+-- IDENTIQUE à celle du §0 de la migration : c'est ce que la section 11
+-- vérifie, et c'est la cause n°1 d'un refus au lancement.
+create temporary table if not exists tmb_amorcage_attendu (email text primary key) on commit preserve rows;
+truncate tmb_amorcage_attendu;
+insert into tmb_amorcage_attendu (email) values ('thomas.musset@tramwaydumontblanc.fr');
+
 create temporary table if not exists tmb_diagnostic (
   section int,
   rubrique text,
@@ -269,10 +280,14 @@ begin
     insert into tmb_diagnostic values (
       8, 'Droits de table', r.table_name || ' → ' || r.grantee, r.droits,
       case
-        when r.table_name = 'roles' and r.grantee = 'anon' then '⚠ anon ne devrait avoir AUCUN droit'
+        -- Supabase accorde par défaut TOUS les droits de table à anon et
+        -- authenticated : sur l'annuaire du personnel comme sur les tables
+        -- d'habilitation, RLS les refuse déjà, mais la seconde barrière ne
+        -- coûte qu'une ligne (même raisonnement que pour `ecrans`).
+        when r.grantee = 'anon' then '⚠ anon ne devrait avoir AUCUN droit sur cette table'
         when r.table_name = 'roles' and r.droits <> 'SELECT' then '⚠ le catalogue doit être en lecture seule'
         when r.table_name = 'profils_roles' and r.droits like '%UPDATE%' then '⚠ une attribution doit être immuable'
-        when r.table_name = 'profils_roles' and r.grantee = 'anon' then '⚠ anon ne devrait avoir AUCUN droit'
+        when r.table_name = 'profils' and r.droits like '%TRUNCATE%' then '⚠ droits par défaut non révoqués'
         else ''
       end
     );
@@ -351,13 +366,110 @@ begin
     insert into tmb_diagnostic values (10, 'Comptes', 'profils', nb || ' ligne(s)', '');
     execute 'select count(*) from public.profils where actif' into nb;
     insert into tmb_diagnostic values (10, 'Comptes', 'profils actifs', nb || ' ligne(s)', '');
+
+    -- Le détail compte par compte : c'est LUI qui dit si la migration passera.
+    -- L'ancienne colonne n'existe plus une fois le nettoyage passé.
+    if exists (select 1 from information_schema.columns
+                where table_schema='public' and table_name='profils' and column_name='role')
+    then
+      for r in execute $q$
+        select coalesce(p.email, u.email, p.user_id::text) as compte,
+               coalesce(p.role, '(aucun)') as ancien_role,
+               case when p.actif then 'actif' else 'inactif' end as etat
+          from public.profils p
+          left join auth.users u on u.id = p.user_id
+         order by 1
+      $q$ loop
+        insert into tmb_diagnostic values (
+          10, 'Compte', r.compte, r.etat, 'ancien rôle : ' || r.ancien_role
+        );
+      end loop;
+    else
+      for r in execute $q$
+        select coalesce(p.email, u.email, p.user_id::text) as compte,
+               case when p.actif then 'actif' else 'inactif' end as etat
+          from public.profils p
+          left join auth.users u on u.id = p.user_id
+         order by 1
+      $q$ loop
+        insert into tmb_diagnostic values (10, 'Compte', r.compte, r.etat, '');
+      end loop;
+    end if;
   end if;
 
   ---------------------------------------------------------------------------
-  -- 11. Verdict
+  -- 11. Ce que donnera la migration — la vérification qui évite un refus
+  ---------------------------------------------------------------------------
+  -- La migration s'annule si elle aboutirait à zéro compte technique ou zéro
+  -- compte admin. Autant le savoir AVANT de la lancer.
+  declare
+    email_attendu text;
+    amorcage_ok boolean := false;
+    futurs_admin int := 0;
+    futurs_technique int := 0;
+  begin
+    select email into email_attendu from tmb_amorcage_attendu limit 1;
+
+    if to_regclass('public.profils') is not null then
+      execute format($q$
+        select exists (
+          select 1 from public.profils p
+          join auth.users u on u.id = p.user_id
+          where lower(u.email) = lower(%L) and p.actif
+        )
+      $q$, email_attendu) into amorcage_ok;
+    end if;
+
+    insert into tmb_diagnostic values (
+      11, 'Compte d''amorçage', email_attendu,
+      case when amorcage_ok then 'trouvé et actif'
+           else '⚠ INTROUVABLE dans auth.users ∩ profils (ou inactif)' end,
+      case when amorcage_ok then ''
+           else 'corriger le §0 de la migration, ou créer ce compte' end
+    );
+
+    -- Combien d'admins et de techniques après reprise ?
+    if to_regclass('public.profils_roles') is not null then
+      execute $q$select count(*)::int from public.profils_roles pr
+                  join public.profils p using (user_id)
+                 where pr.role = 'admin' and p.actif$q$ into futurs_admin;
+      execute $q$select count(*)::int from public.profils_roles pr
+                  join public.profils p using (user_id)
+                 where pr.role = 'technique' and p.actif$q$ into futurs_technique;
+    elsif exists (select 1 from information_schema.columns
+                   where table_schema='public' and table_name='profils' and column_name='role')
+    then
+      execute $q$select count(*)::int from public.profils where role = 'admin' and actif$q$
+        into futurs_admin;
+    end if;
+    if amorcage_ok then futurs_technique := greatest(futurs_technique, 1); end if;
+
+    insert into tmb_diagnostic values (
+      11, 'Après migration', 'comptes « admin » actifs', futurs_admin::text,
+      case when futurs_admin = 0
+           then '⚠ LA MIGRATION S''ANNULERA : il faut au moins un profil actif de rôle admin'
+           else '' end
+    );
+    insert into tmb_diagnostic values (
+      11, 'Après migration', 'comptes « technique » actifs', futurs_technique::text,
+      case when futurs_technique = 0
+           then '⚠ LA MIGRATION S''ANNULERA : le compte d''amorçage doit exister et être actif'
+           else '' end
+    );
+    insert into tmb_diagnostic values (
+      11, 'Après migration', 'pronostic',
+      case when futurs_admin > 0 and futurs_technique > 0
+           then 'la migration devrait passer'
+           else '⚠ la migration s''annulera en l''état' end,
+      ''
+    );
+  end;
+
+  ---------------------------------------------------------------------------
+  -- 12. Verdict
   ---------------------------------------------------------------------------
   insert into tmb_diagnostic values (
-    11, 'VERDICT', 'état du chantier',
+    12, 'VERDICT', 'état du chantier',
     case
       when to_regclass('public.profils_roles') is null
            and not exists (select 1 from pg_policies where policyname like 'roles: %')
