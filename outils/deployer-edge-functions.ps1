@@ -120,12 +120,19 @@ function Tester-Dossier {
 <#
     Racines où chercher une installation portable.
 
-    Le piège du poste : l'application Claude est un paquet MSIX. Un terminal
-    ouvert DEPUIS elle tourne dans le conteneur du paquet, où LOCALAPPDATA ne
-    désigne plus « …\AppData\Local » mais
-    « …\AppData\Local\Packages\<paquet>\LocalCache\Local ». Le dossier node y
-    paraît absent alors qu'il est bien là, un cran plus haut. On essaie donc
-    aussi la racine située AVANT « \Packages\ ».
+    Le piège du poste, et il est vicieux. L'application Claude est un paquet
+    Windows (MSIX). Quand elle installe quelque chose dans
+    « …\AppData\Local\nodejs-portable », l'écriture est DÉTOURNÉE vers
+    « …\AppData\Local\Packages\<paquet>\LocalCache\Local\nodejs-portable ».
+
+    Vu de l'intérieur du paquet, rien n'y paraît : le dossier semble bien être
+    à sa place ordinaire. Vu de l'EXTÉRIEUR — un terminal lancé normalement —
+    ce chemin ordinaire n'existe pas du tout, et node est déclaré introuvable
+    alors qu'il est installé.
+
+    On explore donc les deux faces : la racine ordinaire, et les caches locaux
+    de chaque paquet. Le sens inverse (être enfermé dans un paquet et vouloir
+    en sortir) est traité aussi, par la coupure avant « \Packages\ ».
 #>
 function Racines-Candidates {
     $racines = New-Object System.Collections.Generic.List[string]
@@ -141,6 +148,26 @@ function Racines-Candidates {
         $i = $r.IndexOf('\Packages\')
         if ($i -gt 0) { $racines.Add($r.Substring(0, $i)) }
     }
+
+    # Caches locaux des paquets installés. On ne retient que ceux qui portent
+    # réellement un dossier « nodejs-portable », pour ne pas noyer le
+    # diagnostic sous des dizaines de chemins sans intérêt.
+    foreach ($base in @($racines.ToArray())) {
+        try {
+            $paquets = Get-ChildItem -LiteralPath (Join-Path $base 'Packages') -Directory -ErrorAction Stop
+        } catch {
+            continue
+        }
+        foreach ($paquet in $paquets) {
+            $cache = Join-Path $paquet.FullName 'LocalCache\Local'
+            try {
+                if (Test-Path -LiteralPath (Join-Path $cache 'nodejs-portable')) { $racines.Add($cache) }
+            } catch {
+                # Paquet illisible : sans importance, on passe au suivant.
+            }
+        }
+    }
+
     return ($racines | Select-Object -Unique)
 }
 
@@ -215,11 +242,9 @@ if ($null -eq $npx) {
     Write-Host "  USERPROFILE              $env:USERPROFILE"
     Write-Host "  LOCALAPPDATA             $env:LOCALAPPDATA"
     Write-Host ("  API .NET                 " + [Environment]::GetFolderPath('LocalApplicationData'))
-    if ($env:LOCALAPPDATA -like '*\Packages\*') {
-        Write-Host ''
-        Write-Host '  Ce terminal tourne DANS un paquet Windows : son LOCALAPPDATA est' -ForegroundColor Yellow
-        Write-Host '  redirigé. Le script a tenu compte de cette redirection.' -ForegroundColor Yellow
-    }
+    Write-Host ''
+    Write-Host '  Les deux faces de la redirection des paquets Windows ont été' -ForegroundColor Yellow
+    Write-Host '  explorées : la racine ordinaire et les caches locaux des paquets.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host 'Emplacements essayés :' -ForegroundColor Yellow
     foreach ($e in $script:Essais) {

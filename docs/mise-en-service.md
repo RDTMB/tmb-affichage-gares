@@ -321,13 +321,20 @@ est installé en version **portable** dans le profil utilisateur, il n'a jamais
 PATH de son propre processus. Autrement dit, `node -v` peut très bien échouer
 dans le terminal pendant que le script, lui, fonctionne.
 
-Encore faut-il qu'il le trouve, et un piège s'y cache. L'application Claude est
-installée en **paquet Windows** : un terminal ouvert depuis elle tourne dans le
-conteneur du paquet, où `LOCALAPPDATA` ne désigne plus `…\AppData\Local` mais
-`…\AppData\Local\Packages\<paquet>\LocalCache\Local`. Le dossier de node paraît
-alors absent, alors qu'il est simplement un cran plus haut. Le script tient
-compte de cette redirection, essaie quatre façons de nommer le même dossier et
-n'exige plus une version précise de node.
+Encore faut-il qu'il le trouve, et un piège s'y cache. Node a été installé par
+une application **empaquetée** (MSIX). Windows détourne silencieusement les
+écritures de ces applications : ce qui devait aller dans
+`…\AppData\Local\nodejs-portable` a en réalité atterri dans
+`…\AppData\Local\Packages\<paquet>\LocalCache\Local\nodejs-portable`.
+
+Vu de l'intérieur du paquet, rien n'y paraît : le dossier semble à sa place
+ordinaire. Vu d'un terminal ordinaire, ce chemin n'existe pas du tout, et node
+est déclaré introuvable **alors qu'il est bel et bien installé**. C'est ce qui
+a fait croire, pendant deux jours, à une restriction du poste.
+
+Le script explore donc les deux faces : la racine ordinaire et les caches
+locaux des paquets. Il essaie quatre façons de nommer le profil et n'exige plus
+une version précise de node.
 
 S'il échoue malgré tout, il n'écrit pas « introuvable » et s'arrête là : il
 affiche ce que le terminal résout et la liste des emplacements essayés. Dernier

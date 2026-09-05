@@ -791,6 +791,18 @@ describe('Localisation de node : le terminal peut mentir sur LOCALAPPDATA', () =
     expect(script).toContain(String.raw`C:\Users\$env:USERNAME`);
   });
 
+  it('explore aussi les caches locaux des paquets Windows', () => {
+    // Une application empaquetée qui installe dans …\AppData\Local voit son
+    // écriture détournée vers …\Packages\<paquet>\LocalCache\Local. Vu du
+    // dehors, le chemin ordinaire n'existe alors pas : node est déclaré
+    // introuvable alors qu'il est bien installé. C'est le cas réel du poste.
+    expect(script).toContain(String.raw`Join-Path $base 'Packages'`);
+    expect(script).toContain(String.raw`Join-Path $paquet.FullName 'LocalCache\Local'`);
+    // On ne retient qu'un cache qui porte vraiment node, sans quoi le
+    // diagnostic se noierait sous des dizaines de chemins inutiles.
+    expect(script).toMatch(/Test-Path -LiteralPath \(Join-Path \$cache 'nodejs-portable'\)/);
+  });
+
   it('ne fige pas la version de node : elle changera', () => {
     expect(script).toContain("-Filter 'node-v*-win-x64'");
   });
