@@ -6,25 +6,42 @@
     <title>TMB — Supervision affichage</title>
   </head>
   <body>
-    <header>
-      <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
-      <h1>
-        Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
-      </h1>
-      <div class="spacer"></div>
-      <!-- Base de données servie : PRODUCTION, TEST ou DÉMONSTRATION. Rien
-           d'autre à l'écran ne dit sur quelle base on travaille, et les
-           allers-retours entre les deux projets Supabase sont fréquents. -->
-      <div class="pill base" id="pill-base" style="display: none">—</div>
-      <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
-      <div class="pill" id="pill-service">—</div>
-      <div class="user" id="bloc-user" style="display: none">
-        <div class="avatar" id="avatar">–</div>
-        <span id="user-nom">—</span>
-        <span class="role-tag" id="user-role"></span>
-        <button class="leger" id="btn-deconnexion">Quitter</button>
-      </div>
-    </header>
+    <!-- En-tête et onglets forment UN SEUL bloc collant. La hauteur de
+         l'en-tête varie — nombre de badges de rôle, longueur du nom,
+         largeur de la fenêtre — et caler les onglets sur une hauteur
+         supposée les faisait glisser derrière lui au défilement.
+         Le <nav> est remonté ici depuis l'après-connexion : il est masqué
+         tant qu'on n'est pas connecté, l'ordre visible est donc inchangé. -->
+    <div class="barre-haute">
+      <header>
+        <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
+        <h1>
+          Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
+        </h1>
+        <div class="spacer"></div>
+        <!-- Base de données servie : PRODUCTION, TEST ou DÉMONSTRATION. Rien
+             d'autre à l'écran ne dit sur quelle base on travaille, et les
+             allers-retours entre les deux projets Supabase sont fréquents. -->
+        <div class="pill base" id="pill-base" style="display: none">—</div>
+        <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
+        <div class="pill" id="pill-service">—</div>
+        <div class="user" id="bloc-user" style="display: none">
+          <div class="avatar" id="avatar">–</div>
+          <span id="user-nom">—</span>
+          <span class="role-tag" id="user-role"></span>
+          <button class="leger" id="btn-deconnexion">Quitter</button>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabs" style="display: none">
+        <button data-t="circulations" class="on">Circulations</button>
+        <button data-t="horaires">Horaires</button>
+        <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
+        <button data-t="medias">Médias</button>
+        <button data-t="ecrans">Écrans</button>
+        <button data-t="parametres">Paramètres</button>
+      </nav>
+    </div>
 
     <div class="connexion" id="connexion">
       <form class="connexion-carte" id="form-connexion">
@@ -71,15 +88,6 @@
         <div class="erreur" id="mdp-erreur"></div>
       </form>
     </div>
-
-    <nav class="tabs" id="tabs" style="display: none">
-      <button data-t="circulations" class="on">Circulations</button>
-      <button data-t="horaires">Horaires</button>
-      <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
-      <button data-t="medias">Médias</button>
-      <button data-t="ecrans">Écrans</button>
-      <button data-t="parametres">Paramètres</button>
-    </nav>
 
     <main id="contenu" style="display: none">
       <!-- ================= CIRCULATIONS ================= -->

@@ -51,6 +51,15 @@ header {
   align-items: center;
   gap: 16px;
   padding: 8px 22px;
+}
+
+/* En-tête et onglets restent affichés ENSEMBLE au défilement. Ils étaient
+   collants séparément, le second calé à 62 px du haut — la hauteur de
+   l'en-tête au moment où la règle a été écrite. Dès qu'il grandit (plusieurs
+   badges de rôle, nom long, fenêtre étroite : il passe sur deux lignes sous
+   1150 px, sur trois sous 900), les onglets glissaient derrière lui. Un seul
+   bloc collant supprime la question : plus aucune hauteur n'est supposée. */
+.barre-haute {
   position: sticky;
   top: 0;
   z-index: 30;
@@ -174,9 +183,6 @@ nav.tabs {
   background: #fff;
   border-bottom: 1px solid var(--bord);
   padding: 0 22px;
-  position: sticky;
-  top: 62px;
-  z-index: 29;
 }
 
 nav.tabs button {
