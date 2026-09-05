@@ -55,6 +55,65 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     À passer en DERNIER : il s'appuie sur le schéma `private` et sur le
     journal d'exploitation.
 
+14. Nouvelle requête → coller
+    `supabase/migrations/2026-09-roles-multiples.sql` → **Run** (rôles
+    multiples et cumulables : catalogue `roles`, table `profils_roles`,
+    garde-fous). À passer **en dernier** : il recrée les politiques de tous
+    les scripts précédents. Sur une base NEUVE, `schema.sql` contient déjà
+    tout : le script n'a alors rien à reprendre et le signale.
+
+    ⚠ **Avant de l'exécuter**, deux gestes :
+
+    1. Passer `supabase/diagnostic-roles.sql` — LECTURE SEULE, il n'écrit
+       rien — et lire son VERDICT en dernière ligne. Il dit exactement où en
+       est la base : tables et colonnes présentes, fonctions, déclencheurs,
+       politiques restées sur l'ancien modèle, et surtout les tables qui se
+       retrouveraient SANS politique d'écriture.
+    2. Vérifier le §0 en tête du fichier de migration : il porte l'adresse du
+       compte qui recevra le rôle « technique ». Sur le projet de test,
+       remplacer par l'adresse d'un compte qui y existe RÉELLEMENT. Si
+       l'adresse est introuvable, le script s'annule tout entier plutôt que de
+       laisser une base sans aucun compte technique — que plus personne ne
+       pourrait alors débloquer depuis l'application.
+
+    **Si le diagnostic annonce « ÉTAT PARTIEL »**, c'est qu'une exécution
+    précédente s'est interrompue. Deux voies :
+
+    - **rejouer simplement la migration** : elle sait repartir d'un état
+      partiel. Chaque table est créée PUIS alignée colonne par colonne, les
+      fonctions sont supprimées avant d'être recréées, et les rôles déjà
+      attribués ne sont jamais réattribués. C'est la voie normale, et la SEULE
+      en production ;
+    - **repartir de zéro**, réservé à la base de TEST :
+      `supabase/migrations/2026-09-roles-multiples-remise-a-zero.sql` puis, SANS
+      RIEN FAIRE ENTRE LES DEUX, la migration. Le premier script efface les
+      politiques d'écriture sans les remplacer : entre les deux, la base
+      n'accepte plus aucune écriture d'exploitation. Il refuse de s'exécuter
+      tant qu'on n'a pas décommenté sa ligne de confirmation.
+
+    Le rejeu de la migration est lui-même un contrôle : relancée en entier,
+    elle doit se terminer sans erreur et annoncer « Reprise ignorée ».
+
+    ⚠ **L'éditeur SQL de Supabase ne garantit pas la transaction.** Constaté le
+    05/09/2026 : il valide les instructions une à une, de sorte qu'un `begin;`
+    ne protège pas le script d'un échec en cours de route (c'est ce qui avait
+    laissé la base de test à moitié migrée au premier essai, et ce qui fait
+    disparaître une table temporaire d'une instruction à l'autre). Deux
+    conséquences pratiques :
+
+    - les scripts du chantier n'utilisent AUCUNE table temporaire et placent
+      leurs refus AVANT la moindre modification : quand ils s'arrêtent, ils
+      n'ont rien changé ;
+    - en cas d'interruption malgré tout, **relancer le script entier** est la
+      bonne réaction : il est idempotent, il reprend là où il en est. Le
+      diagnostic dira ce qu'il en est avant et après.
+
+    Enchaîner avec le bloc VÉRIFICATION en fin de fichier, puis, sur le projet
+    de test uniquement, avec `supabase/tests/roles-rls.sql` : cette recette
+    rejoue toute la matrice des droits sur six comptes fictifs, qu'elle
+    supprime elle-même avant de rendre la main. Elle ne compte PAS sur un
+    `rollback` final, qui ne servirait à rien dans cet éditeur.
+
     Les deux autres scripts du dossier `supabase/migrations/`
     (`2026-08-signal-de-vie-serveur.sql`, `2026-08-train-supplementaire.sql`)
     sont déjà intégrés à `schema.sql` : inutiles sur une base neuve,
@@ -62,33 +121,74 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     des scripts le 02/09/2026 ; le projet de test (§H) sert à le confirmer
     avant toute production.
 
-14. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
+    ⚠ **Ne jamais rejouer une copie ANTÉRIEURE à septembre 2026** de
+    `securite-advisors.sql` ou d'un `ajout-*.sql` : elle réinstallerait le
+    modèle à rôle unique. Les scripts du dépôt à jour, eux, sont rejouables.
+
+15. Menu **Storage** : vérifier que le bucket `medias` existe (créé par le
     schéma), public, limite 20 Mo.
-15. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
+16. Menu **Database → Replication** (ou **Realtime**) : vérifier que la
     publication `supabase_realtime` contient bien les tables (fait par le
     schéma).
-16. Menu **Project Settings → API keys** : noter
+17. Menu **Project Settings → API keys** : noter
    - l'**URL du projet** (https://xxxx.supabase.co) ;
    - la clé **publishable** (`sb_publishable_…`) — PUBLIQUE par conception,
      la sécurité repose sur RLS ;
    - ⚠ la clé **secret** (`sb_secret_…`) ne doit JAMAIS être copiée dans le
      dépôt ni dans le front (voir `supabase/INFOS-PROJET.md`).
 
-## C. Les trois comptes (~10 min)
+## C. Les premiers comptes (~10 min)
 
-1. Menu **Authentication → Users → Add user → Create new user** (trois
-   fois), avec les adresses réelles des agents : `prenom.nom@exemple.fr`
-   (administrateur), `<compte-supervision>`, `<compte-caisse>`,
-   avec mots de passe provisoires (cocher « Auto Confirm User »).
-2. **SQL Editor** — relier les comptes aux rôles :
+Les rôles sont MULTIPLES et CUMULABLES (docs/01 §5.5) : une même personne peut
+être à la fois chef d'exploitation et responsable informatique, une autre l'un
+sans l'autre.
+
+1. Menu **Authentication → Users → Add user → Create new user**, avec les
+   adresses réelles des agents et des mots de passe provisoires (cocher
+   « Auto Confirm User »). Au minimum : le compte qui portera **technique +
+   admin**, un compte **supervision**, un compte **caisse**.
+2. **SQL Editor** — créer les profils, puis leur attribuer leurs rôles.
+   Une attribution faite depuis l'éditeur SQL doit être REVENDIQUÉE
+   (`tmb.attribution_systeme`) : c'est ce qui empêche une écriture sans
+   utilisateur connecté d'accorder un rôle en douce. Remplacer les adresses,
+   puis exécuter d'un seul bloc :
 
 ```sql
-insert into profils (user_id, nom, email, role)
-select id, 'Prénom Nom', email, 'admin' from auth.users
-  where email = 'prenom.nom@exemple.fr'
-on conflict (user_id) do update set role = 'admin', actif = true;
--- répéter avec role = 'supervision' puis role = 'caisse' pour les 2 autres
+begin;
+  set local tmb.attribution_systeme = 'secours';
+
+  -- Les profils (le nom s'affiche dans l'en-tête de la supervision)
+  insert into profils (user_id, nom, email)
+  select id, 'Prénom Nom', email from auth.users
+    where email in ('prenom.nom@exemple.fr', 'supervision@exemple.fr', 'caisse@exemple.fr')
+  on conflict (user_id) do update set actif = true;
+
+  -- Les rôles, un par ligne : le premier compte en cumule trois
+  insert into profils_roles (user_id, role)
+  select p.user_id, r.role
+    from profils p
+    join auth.users u on u.id = p.user_id
+    join (values
+      ('prenom.nom@exemple.fr',   'technique'),
+      ('prenom.nom@exemple.fr',   'admin'),
+      ('prenom.nom@exemple.fr',   'supervision'),
+      ('supervision@exemple.fr',  'supervision'),
+      ('caisse@exemple.fr',       'caisse')
+    ) as r(email, role) on lower(r.email) = lower(u.email)
+  on conflict do nothing;
+commit;
+
+-- Contrôle : qui porte quoi
+select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
+  from profils p left join profils_roles pr using (user_id)
+ group by p.email, p.actif order by p.email;
 ```
+
+   ⚠ Il doit TOUJOURS rester au moins un compte actif « technique » et un
+   compte actif « admin » : la base refuse de retirer, de désactiver ou de
+   supprimer le dernier, y compris depuis le tableau de bord. Procédure de
+   secours si cela arrivait quand même (compte banni, départ non préparé) :
+   `docs/securite.md` §2, qui donne la commande exacte.
 
 3. (Option, plus tard) Créer les suivants directement depuis
    Supervision → Paramètres → « + Ajouter un utilisateur » — nécessite le
@@ -103,7 +203,8 @@ on conflict (user_id) do update set role = 'admin', actif = true;
      `http://localhost:5173/**` (poste de développement, §H).
 
    La personne invitée clique sur le lien, arrive sur la supervision qui lui
-   fait **choisir son mot de passe** (8 caractères minimum), puis entre
+   fait **choisir son mot de passe** (12 caractères minimum, comme l'annonce
+   `docs/securite.md` §4), puis entre
    directement. Elle se connectera ensuite avec e-mail + mot de passe. Le
    bouton « Réinitialiser le mot de passe » de l'onglet Paramètres suit le
    même chemin.
@@ -132,20 +233,167 @@ on conflict (user_id) do update set role = 'admin', actif = true;
    de gare sans source de données afficherait des horaires fictifs (le mode
    démonstration n'existe que sur le poste de développement, §H).
 
-## E. Edge Functions (traduction + invitations) (~10 min, poste avec la CLI)
+## E. Edge Functions (traduction + invitations) (~10 min)
 
-```bash
-npm i -g supabase
-supabase login
-supabase link --project-ref <ref-du-projet>
-supabase functions deploy traduire
-supabase functions deploy inviter-utilisateur
-supabase secrets set DEEPL_API_KEY=<clé DeepL Free>
+Trois fonctions à déployer : `traduire`, `inviter-utilisateur` et
+`supprimer-utilisateur`. Le dépôt fournit un script qui fait tout, appelé par
+`outils\deployer-edge-functions.cmd`. C'est la voie normale ; le tableau de
+bord n'est qu'un dépannage.
+
+### La voie normale : le script
+
+À lancer depuis un terminal ouvert à la racine du dépôt, sur la branche que
+l'on veut déployer.
+
+⚠ **Toujours appeler le `.cmd`, jamais le `.ps1` directement.** Windows refuse
+par défaut d'exécuter un fichier `.ps1` : « l'exécution de scripts est
+désactivée sur ce système ». Le `.cmd` n'est pas soumis à cette règle ; il
+rouvre PowerShell avec l'autorisation, le temps de cet appel seulement. Il
+prend exactement les mêmes paramètres.
+
+#### D'abord, le jeton d'accès
+
+La connexion par navigateur (`supabase login`) **n'est pas utilisable ici** :
+la CLI la refuse hors d'un vrai terminal — « Cannot use automatic login flow
+inside non-TTY environments ». On passe donc par un jeton personnel.
+
+À faire une seule fois :
+
+1. Créer le jeton sur https://supabase.com/dashboard/account/tokens
+2. Menu Démarrer, chercher « variables d'environnement », ouvrir **Modifier les
+   variables d'environnement pour votre compte**.
+3. Variables utilisateur → **Nouvelle**. Nom : `SUPABASE_ACCESS_TOKEN`.
+   Valeur : le jeton.
+4. Fermer et rouvrir le terminal.
+
+⚠ **Ce jeton vaut un mot de passe.** Il ouvre l'accès à tous les projets
+Supabase de la Régie. Ne jamais le coller dans une conversation, dans le dépôt,
+ni dans une ligne de commande : les lignes de commande sont lisibles par les
+autres programmes du compte, et le terminal en garde l'historique. La fenêtre
+des variables d'environnement, elle, ne laisse aucune trace de ce genre.
+
+Le script sait aussi le demander à la frappe invisible, quand le terminal le
+permet ; il ne le garde alors que le temps de la commande. La variable
+d'environnement reste plus simple, parce qu'elle ne se redemande pas.
+
+Pour vérifier que le jeton est bon, sans rien déployer :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Connexion
 ```
 
-Sans ces fonctions, la supervision fonctionne quand même : la traduction
-replie sur le dictionnaire local et la création d'utilisateur se fait
-depuis le tableau de bord Supabase (étape C).
+#### Ensuite, le déploiement
+
+À blanc — le script vérifie tout et n'envoie rien :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Projet test -Simulation
+```
+
+Puis le déploiement lui-même :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Projet test
+```
+
+En production, `-Projet prod` : le script affiche un avertissement et exige
+que l'on tape `PRODUCTION` en toutes lettres avant d'envoyer quoi que ce soit.
+
+Ce que le script prend en charge, et pourquoi :
+
+- Il retrouve `node`/`npx` même absents du PATH, puis ajoute leur dossier au
+  PATH du processus. Trouver `npx.cmd` ne suffit pas : ce n'est qu'un lanceur,
+  qui appelle `node` à son tour et échoue si celui-ci reste invisible.
+- Il passe **toujours** `--project-ref`. C'est son garde-fou le plus
+  important : `supabase/.temp/linked-project.json` garde en cache le dernier
+  projet lié, qui est la PRODUCTION. Un `functions deploy` sans référence
+  explicite y partirait tout seul, sans rien demander.
+- Il travaille sans Docker (`--use-api`) : il n'y a rien à installer.
+- Il fige la version de la CLI, pour que la commande de l'an prochain fasse la
+  même chose qu'aujourd'hui.
+- Il ne divulgue jamais le jeton : ni affiché, ni écrit dans un fichier, ni
+  posé sur une ligne de commande. Il ne l'enregistre pas non plus de lui-même,
+  parce que c'est une décision qui revient à l'utilisateur.
+
+Codes de sortie : `0` tout va bien ; `1` refus (paramètre absent ou
+annulation) ; `2` poste inutilisable, node introuvable ; `3` jeton absent ou
+refusé.
+
+Pour ne déployer qu'une fonction, par exemple après avoir corrigé la seule
+traduction :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Projet test -Fonctions traduire
+```
+
+### Le secret DeepL
+
+Une seule fois par projet, sans quoi `traduire` répond en erreur. Le poser
+depuis le **tableau de bord** : Edge Functions → Secrets → `DEEPL_API_KEY`.
+
+On préfère ici le tableau de bord à la ligne de commande : une clé tapée dans
+un terminal reste dans l'historique PowerShell, en clair, pour longtemps.
+
+### Les deux refus de Windows, et leur réponse
+
+**« L'exécution de scripts est désactivée sur ce système. »** C'est le réglage
+d'usine de Windows, pas une restriction de la Régie : aucune stratégie de
+groupe n'est en cause. La réponse est le lanceur `.cmd`, qui obtient
+l'autorisation pour son seul processus. On ne touche pas au réglage du poste :
+le modifier affaiblirait durablement une protection utile, pour un besoin qui
+dure trois secondes.
+
+**« Le terme node n'est pas reconnu. »** Attendu, et sans conséquence : node
+est installé en version **portable** dans le profil utilisateur, il n'a jamais
+été dans le PATH. Le script va le chercher tout seul et ajoute son dossier au
+PATH de son propre processus. Autrement dit, `node -v` peut très bien échouer
+dans le terminal pendant que le script, lui, fonctionne.
+
+Encore faut-il qu'il le trouve, et un piège s'y cache. Node a été installé par
+une application **empaquetée** (MSIX). Windows détourne silencieusement les
+écritures de ces applications : ce qui devait aller dans
+`…\AppData\Local\nodejs-portable` a en réalité atterri dans
+`…\AppData\Local\Packages\<paquet>\LocalCache\Local\nodejs-portable`.
+
+Vu de l'intérieur du paquet, rien n'y paraît : le dossier semble à sa place
+ordinaire. Vu d'un terminal ordinaire, ce chemin n'existe pas du tout, et node
+est déclaré introuvable **alors qu'il est bel et bien installé**. C'est ce qui
+a fait croire, pendant deux jours, à une restriction du poste.
+
+Le script explore donc les deux faces : la racine ordinaire et les caches
+locaux des paquets. Il essaie quatre façons de nommer le profil et n'exige plus
+une version précise de node.
+
+S'il échoue malgré tout, il n'écrit pas « introuvable » et s'arrête là : il
+affiche ce que le terminal résout et la liste des emplacements essayés. Dernier
+recours, on lui désigne le dossier à la main :
+
+```powershell
+.\outils\deployer-edge-functions.cmd -Projet test -Simulation -Node "C:\chemin\vers\node"
+```
+
+Et si vraiment rien ne marche, il reste le tableau de bord (plus bas).
+
+⚠ **Ne jamais installer la CLI avec `npm i -g supabase`** : Supabase refuse
+cette installation globale (« Installing Supabase CLI as a global module is not
+supported »). Le script la lance par `npx`, sans rien installer durablement.
+
+### Sans CLI du tout : le tableau de bord
+
+Le tableau de bord Supabase sait aussi déployer une fonction : Edge Functions →
+*Deploy a new function* → *Via editor*, en collant le contenu de
+`supabase/functions/<nom>/index.ts`. C'est fastidieux pour trois fonctions, et
+à refaire à chaque modification, mais cela dépanne. Attention à bien vérifier
+en haut de page que le projet affiché est le bon.
+
+### Et si on ne les déploie pas maintenant ?
+
+La supervision fonctionne quand même : la traduction replie sur le
+dictionnaire local, et la création comme la suppression de comptes se font
+depuis le tableau de bord (étape C). Seules l'invitation par e-mail et la
+suppression définitive depuis l'interface attendent ces fonctions. Toute la
+mécanique des rôles — badges, cases à cocher, attribution, garde-fous —
+s'éprouve sans elles.
 
 ## F. Vérifications finales
 
@@ -154,7 +402,19 @@ depuis le tableau de bord Supabase (étape C).
 - [ ] `…/grille.html?gare=saint-gervais` : tableaux montée/descente.
 - [ ] `…/supervision.html` : connexion admin OK ; retarder un train →
       l'écran l'affiche en ≤ 2 s.
-- [ ] Compte caisse : seul l'onglet Messages est visible.
+- [ ] Pastille de l'en-tête : « PRODUCTION » en rouge sur le vrai projet,
+      « BASE DE TEST » en jaune sur le projet d'essai (§H).
+- [ ] Compte caisse : seuls les onglets Bandeau et Horaires sont visibles, et
+      les horaires en lecture (aucun bouton « Charger un fichier Excel »).
+- [ ] Compte supervision : Circulations, Horaires, Bandeau, Médias, Écrans —
+      mais ni « Déclarer un poste », ni la veille de nuit globale.
+- [ ] Compte technique : Horaires, Écrans, Paramètres ; il voit la carte
+      Utilisateurs mais ni Machines, ni Motifs, ni États du ciel.
+- [ ] Paramètres → Utilisateurs : une ligne porte autant de badges que de
+      rôles ; sur SA PROPRE ligne, toutes les cases sont grisées ; un
+      administrateur ne peut pas cocher « Technique ».
+- [ ] Matrice complète des droits, sur le projet de test :
+      `supabase/tests/roles-rls.sql` (se termine par un rollback).
 - [ ] Écriture anonyme rejetée : depuis un terminal,
       `curl -X POST "https://xxxx.supabase.co/rest/v1/messages" -H "apikey: sb_publishable_…" -H "Content-Type: application/json" -d "{\"texte_fr\":\"test\"}"`
       doit répondre **401/403** (RLS).
@@ -204,14 +464,20 @@ toujours dans cet ordre :
    AVANT le code : l'ancien front ignore une table qu'il ne connaît pas,
    alors que le nouveau front échouerait sans elle. Enchaîner avec le bloc
    VÉRIFICATION de chaque script.
-2. **Fusion de la pull request** sur GitHub, tests verts obligatoires.
-3. **Déploiement automatique** : onglet Actions, workflow « Tests et
+2. **Edge Functions**, si la pull request en modifie une, DANS LA FOULÉE du
+   SQL — l'intégration continue ne les déploie pas :
+   `.\outils\deployer-edge-functions.cmd -Projet prod` (§E). Entre le SQL et ce
+   déploiement,
+   l'ancienne version tourne sur le nouveau schéma : c'est court, mais c'est
+   le moment le plus fragile du rituel.
+3. **Fusion de la pull request** sur GitHub, tests verts obligatoires.
+4. **Déploiement automatique** : onglet Actions, workflow « Tests et
    déploiement GitHub Pages ». À la fin, l'URL de production sert la
    nouvelle version.
-4. **Ctrl+F5 sur la Supervision** (rechargement complet, sans cache), puis
+5. **Ctrl+F5 sur la Supervision** (rechargement complet, sans cache), puis
    vérification : connexion, onglet concerné par l'évolution, une
    modification d'essai annulée aussitôt.
-5. **« Recharger » les écrans** depuis Supervision → Écrans, à un moment
+6. **« Recharger » les écrans** depuis Supervision → Écrans, à un moment
    calme (aucun départ dans les cinq minutes) : chaque poste recharge la
    nouvelle version à son prochain signal de vie (moins d'une minute). Sans
    cette étape, les écrans gardent l'ancienne version jusqu'au redémarrage

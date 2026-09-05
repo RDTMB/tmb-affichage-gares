@@ -1,6 +1,12 @@
 // Types métier partagés : grilles officielles (JSON versionnés), circulations
 // du jour et structures produites par le moteur horaires (src/core/horaires.ts).
 
+// Les rôles, leur matrice d'attribution et les droits qu'ils ouvrent vivent
+// dans src/core/roles.ts. `Role` est ré-exporté ici pour que les modules qui
+// importaient déjà ce fichier n'aient rien à changer.
+import type { Role } from './roles';
+export type { Role };
+
 /** Gares dans l'ordre de la ligne, du Fayet (580 m) au Nid d'Aigle (2 412 m). */
 export const ORDRE_GARES = [
   'le-fayet',
@@ -327,7 +333,12 @@ export interface Profil {
   user_id: string;
   nom: string;
   email: string;
-  role: Role;
+  /**
+   * Rôles CUMULABLES de l'agent : un droit est accordé si au moins l'un
+   * d'entre eux le donne (src/core/roles.ts). Un tableau vide signifie « aucun
+   * droit » — l'agent voit la supervision, sans aucun onglet.
+   */
+  roles: Role[];
 }
 
 /** null côté appelant = le service n'est pas terminé ; premierDepart_s null = pas de service demain. */
@@ -474,8 +485,6 @@ export interface MediaMeta {
   expire_at?: string | null;
 }
 
-export type Role = 'admin' | 'supervision' | 'caisse';
-
 export interface Session {
   user_id: string;
   email: string;
@@ -485,7 +494,8 @@ export interface User {
   user_id: string;
   nom: string;
   email: string;
-  role: Role;
+  /** Rôles cumulables (src/core/roles.ts) ; vide = compte sans aucun droit. */
+  roles: Role[];
   actif: boolean;
 }
 

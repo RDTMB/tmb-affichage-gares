@@ -20,6 +20,7 @@ import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
 import { nomGare, parseClasseur, type Probleme } from '../core/import-grille';
 import { ORDRE_GARES } from '../core/types';
 import type { Grille, Role, Sens, TrainGrille } from '../core/types';
+import { aLeDroit } from '../core/roles';
 import type { DataProvider } from '../data/provider';
 import { echapper } from './affichage-commun';
 import {
@@ -49,7 +50,8 @@ export interface DependancesHoraires {
   $: (id: string) => HTMLElement;
   toast: (texte: string) => void;
   erreurVersToast: (erreur: unknown) => void;
-  role: () => Role | null;
+  /** Rôles CUMULABLES de l'agent connecté (src/core/roles.ts). */
+  roles: () => Role[];
   /** Après un import ou une (dés)activation : la supervision relit grilles actives et journée. */
   apresChangement: () => Promise<void>;
 }
@@ -85,7 +87,10 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   /** Fiche « Modifier » ouverte : la grille telle qu'enregistrée, et la saisie. */
   let editionEnCours: { grille: Grille; edition: EditionGrille } | null = null;
 
-  const peutEcrire = (): boolean => deps.role() === 'admin' || deps.role() === 'supervision';
+  // Les grilles sont PARTAGÉES : le prestataire informatique les charge, mais
+  // l'exploitation aussi — un horaire corrigé un matin de service ne doit pas
+  // attendre. Seule la caisse en reste à la lecture.
+  const peutEcrire = (): boolean => aLeDroit(deps.roles(), 'grilles');
   const actives = (): Grille[] => grilles.filter((g) => g.actif !== false);
   const aujourdhui = (): string =>
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());

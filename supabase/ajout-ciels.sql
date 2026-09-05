@@ -17,6 +17,11 @@
 -- d'exploitation.
 -- =============================================================================
 
+-- Transactionnel : un échec en cours de route ne doit jamais laisser une
+-- table sans politique d'écriture (les politiques sont supprimées avant
+-- d'être recréées).
+begin;
+
 create table if not exists ciels (
   fr text primary key,
   en text not null default '',
@@ -25,13 +30,15 @@ create table if not exists ciels (
 
 alter table ciels enable row level security;
 
--- Politiques (rejouables) — toujours `private.role_courant()`, jamais la
--- fonction publique, retirée par securite-advisors.sql.
+-- Politiques (rejouables) — toujours qualifiées `private.`, jamais un appel nu
+-- (la fonction publique a été retirée par securite-advisors.sql). Depuis le
+-- chantier « rôles multiples », l'habilitation se lit avec
+-- `private.a_le_role()` : voir supabase/migrations/2026-09-roles-multiples.sql.
 drop policy if exists "lecture publique" on ciels;
 create policy "lecture publique" on ciels for select using (true);
-drop policy if exists "admin" on ciels;
-create policy "admin" on ciels for all to authenticated
-  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
+drop policy if exists "roles: ciels" on ciels;
+create policy "roles: ciels" on ciels for all to authenticated
+  using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
 
 -- Temps réel (ajout idempotent : ignore l'erreur si la table y est déjà)
 do $$
@@ -68,6 +75,8 @@ insert into ciels (fr, en, ordre) values
   ('Neige',      'Snow',     60),
   ('Brouillard', 'Fog',      70)
 on conflict (fr) do nothing;
+
+commit;
 
 -- =============================================================================
 -- VÉRIFICATION — à exécuter APRÈS le script.

@@ -71,7 +71,11 @@ export interface DataProvider {
 
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
-  getRole(): Promise<Role>;
+  /**
+   * Rôles CUMULABLES de l'agent connecté (src/core/roles.ts). Un droit est
+   * accordé si au moins l'un d'eux le donne ; le tableau peut être vide.
+   */
+  getRoles(): Promise<Role[]>;
   /** Profil complet de l'agent connecté ; lève si la session ou le profil manque. */
   getProfil(): Promise<Profil>;
   genererJour(date: string): Promise<void>;
@@ -116,12 +120,21 @@ export interface DataProvider {
   /** Écriture réservée au rôle admin (RLS). */
   saveModeleMessage(m: ModeleMessage): Promise<void>;
   deleteModeleMessage(id: string): Promise<void>;
+  /** Comptes et leurs rôles. Un rôle non attribuable par l'agent reste visible, jamais modifiable. */
   listUsers(): Promise<User[]>;
+  /** Nom et activation UNIQUEMENT : les rôles passent par setRolesUser(). */
   saveUser(u: User): Promise<void>;
+  /**
+   * Applique l'ensemble de rôles voulu pour un compte : la différence est
+   * traduite en attributions puis en retraits, dans CET ordre — la base refuse
+   * de laisser un rôle protégé sans détenteur, un échange doit donc toujours
+   * commencer par donner.
+   */
+  setRolesUser(user_id: string, roles: Role[]): Promise<void>;
   /** Suppression définitive (Edge Function — clé secrète jamais côté front). */
   deleteUser(user_id: string): Promise<void>;
   /** Création par invitation email (Edge Function — clé secrète jamais côté front). */
-  inviteUser(email: string, nom: string, role: Role): Promise<void>;
+  inviteUser(email: string, nom: string, roles: Role[]): Promise<void>;
   /**
    * Envoie le lien « mot de passe oublié » ; la personne revient sur la page
    * de supervision qui lui propose alors d'en choisir un nouveau.

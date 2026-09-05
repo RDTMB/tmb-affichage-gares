@@ -1,0 +1,4 @@
+# cmd.exe ne sait lire un fichier de commandes qu'en fins de ligne Windows :
+# livré en LF, il découpe mal les lignes et répond « 'm' n'est pas reconnu ».
+*.cmd text eol=crlf
+*.bat text eol=crlf

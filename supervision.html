@@ -6,28 +6,50 @@
     <title>TMB — Supervision affichage</title>
   </head>
   <body>
-    <header>
-      <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
-      <h1>
-        Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
-      </h1>
-      <div class="spacer"></div>
-      <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
-      <div class="pill" id="pill-service">—</div>
-      <div class="user" id="bloc-user" style="display: none">
-        <div class="avatar" id="avatar">–</div>
-        <span id="user-nom">—</span>
-        <span class="role-tag" id="user-role"></span>
-        <button class="leger" id="btn-deconnexion">Quitter</button>
-      </div>
-    </header>
+    <!-- En-tête et onglets forment UN SEUL bloc collant. La hauteur de
+         l'en-tête varie — nombre de badges de rôle, longueur du nom,
+         largeur de la fenêtre — et caler les onglets sur une hauteur
+         supposée les faisait glisser derrière lui au défilement.
+         Le <nav> est remonté ici depuis l'après-connexion : il est masqué
+         tant qu'on n'est pas connecté, l'ordre visible est donc inchangé. -->
+    <div class="barre-haute">
+      <header>
+        <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
+        <h1>
+          Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
+        </h1>
+        <div class="spacer"></div>
+        <!-- Base de données servie : PRODUCTION, TEST ou DÉMONSTRATION. Rien
+             d'autre à l'écran ne dit sur quelle base on travaille, et les
+             allers-retours entre les deux projets Supabase sont fréquents. -->
+        <div class="pill base" id="pill-base" style="display: none">—</div>
+        <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
+        <div class="pill" id="pill-service">—</div>
+        <div class="user" id="bloc-user" style="display: none">
+          <div class="avatar" id="avatar">–</div>
+          <span id="user-nom">—</span>
+          <span class="role-tag" id="user-role"></span>
+          <button class="leger" id="btn-deconnexion">Quitter</button>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabs" style="display: none">
+        <button data-t="circulations" class="on">Circulations</button>
+        <button data-t="horaires">Horaires</button>
+        <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
+        <button data-t="medias">Médias</button>
+        <button data-t="ecrans">Écrans</button>
+        <button data-t="parametres">Paramètres</button>
+      </nav>
+    </div>
 
     <div class="connexion" id="connexion">
       <form class="connexion-carte" id="form-connexion">
         <h2>Connexion</h2>
         <p class="note" style="padding: 0">
-          Accès réservé aux agents. En mode démo (sans Supabase) : le début de l'adresse fixe le
-          rôle — <code>admin…</code>, <code>caisse…</code>, sinon supervision.
+          Accès réservé aux agents. En mode démo (sans Supabase) : le début de l'adresse fixe les
+          rôles, cumulables par <code>+</code> — <code>technique@…</code>, <code>admin@…</code>,
+          <code>technique+admin@…</code>, <code>caisse@…</code>, sinon supervision.
         </p>
         <input type="email" id="login-email" placeholder="adresse@tramwaydumontblanc.fr" required />
         <input
@@ -49,9 +71,9 @@
         <input
           type="password"
           id="mdp-nouveau"
-          placeholder="Nouveau mot de passe (8 caractères minimum)"
+          placeholder="Nouveau mot de passe (12 caractères minimum)"
           autocomplete="new-password"
-          minlength="8"
+          minlength="12"
           required
         />
         <input
@@ -59,22 +81,13 @@
           id="mdp-confirmation"
           placeholder="Confirmez le mot de passe"
           autocomplete="new-password"
-          minlength="8"
+          minlength="12"
           required
         />
         <button class="primaire" type="submit" id="mdp-valider">Enregistrer et entrer</button>
         <div class="erreur" id="mdp-erreur"></div>
       </form>
     </div>
-
-    <nav class="tabs" id="tabs" style="display: none">
-      <button data-t="circulations" class="on">Circulations</button>
-      <button data-t="horaires">Horaires</button>
-      <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
-      <button data-t="medias">Médias</button>
-      <button data-t="ecrans">Écrans</button>
-      <button data-t="parametres">Paramètres</button>
-    </nav>
 
     <main id="contenu" style="display: none">
       <!-- ================= CIRCULATIONS ================= -->
@@ -481,7 +494,7 @@
             État des écrans
             <span class="sous">signal de vie toutes les 60 s · commandes à distance</span>
           </h2>
-          <div class="note veille-globale">
+          <div class="note veille-globale" id="veille-globale">
             <b>Veille de nuit</b> — réglage commun à tous les écrans : de
             <input type="time" id="veille-debut" /> à <input type="time" id="veille-fin" />. Chaque
             poste peut recevoir son propre horaire sur sa carte ci-dessous.
@@ -511,7 +524,7 @@
       <!-- ================= PARAMÈTRES ================= -->
       <section class="onglet" id="t-parametres">
         <div class="param-grid">
-          <div class="carte">
+          <div class="carte" id="carte-machines">
             <h2>
               Machines (rames)
               <div class="actions">
@@ -524,7 +537,7 @@
               d'anneau, ex. Marguerite). Une machine « hors service » ne peut plus être affectée.
             </div>
           </div>
-          <div class="carte">
+          <div class="carte" id="carte-motifs">
             <h2>
               Motifs de perturbation
               <div class="actions">
@@ -548,7 +561,7 @@
               Proposés dans l'onglet Circulations et affichés en gare « FR / EN ».
             </div>
           </div>
-          <div class="carte">
+          <div class="carte" id="carte-ciels">
             <h2>
               États du ciel (météo)
               <div class="actions">
@@ -573,7 +586,7 @@
               gare ne peut pas être supprimé.
             </div>
           </div>
-          <div class="carte">
+          <div class="carte" id="carte-users">
             <h2>
               Utilisateurs et droits
               <div class="actions">
@@ -584,21 +597,21 @@
               <div class="ligne">
                 <input type="text" id="user-nouveau-nom" placeholder="Nom" />
                 <input type="email" id="user-nouveau-email" placeholder="email@…" />
-                <select id="user-nouveau-role">
-                  <option value="supervision">Supervision</option>
-                  <option value="caisse">Caisse</option>
-                  <option value="admin">Administrateur</option>
-                </select>
                 <button class="primaire leger" id="btn-user-inviter">Inviter par email</button>
               </div>
+              <div class="ligne user-roles" id="user-nouveau-roles"></div>
             </div>
             <div id="users"></div>
             <div class="note">
-              Création par invitation email (Edge Function). Le détail fin des droits par catégorie
-              sera précisé plus tard avec l'exploitant.
+              Création par invitation email (Edge Function). Les rôles se CUMULENT : un droit est
+              accordé dès qu'un des rôles cochés le donne, et aucun rôle n'en implique un autre.
+              Vous ne pouvez cocher que les rôles que vous êtes habilité à attribuer — le rôle
+              Technique s'attribue depuis un compte technique, les rôles d'exploitation depuis un
+              compte administrateur. Il doit toujours rester au moins un compte actif Technique et
+              un compte actif Administrateur : la base refuse de retirer le dernier.
             </div>
           </div>
-          <div class="carte">
+          <div class="carte" id="carte-a-quai">
             <h2>Grille en service et durées d'affichage</h2>
             <div class="saisons" id="saisons"></div>
             <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
@@ -657,10 +670,15 @@
             <button class="leger" id="btn-journal-suiv">Suivantes ▶</button>
             <span class="sous">
               Chaque écriture est consignée par la base elle-même : un aller-retour (8 → 12 → 8) ne
-              compte plus comme modification en attente, mais laisse bien ses deux traces ici. Purge
-              des entrées de plus de 12 mois :
-              <code>select private.purge_journal_exploitation();</code>
+              compte plus comme modification en attente, mais laisse bien ses deux traces ici.
             </span>
+          </div>
+          <div class="note" id="carte-purge">
+            <b>Purge</b> — effacer les entrées de plus de douze mois relève du rôle technique. À
+            lancer depuis l'éditeur SQL Supabase :
+            <code>select private.purge_journal_exploitation();</code> (ou <code>(24)</code> pour
+            deux ans). La fonction refuse tout appelant qui n'est pas technique et retourne le
+            nombre de lignes supprimées.
           </div>
         </div>
       </section>

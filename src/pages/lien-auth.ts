@@ -20,8 +20,13 @@ export type LienAuth =
   /** Ouverture ordinaire de la page, sans lien. */
   | null;
 
-/** Longueur minimale imposée côté interface (Supabase en exige 6 par défaut). */
-export const LONGUEUR_MIN_MOT_DE_PASSE = 8;
+/**
+ * Longueur minimale imposée côté interface (Supabase en exige 6 par défaut).
+ * DOUZE caractères, comme l'annonce docs/securite.md §4 : le projet est sur
+ * l'offre gratuite, qui ne vérifie pas les mots de passe compromis
+ * (HaveIBeenPwned) — la longueur est la seule compensation dont on dispose.
+ */
+export const LONGUEUR_MIN_MOT_DE_PASSE = 12;
 
 function parametres(fragment: string): URLSearchParams {
   return new URLSearchParams(fragment.replace(/^#/, ''));

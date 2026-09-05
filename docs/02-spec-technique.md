@@ -24,7 +24,7 @@ export interface DataProvider {
   heartbeat(e: EcranInfo): Promise<void>;
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
-  getRole(): Promise<"admin"|"supervision"|"caisse">;
+  getRoles(): Promise<Role[]>;                           // rôles CUMULABLES ; union des droits
   genererJour(date: string): Promise<void>;
   saveCirculation(c: Circulation): Promise<void>;
   saveCirculations(cs: Circulation[]): Promise<void>;     // action groupée : 1 écriture, lignes écrites contrôlées
@@ -35,7 +35,11 @@ export interface DataProvider {
   uploadMedia(file: File, meta: MediaMeta): Promise<void>; saveMedia(m: Media): Promise<void>; deleteMedia(id: string): Promise<void>;
   saveParams(p: Partial<Params>): Promise<void>;
   saveMachine(m: Machine): Promise<void>; saveMotif(...): Promise<void>;
-  listUsers(): Promise<User[]>; saveUser(u: User): Promise<void>;   // admin
+  listUsers(): Promise<User[]>;                          // comptes + leurs rôles
+  saveUser(u: User): Promise<void>;                      // nom et activation SEULEMENT
+  setRolesUser(user_id: string, roles: Role[]): Promise<void>;  // attribue d'abord, retire ensuite
+  inviteUser(email, nom, roles: Role[]): Promise<void>;  // Edge Function
+  deleteUser(user_id: string): Promise<void>;            // Edge Function
   logPublication(resume: string): Promise<void>;
   dernierePublication(): Promise<string | null>;        // référence commune à tous les postes
   listJournal(f: FiltreJournal): Promise<EntreeJournal[]>;  // lecture seule
@@ -171,9 +175,34 @@ create table modeles_messages (
 create table profils (
   user_id uuid primary key references auth.users(id) on delete cascade,
   nom text not null,
-  role text not null default 'supervision' check (role in ('admin','supervision','caisse')),
+  email text,                                   -- identité du journal ; non réécrivable par l'API
   actif boolean not null default true
 );
+
+-- RÔLES MULTIPLES ET CUMULABLES (docs/01 §5.5). Table de LIAISON et non
+-- colonne `text[]` : RLS s'évalue ligne à ligne, donc « l'appelant peut-il
+-- attribuer CE rôle ? » s'écrit directement dans la politique ; s'y ajoutent
+-- la clé étrangère vers le catalogue, une ligne de journal par rôle accordé ou
+-- retiré, et les métadonnées par rôle dont la réconciliation SSO aura besoin.
+create table roles (
+  code text primary key,                        -- technique | admin | supervision | caisse
+  libelle text not null,
+  protege boolean not null default false,       -- true : au moins un détenteur actif, toujours
+  attribuable_par text[] not null,              -- la matrice est une DONNÉE lisible
+  ordre int not null default 0,
+  groupe_entra text                             -- accroche SSO (§7), NULL aujourd'hui
+);
+
+create table profils_roles (
+  user_id uuid not null references profils(user_id) on delete cascade,
+  role text not null references roles(code),
+  source text not null default 'manuel' check (source in ('manuel','entra')),
+  attribue_le timestamptz not null default now(),
+  attribue_par text,                            -- forcé par déclencheur depuis le JETON
+  primary key (user_id, role)
+);
+-- Aucun UPDATE : une attribution est immuable (retirer puis attribuer), pour
+-- que chaque geste passe par sa politique, son garde-fou et son journal.
 
 create table ecrans (
   id text primary key, gare text not null, type text,
@@ -255,13 +284,25 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
 - SELECT public (anon) sur : grilles, jours, circulations, messages, medias,
   machines, motifs, ciels, params, ecrans (les écrans lisent sans compte).
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
-  le rôle — `caisse` : messages uniquement (et les clés d'affichage de
-  `params`) ; `supervision` : tout sauf machines/motifs/ciels/params/profils
-  (donc grilles : import et activation) ; `admin` : tout. Implémentation par
-  fonction SQL `private.role_courant()` (lit `profils`) utilisée dans les
-  policies.
+  ses RÔLES, multiples et cumulables (matrice complète : docs/01 §5.5 et
+  docs/securite.md §2). Implémentation par `private.a_le_role(text)` et
+  `private.a_un_des_roles(text[])`, qui lisent `profils_roles`. Les
+  politiques s'écrivent `(select private.a_un_des_roles(array[…]))` :
+  l'enveloppe `(select …)` fait évaluer la fonction une fois par requête et
+  non par ligne, et la liste des rôles reste lisible telle quelle dans
+  `pg_policies` — sans indirection, pour qui reprendra le projet.
+- **Déclencheurs en plus de RLS** : RLS ne s'applique ni à `service_role` ni
+  au propriétaire des tables. La matrice d'attribution, l'interdiction de
+  modifier ses propres rôles et l'invariant « au moins un technique et un
+  admin actifs » sont donc REJOUÉS par des déclencheurs, seuls à couvrir tous
+  les chemins — y compris la cascade déclenchée par la suppression d'un compte
+  depuis le tableau de bord Supabase. Le quorum est un `constraint trigger`
+  DIFFÉRÉ (l'échange « retirer à A, donner à B » reste possible en une
+  transaction) précédé d'un `pg_advisory_xact_lock` (sans quoi deux retraits
+  concurrents des deux derniers détenteurs passeraient tous les deux).
 - **Schéma `private`** : les fonctions SECURITY DEFINER
-  (`role_courant()`, `sync_rame_descente()`) y vivent, hors des schémas
+  (`roles_courants()`, `a_le_role()`, `peut_attribuer()`,
+  `peut_gerer_profil()`, `sync_rame_descente()`…) y vivent, hors des schémas
   exposés par PostgREST — elles ne sont donc PAS appelables en RPC depuis le
   front. `search_path` verrouillé à vide + noms pleinement qualifiés.
   `revoke all … from public`, mais `grant execute … to authenticated` :
@@ -372,13 +413,16 @@ service, passage de minuit, tri multi-sens.
 
 ## 5. Supervision
 
-- Supabase Auth email+mdp ; à la connexion, lecture du rôle dans `profils` ;
-  onglets/actions filtrés par rôle (et re-vérifiés côté RLS).
-- Gestion des utilisateurs (admin) : création via API Supabase (invitation
-  email) + ligne `profils` ; désactivation = `actif=false`. Le modèle de
-  rôles est extensible (colonne texte + table de droits ultérieure) : v1 =
-  admin/supervision/caisse, catégories supplémentaires (gestionnaire,
-  lecteur…) définies plus tard avec l'exploitant.
+- Supabase Auth email+mdp ; à la connexion, lecture des RÔLES par jointure
+  `profils → profils_roles` ; onglets et commandes filtrés par UNION des
+  droits (`src/core/roles.ts`, module pur et testé), re-vérifiés côté RLS.
+  Ce module est le miroir de confort de la base ; un test compare sa matrice
+  au seed SQL du catalogue `roles`, une divergence est un bogue.
+- Gestion des utilisateurs : création par invitation e-mail (Edge Function) +
+  ligne `profils` puis lignes `profils_roles` ; désactivation =
+  `actif=false`. Ajouter un rôle ne demande qu'une ligne dans le catalogue
+  `roles` et une entrée dans `DROITS_PAR_ROLE` — les politiques, elles,
+  ne changent que pour les tables réellement concernées.
 - Cohérence des rotations : la rame est stockée sur la montée ; à la
   lecture, la descente n+1 affiche la rame de la montée n (jointure) ; un
   trigger SQL maintient `rame` de la descente synchronisée pour les exports.
@@ -429,15 +473,53 @@ Accès distant optionnel (phase 2 : via VPN Fortinet de la Régie).
 
 `server/` dans le même dépôt : Node.js LTS + Fastify + better-sqlite3 +
 SSE `/api/events` ; routes miroir du DataProvider ; sessions cookie ;
-comptes locaux argon2 **ou SSO Active Directory** : authentification LDAP
-(module `ldapts`) contre l'AD de la Régie, mapping groupes AD → rôles
-(paramétrable) — l'utilisateur se connecte avec son compte Windows. Sert
+comptes locaux argon2 **ou SSO** (voir ci-dessous) — l'utilisateur se connecte
+avec son compte Windows. Sert
 `dist/` et les médias (`server/medias/`). Installation en service Windows
 via `nssm` (doc `docs/phase2-windows.md` : installation, port 8080,
 pare-feu intranet, sauvegarde quotidienne SQLite + médias, import depuis
 Supabase, bascule des écrans par `config.js`, retour arrière cloud).
 Réseau : gares fibrées en direct ; Nid d'Aigle et accès distant par le VPN
 Fortinet existant (paramétrage prestataire) ou WireGuard dédié.
+
+### SSO Entra ID — point d'accroche (PRÉVU, NON IMPLÉMENTÉ)
+
+Les rôles devront un jour se déduire des **groupes Entra ID** de la Régie :
+l'agent se connecte avec son compte Microsoft, ses groupes deviennent ses
+rôles, et une personne membre de deux groupes porte deux rôles — ce que le
+modèle cumulable rend possible sans rien changer au schéma.
+
+Ce qui est **déjà en place** pour l'accueillir :
+
+- `roles.groupe_entra` — identifiant du groupe qui portera ce rôle, `NULL`
+  aujourd'hui. Le rapprochement se fait par l'identifiant d'objet du groupe
+  (`oid`), jamais par son nom, qu'un administrateur Microsoft peut renommer.
+- `profils_roles.source` — `'manuel'` ou `'entra'`. Les deux **coexistent** :
+  la synchronisation ne touche que ses propres lignes, et un rôle attribué à
+  la main survit à un retrait de groupe. Les politiques RLS imposent
+  `source = 'manuel'` : un client ne peut ni créer ni retirer une ligne SSO.
+- Le déclencheur d'attribution accepte le contexte `entra` quand l'écriture
+  vient d'un service et non d'un agent connecté
+  (`set local tmb.attribution_systeme = 'entra'`).
+
+Ce qui **reste à écrire** le jour venu :
+
+- `private.synchroniser_roles_sso(user_id uuid, groupes text[])` : remplace
+  l'ensemble des lignes `source='entra'` de la personne par celles que
+  décrivent ses groupes, en `on conflict do nothing` (un rôle déjà détenu à
+  la main n'est pas dupliqué — la clé primaire est `(user_id, role)`).
+- Le point d'appel : un **Auth Hook Supabase** « custom access token », ou un
+  déclencheur sur `auth.users` à la première connexion. Dans les deux cas, la
+  fonction doit **attraper l'exception du garde-fou de quorum** et se contenter
+  d'un avertissement : sinon, retirer son groupe au dernier compte technique
+  ferait échouer l'émission de son jeton, donc sa connexion — et personne ne
+  pourrait plus rien réparer depuis l'application.
+- La correspondance groupe → rôle se renseigne dans `roles.groupe_entra`,
+  depuis l'éditeur SQL, comme le reste du catalogue.
+
+Cette accroche REMPLACE le mapping LDAP / Active Directory envisagé plus haut
+en phase 2 : c'est le même besoin, servi par l'annuaire que la Régie utilise
+réellement.
 
 ## 8. Qualité / performances
 

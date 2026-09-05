@@ -5,11 +5,16 @@
 -- compris plus tard pour ajouter un nouveau modèle à la bibliothèque).
 -- La table et ses politiques RLS sont aussi définies directement dans
 -- supabase/schema.sql pour les nouvelles installations (mêmes définitions,
--- sur private.role_courant() — voir plus bas) ; SEULE la bibliothèque de
+-- sur private.a_le_role() — voir plus bas) ; SEULE la bibliothèque de
 -- textes ci-dessous (les INSERT) n'existe que dans ce fichier : une
 -- nouvelle installation doit donc quand même exécuter ce script (cf.
 -- docs/mise-en-service.md, après schema.sql ET securite-advisors.sql).
 -- =============================================================================
+
+-- Transactionnel : un échec en cours de route ne doit jamais laisser une
+-- table sans politique d'écriture (les politiques sont supprimées avant
+-- d'être recréées).
+begin;
 
 create table if not exists modeles_messages (
   id uuid primary key default gen_random_uuid(),
@@ -25,18 +30,19 @@ alter table modeles_messages enable row level security;
 
 -- Lecture : tout compte CONNECTÉ (le formulaire Messages est accessible à
 -- tous les rôles, y compris « caisse »). Les écrans publics n'en ont pas besoin.
--- Utilise private.role_courant() (et non role_courant() en public), car ce
--- script peut être relancé APRÈS supabase/securite-advisors.sql, qui a
--- déplacé/retiré la fonction publique : un appel non qualifié échoue alors
--- avec « function role_courant() does not exist ».
-drop policy if exists "lecture connectes" on modeles_messages;
-create policy "lecture connectes" on modeles_messages for select to authenticated
-  using (private.role_courant() in ('admin','supervision','caisse'));
+-- Les habilitations se lisent TOUJOURS par une fonction qualifiée `private.`
+-- (jamais un appel nu), car ce script peut être relancé après
+-- supabase/securite-advisors.sql et après
+-- supabase/migrations/2026-09-roles-multiples.sql, qui ont respectivement
+-- déplacé puis remplacé l'ancienne fonction de rôle unique.
+drop policy if exists "roles: modeles lecture" on modeles_messages;
+create policy "roles: modeles lecture" on modeles_messages for select to authenticated
+  using ((select private.a_un_des_roles(array['technique','admin','supervision','caisse'])));
 
--- Écriture : admin uniquement (même modèle que machines / motifs / params)
-drop policy if exists "admin" on modeles_messages;
-create policy "admin" on modeles_messages for all to authenticated
-  using (private.role_courant() = 'admin') with check (private.role_courant() = 'admin');
+-- Écriture : le chef d'exploitation (même modèle que machines / motifs / ciels)
+drop policy if exists "roles: modeles ecriture" on modeles_messages;
+create policy "roles: modeles ecriture" on modeles_messages for all to authenticated
+  using ((select private.a_le_role('admin'))) with check ((select private.a_le_role('admin')));
 
 -- Temps réel (ajout idempotent : ignore l'erreur si la table y est déjà)
 do $$
@@ -96,3 +102,6 @@ on conflict (titre) do nothing;
 -- l'animation est recalculée selon la longueur du texte).
 insert into params (cle, valeur) values ('vitesse_ticker_px_s', '90')
 on conflict (cle) do nothing;
+
+commit;
+

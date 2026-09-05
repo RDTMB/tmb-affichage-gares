@@ -140,10 +140,17 @@ tr.paire-fin td{border-bottom:2px solid #C9D6E2}
 .motifs{display:flex;gap:8px;flex-wrap:wrap;padding:12px 18px}
 .motif-chip{display:inline-flex;align-items:center;gap:7px;background:#EEF2F6;border-radius:99px;padding:6px 12px;font-weight:700;font-size:13.5px}
 .motif-chip button{border:none;background:none;padding:0;color:var(--sec);font-size:15px}
-.role-tag{font-size:11.5px;font-weight:900;border-radius:5px;padding:3px 8px}
+.role-tag{font-size:11.5px;font-weight:900;border-radius:5px;padding:3px 8px;display:inline-block;box-sizing:border-box;width:108px;text-align:center}
+.role-technique{background:#E8E2F4;color:#4A3B7A}
 .role-admin{background:var(--alerte-bg);color:var(--alerte)}
 .role-sup{background:var(--bleu-bg);color:var(--bleu)}
 .role-caisse{background:var(--ok-bg);color:var(--ok)}
+.user-badges{display:flex;flex-wrap:wrap;gap:4px;width:116px;flex:0 0 auto}
+.user-identite{display:flex;flex-direction:column;width:190px;flex:0 0 auto}
+.user-email{color:var(--sec);font-size:12.5px}
+.user-roles{display:flex;flex-wrap:wrap;gap:4px 12px;flex:1 1 260px}
+.case-role{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer}
+.case-role.verrouillee{opacity:.45;cursor:not-allowed}
 .note{padding:10px 18px 14px;font-size:12.5px;color:var(--sec);line-height:1.5}
 .saisons{padding:6px 18px 14px;display:grid;gap:8px}
 .saison{display:flex;align-items:center;gap:10px;border:1px solid var(--bord);border-radius:10px;padding:9px 13px;font-size:13.5px;flex-wrap:wrap}
@@ -169,7 +176,7 @@ tr.paire-fin td{border-bottom:2px solid #C9D6E2}
   <div class="spacer"></div>
   <div class="pill" id="pillEcrans"><span class="dot"></span> 6/6 écrans en ligne</div>
   <div class="pill" id="pillService">Grand service · été 2026</div>
-  <div class="user"><div class="avatar">TM</div> Thomas Musset <span class="role-tag role-admin" style="margin-left:4px">ADMIN</span></div>
+  <div class="user"><div class="avatar">TM</div> Thomas Musset <span class="user-badges" style="margin-left:4px"><span class="role-tag role-technique">TECHNIQUE</span><span class="role-tag role-admin">ADMINISTRATEUR</span></span></div>
 </header>
 <div class="bandeau-demo">MAQUETTE INTERACTIVE — aucune donnée n'est réellement enregistrée ni publiée</div>
 
@@ -529,18 +536,40 @@ function rendreMotifs(){
   $("motifs").innerHTML=MOTIFS.map((m,i)=>`<span class="motif-chip">${m}<button onclick="MOTIFS.splice(${i},1);bump();rendreMotifs()">×</button></span>`).join("");
 }
 function ajouterMotif(){const v=$("nouveauMotif").value.trim();if(!v)return;MOTIFS.push(v);$("nouveauMotif").value="";bump();rendreMotifs();}
+/* Rôles MULTIPLES et CUMULABLES : une personne en porte plusieurs, un droit
+   est accordé dès qu'un de ses rôles le donne. Les cases que l'agent connecté
+   n'a pas le droit d'attribuer restent VISIBLES mais grisées, avec le motif au
+   survol : masquer laisserait croire que le rôle n'existe pas.
+   Ici la démo se place du point de vue d'un compte technique + administrateur. */
+const ROLES_MAQUETTE=[["technique","Technique"],["admin","Administrateur"],["sup","Supervision"],["caisse","Caisse"]];
 function rendreUsers(){
-  const us=[["Prénom Nom","prenom.nom@exemple.fr","admin","Administrateur"],
-            ["Supervision","supervision@exemple.fr","sup","Supervision"],
-            ["Caisse","caisse@exemple.fr","caisse","Caisse"]];
-  $("users").innerHTML=us.map(u=>`
+  const us=[["Thomas Musset","prenom.nom@exemple.fr",["technique","admin"],"moi"],
+            ["Prestataire informatique","prestataire@exemple.fr",["technique"],""],
+            ["Chef d'exploitation","exploitation@exemple.fr",["admin","sup"],""],
+            ["Supervision","supervision@exemple.fr",["sup"],""],
+            ["Caisse","caisse@exemple.fr",["caisse"],""]];
+  $("users").innerHTML=us.map((u,i)=>{
+    const soi=u[3]==="moi";
+    const badges=u[2].map(r=>{
+      const lib=ROLES_MAQUETTE.find(x=>x[0]===r)[1];
+      return `<span class="role-tag role-${r}">${lib.toUpperCase()}</span>`;
+    }).join("");
+    const cases=ROLES_MAQUETTE.map(([code,lib])=>{
+      const coche=u[2].includes(code)?"checked":"";
+      const titre=soi?"Personne ne modifie ses propres rôles.":lib;
+      return `<label class="case-role${soi?" verrouillee":""}" title="${titre}">
+        <input type="checkbox" ${coche} ${soi?"disabled":""} onchange="bump();toast('Rôle ${lib} '+(this.checked?'attribué':'retiré')+' (démo)')">${lib}
+      </label>`;
+    }).join("");
+    return `
     <div class="user-row">
-      <b style="width:140px">${u[0]}</b>
-      <span style="color:var(--sec);font-size:13px;flex:1">${u[1]}</span>
-      <span class="role-tag role-${u[2]}">${u[3].toUpperCase()}</span>
-      <select onchange="bump();toast('Rôle modifié (démo)')"><option ${u[2]==="admin"?"selected":""}>Administrateur</option><option ${u[2]==="sup"?"selected":""}>Supervision</option><option ${u[2]==="caisse"?"selected":""}>Caisse</option></select>
+      <div class="user-identite"><b>${u[0]}</b><span class="user-email">${u[1]}</span></div>
+      <div class="user-badges">${badges}</div>
+      <div class="user-roles">${cases}</div>
       <button class="leger" onclick="toast('Réinitialisation du mot de passe envoyée (démo)')">Réinit. mdp</button>
-    </div>`).join("");
+      <button class="leger danger" ${soi?"disabled title=\"Vous ne pouvez pas supprimer votre propre compte.\"":""} onclick="toast('Suppression (démo)')">Supprimer</button>
+    </div>`;
+  }).join("");
 }
 
 /* ================== PUBLICATION ================== */

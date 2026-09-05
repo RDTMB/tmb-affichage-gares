@@ -899,3 +899,134 @@ describe('MockProvider — grilles : import, activation, retour arrière', () =>
     ).rejects.toThrow(/introuvable/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Rôles multiples : le mock applique les MÊMES règles que la base
+// ---------------------------------------------------------------------------
+// Sans cela, la démonstration enseignerait des gestes que la production refuse,
+// et le poste de développement laisserait passer une régression que seule la
+// recette SQL (supabase/tests/roles-rls.sql) rattraperait.
+describe('Rôles multiples (mock)', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  /** Ouvre une session mock : le préfixe de l'adresse fixe les rôles. */
+  async function connecte(provider: InstanceType<typeof MockProvider>, email: string) {
+    await provider.signIn(email, 'mdp');
+    return provider;
+  }
+
+  it('la session porte les rôles cumulés du préfixe', async () => {
+    const provider = await connecte(new MockProvider(), 'technique+admin@demo');
+    expect(await provider.getRoles()).toEqual(['technique', 'admin']);
+    expect((await provider.getProfil()).roles).toEqual(['technique', 'admin']);
+  });
+
+  it('un préfixe inconnu retombe sur la supervision', async () => {
+    const provider = await connecte(new MockProvider(), 'marie.dupond@tmb.fr');
+    expect(await provider.getRoles()).toEqual(['supervision']);
+  });
+
+  it('les comptes de démonstration portent des rôles multiples', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    const liste = await provider.listUsers();
+    expect(liste.find((u) => u.email === 'technique+admin@demo')?.roles).toEqual([
+      'technique',
+      'admin',
+    ]);
+    expect(liste.find((u) => u.email === 'caisse@demo')?.roles).toEqual(['caisse']);
+  });
+
+  it('un administrateur attribue les rôles d’exploitation, jamais « technique »', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    await provider.setRolesUser('demo-caisse', ['caisse', 'supervision']);
+    const liste = await provider.listUsers();
+    expect(liste.find((u) => u.user_id === 'demo-caisse')?.roles).toEqual([
+      'supervision',
+      'caisse',
+    ]);
+
+    await expect(provider.setRolesUser('demo-sup', ['supervision', 'technique'])).rejects.toThrow(
+      /Technique/,
+    );
+  });
+
+  it('un technique n’attribue que « technique »', async () => {
+    const provider = await connecte(new MockProvider(), 'technique@demo');
+    await expect(provider.setRolesUser('demo-sup', ['supervision', 'admin'])).rejects.toThrow(
+      /Administrateur/,
+    );
+    await provider.setRolesUser('demo-sup', ['supervision', 'technique']);
+    expect((await provider.listUsers()).find((u) => u.user_id === 'demo-sup')?.roles).toEqual([
+      'technique',
+      'supervision',
+    ]);
+  });
+
+  it('la supervision et la caisse n’attribuent rien', async () => {
+    for (const email of ['supervision@demo', 'caisse@demo']) {
+      const provider = await connecte(new MockProvider(), email);
+      await expect(provider.setRolesUser('demo-sup', ['caisse'])).rejects.toThrow();
+    }
+  });
+
+  it('personne ne modifie ses propres rôles', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    await expect(provider.setRolesUser('demo-admin', ['admin'])).rejects.toThrow(/propres rôles/);
+  });
+
+  it('retirer un rôle protégé passe tant qu’il reste un autre détenteur actif', async () => {
+    const provider = await connecte(new MockProvider(), 'technique+admin@demo');
+    // Deux comptes portent « technique » : en dépouiller un est permis.
+    await provider.setRolesUser('demo-technique', []);
+    expect((await provider.listUsers()).find((u) => u.user_id === 'demo-technique')?.roles).toEqual(
+      [],
+    );
+    // Le compte connecté est désormais le SEUL technique — et personne ne
+    // modifie ses propres rôles : par construction de la matrice, l'interface
+    // ne peut pas vider un rôle protégé (seul son détenteur pourrait le
+    // retirer, ce qui lui est interdit). Le garde-fou n'en reste pas moins
+    // indispensable pour l'éditeur SQL et le tableau de bord Supabase, où il
+    // est éprouvé par supabase/tests/roles-rls.sql §5.
+    await expect(provider.setRolesUser('demo-technique-admin', ['admin'])).rejects.toThrow(
+      /propres rôles/,
+    );
+  });
+
+  it('un compte portant un rôle qu’on n’attribue pas n’est ni désactivé ni supprimé', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    const technique = (await provider.listUsers()).find((u) => u.user_id === 'demo-technique');
+    if (!technique) throw new Error('compte technique de démonstration absent');
+    await expect(provider.saveUser({ ...technique, actif: false })).rejects.toThrow(
+      /rôle que vous n/,
+    );
+    await expect(provider.deleteUser('demo-technique')).rejects.toThrow(/rôle que vous n/);
+  });
+
+  it('l’invitation exige au moins un rôle, et seulement des rôles attribuables', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    await expect(provider.inviteUser('x@tmb.fr', 'X', [])).rejects.toThrow(/au moins un rôle/i);
+    await expect(provider.inviteUser('x@tmb.fr', 'X', ['technique'])).rejects.toThrow(/Technique/);
+    await provider.inviteUser('nouvelle@tmb.fr', 'Nouvelle', ['supervision', 'caisse']);
+    expect((await provider.listUsers()).find((u) => u.email === 'nouvelle@tmb.fr')?.roles).toEqual([
+      'supervision',
+      'caisse',
+    ]);
+  });
+
+  it('chaque rôle accordé ou retiré laisse une ligne au journal', async () => {
+    const provider = await connecte(new MockProvider(), 'admin@demo');
+    await provider.setRolesUser('demo-caisse', ['caisse', 'supervision']);
+    await provider.setRolesUser('demo-caisse', ['caisse']);
+    const journal = await provider.listJournal({ table_cible: 'profils_roles' });
+    expect(journal).toHaveLength(2);
+    expect(journal.map((e) => [e.avant, e.apres])).toEqual([
+      ['supervision', null], // le retrait, en tête : le journal est antéchronologique
+      [null, 'supervision'],
+    ]);
+    expect(journal.every((e) => e.cle === 'caisse@demo')).toBe(true);
+    expect(journal.every((e) => e.qui === 'admin@demo')).toBe(true);
+  });
+});

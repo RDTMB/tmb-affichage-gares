@@ -1,7 +1,8 @@
 // Edge Function « traduire » (Deno) — traduction FR → EN des messages via
 // DeepL Free. La clé DEEPL_API_KEY est un secret Supabase : elle ne transite
 // JAMAIS côté front. En cas d'échec, le front replie sur son dictionnaire local.
-// Accès réservé aux profils ACTIFS (tous rôles : la caisse rédige des messages) :
+// Accès réservé aux profils ACTIFS portant au moins un rôle (n'importe lequel :
+// la caisse rédige des messages) :
 // l'URL de la fonction est dans le bundle public, sans ce contrôle n'importe qui
 // pourrait épuiser le quota DeepL de la Régie.
 // Déploiement : supabase functions deploy traduire
@@ -37,7 +38,10 @@ Deno.serve(async (req) => {
     const url = Deno.env.get('SUPABASE_URL')!;
     const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    // L'appelant doit être un profil actif (tous rôles : la caisse rédige des messages).
+    // L'appelant doit être un profil ACTIF portant AU MOINS UN rôle (peu
+    // importe lequel : la caisse aussi rédige des messages). Le rôle compte,
+    // et pas seulement `actif` : une personne dont on a retiré tous les rôles
+    // — départ, fin de mission — garderait sinon l'accès au quota DeepL.
     const jwt = req.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
     const { data: appelant } = await admin.auth.getUser(jwt);
     if (!appelant.user) return new Response('Non connecté', { status: 401, headers: entetes });
@@ -46,7 +50,11 @@ Deno.serve(async (req) => {
       .select('actif')
       .eq('user_id', appelant.user.id)
       .maybeSingle();
-    if (!profil?.actif) {
+    const { count: nbRoles } = await admin
+      .from('profils_roles')
+      .select('role', { count: 'exact', head: true })
+      .eq('user_id', appelant.user.id);
+    if (!profil?.actif || !nbRoles) {
       return new Response('Réservé aux agents actifs', { status: 403, headers: entetes });
     }
 

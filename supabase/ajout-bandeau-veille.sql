@@ -8,7 +8,8 @@
 --      le réglage global de `params.veille_nuit`) ;
 --   2. `params` : les clés d'AFFICHAGE (météo du sommet, vitesse du bandeau)
 --      deviennent modifiables par tous les rôles connectés, y compris la
---      caisse — les autres clés restent réservées à l'administrateur.
+--      caisse — les autres clés restent réservées au chef d'exploitation ou,
+--      pour l'infrastructure, au rôle technique.
 -- =============================================================================
 
 begin;
@@ -29,27 +30,46 @@ alter table ecrans add column if not exists veille_fin time;
 -- Le bandeau voyageurs (messages, vitesse de défilement, météo du sommet) est
 -- le quotidien de la caisse : lui refuser ces réglages l'obligeait à passer
 -- par un administrateur pour changer une température.
-drop policy if exists "admin" on params;
-drop policy if exists "affichage tous roles" on params;
-drop policy if exists "params admin" on params;
+drop policy if exists "roles: params affichage" on params;
+drop policy if exists "roles: params medias" on params;
+drop policy if exists "roles: params exploitation" on params;
+drop policy if exists "roles: params technique" on params;
 
--- Clés d'affichage : admin, supervision ET caisse.
-create policy "affichage tous roles" on params for all to authenticated
+-- Quatre politiques PERMISSIVES qui se cumulent en OU, une par jeu de clés
+-- (supabase/migrations/2026-09-roles-multiples.sql).
+-- Clés d'AFFICHAGE : admin, supervision ET caisse.
+create policy "roles: params affichage" on params for all to authenticated
   using (
     cle in ('meteo_sommet', 'vitesse_ticker_px_s')
-    and private.role_courant() in ('admin', 'supervision', 'caisse')
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   )
   with check (
     cle in ('meteo_sommet', 'vitesse_ticker_px_s')
-    and private.role_courant() in ('admin', 'supervision', 'caisse')
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 
--- Toutes les AUTRES clés (veille_nuit, durées, a_quai_origine_s…) : admin seul.
--- Deux politiques PERMISSIVES se cumulent en OU : un admin passe donc par
--- celle-ci pour les clés hors affichage, et par la précédente pour les autres.
-create policy "params admin" on params for all to authenticated
-  using (private.role_courant() = 'admin')
-  with check (private.role_courant() = 'admin');
+-- Cycle des médias : réglé depuis l'onglet Médias, ouvert à l'exploitation.
+create policy "roles: params medias" on params for all to authenticated
+  using (
+    cle in ('mode_medias', 'duree_horaires_s')
+    and (select private.a_un_des_roles(array['admin','supervision']))
+  )
+  with check (
+    cle in ('mode_medias', 'duree_horaires_s')
+    and (select private.a_un_des_roles(array['admin','supervision']))
+  );
+
+-- Réglage d'exploitation : le chef d'exploitation.
+create policy "roles: params exploitation" on params for all to authenticated
+  using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
+  with check (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')));
+
+-- Infrastructure (veille de nuit globale, durée du cache) et toute clé
+-- INCONNUE : le rôle technique. Une clé nouvelle est un réglage
+-- d'infrastructure jusqu'à preuve du contraire.
+create policy "roles: params technique" on params for all to authenticated
+  using ((select private.a_le_role('technique')))
+  with check ((select private.a_le_role('technique')));
 
 commit;
 

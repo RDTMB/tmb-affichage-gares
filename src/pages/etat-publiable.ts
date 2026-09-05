@@ -324,6 +324,9 @@ export const OBJETS_JOURNAL: Record<string, string> = {
   modeles_messages: 'Modèle',
   ecrans: 'Écran',
   grilles: 'Grille horaire',
+  profils: 'Compte',
+  profils_roles: 'Rôle',
+  roles: 'Catalogue des rôles',
 };
 
 export function libelleObjet(table: string): string {

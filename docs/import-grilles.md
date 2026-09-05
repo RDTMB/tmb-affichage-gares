@@ -14,8 +14,10 @@ hiver 2026-2027. Le format attendu du fichier est décrit dans
    colonne A avec A / D en colonne B, puis « HORAIRES DES DESCENTES ». En
    hiver, le Nid d'Aigle n'a pas d'heure (ligne absente ou tirets) : Bellevue
    est le terminus normal.
-2. **Ouvrir la Supervision**, se connecter avec un compte supervision ou
-   administrateur, onglet **Horaires**, bouton **Charger un fichier Excel…**,
+2. **Ouvrir la Supervision**, se connecter avec un compte portant le rôle
+   supervision, administrateur ou technique (les grilles sont partagées :
+   un horaire corrigé un matin de service ne doit attendre personne),
+   onglet **Horaires**, bouton **Charger un fichier Excel…**,
    choisir le fichier. La lecture prend une seconde.
 3. **Vérifier chaque feuille** dans l'aperçu :
    - le **nom** de la grille est proposé (« Hiver 2026-2027 »), modifiable ;
