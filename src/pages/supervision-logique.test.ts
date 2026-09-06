@@ -19,7 +19,11 @@ import {
   ajusteSection,
   bandeauSection,
   bornesSectionPossibles,
+  barrePublication,
+  heureCourte,
   grilleOngletsHtml,
+  groupesNavigation,
+  estOngletAdministration,
   etatVisibiliteOnglets,
   decisionBandeauApplication,
   type EtatBandeauApplication,
@@ -417,6 +421,252 @@ describe('bandeauSection : signalé seulement quand la ligne est restreinte', ()
 // grille NE MENT PAS : une case cochable doit correspondre à un geste que la
 // base acceptera, une case grisée à un geste qu'elle refuserait.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Barre de publication — les trois états (canevas 1d).
+//
+// Ce qui se joue ici n'est pas cosmétique : la barre répond à « ce que je vois
+// est-il en gare ? ». Elle a longtemps prétendu que les modifications
+// s'appliquaient immédiatement, ce qui est faux depuis le brouillon.
+// ---------------------------------------------------------------------------
+
+describe('barrePublication : les trois états et leur vocabulaire', () => {
+  const PUBLIE_A = '2026-09-06T08:12:00.000Z'; // 10:12 à Paris
+
+  it('ÉTAT 1 — rien à publier : bouton inerte, et ce que les gares affichent', () => {
+    const v = barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.etat).toBe('publie');
+    expect(v.titre).toBe('Tout est publié');
+    expect(v.compteur).toBeNull();
+    expect(v.boutonActif).toBe(false);
+    // La ligne grise ne raconte plus une règle fausse : elle date l'état vu
+    // en gare.
+    expect(v.detail).toContain('10:12');
+    expect(v.detail).toContain('Les 6 gares');
+  });
+
+  it('ÉTAT 2 — le compteur parle des ÉCRANS, pas du brouillon', () => {
+    // « en attente de publication » décrivait le brouillon ; « pas encore sur
+    // les écrans » décrit ce que voient les voyageurs. Même fait, point de vue
+    // du guichet — et c'est celui qui compte.
+    const v = barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.etat).toBe('en-cours');
+    expect(v.titre).toBe('2 modifications pas encore sur les écrans');
+    expect(v.titre).not.toContain('en attente de publication');
+    expect(v.compteur).toBe(2);
+    expect(v.boutonActif).toBe(true);
+    // …et la ligne grise dit que les gares n'ont pas bougé.
+    expect(v.detail).toContain('toujours');
+    expect(v.detail).toContain('10:12');
+  });
+
+  it('ÉTAT 2 au singulier : « 1 modification », sans « s »', () => {
+    const v = barrePublication({ modifs: 1, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.titre).toBe('1 modification pas encore sur les écrans');
+  });
+
+  it('ÉTAT 3 — échec partiel : il PRIME sur le compteur ordinaire', () => {
+    // Un échec laisse des voyageurs devant un horaire faux : il passe devant.
+    const v = barrePublication({
+      modifs: 3,
+      echecs: 1,
+      derniereISO: PUBLIE_A,
+      echecISO: '2026-09-06T08:21:00.000Z',
+    });
+    expect(v.etat).toBe('echec');
+    expect(v.titre).toContain('Publication incomplète');
+    expect(v.titre).toContain('10:21');
+    expect(v.titre).toContain('n’est pas en gare');
+    expect(v.libelleBouton).toBe('Réessayer la publication');
+    expect(v.boutonActif).toBe(true);
+  });
+
+  it('ÉTAT 3 au pluriel : l’accord suit le nombre resté en attente', () => {
+    const v = barrePublication({ modifs: 5, echecs: 2, derniereISO: PUBLIE_A });
+    expect(v.titre).toContain('2 modifications ne sont pas en gare');
+  });
+
+  it('l’état 3 dit que le message NE S’EFFACERA PAS tout seul', () => {
+    // Libellé du canevas, vérifié dans son source. La CAUSE est dans son
+    // encart juste au-dessus ; cette ligne-ci répond à l'autre question de
+    // l'agent — « puis-je aller chercher de l'aide sans le perdre ? ».
+    const v = barrePublication({
+      modifs: 3,
+      echecs: 1,
+      derniereISO: PUBLIE_A,
+      echecISO: '2026-09-06T08:21:00.000Z',
+    });
+    expect(v.detail).toBe('Ce message reste affiché jusqu’à la prochaine publication réussie.');
+  });
+
+  it('les libellés sont ceux du CANEVAS, au caractère près', () => {
+    // Relevés dans `Supervision TMB.dc.html`, pas lus sur une capture : la
+    // première transposition avait perdu le point final et deux couleurs.
+    const publie = barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A });
+    expect(publie.titre).toBe('Tout est publié');
+    expect(publie.detail).toBe('Les 6 gares affichent l’état publié à 10:12.');
+    expect(publie.pastille).toBe('✓');
+
+    const enCours = barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A });
+    expect(enCours.titre).toBe('2 modifications pas encore sur les écrans');
+    expect(enCours.detail).toBe('Les 6 gares affichent toujours l’état publié à 10:12.');
+    expect(enCours.pastille).toBe('2');
+
+    const echec = barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A });
+    expect(echec.pastille).toBe('!');
+    expect(echec.libelleBouton).toBe('Réessayer la publication');
+  });
+
+  it('la pastille n’est JAMAIS vide : c’est un des trois signaux', () => {
+    for (const v of [
+      barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }),
+    ]) {
+      expect(v.pastille).not.toBe('');
+    }
+  });
+
+  it('l’état 2 porte le RÉSUMÉ de ce qui a changé', () => {
+    // `resumeEcarts()` est déjà calculé pour l'historique : l'agent doit
+    // pouvoir relire ce qu'il publie sans quitter la barre.
+    const v = barrePublication({
+      modifs: 2,
+      echecs: 0,
+      derniereISO: PUBLIE_A,
+      resume: 'TRAIN 11 retard — → +10 min · Météo 9 → 12',
+    });
+    expect(v.resume).toContain('TRAIN 11');
+    // …et les deux autres états n'en portent pas : rien à relire.
+    expect(barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }).resume).toBe('');
+    expect(barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }).resume).toBe('');
+  });
+
+  it('AUCUNE publication encore faite : pas d’heure inventée', () => {
+    // Une base neuve, ou un poste ouvert avant la première publication du
+    // jour. Afficher « publié à 00:00 » serait un mensonge.
+    const v = barrePublication({ modifs: 0, echecs: 0, derniereISO: null });
+    expect(v.detail).not.toMatch(/\d{2}:\d{2}/);
+    expect(v.detail).toContain('dernier état publié');
+  });
+
+  it('un horodatage ILLISIBLE ne casse pas la barre', () => {
+    const v = barrePublication({ modifs: 1, echecs: 0, derniereISO: 'pas une date' });
+    expect(v.etat).toBe('en-cours');
+    expect(v.detail).not.toContain('Invalid');
+    expect(v.detail).not.toMatch(/NaN/);
+  });
+
+  it('les trois états sont bien DISTINCTS — aucun libellé partagé', () => {
+    const etats = [
+      barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }),
+    ];
+    expect(new Set(etats.map((e) => e.etat)).size).toBe(3);
+    expect(new Set(etats.map((e) => e.titre)).size).toBe(3);
+  });
+
+  it('heureCourte : Europe/Paris, et null plutôt qu’une date bancale', () => {
+    expect(heureCourte('2026-09-06T08:12:00.000Z')).toBe('10:12'); // été
+    expect(heureCourte('2026-01-06T08:12:00.000Z')).toBe('09:12'); // hiver
+    expect(heureCourte(null)).toBeNull();
+    expect(heureCourte('n’importe quoi')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Barre de navigation à deux groupes (canevas 1b).
+//
+// La contrainte qui a fait retenir cette forme plutôt que les deux rangs :
+// la liste d'onglets est RÉGLABLE en exploitation, la barre doit donc rester
+// juste pour n'importe quel sous-ensemble — de huit entrées à une seule.
+// ---------------------------------------------------------------------------
+
+describe('groupesNavigation : la barre tient pour n’importe quel sous-ensemble', () => {
+  it('huit onglets : cinq d’exploitation à gauche, trois d’administration à droite', () => {
+    const g = groupesNavigation([...ONGLETS]);
+    expect(g.exploitation).toEqual(['circulations', 'horaires', 'bandeau', 'medias', 'ecrans']);
+    expect(g.administration).toEqual(['parametres', 'utilisateurs', 'journal']);
+  });
+
+  it('la configuration par défaut de la CAISSE : quatre onglets, deux groupes', () => {
+    const g = groupesNavigation(['bandeau', 'medias', 'ecrans', 'journal']);
+    expect(g.exploitation).toEqual(['bandeau', 'medias', 'ecrans']);
+    expect(g.administration).toEqual(['journal']);
+  });
+
+  it('cas dégradé à DEUX onglets d’exploitation : le groupe droit est VIDE', () => {
+    // L'appelant doit alors ne pas le rendre du tout — ni intitulé, ni filet.
+    const g = groupesNavigation(['bandeau', 'medias']);
+    expect(g.administration).toEqual([]);
+    expect(g.exploitation).toHaveLength(2);
+  });
+
+  it('cas dégradé à UN onglet d’administration : le groupe gauche est VIDE', () => {
+    // Constaté à l'écran : sans traitement, le groupe partait se coller tout à
+    // droite d'une barre par ailleurs vide, avec un intitulé qui ne
+    // distinguait plus rien de rien.
+    const g = groupesNavigation(['journal']);
+    expect(g.exploitation).toEqual([]);
+    expect(g.administration).toEqual(['journal']);
+  });
+
+  it('aucun onglet : deux groupes vides, aucune barre à rendre', () => {
+    const g = groupesNavigation([]);
+    expect(g.exploitation).toEqual([]);
+    expect(g.administration).toEqual([]);
+  });
+
+  it('AUCUN onglet n’est perdu ni dupliqué, quel que soit le sous-ensemble', () => {
+    // Balayage exhaustif des 256 sous-ensembles possibles : la barre étant
+    // réglable, ils sont tous atteignables en exploitation.
+    for (let masque = 0; masque < 1 << ONGLETS.length; masque += 1) {
+      const sousEnsemble = ONGLETS.filter((_, i) => (masque >> i) & 1);
+      const g = groupesNavigation(sousEnsemble);
+      expect([...g.exploitation, ...g.administration].sort()).toEqual([...sousEnsemble].sort());
+    }
+  });
+
+  it('l’ORDRE de la barre est conservé dans chaque groupe', () => {
+    const g = groupesNavigation([...ONGLETS]);
+    for (const groupe of [g.exploitation, g.administration]) {
+      const rangs = groupe.map((o) => ONGLETS.indexOf(o));
+      expect(rangs).toEqual([...rangs].sort((a, b) => a - b));
+    }
+  });
+
+  it('le groupe d’un onglet ne dépend PAS de sa visibilité', () => {
+    // L'appartenance est fixe dans le code ; la visibilité est une donnée.
+    // Masquer « Journal » à un rôle ne le fait pas changer de groupe.
+    expect(estOngletAdministration('journal')).toBe(true);
+    expect(groupesNavigation(['journal']).administration).toEqual(['journal']);
+    expect(groupesNavigation([...ONGLETS]).administration).toContain('journal');
+  });
+
+  it('les trois onglets d’administration sont ceux qui ne servent pas en journée', () => {
+    // Règle de placement du canevas : « exploitation » = ce qui sert en cours
+    // de journée ; « administration » = ce qui se règle une fois, ou se
+    // consulte après coup.
+    for (const onglet of ['parametres', 'utilisateurs', 'journal'] as const) {
+      expect(estOngletAdministration(onglet)).toBe(true);
+    }
+    for (const onglet of ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans'] as const) {
+      expect(estOngletAdministration(onglet)).toBe(false);
+    }
+  });
+
+  it('le groupement ne crée ni ne retire AUCUN droit', () => {
+    // C'est de la mise en page. Un onglet d'administration reste ouvert par
+    // ses droits, exactement comme avant.
+    for (const role of ROLES) {
+      const g = groupesNavigation(plafondOnglets(role));
+      expect([...g.exploitation, ...g.administration].sort()).toEqual(
+        [...plafondOnglets(role)].sort(),
+      );
+    }
+  });
+});
 
 describe('grilleOngletsHtml', () => {
   /** État d'une case, lu dans le HTML rendu. */

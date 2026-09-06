@@ -68,25 +68,49 @@
              avec une heure décalée. Il faut que ça se voie, sinon on croit
              lire un poste normal. -->
         <div class="pill simule" id="pill-simule" style="display: none">—</div>
+        <!-- REPLI de l'en-tête (canevas 1g). À trois badges de rôle avec
+             PRODUCTION et l'heure simulée, tout ne tient plus sur une ligne —
+             ni à 1280 px, ni à 1440. Sans repli, les badges se faisaient
+             ÉCRASER et « SUPERVISION » disparaissait sous « Quitter ».
+             L'ORDRE CI-DESSOUS EST LA RÈGLE : les pastilles de SÉCURITÉ
+             (base servie, heure simulée) précèdent celles d'information, elles
+             sont donc les dernières à descendre d'un rang. -->
         <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
         <div class="pill" id="pill-service">—</div>
         <div class="user" id="bloc-user" style="display: none">
           <div class="avatar" id="avatar">–</div>
           <span id="user-nom">—</span>
-          <span class="role-tag" id="user-role"></span>
+          <!-- CONTENEUR, pas un badge lui-même : il portait `.role-tag`, donc
+               sa largeur fixe de 108 px, et trois badges cumulés s'empilaient
+               verticalement en poussant l'en-tête à 157 px de haut. Dans
+               l'en-tête, les badges s'alignent en LIGNE, à la largeur de leur
+               texte (canevas 1e). -->
+          <span class="badges-entete" id="user-role"></span>
           <button class="leger" id="btn-deconnexion">Quitter</button>
         </div>
       </header>
 
+      <!-- UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation à gauche,
+           à sa taille ; l'administration à droite, plus discrète, derrière un
+           filet. Aucune profondeur ajoutée : tout reste à un clic.
+           La liste étant réglable en exploitation (`onglets_par_role`), la
+           barre doit rester juste de huit onglets à deux — un groupe VIDE
+           n'est pas rendu, intitulé et filet compris. -->
       <nav class="tabs" id="tabs" style="display: none">
-        <button data-t="circulations" class="on">Circulations</button>
-        <button data-t="horaires">Horaires</button>
-        <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
-        <button data-t="medias">Médias</button>
-        <button data-t="ecrans">Écrans</button>
-        <button data-t="parametres">Paramètres</button>
-        <button data-t="utilisateurs">Utilisateurs</button>
-        <button data-t="journal">Journal</button>
+        <div class="groupe-onglets groupe-exploitation" id="groupe-exploitation">
+          <button data-t="circulations" class="on">Circulations</button>
+          <button data-t="horaires">Horaires</button>
+          <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
+          <button data-t="medias">Médias</button>
+          <button data-t="ecrans">Écrans</button>
+        </div>
+        <div class="ecart-onglets"></div>
+        <div class="groupe-onglets groupe-administration" id="groupe-administration">
+          <span class="intitule-groupe">Administration</span>
+          <button data-t="parametres">Paramètres</button>
+          <button data-t="utilisateurs">Utilisateurs</button>
+          <button data-t="journal">Journal</button>
+        </div>
       </nav>
     </div>
 
@@ -816,9 +840,19 @@
       </section>
     </main>
 
+    <!-- TROIS ÉTATS, trois signaux REDONDANTS (canevas 1d) : le filet
+         supérieur (absent / bleu / rouge), la hauteur de la barre, et la forme
+         de la pastille. Un seul suffit à trancher à deux mètres, et aucun
+         n'est une alerte permanente au repos — la couleur n'est jamais dans le
+         fond entier. -->
     <div class="publier" id="barre-publier" style="display: none">
-      <div>
-        <div class="etat" id="etat-pub">Tout est publié ✓</div>
+      <div class="pastille-pub" id="pastille-pub">✓</div>
+      <div class="bloc-etat-pub">
+        <div class="etat" id="etat-pub">Tout est publié</div>
+        <!-- CE QUI A CHANGÉ, en une ligne : l'agent relit ce qu'il s'apprête à
+             publier sans quitter la barre. C'est `resumeEcarts()`, déjà
+             calculé pour le résumé consigné à l'historique. -->
+        <div class="resume-ecarts" id="resume-ecarts" style="display: none"></div>
         <div class="resume-application" id="resume-application" style="display: none"></div>
         <!-- Cause RÉELLE d'une publication incomplète : elle reste affichée
              jusqu'à la publication suivante, là où le toast s'effaçait avant

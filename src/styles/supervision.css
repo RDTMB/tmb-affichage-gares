@@ -49,9 +49,40 @@ header {
   color: #fff;
   display: flex;
   align-items: center;
+  /* L'en-tête se REPLIE plutôt que d'écraser son contenu. Constaté à 1280 px
+     avec trois badges de rôle : « TECHNIQUE » et « ADMIN » se chevauchaient
+     et « SUPERVISION » passait sous le bouton « Quitter ». Un badge de rôle
+     illisible est pire qu'un badge absent — on croit lire le sien. */
+  flex-wrap: wrap;
   gap: 16px;
   padding: 8px 22px;
 }
+
+/* Rien de tout cela ne se comprime : ces éléments disent QUI on est et SUR
+   QUELLE BASE on travaille. C'est le titre qui cède la place, lui se relit. */
+header .pill,
+header .user {
+  flex: none;
+}
+
+/* L'IDENTITÉ RESTE À DROITE, sur quelque rang qu'elle tombe. `margin-left:
+   auto` ne consomme rien tant que le `.spacer` du rang 1 absorbe la place
+   libre ; dès qu'un repli survient, il repousse le bloc à droite de SON rang.
+   Une largeur ou un second `flex: 1` auraient déplacé les pastilles vers le
+   milieu sur un rang unique. */
+header .user {
+  margin-left: auto;
+}
+
+/* PAS DE POINT DE RUPTURE IMPOSÉ, et c'est délibéré. Le canevas (1g) prévoit
+   un repli à 1280 px ; un `@media` à seuil fixe le déclenchait aussi pour un
+   compte de caisse en démonstration — un badge, aucune pastille de sécurité —
+   qui tient pourtant largement, et lui coûtait un rang pour rien.
+   L'enroulement place la coupure là où le contenu l'exige, et l'ordre du DOM
+   fait le reste : les pastilles de SÉCURITÉ précèdent celles d'information,
+   elles sont donc les dernières à descendre. Mesuré : pire cas 3 badges +
+   PRODUCTION + heure simulée → deux rangs à 1440 comme à 1280, sécurité en
+   rang 1 ; caisse en démonstration → un seul rang à 1440. */
 
 /* En-tête et onglets restent affichés ENSEMBLE au défilement. Ils étaient
    collants séparément, le second calé à 62 px du haut — la hauteur de
@@ -177,12 +208,85 @@ header .spacer {
 }
 
 /* ------- Onglets ------- */
+/* UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation garde sa taille à
+   gauche, l'administration passe à droite, plus discrète, derrière un filet.
+   Aucune profondeur ajoutée : tout reste à un clic.
+
+   ⚠ La liste d'onglets est RÉGLABLE en exploitation (`onglets_par_role`) :
+   cette barre doit rester juste de huit entrées à deux. D'où l'écart en
+   `flex: 1` plutôt qu'une largeur, et le groupe vide masqué par le script
+   (`appliqueRoles`) — intitulé et filet compris. */
 nav.tabs {
   display: flex;
-  gap: 4px;
+  align-items: stretch;
   background: #fff;
   border-bottom: 1px solid var(--bord);
   padding: 0 22px;
+}
+
+.groupe-onglets {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* C'est LUI qui pousse l'administration à droite. Un écart élastique, jamais
+   une largeur fixe : à deux onglets visibles comme à huit, la barre reste
+   ancrée à gauche et le groupe droit collé à droite. */
+.ecart-onglets {
+  flex: 1;
+}
+
+.groupe-administration {
+  border-left: 1px solid var(--bord);
+  padding-left: 14px;
+  margin-left: 14px;
+}
+
+/* Valeurs relevées dans le source du canevas. */
+.intitule-groupe {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9fb0c0;
+  padding: 0 10px 0 0;
+}
+
+/* Plus petits et sans soulignement rouge : l'administration se consulte, elle
+   ne se surveille pas. L'onglet actif s'y marque par un fond, pour que la
+   ligne rouge reste le signal de l'exploitation. */
+.groupe-administration button {
+  font-size: 13.5px;
+  padding: 13px 12px;
+}
+
+.groupe-administration button.on {
+  color: var(--marine);
+  border-bottom-color: transparent;
+  /* #EAF2FA dans le canevas — le projet le possédait déjà sous `--bleu-bg`.
+     J'avais lu #EAF2F6 sur une capture : deux caractères de trop. */
+  background: var(--bleu-bg);
+  border-radius: 6px 6px 0 0;
+}
+
+/* SEUL GROUPE RESTANT : il s'ancre à gauche comme n'importe quelle barre.
+   Constaté en réglant un rôle sur « Journal » seul — le groupe partait se
+   coller tout à droite d'une barre par ailleurs vide, et son intitulé
+   « Administration » ne distinguait plus rien de rien. Un filet et un titre
+   ne séparent que s'il y a deux choses à séparer. */
+nav.tabs.sans-exploitation .ecart-onglets {
+  display: none;
+}
+
+nav.tabs.sans-exploitation .groupe-administration {
+  border-left: 0;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+nav.tabs.sans-exploitation .intitule-groupe {
+  display: none;
 }
 
 nav.tabs button {
@@ -1322,6 +1426,22 @@ tr.paire-fin td {
   text-align: center;
 }
 
+/* DANS L'EN-TÊTE, la largeur fixe n'a plus de raison d'être : il n'y a rien à
+   aligner d'une ligne à l'autre, une seule identité est affichée. Les badges
+   prennent donc la largeur de leur texte et tiennent sur UNE ligne — c'est
+   « ADMINISTRATEUR » qui faisait la loi, et il a été raccourci en « Admin ».
+   Sans cela, trois rôles cumulés s'empilaient et l'en-tête passait de 92 à
+   157 px de haut. */
+.badges-entete {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badges-entete .role-tag {
+  width: auto;
+}
+
 /* Plusieurs badges sur une même ligne : ils passent à la ligne proprement
    plutôt que d'écraser le reste de la ligne utilisateur. */
 .user-badges {
@@ -1815,12 +1935,88 @@ tr.paire-fin td {
   z-index: 40;
 }
 
+/* TROIS ÉTATS, TROIS SIGNAUX REDONDANTS (canevas 1d) : le filet supérieur, la
+   hauteur de la barre, la forme de la pastille. Un seul suffit à trancher à
+   deux mètres. La couleur n'est JAMAIS dans le fond entier — une barre rouge
+   en permanence cesse d'alerter au bout d'une heure. */
+/* Valeurs relevées dans le source du canevas, pas à l'œil sur une capture :
+   liseré de 4 px, `--bleu` (#2E74B5) en travail et `--alerte` (#C1281E) à
+   l'échec — deux couleurs que le projet possédait déjà. */
+.publier.pub-publie {
+  border-top-color: var(--bord);
+}
+
+.publier.pub-en-cours {
+  border-top: 4px solid var(--bleu);
+  padding-top: 10px;
+}
+
+/* Le plus haut des trois, et le seul à porter un encart : un échec de
+   publication laisse des voyageurs devant un horaire faux. */
+.publier.pub-echec {
+  border-top: 4px solid var(--alerte);
+  padding-top: 10px;
+  padding-bottom: 15px;
+}
+
+.publier .bloc-etat-pub {
+  min-width: 0;
+}
+
 .publier .etat {
   font-weight: 700;
 }
 
-.publier .etat b {
-  color: var(--rouge);
+/* CE QUI A CHANGÉ, entre le titre et la ligne d'état : l'agent relit ce qu'il
+   s'apprête à publier sans quitter la barre. Tronqué plutôt que replié — la
+   barre est fixe en bas de page et ne doit pas grandir avec la liste. */
+.resume-ecarts {
+  font-size: 12.5px;
+  color: var(--texte);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62vw;
+}
+
+/* Pastille : TOUJOURS présente, elle porte « ✓ », le compte, ou « ! ». Trois
+   états, trois traitements — le vert du repos ne se voit nulle part ailleurs
+   dans la barre, et le rouge garde son sens d'alerte. */
+.pastille-pub {
+  flex: none;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  color: #fff;
+  background: var(--bleu);
+}
+
+.pub-publie .pastille-pub {
+  width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 15px;
+}
+
+.pub-echec .pastille-pub {
+  width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--alerte);
+  font-size: 15px;
+}
+
+.pub-echec .etat {
+  color: var(--alerte);
 }
 
 .publier .detail {

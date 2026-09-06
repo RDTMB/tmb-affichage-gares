@@ -286,3 +286,267 @@ describe('Content-Security-Policy — aucune page ne doit la perdre', () => {
     for (const p of autres) expect(p).toBe(reference);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canevas 1b — barre de navigation à deux groupes.
+//
+// Verrouillage du CÂBLAGE : supervision.ts n'est pas importable ici (elle
+// accède au DOM dès le chargement), on teste donc son TEXTE, comme le fait
+// déjà ce fichier pour les pages d'affichage.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la barre à deux groupes reste câblée', () => {
+  const html = source('supervision.html');
+  const code = codeSeul('src/pages/supervision.ts');
+  const css = source('src/styles/supervision.css');
+
+  it('les deux groupes existent, séparés par un écart ÉLASTIQUE', () => {
+    // `flex: 1` et non une largeur : à deux onglets visibles comme à huit, la
+    // barre reste ancrée à gauche et le groupe droit collé à droite.
+    expect(html).toContain('id="groupe-exploitation"');
+    expect(html).toContain('id="groupe-administration"');
+    expect(html).toContain('class="ecart-onglets"');
+    expect(css).toMatch(/\.ecart-onglets\s*\{[^}]*flex:\s*1/);
+  });
+
+  it('un groupe VIDE n’est pas rendu — intitulé et filet compris', () => {
+    // Sans cela, « Administration » suivi de rien flotterait à droite d'une
+    // barre de quatre onglets.
+    expect(code).toMatch(/groupesNavigation\(/);
+    expect(code).toMatch(/montreSi\('groupe-exploitation'/);
+    expect(code).toMatch(/montreSi\('groupe-administration'/);
+  });
+
+  it('le seul groupe restant s’ancre à GAUCHE', () => {
+    // Constaté à l'écran en réglant un rôle sur « Journal » seul : le groupe
+    // partait à droite d'une barre vide, avec un intitulé qui ne distinguait
+    // plus rien.
+    expect(code).toContain('sans-exploitation');
+    expect(css).toMatch(/nav\.tabs\.sans-exploitation \.ecart-onglets\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/nav\.tabs\.sans-exploitation \.intitule-groupe\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(
+      /nav\.tabs\.sans-exploitation \.groupe-administration\s*\{[^}]*border-left:\s*0/,
+    );
+  });
+
+  it('UNE SEULE RANGÉE : aucun retour à la ligne dans la barre', () => {
+    // Toute la différence avec la proposition écartée (deux rangs) : aucune
+    // profondeur ajoutée, tout reste à un clic.
+    expect(css).not.toMatch(/nav\.tabs\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(css).toMatch(/nav\.tabs\s*\{[^}]*display:\s*flex/);
+  });
+
+  it('l’administration se distingue par le POIDS, pas par la couleur d’alerte', () => {
+    // Plus petits, sans soulignement rouge : le rouge reste le signal de
+    // l'exploitation.
+    expect(css).toMatch(/\.groupe-administration button\s*\{[^}]*font-size:\s*13\.5px/);
+    expect(css).toMatch(
+      /\.groupe-administration button\.on\s*\{[^}]*border-bottom-color:\s*transparent/,
+    );
+  });
+
+  it('les huit onglets sont TOUS répartis, aucun oublié en chemin', () => {
+    const groupes = html.slice(html.indexOf('id="groupe-exploitation"'), html.indexOf('</nav>'));
+    for (const onglet of [
+      'circulations',
+      'horaires',
+      'bandeau',
+      'medias',
+      'ecrans',
+      'parametres',
+      'utilisateurs',
+      'journal',
+    ]) {
+      expect(groupes, `${onglet} absent de la barre`).toContain(`data-t="${onglet}"`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Canevas 1d — barre Publier, trois états.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la barre Publier porte ses trois signaux', () => {
+  const html = source('supervision.html');
+  const code = codeSeul('src/pages/supervision.ts');
+  const css = source('src/styles/supervision.css');
+
+  it('l’état est porté par UNE classe, pas par trois réglages à tenir d’accord', () => {
+    expect(code).toMatch(/barrePublication\(/);
+    expect(code).toMatch(/pub-\$\{vue\.etat\}/);
+    for (const classe of ['pub-publie', 'pub-en-cours', 'pub-echec']) {
+      expect(css, `${classe} absente de la feuille`).toContain(`.publier.${classe}`);
+    }
+  });
+
+  it('TROIS SIGNAUX REDONDANTS : liseré, hauteur, contenu de pastille', () => {
+    // Valeurs RELEVÉES DANS LE SOURCE du canevas, pas lues sur une capture :
+    // liseré de 4 px, `--bleu` (#2E74B5) en travail, `--alerte` (#C1281E) à
+    // l'échec. La première transposition disait 3 px et #2B7AB5.
+    expect(css).toMatch(/\.publier\.pub-en-cours\s*\{[^}]*border-top:\s*4px solid var\(--bleu\)/);
+    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*border-top:\s*4px solid var\(--alerte\)/);
+    // L'échec est le seul plus haut : padding-bottom augmenté.
+    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*padding-bottom/);
+    // Trois pastilles distinctes : ✓ vert au repos (le seul vert de la
+    // barre), compte bleu en travail, « ! » rouge à l'échec.
+    expect(css).toMatch(/\.pub-publie \.pastille-pub\s*\{[^}]*background:\s*var\(--ok-bg\)/);
+    expect(css).toMatch(/\.pastille-pub\s*\{[^}]*background:\s*var\(--bleu\)/);
+    expect(css).toMatch(/\.pub-echec \.pastille-pub\s*\{[^}]*background:\s*var\(--alerte\)/);
+  });
+
+  it('l’onglet d’administration actif prend le bleu du canevas', () => {
+    // #EAF2FA, que le projet possédait déjà sous `--bleu-bg`. J'avais lu
+    // #EAF2F6 sur une capture — deux caractères de trop.
+    expect(css).toMatch(
+      /\.groupe-administration button\.on\s*\{[^}]*background:\s*var\(--bleu-bg\)/,
+    );
+    expect(css).not.toContain('#eaf2f6');
+  });
+
+  it('la couleur n’est JAMAIS dans le fond entier de la barre', () => {
+    // Une barre rouge en permanence cesse d'alerter au bout d'une heure.
+    for (const etat of ['pub-en-cours', 'pub-echec']) {
+      const bloc = css.match(new RegExp(`\.publier\.${etat}\s*\{[^}]*\}`))?.[0] ?? '';
+      expect(bloc, `${etat} teinte le fond`).not.toMatch(/[^-]background:/);
+    }
+  });
+
+  it('la phrase périmée ne peut pas revenir', () => {
+    // « Les modifications s'appliquent immédiatement » était faux depuis
+    // l'introduction du brouillon : c'est la ligne qui mentait, pas le code.
+    expect(html).not.toMatch(/s.appliquent imm[ée]diatement/i);
+    expect(code).not.toMatch(/s.appliquent imm[ée]diatement/i);
+  });
+
+  it('la cause d’un échec reste affichée jusqu’à la publication suivante', () => {
+    // Contrainte métier : un diagnostic qui s'efface avant d'être lu ne sert
+    // à personne. Le compteur d'échec n'est remis à zéro qu'en même temps que
+    // le bandeau, et par rien d'autre.
+    expect(html).toContain('id="echec-publication"');
+    // Une seule REMISE À ZÉRO dans tout le fichier — la déclaration
+    // `let echecsEnAttente = 0` n'en est pas une, d'où la négation.
+    const remises = code.match(/(?<!let )echecsEnAttente = 0/g) ?? [];
+    expect(remises).toHaveLength(1);
+    const fonction = code.match(/function afficheEchecPublication[\s\S]*?\n}/)?.[0] ?? '';
+    expect(fonction).toContain('echecsEnAttente = 0');
+    expect(fonction).toContain('echecPublicationISO = null');
+  });
+
+  it('l’échec est armé par le COMPTE réel des modifications restées en attente', () => {
+    expect(code).toMatch(/echecsEnAttente = echecs\.length/);
+    expect(code).toMatch(/echecPublicationISO = new Date\(\)\.toISOString\(\)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Canevas 1e / 1g — en-tête : badges de rôle et pastilles de sécurité.
+// ---------------------------------------------------------------------------
+
+describe('supervision — l’en-tête ne comprime ni ne tronque jamais', () => {
+  const html = source('supervision.html');
+  const css = source('src/styles/supervision.css');
+
+  it('l’en-tête SE REPLIE plutôt que d’écraser son contenu', () => {
+    // Mesuré à 1280 px avant correction : « TECHNIQUE » et « ADMIN » se
+    // chevauchaient, « SUPERVISION » passait sous le bouton « Quitter ».
+    // Un badge de rôle illisible est pire qu'un badge absent : on croit lire
+    // le sien.
+    expect(css).toMatch(/^header \{[^}]*flex-wrap:\s*wrap/m);
+  });
+
+  it('les pastilles et l’identité NE SE COMPRIMENT PAS', () => {
+    // Ce sont elles qui disent qui on est et sur quelle base on travaille.
+    // C'est le titre qui cède la place — lui se relit.
+    expect(css).toMatch(/header \.pill,\s*\nheader \.user \{[^}]*flex:\s*none/);
+  });
+
+  it('les pastilles de SÉCURITÉ précèdent celles d’information', () => {
+    // C'est cet ordre — et non un seuil en pixels — qui garantit qu'elles
+    // sont les dernières à descendre d'un rang.
+    const base = html.indexOf('id="pill-base"');
+    const simule = html.indexOf('id="pill-simule"');
+    const ecrans = html.indexOf('id="pill-ecrans"');
+    const service = html.indexOf('id="pill-service"');
+    expect(base).toBeGreaterThan(-1);
+    expect(base).toBeLessThan(simule);
+    expect(simule).toBeLessThan(ecrans);
+    expect(ecrans).toBeLessThan(service);
+  });
+
+  it('AUCUN seuil en pixels ne décide du repli de l’en-tête', () => {
+    // Un `@media` à seuil fixe repliait aussi un compte de caisse en
+    // démonstration — un badge, aucune pastille de sécurité — qui tient
+    // pourtant largement, et lui coûtait un rang pour rien.
+    expect(css).not.toContain('.saut-entete');
+    expect(html).not.toContain('saut-entete');
+  });
+
+  it('l’identité reste à DROITE, sur quelque rang qu’elle tombe', () => {
+    expect(css).toMatch(/header \.user \{[^}]*margin-left:\s*auto/);
+  });
+
+  it('dans l’en-tête, les badges tiennent sur UNE ligne', () => {
+    // Le conteneur portait `.role-tag`, donc sa largeur fixe de 108 px : trois
+    // rôles cumulés s'empilaient verticalement et l'en-tête passait de 92 à
+    // 157 px de haut. La largeur fixe sert à aligner les LIGNES utilisateur,
+    // pas une identité unique.
+    expect(html).toContain('class="badges-entete" id="user-role"');
+    expect(html).not.toMatch(/class="role-tag" id="user-role"/);
+    expect(css).toMatch(/\.badges-entete \{[^}]*display:\s*flex/);
+    expect(css).toMatch(/\.badges-entete \.role-tag \{[^}]*width:\s*auto/);
+  });
+
+  it('…mais les lignes utilisateur GARDENT leur largeur fixe', () => {
+    // Sans elle, les commandes des lignes se décalaient les unes par rapport
+    // aux autres selon la longueur du rôle affiché.
+    expect(css).toMatch(/^\.role-tag \{[^}]*width:\s*108px/m);
+  });
+
+  it('les deux pastilles de sécurité restent DISTINCTES de l’état courant', () => {
+    // Elles doivent se voir : on ne doit jamais croire tester alors qu'on
+    // publie en gare, ni prendre un poste à l'heure simulée pour un poste
+    // normal.
+    expect(css).toContain('.pill.base-prod');
+    expect(css).toContain('.pill.base-test');
+    expect(css).toContain('.pill.simule');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Canevas 1f — vue caisse.
+//
+// Rien à recoder ici : le comportement voulu découle déjà de la structure.
+// Ces tests le VERROUILLENT, pour qu'une session future ne réintroduise pas
+// une variante de barre « allégée » par rôle.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la vue caisse n’est pas un cas particulier', () => {
+  const code = codeSeul('src/pages/supervision.ts');
+
+  it('la caisse PUBLIE : aucune variante de barre par rôle', () => {
+    // La barre de publication est la barre de TRAVAIL de l'agent de caisse —
+    // un message de bandeau qu'elle saisit sans le publier n'atteint aucun
+    // écran. Elle est donc affichée sans condition de rôle.
+    expect(code).toMatch(/\$\('barre-publier'\)\.style\.display = '';/);
+    // Aucun droit ne la conditionne, ni ne la remplace par une variante.
+    expect(code).not.toMatch(/peut\('publier'\)/);
+    expect(code).not.toMatch(/barre-publier[^\n]*peut\(/);
+    // …et un seul bouton « Publier » existe dans toute la page.
+    expect((code.match(/\$\('btn-publier'\)/g) ?? []).length).toBeLessThanOrEqual(3);
+  });
+
+  it('l’onglet d’arrivée est le PREMIER onglet visible, quel que soit le rôle', () => {
+    // C'est ce qui fait arriver la caisse sur Bandeau une fois Horaires
+    // masqué — par construction, et non par une liste en dur qu'il faudrait
+    // corriger au prochain changement de configuration.
+    expect(code).toMatch(/visibles\[0\]/);
+    expect(code).not.toMatch(/=== 'caisse'/);
+    expect(code).not.toMatch(/roles\.includes\('caisse'\)/);
+  });
+
+  it('aucune liste d’onglets n’est codée en dur pour un rôle', () => {
+    // Les vues par profil sont des CONFIGURATIONS PAR DÉFAUT, pas des
+    // vérités : l'exploitant peut les changer sans livraison.
+    expect(code).toMatch(/ongletsVisibles\(roles, visibiliteOnglets\)/);
+  });
+});
