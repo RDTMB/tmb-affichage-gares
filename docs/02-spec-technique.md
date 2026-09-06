@@ -291,6 +291,42 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   l'enveloppe `(select …)` fait évaluer la fonction une fois par requête et
   non par ligne, et la liste des rôles reste lisible telle quelle dans
   `pg_policies` — sans indirection, pour qui reprendra le projet.
+- `onglets_par_role` : quels onglets chaque rôle AFFICHE (docs/01 §5.5).
+  Table de liaison (une ligne = un rôle × un onglet), et non une colonne
+  `text[]` : RLS s'évalue ligne à ligne, et le journal doit recevoir une ligne
+  par onglet accordé ou masqué. Lecture pour tout compte connecté ; écriture au
+  seul rôle technique (`parametres.technique`), comme la veille de nuit globale
+  ou la purge du journal. Pas d'UPDATE — accorder et masquer sont deux gestes ;
+  `regle_par` vient du jeton, jamais du client (elle n'est pas dans le GRANT
+  d'INSERT). Ajout sur base existante :
+  `supabase/migrations/2026-09-onglets-par-role.sql`.
+
+  **⚠ Cette table ne peut que RETRANCHER.** La matrice droit × rôle
+  (`src/core/roles.ts`) et les politiques RLS restent le PLAFOND :
+  `ongletsVisibles()` INTERSECTE ce qu'elle lit avec ce que les droits ouvrent,
+  si bien qu'une ligne forgée n'a aucun effet. **Ce n'est pas une barrière de
+  sécurité, c'est du rangement d'interface** — aucune écriture nouvelle ne
+  devient possible. Ne jamais s'en servir pour accorder quoi que ce soit ; la
+  démonstration en base est dans `supabase/tests/roles-rls.sql` §4 bis.
+
+  Deux replis vers la matrice du code, jamais vers « aucun onglet » : réglage
+  indisponible (table absente, requête en échec, table vide), et rôle sans
+  aucune ligne — sans ce second, un rôle créé plus tard naîtrait aveugle.
+
+  Deux déclencheurs propres : `trg_onglets_auteur` (l'auteur vient du jeton) et
+  `trg_onglets_quorum`, garde-fou d'enfermement — au moins un rôle capable de
+  rouvrir ce réglage doit garder l'onglet Utilisateurs. Il est DIFFÉRÉ (un
+  échange « masquer ici, accorder là » passe en une transaction) et précédé
+  d'un `pg_advisory_xact_lock` (deux retraits concurrents des deux derniers
+  accès réussiraient sinon tous les deux). ⚠ La liste des rôles qui rouvrent la
+  porte y est écrite EN DUR — la base ne connaît pas la matrice droit × rôle ;
+  `src/data/securite.test.ts` la compare à `ROLES_QUI_ROUVRENT`. Porte de
+  secours : `delete from onglets_par_role where role = 'technique';` fait
+  retomber ce rôle sur la matrice du code.
+
+  La table est HORS de la publication realtime : une barre de navigation qui se
+  réorganise sous les doigts de quelqu'un en train de saisir serait pire que le
+  délai d'un rechargement.
 - **Déclencheurs en plus de RLS** : RLS ne s'applique ni à `service_role` ni
   au propriétaire des tables. La matrice d'attribution, l'interdiction de
   modifier ses propres rôles et l'invariant « au moins un technique et un
