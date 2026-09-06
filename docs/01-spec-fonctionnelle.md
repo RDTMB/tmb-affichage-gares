@@ -513,14 +513,21 @@ accessibles (§5.5 ci-dessous, et docs/02 sécurité).
    compte sans rechargement, au plus tard au cycle suivant (60 s).
    _(Évolution validée par l'exploitant le 29/08/2026.)_
 5. **Paramètres** : Machines (ajouter/renommer/couleur/en service/retirer) ;
-   Motifs (liste modifiable) ; États du ciel ; Utilisateurs et droits (§5.5) ;
-   Saisons et services (grilles chargées + périodes) ; délai
-   **« à quai » en gare d'origine** (`a_quai_origine_s`, défaut 5 min, §3) ;
-   Journal d'exploitation (§7). Chaque carte n'apparaît qu'aux rôles qui
-   peuvent l'écrire : le paramétrage d'exploitation au chef d'exploitation,
-   la purge du journal au rôle technique. La bibliothèque de modèles est
-   passée dans l'onglet Bandeau, la veille de nuit dans l'onglet Écrans, la
-   vitesse du bandeau et la météo dans l'onglet Bandeau.
+   délai **« à quai » en gare d'origine** (`a_quai_origine_s`, défaut 5 min,
+   §3). RÈGLE DE RANGEMENT (06/09/2026) : ce qu'on touche EN COURS DE JOURNÉE
+   n'est pas dans Paramètres, et un onglet = un droit. Les Motifs sont donc
+   passés en fin d'onglet Circulations (repliés) et les États du ciel sous la
+   météo de l'onglet Bandeau — au contact de ce qui les consomme ; en ajouter
+   un pendant une perturbation n'oblige plus à quitter l'onglet. Chaque carte
+   n'apparaît qu'aux rôles qui peuvent l'écrire : le paramétrage
+   d'exploitation au chef d'exploitation.
+6. **Utilisateurs** : comptes et rôles (§5.5), droit `comptes.lire`.
+7. **Journal** : journal d'exploitation en lecture seule (§7), droit
+   `journal` ; la purge reste réservée au rôle technique
+   (`journal.purger`). Onglet DÉDIÉ depuis le 06/09/2026 : « Paramètres »
+   exigeait `comptes.lire` ou `journal.purger`, si bien que la caisse —
+   pourtant titulaire du droit `journal` — n'atteignait le journal par aucun
+   chemin.
 
    **Pastille de la base servie** (en-tête, à gauche des autres) :
    « PRODUCTION » en rouge, « BASE DE TEST » en jaune, « DÉMONSTRATION » en
@@ -597,7 +604,7 @@ _(Modèle validé par l'exploitant le 05/09/2026 ; détail technique docs/02 §5
    n'y figure pas si la valeur est revenue à 8. « Aperçu écrans » ouvre
    l'écran d'une gare dans un nouvel onglet.
 
-7. **Journal d'exploitation** (Paramètres, lecture seule). Puisqu'une valeur
+7. **Journal d'exploitation** (onglet Journal, lecture seule). Puisqu'une valeur
    posée puis retirée ne laisse plus aucune trace dans le compteur, alors que
    les écrans l'ont bel et bien affichée, chaque ÉCRITURE est consignée à
    part — une ligne par champ modifié, avec quand, qui, objet, champ et

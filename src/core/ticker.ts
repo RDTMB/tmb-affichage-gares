@@ -14,9 +14,64 @@ export const NIVEAUX_VITESSE_TICKER = [
   { libelle: 'Très rapide', px_s: 180 },
 ] as const;
 
-/** Bornes de sécurité : au-delà, l'affichage devient illisible. */
-const VITESSE_MIN = 20;
-const VITESSE_MAX = 400;
+/**
+ * Bornes de sécurité : au-delà, l'affichage devient illisible. Exportées
+ * parce que la supervision propose désormais une vitesse LIBRE : le champ
+ * doit annoncer ce qu'il accepte, plutôt que corriger en silence une valeur
+ * refusée.
+ */
+export const VITESSE_TICKER_MIN = 20;
+export const VITESSE_TICKER_MAX = 400;
+const VITESSE_MIN = VITESSE_TICKER_MIN;
+const VITESSE_MAX = VITESSE_TICKER_MAX;
+
+/** Valeur du <select> quand la vitesse ne correspond à aucun niveau. */
+export const VITESSE_PERSONNALISEE = 'perso';
+
+/**
+ * Vitesse RETENUE par un poste : la sienne si elle est posée, le réglage
+ * global sinon. Même forme que `veilleEffective()` — un poste surcharge, il
+ * ne remplace pas la règle.
+ *
+ * Une surcharge illisible (hors bornes, texte, zéro) est ramenée dans les
+ * bornes par `vitesseTickerValide()` plutôt qu'ignorée : elle exprime quand
+ * même une intention, et l'ignorer ferait défiler au réglage global sans que
+ * personne comprenne pourquoi.
+ */
+export function vitesseTickerEffective(
+  globale: unknown,
+  propre?: number | null,
+): { px_s: number; propre: boolean } {
+  if (propre === null || propre === undefined) {
+    return { px_s: vitesseTickerValide(globale), propre: false };
+  }
+  return { px_s: vitesseTickerValide(propre), propre: true };
+}
+
+export interface ChoixVitesse {
+  /** Valeur à sélectionner dans le <select> : un niveau, ou « perso ». */
+  selection: string;
+  /** Vitesse retenue, bornée et assainie. */
+  px_s: number;
+  /** Le champ libre doit-il être visible ? */
+  personnalisee: boolean;
+}
+
+/**
+ * État du réglage de vitesse, pour la supervision. PURE.
+ *
+ * Une vitesse hors des quatre niveaux — saisie libre, ou valeur posée
+ * directement en base — bascule le sélecteur sur « Personnaliser » et
+ * ouvre le champ, au lieu d'être silencieusement ramenée au niveau le plus
+ * proche : l'exploitant a le droit de choisir 105 px/s.
+ */
+export function choixVitesseTicker(valeur: unknown): ChoixVitesse {
+  const px_s = vitesseTickerValide(valeur);
+  const niveau = NIVEAUX_VITESSE_TICKER.find((n) => n.px_s === px_s);
+  return niveau
+    ? { selection: String(niveau.px_s), px_s, personnalisee: false }
+    : { selection: VITESSE_PERSONNALISEE, px_s, personnalisee: true };
+}
 
 /**
  * Vitesse retenue : repli sur 90 px/s si la valeur est absente, non

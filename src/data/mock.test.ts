@@ -596,12 +596,14 @@ describe('Veille propre à un écran et heure du relevé météo', () => {
   it('un écran neuf suit le réglage global : le signal de vie ne renvoie rien', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
-    const veille = await provider.heartbeat({
+    const reglages = await provider.heartbeat({
       id: 'bellevue-ecran-1',
       gare: 'bellevue',
       type: 'ecran',
     });
-    expect(veille).toBeNull();
+    // Le signal de vie rend TOUS les réglages propres au poste : ni veille,
+    // ni vitesse de bandeau pour un écran neuf.
+    expect(reglages).toEqual({ veille: null, vitesse_ticker_px_s: null });
   });
 
   it('une veille propre est rendue au poste par son signal de vie', async () => {
@@ -609,17 +611,32 @@ describe('Veille propre à un écran et heure du relevé météo', () => {
     await provider.declareEcran({ id: 'bellevue-ecran-1', gare: 'bellevue', type: 'ecran' });
     await provider.saveVeilleEcran('bellevue-ecran-1', '19:00', '06:30');
 
-    const veille = await provider.heartbeat({
+    const reglages = await provider.heartbeat({
       id: 'bellevue-ecran-1',
       gare: 'bellevue',
       type: 'ecran',
     });
-    expect(veille).toEqual({ debut: '19:00', fin: '06:30' });
+    expect(reglages.veille).toEqual({ debut: '19:00', fin: '06:30' });
     // …et les autres postes ne sont pas touchés
     await provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' });
     expect(
-      await provider.heartbeat({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' }),
+      (await provider.heartbeat({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' })).veille,
     ).toBeNull();
+  });
+
+  it('la VITESSE propre au poste voyage par le même signal de vie', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'nid-daigle-ecran-1', gare: 'nid-daigle', type: 'ecran' });
+    await provider.saveVitesseEcran('nid-daigle-ecran-1', 60);
+    const bat = async (id: string) => provider.heartbeat({ id, gare: 'nid-daigle', type: 'ecran' });
+    expect((await bat('nid-daigle-ecran-1')).vitesse_ticker_px_s).toBe(60);
+
+    // Champ vidé = retour au réglage global.
+    await provider.saveVitesseEcran('nid-daigle-ecran-1', null);
+    expect((await bat('nid-daigle-ecran-1')).vitesse_ticker_px_s).toBeNull();
+
+    // Un poste inconnu ne se crée pas au passage.
+    await expect(provider.saveVitesseEcran('fantome-ecran-1', 90)).rejects.toThrow(/inconnu/);
   });
 
   it('le retour au réglage global efface les deux bornes', async () => {

@@ -94,7 +94,16 @@ import {
   OBJETS_JOURNAL,
   resumeEcarts,
 } from './etat-publiable';
-import { dureeDefilementS, NIVEAUX_VITESSE_TICKER, vitesseTickerValide } from '../core/ticker';
+import {
+  choixVitesseTicker,
+  dureeDefilementS,
+  NIVEAUX_VITESSE_TICKER,
+  VITESSE_PERSONNALISEE,
+  VITESSE_TICKER_MAX,
+  VITESSE_TICKER_MIN,
+  vitesseTickerValide,
+} from '../core/ticker';
+import type { ChoixVitesse } from '../core/ticker';
 import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
 import {
   actionGroupeeFacultatifs,
@@ -566,7 +575,7 @@ function appliqueRoles(): void {
 
   // Bandeau : la bibliothèque de modèles est proposée à la saisie pour tous,
   // mais son ADMINISTRATION revient au chef d'exploitation.
-  montreSi('carte-modeles', peut('modeles'));
+  montreSi('details-modeles', peut('modeles'));
 
   // Écrans : déclarer ou oublier un poste relève de l'informatique, tout comme
   // la veille de nuit GLOBALE — la veille propre à un poste, elle, reste à
@@ -576,11 +585,18 @@ function appliqueRoles(): void {
 
   // Paramètres : chaque carte a son droit.
   montreSi('carte-machines', peut('parametres.exploitation'));
-  montreSi('carte-motifs', peut('parametres.exploitation'));
-  montreSi('carte-ciels', peut('parametres.exploitation'));
   montreSi('carte-a-quai', peut('parametres.exploitation'));
-  montreSi('carte-users', peut('comptes.lire'));
-  montreSi('carte-journal', peut('journal'));
+
+  // Motifs et états du ciel ont DÉMÉNAGÉ au contact de ce qui les consomme —
+  // Circulations et Bandeau — mais restent des réglages : la supervision voit
+  // désormais ces onglets sans forcément pouvoir éditer les listes.
+  montreSi('details-motifs', peut('parametres.exploitation'));
+  montreSi('details-ciels', peut('parametres.exploitation'));
+
+  // `carte-users` et `carte-journal` occupent seuls leur onglet : la
+  // visibilité de l'onglet porte déjà exactement leur droit (`comptes.lire`,
+  // `journal`), un `montreSi` de plus ne ferait que dupliquer la règle.
+  // La purge, elle, garde le sien : elle est plus restrictive que l'onglet.
   montreSi('carte-purge', peut('journal.purger'));
 }
 
@@ -2476,6 +2492,9 @@ async function rendreEcrans(): Promise<void> {
           // Une seule des deux bornes ne décrit pas une fenêtre : on ne parle
           // de réglage propre que si les DEUX sont posées (même règle que le moteur).
           const propre = Boolean(e.veille_debut && e.veille_fin);
+          // Vitesse propre au poste : posée = surcharge, absente = global.
+          const vitessePropre =
+            e.vitesse_ticker_px_s !== null && e.vitesse_ticker_px_s !== undefined;
           const vu = e.derniere_vue
             ? `${Math.max(0, Math.round((maintenant - new Date(e.derniere_vue).getTime()) / 1000))} s`
             : '—';
@@ -2502,6 +2521,17 @@ async function rendreEcrans(): Promise<void> {
           <input type="time" data-veille-debut="${echapper(e.id)}" value="${echapper(e.veille_debut?.slice(0, 5) ?? '')}" />
           <input type="time" data-veille-fin="${echapper(e.id)}" value="${echapper(e.veille_fin?.slice(0, 5) ?? '')}" />
           ${propre ? `<button class="leger" data-veille-global="${echapper(e.id)}">Revenir au global</button>` : ''}
+        </div>
+        <div class="veille-ecran">
+          ${
+            vitessePropre
+              ? `<span class="veille-propre">Bandeau ${e.vitesse_ticker_px_s} px/s</span>`
+              : '<span class="veille-suit">Bandeau : réglage global</span>'
+          }
+          <input type="number" min="${VITESSE_TICKER_MIN}" max="${VITESSE_TICKER_MAX}" step="5"
+            style="width: 84px" title="Entre ${VITESSE_TICKER_MIN} et ${VITESSE_TICKER_MAX} px/s ; vide = réglage global"
+            data-vitesse-ecran="${echapper(e.id)}" value="${vitessePropre ? String(e.vitesse_ticker_px_s) : ''}" />
+          ${vitessePropre ? `<button class="leger" data-vitesse-global="${echapper(e.id)}">Revenir au global</button>` : ''}
         </div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
@@ -2647,9 +2677,36 @@ function initEcrans(): void {
       .catch(erreurVersToast);
   });
 
+  // --- Vitesse du bandeau propre à un poste ---
+  const poseVitesseEcran = (id: string, brut: string): void => {
+    // Champ VIDE = retour au réglage global : c'est le geste le plus simple
+    // pour annuler une surcharge, et il évite un bouton de plus.
+    const px_s = brut.trim() === '' ? null : vitesseTickerValide(brut);
+    void provider
+      .saveVitesseEcran(id, px_s)
+      .then(() => rendreEcrans())
+      .then(() => {
+        bump(px_s === null ? `vitesse ${id} : retour au global` : `vitesse ${id} : ${px_s} px/s`);
+        toast(
+          px_s === null
+            ? `${id} suit de nouveau la vitesse globale`
+            : `${id} : bandeau à ${px_s} px/s`,
+        );
+      })
+      .catch(erreurVersToast);
+  };
+
+  $('ecrans').addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const id = champ.dataset.vitesseEcran;
+    if (id) poseVitesseEcran(id, champ.value);
+  });
+
   $('ecrans').addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
-    if (cible.dataset.veilleGlobal) {
+    if (cible.dataset.vitesseGlobal) {
+      poseVitesseEcran(cible.dataset.vitesseGlobal, '');
+    } else if (cible.dataset.veilleGlobal) {
       const id = cible.dataset.veilleGlobal;
       void provider
         .saveVeilleEcran(id, null, null)
@@ -2916,21 +2973,20 @@ function rendreParametres(): void {
   $('btn-vers-horaires').addEventListener('click', () => {
     document.querySelector<HTMLButtonElement>('nav.tabs button[data-t="horaires"]')?.click();
   });
-  // Vitesse du bandeau + aperçu en direct
-  const vitesse = vitesseTickerValide(params.vitesse_ticker_px_s);
+  // Vitesse du bandeau + aperçu en direct. `choixVitesseTicker()` (PURE) dit
+  // si l'on est sur un niveau ou sur une vitesse LIBRE : une valeur hors
+  // niveaux — saisie à la main, ou posée directement en base — ouvre le champ
+  // exact au lieu d'être ramenée au niveau le plus proche.
+  const choix = choixVitesseTicker(params.vitesse_ticker_px_s);
   const selVitesse = $('vitesse-ticker') as HTMLSelectElement;
-  selVitesse.innerHTML = NIVEAUX_VITESSE_TICKER.map(
-    (n) =>
-      `<option value="${n.px_s}" ${n.px_s === vitesse ? 'selected' : ''}>${n.libelle} (${n.px_s} px/s)</option>`,
-  ).join('');
-  if (!NIVEAUX_VITESSE_TICKER.some((n) => n.px_s === vitesse)) {
-    // Valeur hors niveaux (saisie directe en base) : on l'affiche telle quelle
-    selVitesse.insertAdjacentHTML(
-      'afterbegin',
-      `<option value="${vitesse}" selected>Personnalisée (${vitesse} px/s)</option>`,
-    );
-  }
-  majApercuTicker(vitesse);
+  selVitesse.innerHTML =
+    NIVEAUX_VITESSE_TICKER.map(
+      (n) =>
+        `<option value="${n.px_s}" ${n.px_s === choix.px_s ? 'selected' : ''}>${n.libelle} (${n.px_s} px/s)</option>`,
+    ).join('') +
+    `<option value="${VITESSE_PERSONNALISEE}" ${choix.personnalisee ? 'selected' : ''}>Personnaliser…</option>`;
+  majChampVitessePerso(choix);
+  majApercuTicker(choix.px_s);
 
   // Veille (onglet Écrans) + météo et délai « à quai »
   majChampSansGener($('veille-debut') as HTMLInputElement, params.veille_nuit.debut);
@@ -2989,6 +3045,21 @@ function antiRebond(action: () => void, delai = 800): () => void {
   };
 }
 
+/**
+ * Champ de vitesse LIBRE : visible seulement sur « Personnaliser ». Il porte
+ * ses bornes (`min`/`max`) plutôt que de corriger une saisie refusée sans
+ * rien dire.
+ */
+function majChampVitessePerso(choix: ChoixVitesse): void {
+  $('vitesse-perso-bloc').style.display = choix.personnalisee ? '' : 'none';
+  const champ = $('vitesse-ticker-perso') as HTMLInputElement;
+  champ.min = String(VITESSE_TICKER_MIN);
+  champ.max = String(VITESSE_TICKER_MAX);
+  champ.step = '5';
+  champ.title = `Entre ${VITESSE_TICKER_MIN} et ${VITESSE_TICKER_MAX} px/s`;
+  if (choix.personnalisee) majChampSansGener(champ, String(choix.px_s));
+}
+
 /** Aperçu en direct : même calcul durée = largeur / vitesse que les écrans. */
 function majApercuTicker(vitessePxS: number): void {
   const apercu = $('apercu-ticker');
@@ -3014,14 +3085,44 @@ async function rechargeParams(): Promise<void> {
  * l'application (celui de la météo) a disparu avec elle.
  */
 function initBandeau(): void {
-  $('vitesse-ticker').addEventListener('change', () => {
-    const v = vitesseTickerValide(($('vitesse-ticker') as HTMLSelectElement).value);
+  /** Met la vitesse en attente et rafraîchit l'aperçu. */
+  const poseVitesse = (v: number): void => {
     majApercuTicker(v); // aperçu immédiat, avant même la publication
     brouillonParams.vitesse_ticker_px_s = v;
     rafraichitParamsEffectifs();
     bumpEnAttente(`vitesse du bandeau → ${v} px/s (en attente)`);
+  };
+
+  $('vitesse-ticker').addEventListener('change', () => {
+    const brut = ($('vitesse-ticker') as HTMLSelectElement).value;
+    if (brut === VITESSE_PERSONNALISEE) {
+      // On ouvre le champ SANS rien changer : l'exploitant vient seulement de
+      // demander à saisir une vitesse, il ne l'a pas encore choisie.
+      majChampVitessePerso({
+        selection: VITESSE_PERSONNALISEE,
+        px_s: vitesseTickerValide(params?.vitesse_ticker_px_s),
+        personnalisee: true,
+      });
+      ($('vitesse-ticker-perso') as HTMLInputElement).focus();
+      return;
+    }
+    majChampVitessePerso(choixVitesseTicker(brut));
+    poseVitesse(vitesseTickerValide(brut));
     toast('Vitesse du bandeau en attente de publication');
   });
+
+  // Saisie libre : à la frappe retombée, comme partout ailleurs. La valeur est
+  // BORNÉE par `vitesseTickerValide()` — le champ annonce ses limites, et une
+  // saisie hors bornes est ramenée visiblement plutôt qu'en silence.
+  const poseVitessePerso = antiRebond(() => {
+    const champ = $('vitesse-ticker-perso') as HTMLInputElement;
+    if (champ.value.trim() === '') return;
+    const v = vitesseTickerValide(champ.value);
+    if (String(v) !== champ.value.trim()) champ.value = String(v);
+    poseVitesse(v);
+    toast(`Vitesse du bandeau : ${v} px/s — en attente de publication`);
+  });
+  $('vitesse-ticker-perso').addEventListener('input', poseVitessePerso);
 
   const champMeteo = (id: string): HTMLInputElement => $(id) as HTMLInputElement;
   const selectCiel = (): HTMLSelectElement => $('meteo-ciel') as HTMLSelectElement;

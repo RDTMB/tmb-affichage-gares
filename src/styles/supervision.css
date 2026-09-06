@@ -225,6 +225,36 @@ main {
   display: block;
 }
 
+/* Réglage rangé au contact de ce qu'il sert, mais REPLIÉ : il n'a pas à
+   peser autant que le tableau des circulations, tout en restant à portée
+   pendant une perturbation. */
+.carte-repliee {
+  margin: 0 18px 18px;
+}
+
+.carte-repliee > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  border: 1px solid var(--bord);
+  border-radius: 9px;
+  background: #fbfcfe;
+  font-weight: 900;
+  color: var(--marine);
+  font-size: 13.5px;
+  list-style-position: inside;
+}
+
+.carte-repliee[open] > summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.carte-repliee[open] > .carte {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .carte {
   background: var(--carte);
   border: 1px solid var(--bord);

@@ -40,7 +40,7 @@ import {
   grilleDepuisEnregistrement,
   type EnregistrementGrille,
 } from '../core/grilles';
-import type { DataProvider } from './provider';
+import type { DataProvider, ReglagesPoste } from './provider';
 
 /**
  * Tables dont un changement doit rafraîchir les données d'AFFICHAGE.
@@ -452,7 +452,7 @@ export class SupabaseProvider implements DataProvider {
     }, 300);
   }
 
-  async heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null> {
+  async heartbeat(e: EcranInfo): Promise<ReglagesPoste> {
     // UPDATE seulement : l'INSERT anonyme est interdit (les postes sont
     // pré-déclarés). Seules les colonnes du signal de vie sont envoyées —
     // les autres sont refusées par les GRANT de colonnes.
@@ -473,12 +473,13 @@ export class SupabaseProvider implements DataProvider {
         reseau: e.reseau ?? null,
       })
       .eq('id', e.id)
-      .select('recharger_demande_at, veille_debut, veille_fin');
+      .select('recharger_demande_at, veille_debut, veille_fin, vitesse_ticker_px_s');
     verifie(error);
     const lignes = (data ?? []) as {
       recharger_demande_at: string | null;
       veille_debut: string | null;
       veille_fin: string | null;
+      vitesse_ticker_px_s: number | null;
     }[];
     if (lignes.length === 0) {
       throw new Error(
@@ -491,9 +492,20 @@ export class SupabaseProvider implements DataProvider {
     if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
 
     const ligne = lignes[0];
-    return ligne?.veille_debut && ligne.veille_fin
-      ? { debut: ligne.veille_debut.slice(0, 5), fin: ligne.veille_fin.slice(0, 5) }
-      : null;
+    return {
+      vitesse_ticker_px_s: ligne?.vitesse_ticker_px_s ?? null,
+      veille:
+        ligne?.veille_debut && ligne.veille_fin
+          ? { debut: ligne.veille_debut.slice(0, 5), fin: ligne.veille_fin.slice(0, 5) }
+          : null,
+    };
+  }
+
+  async saveVitesseEcran(id: string, px_s: number | null): Promise<void> {
+    exigeLignes(
+      await this.client.from('ecrans').update({ vitesse_ticker_px_s: px_s }).eq('id', id).select(),
+      'écran inconnu',
+    );
   }
 
   async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {
