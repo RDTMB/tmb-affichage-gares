@@ -2492,6 +2492,9 @@ async function rendreEcrans(): Promise<void> {
           // Une seule des deux bornes ne décrit pas une fenêtre : on ne parle
           // de réglage propre que si les DEUX sont posées (même règle que le moteur).
           const propre = Boolean(e.veille_debut && e.veille_fin);
+          // Vitesse propre au poste : posée = surcharge, absente = global.
+          const vitessePropre =
+            e.vitesse_ticker_px_s !== null && e.vitesse_ticker_px_s !== undefined;
           const vu = e.derniere_vue
             ? `${Math.max(0, Math.round((maintenant - new Date(e.derniere_vue).getTime()) / 1000))} s`
             : '—';
@@ -2518,6 +2521,17 @@ async function rendreEcrans(): Promise<void> {
           <input type="time" data-veille-debut="${echapper(e.id)}" value="${echapper(e.veille_debut?.slice(0, 5) ?? '')}" />
           <input type="time" data-veille-fin="${echapper(e.id)}" value="${echapper(e.veille_fin?.slice(0, 5) ?? '')}" />
           ${propre ? `<button class="leger" data-veille-global="${echapper(e.id)}">Revenir au global</button>` : ''}
+        </div>
+        <div class="veille-ecran">
+          ${
+            vitessePropre
+              ? `<span class="veille-propre">Bandeau ${e.vitesse_ticker_px_s} px/s</span>`
+              : '<span class="veille-suit">Bandeau : réglage global</span>'
+          }
+          <input type="number" min="${VITESSE_TICKER_MIN}" max="${VITESSE_TICKER_MAX}" step="5"
+            style="width: 84px" title="Entre ${VITESSE_TICKER_MIN} et ${VITESSE_TICKER_MAX} px/s ; vide = réglage global"
+            data-vitesse-ecran="${echapper(e.id)}" value="${vitessePropre ? String(e.vitesse_ticker_px_s) : ''}" />
+          ${vitessePropre ? `<button class="leger" data-vitesse-global="${echapper(e.id)}">Revenir au global</button>` : ''}
         </div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
@@ -2663,9 +2677,36 @@ function initEcrans(): void {
       .catch(erreurVersToast);
   });
 
+  // --- Vitesse du bandeau propre à un poste ---
+  const poseVitesseEcran = (id: string, brut: string): void => {
+    // Champ VIDE = retour au réglage global : c'est le geste le plus simple
+    // pour annuler une surcharge, et il évite un bouton de plus.
+    const px_s = brut.trim() === '' ? null : vitesseTickerValide(brut);
+    void provider
+      .saveVitesseEcran(id, px_s)
+      .then(() => rendreEcrans())
+      .then(() => {
+        bump(px_s === null ? `vitesse ${id} : retour au global` : `vitesse ${id} : ${px_s} px/s`);
+        toast(
+          px_s === null
+            ? `${id} suit de nouveau la vitesse globale`
+            : `${id} : bandeau à ${px_s} px/s`,
+        );
+      })
+      .catch(erreurVersToast);
+  };
+
+  $('ecrans').addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const id = champ.dataset.vitesseEcran;
+    if (id) poseVitesseEcran(id, champ.value);
+  });
+
   $('ecrans').addEventListener('click', (e) => {
     const cible = e.target as HTMLElement;
-    if (cible.dataset.veilleGlobal) {
+    if (cible.dataset.vitesseGlobal) {
+      poseVitesseEcran(cible.dataset.vitesseGlobal, '');
+    } else if (cible.dataset.veilleGlobal) {
       const id = cible.dataset.veilleGlobal;
       void provider
         .saveVeilleEcran(id, null, null)

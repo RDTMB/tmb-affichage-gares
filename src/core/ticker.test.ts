@@ -11,6 +11,7 @@ import {
   VITESSE_TICKER_DEFAUT,
   VITESSE_TICKER_MAX,
   VITESSE_TICKER_MIN,
+  vitesseTickerEffective,
   vitesseTickerValide,
 } from './ticker';
 
@@ -131,5 +132,42 @@ describe('choixVitesseTicker : niveau ou vitesse LIBRE', () => {
     const lent = choixVitesseTicker(30).px_s;
     const rapide = choixVitesseTicker(300).px_s;
     expect(dureeDefilementS(3000, lent)).toBeGreaterThan(dureeDefilementS(3000, rapide));
+  });
+});
+
+describe('vitesseTickerEffective : un poste surcharge, il ne remplace pas', () => {
+  it('sans réglage propre, le poste suit le global', () => {
+    expect(vitesseTickerEffective(130, null)).toEqual({ px_s: 130, propre: false });
+    expect(vitesseTickerEffective(130, undefined)).toEqual({ px_s: 130, propre: false });
+  });
+
+  it('avec un réglage propre, c’est LUI qui s’applique', () => {
+    expect(vitesseTickerEffective(130, 60)).toEqual({ px_s: 60, propre: true });
+  });
+
+  it('un global illisible retombe sur « Normal », le poste garde le sien', () => {
+    expect(vitesseTickerEffective(undefined, null).px_s).toBe(VITESSE_TICKER_DEFAUT);
+    expect(vitesseTickerEffective('n’importe quoi', 75)).toEqual({ px_s: 75, propre: true });
+  });
+
+  it('une surcharge hors bornes est RAMENÉE, pas ignorée', () => {
+    // L'ignorer ferait défiler au réglage global sans que personne comprenne
+    // pourquoi : l'intention du poste est conservée, bornée.
+    expect(vitesseTickerEffective(90, 9999)).toEqual({ px_s: VITESSE_TICKER_MAX, propre: true });
+    expect(vitesseTickerEffective(90, 1)).toEqual({ px_s: VITESSE_TICKER_MIN, propre: true });
+  });
+
+  it('zéro n’est pas « pas de réglage » : il est borné comme surcharge', () => {
+    // Seul `null`/`undefined` veut dire « suit le global ».
+    const r = vitesseTickerEffective(90, 0);
+    expect(r.propre).toBe(true);
+    expect(r.px_s).toBe(VITESSE_TICKER_DEFAUT);
+  });
+
+  it('deux écrans peuvent défiler à des vitesses différentes', () => {
+    const global = 90;
+    const petitEcran = vitesseTickerEffective(global, 60).px_s;
+    const grandEcran = vitesseTickerEffective(global, 160).px_s;
+    expect(dureeDefilementS(3000, petitEcran)).toBeGreaterThan(dureeDefilementS(3000, grandEcran));
   });
 });

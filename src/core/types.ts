@@ -518,6 +518,12 @@ export interface EcranInfo {
   id: string;
   gare: GareId;
   type?: string | null;
+  /**
+   * Vitesse du bandeau PROPRE à ce poste (px/s) ; null = il suit le réglage
+   * global. Taille de l'écran, distance de lecture et quantité d'information
+   * diffusée ne sont pas les mêmes d'une gare à l'autre.
+   */
+  vitesse_ticker_px_s?: number | null;
   /** Dernier signal de vie : prouve que la MACHINE tourne. */
   derniere_vue?: string | null;
   /**

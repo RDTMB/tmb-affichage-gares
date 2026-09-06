@@ -28,6 +28,26 @@ const VITESSE_MAX = VITESSE_TICKER_MAX;
 /** Valeur du <select> quand la vitesse ne correspond à aucun niveau. */
 export const VITESSE_PERSONNALISEE = 'perso';
 
+/**
+ * Vitesse RETENUE par un poste : la sienne si elle est posée, le réglage
+ * global sinon. Même forme que `veilleEffective()` — un poste surcharge, il
+ * ne remplace pas la règle.
+ *
+ * Une surcharge illisible (hors bornes, texte, zéro) est ramenée dans les
+ * bornes par `vitesseTickerValide()` plutôt qu'ignorée : elle exprime quand
+ * même une intention, et l'ignorer ferait défiler au réglage global sans que
+ * personne comprenne pourquoi.
+ */
+export function vitesseTickerEffective(
+  globale: unknown,
+  propre?: number | null,
+): { px_s: number; propre: boolean } {
+  if (propre === null || propre === undefined) {
+    return { px_s: vitesseTickerValide(globale), propre: false };
+  }
+  return { px_s: vitesseTickerValide(propre), propre: true };
+}
+
 export interface ChoixVitesse {
   /** Valeur à sélectionner dans le <select> : un niveau, ou « perso ». */
   selection: string;

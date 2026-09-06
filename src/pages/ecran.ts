@@ -34,6 +34,7 @@ import {
   trainsDuJour,
 } from '../core/horaires';
 import type { FermetureGare } from '../core/horaires';
+import { vitesseTickerEffective } from '../core/ticker';
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
@@ -464,6 +465,18 @@ function majHorloge(maintenant_s: number): void {
  * au plus tard au cycle suivant, sans rechargement de page).
  */
 let veillePoste: { debut?: string | null; fin?: string | null } | null = null;
+/**
+ * Vitesse du bandeau PROPRE à ce poste (px/s), reçue par le signal de vie ;
+ * null = il suit le réglage global. La bonne vitesse dépend de l'écran :
+ * taille, distance de lecture et quantité d'information diffusée diffèrent
+ * d'une gare à l'autre. Appliquée sans rechargement, comme la veille.
+ */
+let vitessePoste: number | null = null;
+
+/** Vitesse retenue à cet écran : la sienne, sinon celle du réglage global. */
+function vitesseBandeau(): number {
+  return vitesseTickerEffective(params?.vitesse_ticker_px_s, vitessePoste).px_s;
+}
 
 function estEnVeille(maintenant_s: number): boolean {
   if (!params) return false;
@@ -518,10 +531,7 @@ function rendre(gare: GareId): void {
     <img class="logo-fin" src="${__LOGO_ROND_BLANC__}" alt="" />`);
     $('arrivee').innerHTML =
       '<span class="lbl">Prochaine arrivée / Next arrival</span><span>— voir calendrier / see timetable</span>';
-    majTicker(
-      messagesVisibles(messages, gare, [], heure.maintenantMs()),
-      params?.vitesse_ticker_px_s,
-    );
+    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()), vitesseBandeau());
     return;
   }
 
@@ -552,10 +562,7 @@ function rendre(gare: GareId): void {
   const bandeauArrivee = $('arrivee');
   bandeauArrivee.style.display = fermeture ? 'none' : '';
   if (!fermeture) rendsArrivee(gare, maintenant);
-  majTicker(
-    messagesVisibles(messages, gare, passages, heure.maintenantMs()),
-    params?.vitesse_ticker_px_s,
-  );
+  majTicker(messagesVisibles(messages, gare, passages, heure.maintenantMs()), vitesseBandeau());
 }
 
 async function demarre(): Promise<void> {
@@ -655,10 +662,11 @@ async function demarre(): Promise<void> {
           donnees_maj: sync?.derniereSyncISO() ?? null,
           date_affichee: jour?.date ?? null,
         })
-        .then((veille) => {
+        .then((reglages) => {
           // Veille propre au poste : appliquée sans rechargement, au plus tard
           // au cycle de signal de vie suivant.
-          veillePoste = veille;
+          veillePoste = reglages.veille;
+          vitessePoste = reglages.vitesse_ticker_px_s;
         })
         .catch(journaliseHeartbeat);
     };

@@ -28,6 +28,14 @@ import type {
   User,
 } from '../core/types';
 
+/** Réglages propres à un poste, renvoyés par le signal de vie. */
+export interface ReglagesPoste {
+  /** Veille de nuit propre ; null = le poste suit le réglage global. */
+  veille: { debut: string; fin: string } | null;
+  /** Vitesse du bandeau propre (px/s) ; null = réglage global. */
+  vitesse_ticker_px_s: number | null;
+}
+
 export interface DataProvider {
   /**
    * Grilles ACTIVES (écrans, génération des journées). Elles vivent en base
@@ -65,10 +73,16 @@ export interface DataProvider {
   /** Temps réel : rappelé à chaque changement ; retourne la désinscription. */
   onChange(cb: () => void): () => void;
   /**
-   * Signal de vie. Retourne la veille propre au poste (null = il suit le
-   * réglage global) : l'écran l'applique sans rechargement.
+   * Signal de vie. Retourne les réglages PROPRES au poste — veille de nuit et
+   * vitesse du bandeau, null = il suit le global : l'écran les applique sans
+   * rechargement, au plus tard au cycle suivant.
    */
-  heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null>;
+  heartbeat(e: EcranInfo): Promise<ReglagesPoste>;
+  /**
+   * Vitesse du bandeau propre à un poste (px/s), null = retour au réglage
+   * global. Même modèle que `saveVeilleEcran`.
+   */
+  saveVitesseEcran(id: string, px_s: number | null): Promise<void>;
 
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;

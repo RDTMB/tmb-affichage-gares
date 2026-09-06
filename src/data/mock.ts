@@ -54,7 +54,7 @@ import type {
   FiltreJournal,
 } from '../core/types';
 import { contenuSansMetadonnees } from '../core/grilles';
-import type { DataProvider } from './provider';
+import type { DataProvider, ReglagesPoste } from './provider';
 // Grilles de référence (docs/grilles-historique/) : URL de fichiers copiés au
 // build, jamais inlinées dans le JS.
 import grandServiceUrl from '../../docs/grilles-historique/2026-ete-grand-service.json?url';
@@ -689,7 +689,7 @@ export class MockProvider implements DataProvider {
     };
   }
 
-  async heartbeat(e: EcranInfo): Promise<{ debut: string; fin: string } | null> {
+  async heartbeat(e: EcranInfo): Promise<ReglagesPoste> {
     const ecrans = litEcrans();
     const existant = ecrans[e.id];
     // Fidèle à la production : un écran NON DÉCLARÉ ne s'inscrit pas tout
@@ -713,9 +713,31 @@ export class MockProvider implements DataProvider {
     const demande = existant.recharger_demande_at;
     if (demande && new Date(demande).getTime() > this.chargeeA) window.location.reload();
 
-    return existant.veille_debut && existant.veille_fin
-      ? { debut: existant.veille_debut.slice(0, 5), fin: existant.veille_fin.slice(0, 5) }
-      : null;
+    return {
+      vitesse_ticker_px_s: existant.vitesse_ticker_px_s ?? null,
+      veille:
+        existant.veille_debut && existant.veille_fin
+          ? { debut: existant.veille_debut.slice(0, 5), fin: existant.veille_fin.slice(0, 5) }
+          : null,
+    };
+  }
+
+  async saveVitesseEcran(id: string, px_s: number | null): Promise<void> {
+    const ecrans = litEcrans();
+    const ecran = ecrans[id];
+    if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    const etat = litEtat();
+    trace(
+      etat,
+      'ecrans',
+      id,
+      { vitesse_ticker_px_s: ecran.vitesse_ticker_px_s ?? null },
+      { vitesse_ticker_px_s: px_s },
+      ['vitesse_ticker_px_s'],
+    );
+    ecran.vitesse_ticker_px_s = px_s;
+    ecritEcrans(ecrans);
+    ecritEtat(etat);
   }
 
   async declareEcran(e: Pick<EcranInfo, 'id' | 'gare' | 'type'>): Promise<void> {

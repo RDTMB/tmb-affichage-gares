@@ -212,7 +212,14 @@ create table if not exists ecrans (
   recharger_demande_at timestamptz,
   -- Veille de nuit propre à ce poste ; nulles = suit params.veille_nuit
   veille_debut time,
-  veille_fin time
+  veille_fin time,
+  -- VITESSE DU BANDEAU PROPRE À CE POSTE, en px/s. NULL = il suit le réglage
+  -- global. La bonne vitesse dépend de l'écran : taille, distance de lecture
+  -- et quantité d'information diffusée ne sont pas les mêmes au Fayet et au
+  -- Nid d'Aigle. Mêmes bornes que le moteur (src/core/ticker.ts).
+  vitesse_ticker_px_s int,
+  constraint ecrans_vitesse_ticker_valide
+    check (vitesse_ticker_px_s is null or vitesse_ticker_px_s between 20 and 400)
 );
 
 create table if not exists publications (
@@ -1095,10 +1102,12 @@ create trigger trg_journal_profils_roles after insert or delete on profils_roles
 drop trigger if exists trg_journal_ecrans on ecrans;
 create trigger trg_journal_ecrans
   after insert or delete or
-    update of veille_debut, veille_fin, gare, type, recharger_demande_at
+    update of veille_debut, veille_fin, vitesse_ticker_px_s, gare, type,
+      recharger_demande_at
   on ecrans
   for each row execute function private.tracer_ecriture(
-    'id', '', 'veille_debut', 'veille_fin', 'gare', 'type', 'recharger_demande_at'
+    'id', '', 'veille_debut', 'veille_fin', 'vitesse_ticker_px_s', 'gare', 'type',
+    'recharger_demande_at'
   );
 
 -- ---------------------------------------------------------------------------
