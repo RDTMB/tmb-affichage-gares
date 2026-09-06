@@ -553,13 +553,29 @@ hiérarchie linéaire ne sait dire aucune de ces trois situations.
 | **Technique** | Responsable informatique, prestataire | Grilles horaires ; identité des écrans (déclarer, oublier) ; rechargement et veille d'un poste ; veille de nuit globale et durée du cache ; réinitialisation d'une journée ; comptes techniques ; journal, y compris les lignes de rôles, et sa purge |
 | **Administrateur** | Chef d'exploitation | Comptes d'exploitation ; bibliothèque de modèles ; médias et cycle d'affichage ; machines, motifs, états du ciel, délai « à quai » ; grilles horaires ; bandeau ; journal, y compris les lignes de rôles |
 | **Supervision** | Exploitation courante | Circulations et journées ; grilles horaires ; bandeau ; médias ; rechargement et veille d'un poste ; réinitialisation d'une journée ; publication |
-| **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; grille du jour en lecture |
+| **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; médias et cycle d'affichage ; rechargement et veille d'un poste ; journal ; grille du jour en lecture |
 
 Trois droits sont **délibérément partagés** avec l'exploitation — grilles,
 rechargement d'un écran, réinitialisation d'une journée : un matin de service,
 l'exploitation ne doit jamais attendre l'informatique. Ne restent exclusifs au
 rôle technique que les réglages d'infrastructure, qui n'ont pas d'urgence
 d'exploitation.
+
+**Le guichet suit le même principe** _(06/09/2026)_. La caisse a gagné les
+médias et la commande d'écran : l'agent est souvent seul en gare le matin, et
+un écran resté en veille ne s'attrape pas par téléphone. Aucun droit nouveau
+n'a été créé pour l'occasion — `medias` et `ecrans.commander` existaient déjà
+et étaient portés par d'autres rôles. La caisse voit donc **cinq onglets sur
+huit** : Horaires (lecture seule), Bandeau, Médias, Écrans, Journal.
+
+Ce qu'elle **ne** gagne pas, et qui reste vérifié en base
+(`supabase/tests/roles-rls.sql`) : les circulations et les journées, le délai
+« à quai », les rames, motifs et états du ciel, la veille de nuit **globale**
+(à distinguer de la veille d'un poste), les comptes et les rôles. Elle
+**commande** un écran sans pouvoir le **déclarer**, l'oublier, ni changer sa
+gare ou son type : cette séparation est tenue par un déclencheur, pas
+seulement par une politique, parce que RLS ne sait pas quelles colonnes
+changent.
 
 **Qui attribue quoi.** Le rôle technique s'attribue depuis un compte technique ;
 les rôles admin, supervision et caisse depuis un compte administrateur. Personne

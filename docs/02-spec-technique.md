@@ -309,16 +309,50 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   les policies évaluent la fonction AU NOM de l'utilisateur connecté, sans ce
   GRANT toutes les écritures seraient refusées. La fonction de trigger n'a
   besoin d'aucun GRANT (EXECUTE est vérifié à la création du trigger).
-- `params` : DEUX politiques permissives, qui se cumulent en OU. Les clés
-  d'AFFICHAGE (`meteo_sommet`, `vitesse_ticker_px_s` — onglet Bandeau) sont
-  écrivables par admin, supervision ET caisse ; toutes les autres
-  (`veille_nuit`, durées, `a_quai_origine_s`…) restent réservées à l'admin.
-  Ajout sur base existante : `supabase/ajout-bandeau-veille.sql`.
-- `ecrans` : plus aucune écriture anonyme non restreinte. INSERT réservé à
-  l'admin (déclaration préalable depuis l'onglet Écrans) ; UPDATE anonyme
-  possible mais borné aux colonnes du signal de vie par des GRANT de
-  colonnes — `recharger_demande_at`, `id`, `gare` et `type` sont hors
-  d'atteinte. Un écran non déclaré n'écrit nulle part.
+- `params` : QUATRE politiques permissives, qui se cumulent en OU, une par
+  jeu de clés.
+  - `roles: params affichage` — `meteo_sommet`, `vitesse_ticker_px_s`
+    (onglet Bandeau) : admin, supervision, caisse ;
+  - `roles: params medias` — `mode_medias`, `duree_horaires_s` (cycle des
+    médias) : admin, supervision, **caisse depuis le 06/09/2026** ;
+  - `roles: params exploitation` — `a_quai_origine_s` : admin ;
+  - `roles: params technique` — tout le reste, `veille_nuit` globale et
+    `duree_cache_min` compris : technique. Les clés INCONNUES tombent ici,
+    une clé nouvelle étant un réglage d'infrastructure jusqu'à preuve du
+    contraire.
+
+  Ajout sur base existante : `supabase/ajout-bandeau-veille.sql`, puis
+  `supabase/migrations/2026-09-caisse-medias-ecrans.sql`.
+- `medias` et le bucket `medias` de `storage.objects` : admin, supervision,
+  **caisse depuis le 06/09/2026**. Les quatre politiques
+  (`roles: medias` + les trois de `storage.objects`) vont ENSEMBLE : élargir
+  la fiche sans le bucket donne une interface qui promet ce que la base
+  refuse, et élargir le bucket sans son SELECT laisse la suppression échouer
+  à mi-chemin, en abandonnant un fichier orphelin.
+
+  ⚠ Ces politiques sont écrites dans QUATRE scripts rejouables du dépôt
+  (`schema.sql`, `securite-advisors.sql`, `ajout-bandeau-veille.sql`,
+  `migrations/2026-09-roles-multiples.sql`). Elles doivent rester d'accord :
+  rejouer une copie ancienne annulerait un élargissement sans un mot.
+  `src/data/securite.test.ts` les compare.
+- `ecrans` : plus aucune écriture anonyme non restreinte. INSERT et DELETE
+  réservés au rôle **technique** (déclarer ou oublier un poste depuis l'onglet
+  Écrans) ; UPDATE ouvert à technique, supervision et **caisse depuis le
+  06/09/2026** — recharger, régler la veille du poste, ajuster la vitesse de
+  son bandeau. L'UPDATE anonyme reste possible mais borné aux colonnes du
+  signal de vie par des GRANT de colonnes — `recharger_demande_at`, `id`,
+  `gare` et `type` sont hors d'atteinte. Un écran non déclaré n'écrit nulle
+  part.
+
+  **COMMANDER n'est pas DÉCLARER, et RLS ne sait pas quelles colonnes
+  changent.** La séparation est donc tenue par un déclencheur,
+  `trg_roles_ecrans_identite` (`private.proteger_identite_ecran()`, BEFORE
+  UPDATE OF `gare`, `type`) : changer la gare ou le type d'un poste exige le
+  rôle technique. Sa condition est une **liste blanche d'un seul nom** — elle
+  exige positivement `a_le_role('technique')`, elle n'énumère aucun rôle
+  interdit. C'est ce qui fait qu'ajouter un rôle à la politique UPDATE ne peut
+  pas l'affaiblir, et c'est pourquoi il ne faut **pas** la réécrire en liste
+  de rôles refusés : le prochain rôle créé passerait à travers par défaut.
 
   **Décision assumée : le signal de vie reste anonyme**, sans identité propre
   à chaque écran. Un poste en gare n'a pas de secret à protéger et n'aurait de
