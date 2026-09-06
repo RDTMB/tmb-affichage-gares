@@ -3,6 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SECOND VERROU de C-01 : l'échappement (affichage-commun.ts) reste la
+         première défense, la CSP rattrape une injection qui passerait par un
+         autre chemin. GitHub Pages n'autorisant aucune en-tête HTTP, la
+         balise <meta> est le seul levier disponible.
+
+         `frame-ancestors` est VOLONTAIREMENT absente : elle est ignorée dans
+         une balise <meta> (elle n'a d'effet qu'en en-tête HTTP). L'anti-
+         embarquement devra donc venir d'ailleurs si le besoin se pose.
+
+         Origines relevées dans le code :
+         - les logos sont inlinés en data: URI base64 (vite.config.ts,
+           `logoDataUri`) → img-src data: ;
+         - les médias voyageurs sont servis par le stockage Supabase
+           (supabase.ts : storage.from('medias').getPublicUrl) et rendus en
+           <img> comme en <video> → img-src et media-src ;
+         - l'API REST, les fonctions edge (traduction) et le canal temps réel
+           partagent l'origine du projet → connect-src en https: ET wss: ;
+         - le projet Supabase change entre production et base de test, et
+           config.js est généré au build : on autorise le domaine, pas une
+           référence de projet figée qui casserait l'autre base ;
+         - les polices Amaranth et Lato sont auto-hébergées (@fontsource) :
+           jamais de CDN. Vite émet les .woff2 en fichiers mais INLINE les
+           .woff de repli en data: URI (ils passent sous assetsInlineLimit) —
+           d'où font-src data:, VÉRIFIÉ au navigateur et non supposé. Une
+           police ne s'exécute pas : ce n'est pas la porte que ce lot ferme ;
+         - style-src accepte 'unsafe-inline' parce que le code génère des
+           attributs style="" (couleurs de rame, largeurs). À réduire un jour,
+           pas dans ce lot. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self';
+               style-src 'self' 'unsafe-inline';
+               img-src 'self' data: https://*.supabase.co;
+               media-src 'self' https://*.supabase.co;
+               font-src 'self' data:;
+               connect-src 'self' https://*.supabase.co wss://*.supabase.co;
+               object-src 'none';
+               base-uri 'none';
+               form-action 'none'"
+    />
     <title>TMB — Supervision affichage</title>
   </head>
   <body>

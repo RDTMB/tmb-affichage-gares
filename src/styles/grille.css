@@ -598,3 +598,61 @@ body.mode-demo header {
 body.mode-demo .badge-cache {
   top: 18.5vh;
 }
+
+/* Bandeau HEURE SIMULÉE (?simule=HH:MM) : les horaires affichés sont décalés.
+   Deux chemins réalistes — une URL de test laissée dans le script de kiosque
+   après un dépannage, ou une modification au clavier USB sur le poste. Sans
+   marque, le tableau reste parfaitement crédible. Au-dessus du bandeau de
+   démonstration : les deux peuvent être actifs en même temps, et l'heure
+   fausse est la plus trompeuse des deux. */
+.bandeau-simule {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5vh;
+  z-index: 71;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2vw;
+  background: var(--marine);
+  color: var(--jaune);
+  border-bottom: 0.4vh solid var(--jaune);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.bandeau-simule b {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 2.6vh;
+}
+.bandeau-simule span {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+  font-size: 1.9vh;
+  opacity: 0.92;
+}
+body.mode-simule .bandeau-simule {
+  display: flex;
+}
+/* Même règle que pour la démonstration : le bandeau prend sa place DANS
+   l'en-tête, jamais en padding sur `body` (transform de l'anti-burn-in). */
+body.mode-simule header {
+  flex-basis: 19vh;
+  padding-top: 5vh;
+}
+body.mode-simule .badge-cache {
+  top: 20.5vh;
+}
+/* Les deux bandeaux à la fois : ils s'empilent, ils ne se recouvrent pas. */
+body.mode-simule.mode-demo .bandeau-demo {
+  top: 5vh;
+}
+body.mode-simule.mode-demo header {
+  flex-basis: 24vh;
+  padding-top: 10vh;
+}
+body.mode-simule.mode-demo .badge-cache {
+  top: 25.5vh;
+}

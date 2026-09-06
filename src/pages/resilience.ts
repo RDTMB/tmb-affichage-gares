@@ -12,6 +12,16 @@ const FORMAT_HM = new Intl.DateTimeFormat('fr-FR', {
 /** Badge au-delà de 2 min sans synchro. */
 export const SEUIL_BADGE_MS = 2 * 60_000;
 
+/**
+ * Tolérance sur un instantané POSTDATÉ. L'horloge du Raspberry peut avancer
+ * de quelques secondes entre l'écriture et la relecture ; au-delà d'une
+ * minute, c'est qu'elle a sauté et l'horodatage ne date plus rien.
+ */
+const AVANCE_TOLEREE_MS = 60_000;
+
+/** Au-delà, l'instantané n'a plus aucune valeur : mieux vaut l'écran neutre. */
+const AGE_MAX_INSTANTANE_MS = 24 * 60 * 60_000;
+
 export interface Synchronisation {
   /** Premier chargement : réseau, sinon instantané local. false = aucune donnée. */
   demarre(): Promise<boolean>;
@@ -49,10 +59,29 @@ export function creeSynchronisation<T>(options: {
       // stockage indisponible ou plein : le badge d'âge suffira
     }
   };
+  /**
+   * Instantané relu, ou null s'il est INDATABLE. Le transtypage TypeScript
+   * s'efface à la compilation : rien ne garantissait que `quand` soit un
+   * nombre, ni qu'il soit plausible. Or c'est lui qui décide du badge « données
+   * de HH:MM » et de l'écran neutre — un horodatage faux fait passer la
+   * journée de la veille pour fraîche.
+   *
+   * Trois rejets, tous traités comme une ABSENCE d'instantané (écran neutre) :
+   * horodatage non numérique, instantané postdaté au-delà de la tolérance, et
+   * instantané de plus de 24 h. On n'applique jamais des données dont on ne
+   * sait pas dater la fraîcheur.
+   */
   const lit = (): { quand: number; donnees: T } | null => {
     try {
       const brut = localStorage.getItem(options.cleSnapshot);
-      return brut ? (JSON.parse(brut) as { quand: number; donnees: T }) : null;
+      if (!brut) return null;
+      const instantane = JSON.parse(brut) as { quand: unknown; donnees: T };
+      const quand = instantane?.quand;
+      if (typeof quand !== 'number' || !Number.isFinite(quand)) return null;
+      const maintenant = Date.now();
+      if (quand > maintenant + AVANCE_TOLEREE_MS) return null;
+      if (maintenant - quand > AGE_MAX_INSTANTANE_MS) return null;
+      return { quand, donnees: instantane.donnees };
     } catch {
       return null;
     }
@@ -87,7 +116,13 @@ export function creeSynchronisation<T>(options: {
     resynchronise() {
       void synchronise();
     },
-    ageMs: () => (derniereSynchroMs === null ? null : Date.now() - derniereSynchroMs),
+    // BORNÉ À ZÉRO : `derniereSynchroMs` et `Date.now()` viennent de la MÊME
+    // horloge locale, et le Raspberry n'a pas de pile — au redémarrage sans
+    // réseau il repart sur `fake-hwclock`. Si l'horloge a RECULÉ, la
+    // soustraction devient négative, donc « très frais » : ni le badge à
+    // 2 min ni l'écran neutre à 15 min ne se déclenchaient, et la journée de
+    // la veille s'affichait comme si elle venait d'arriver.
+    ageMs: () => (derniereSynchroMs === null ? null : Math.max(0, Date.now() - derniereSynchroMs)),
     heureSync: () =>
       derniereSynchroMs === null ? null : FORMAT_HM.format(new Date(derniereSynchroMs)),
     derniereSyncISO: () =>
