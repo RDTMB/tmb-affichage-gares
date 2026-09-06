@@ -1040,11 +1040,11 @@ function ligneCirculation(
           }`
         : ''
     }</td>
-    <td class="cell-sens"><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
+    <td class="cell-sens"><div class="sens-groupe"><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
       train.express
         ? `<span class="exp-tag"><img src="${__MOTRICE_MARINE__}" alt="" /> EXPRESS</span>`
         : ''
-    }${train.velos ? '<span class="velo-tag" title="Train vélos">🚲</span>' : ''}</td>
+    }${train.velos ? '<span class="velo-tag" title="Train vélos">🚲</span>' : ''}</div></td>
     <td>${rame}</td>
     <td>${terminus}</td>
     <td>${facultatif}</td>

@@ -2679,11 +2679,29 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
    boîte `inline-flex` avec ses marges internes, l'emoji un simple texte posé
    sur la ligne de base : les deux ne pouvaient pas s'aligner. La cellule
    devient une rangée flex, et tout ce qu'elle contient s'y centre. */
-td.cell-sens {
+/* A9, CORRIGÉ. Ma première version posait `display: flex` sur le `<td>`
+   lui-même. Un `<td>` qui n’est plus un `table-cell` SORT de la mise en page
+   du rang : il cesse de participer à la hauteur commune, `vertical-align`
+   ne s’applique plus, et ses bordures se tracent sur sa propre boîte. Mesuré
+   avant correction : 39-40 px de cellule pour 52 px de rang, et 58 pour 59
+   sur la ligne à vélo — treize pixels que l’œil lit comme un décalage.
+
+   La cellule reste donc un `table-cell` et c’est un élément INTÉRIEUR qui
+   porte le flex. Rien n’est compensé en `padding` ni en `margin` : la
+   cellule reprend la hauteur du rang, elle ne la simule pas. */
+td.cell-sens > .sens-groupe {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Le picto vélo ne DÉBORDE plus sur la hauteur du rang : il tenait sur une
+   seconde ligne, ce qui donnait 59 px à la ligne du TRAIN 1 contre 52 aux
+   quinze autres. `nowrap` le garde au fil de l’étiquette ; la colonne est
+   assez large pour les trois éléments, express compris. */
+td.cell-sens > .sens-groupe {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* A8 — ÉTAT VIDE, pas message d'erreur. Une phrase cassée sur deux lignes au
