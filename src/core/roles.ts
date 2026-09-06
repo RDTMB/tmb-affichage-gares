@@ -31,7 +31,8 @@ export const DESCRIPTION_ROLE: Record<Role, string> = {
   admin:
     'Chef d’exploitation : comptes supervision et caisse, modèles de messages, médias, paramètres d’exploitation.',
   supervision: 'Exploitation courante : circulations, bandeau voyageurs, publication.',
-  caisse: 'Bandeau voyageurs : messages, météo du sommet, vitesse de défilement.',
+  caisse:
+    'Guichet : bandeau voyageurs, médias, commande des écrans (rechargement, veille), journal.',
 };
 
 /**
@@ -107,6 +108,19 @@ export type Droit = (typeof DROITS)[number];
  * l'exploitation ne doit JAMAIS attendre l'informatique un matin de service —
  * grilles, rechargement d'écran et réinitialisation d'une journée sont donc
  * PARTAGÉS, et seuls les réglages d'infrastructure restent exclusifs.
+ *
+ * Élargissement du 06/09/2026, même principe appliqué au guichet : la caisse
+ * gagne `medias` et `ecrans.commander` — deux droits EXISTANTS, réutilisés
+ * tels quels. L'agent de caisse est souvent seul en gare le matin ; recharger
+ * son écran ou retirer un média périmé ne doit pas dépendre d'un appel à
+ * l'exploitation. Il ne gagne AUCUN droit sur les circulations, les réglages
+ * d'exploitation ni les comptes.
+ *
+ * ⚠ Ce fichier n'est qu'un MIROIR. Les barrières réelles sont les politiques
+ * RLS, qui raisonnent par RÔLE et non par droit : élargir ici sans élargir
+ * `supabase/schema.sql` (et les trois scripts rejouables qui recréent les
+ * mêmes politiques) donnerait le pire résultat possible — l'interface affiche
+ * le bouton, la base refuse l'écriture.
  */
 const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   technique: [
@@ -144,7 +158,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
     'journal',
     'publier',
   ],
-  caisse: ['bandeau', 'journal', 'publier'],
+  caisse: ['bandeau', 'journal', 'publier', 'medias', 'ecrans.commander'],
 };
 
 /** Union des droits portés par un ensemble de rôles. */
