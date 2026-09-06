@@ -455,6 +455,25 @@ export interface OptionsMock {
   terminusAPartirDuTrain?: number;
   /** Date « du jour » figée (« YYYY-MM-DD ») — tests uniquement. */
   aujourdhui?: string;
+  /**
+   * ÉCHEC DE PUBLICATION SIMULÉ (`?demo=1&echec=1`). L'écriture des
+   * circulations échoue, comme le ferait un refus de la base ; le reste
+   * publie normalement — c'est bien un échec PARTIEL qu'on veut montrer.
+   *
+   * ⚠ POURQUOI L'OPTION VIT ICI, et nulle part ailleurs. L'état d'échec de la
+   * barre de publication n'avait jamais été vu rendu : il ne se provoque pas,
+   * et il aurait donc été découvert un matin, en production, par un agent
+   * seul en gare. Il fallait pouvoir le montrer — sans ouvrir la moindre
+   * porte ailleurs.
+   *
+   * Le garde-fou n'est pas une condition dans le code de publication : c'est
+   * le fait que ce drapeau soit lu par le FOURNISSEUR DE DÉMONSTRATION, et
+   * par lui seul. `creeProvider()` retourne `SupabaseProvider` dès qu'une
+   * configuration réelle est présente, et cet objet-là ignore complètement
+   * `OptionsMock`. Une URL forgée sur la production ne trouve donc personne
+   * pour la lire — il n'y a rien à contourner, l'objet n'existe pas.
+   */
+  echecSimule?: boolean;
 }
 
 function dateAujourdhuiParis(): string {
@@ -892,6 +911,14 @@ export class MockProvider implements DataProvider {
 
   async saveCirculations(cs: Circulation[]): Promise<void> {
     if (cs.length === 0) return;
+    // ÉCHEC PARTIEL SIMULÉ (`?demo=1&echec=1`, voir `OptionsMock`). Le message
+    // reprend la forme d'un vrai refus de la base : c'est ce que l'agent
+    // lira, autant qu'il ressemble à ce qu'il verra un jour.
+    if (this.options.echecSimule) {
+      throw new Error(
+        'new row for relation "circulations" violates check constraint "circulations_sup_passages"',
+      );
+    }
     const avants = new Map<string, Circulation | null>();
     for (const c of cs) {
       avants.set(`${c.date}|${c.numero}`, await this.circulationAvant(c.date, c.numero));

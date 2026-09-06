@@ -65,7 +65,7 @@ import {
   type Droit,
 } from '../core/roles';
 import { creeProvider } from '../data';
-import { baseServie, configSupabasePresente } from '../data/config';
+import { baseServie, configSupabasePresente, estModeDemo } from '../data/config';
 import { initOngletHoraires, type OngletHoraires } from './onglet-horaires';
 import {
   appliqueBrouillonJour,
@@ -141,7 +141,25 @@ import {
  */
 const lienAuth = analyseLienAuth(window.location.hash, window.location.search);
 
-const provider = creeProvider();
+/**
+ * ÉCHEC DE PUBLICATION SIMULÉ, pour montrer l'état 3 de la barre — le seul
+ * des trois qui ne se provoque pas, et qui serait donc découvert un matin en
+ * production par un agent seul en gare.
+ *
+ * DEUX VERROUS, dont un seul suffirait :
+ *  - `estModeDemo()` exige STRICTEMENT `?demo=1` (la fonction du projet :
+ *    `?demo`, `?demo=true`, `?demo=0` ne passent pas), et `echec` suit la
+ *    même discipline ;
+ *  - surtout, le drapeau n'est lu que par `MockProvider`. Dès qu'une
+ *    configuration Supabase existe, `creeProvider()` rend un
+ *    `SupabaseProvider`, qui ignore entièrement `OptionsMock` : sur la
+ *    production, il n'y a personne pour lire ce paramètre. Rien à
+ *    contourner — l'objet qui l'écoute n'est jamais construit.
+ */
+const parametresUrl = new URLSearchParams(window.location.search);
+const echecSimule = estModeDemo(parametresUrl) && parametresUrl.get('echec') === '1';
+
+const provider = creeProvider({ echecSimule });
 
 /**
  * Suffixe d'URL des aperçus. Les pages d'affichage n'acceptent plus le repli
