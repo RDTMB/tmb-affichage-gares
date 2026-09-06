@@ -1,6 +1,8 @@
 // Portail de test : liens vers les écrans des 6 gares + la grille + la supervision.
 import { initBandeau } from './commun';
 import { ORDRE_GARES, type GareId } from '../core/types';
+// Après ./commun (qui charge base.css) : la feuille du portail l'emporte par la cascade.
+import '../styles/index.css';
 
 initBandeau();
 
