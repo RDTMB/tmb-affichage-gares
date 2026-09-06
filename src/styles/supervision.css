@@ -49,9 +49,40 @@ header {
   color: #fff;
   display: flex;
   align-items: center;
+  /* L'en-tête se REPLIE plutôt que d'écraser son contenu. Constaté à 1280 px
+     avec trois badges de rôle : « TECHNIQUE » et « ADMIN » se chevauchaient
+     et « SUPERVISION » passait sous le bouton « Quitter ». Un badge de rôle
+     illisible est pire qu'un badge absent — on croit lire le sien. */
+  flex-wrap: wrap;
   gap: 16px;
   padding: 8px 22px;
 }
+
+/* Rien de tout cela ne se comprime : ces éléments disent QUI on est et SUR
+   QUELLE BASE on travaille. C'est le titre qui cède la place, lui se relit. */
+header .pill,
+header .user {
+  flex: none;
+}
+
+/* L'IDENTITÉ RESTE À DROITE, sur quelque rang qu'elle tombe. `margin-left:
+   auto` ne consomme rien tant que le `.spacer` du rang 1 absorbe la place
+   libre ; dès qu'un repli survient, il repousse le bloc à droite de SON rang.
+   Une largeur ou un second `flex: 1` auraient déplacé les pastilles vers le
+   milieu sur un rang unique. */
+header .user {
+  margin-left: auto;
+}
+
+/* PAS DE POINT DE RUPTURE IMPOSÉ, et c'est délibéré. Le canevas (1g) prévoit
+   un repli à 1280 px ; un `@media` à seuil fixe le déclenchait aussi pour un
+   compte de caisse en démonstration — un badge, aucune pastille de sécurité —
+   qui tient pourtant largement, et lui coûtait un rang pour rien.
+   L'enroulement place la coupure là où le contenu l'exige, et l'ordre du DOM
+   fait le reste : les pastilles de SÉCURITÉ précèdent celles d'information,
+   elles sont donc les dernières à descendre. Mesuré : pire cas 3 badges +
+   PRODUCTION + heure simulée → deux rangs à 1440 comme à 1280, sécurité en
+   rang 1 ; caisse en démonstration → un seul rang à 1440. */
 
 /* En-tête et onglets restent affichés ENSEMBLE au défilement. Ils étaient
    collants séparément, le second calé à 62 px du haut — la hauteur de
@@ -1391,6 +1422,22 @@ tr.paire-fin td {
      plusieurs rôles : les badges s'empilent alors en colonnes régulières. */
   width: 108px;
   text-align: center;
+}
+
+/* DANS L'EN-TÊTE, la largeur fixe n'a plus de raison d'être : il n'y a rien à
+   aligner d'une ligne à l'autre, une seule identité est affichée. Les badges
+   prennent donc la largeur de leur texte et tiennent sur UNE ligne — c'est
+   « ADMINISTRATEUR » qui faisait la loi, et il a été raccourci en « Admin ».
+   Sans cela, trois rôles cumulés s'empilaient et l'en-tête passait de 92 à
+   157 px de haut. */
+.badges-entete {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badges-entete .role-tag {
+  width: auto;
 }
 
 /* Plusieurs badges sur une même ligne : ils passent à la ligne proprement

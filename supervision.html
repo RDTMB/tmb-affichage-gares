@@ -68,12 +68,24 @@
              avec une heure décalée. Il faut que ça se voie, sinon on croit
              lire un poste normal. -->
         <div class="pill simule" id="pill-simule" style="display: none">—</div>
+        <!-- REPLI de l'en-tête (canevas 1g). À trois badges de rôle avec
+             PRODUCTION et l'heure simulée, tout ne tient plus sur une ligne —
+             ni à 1280 px, ni à 1440. Sans repli, les badges se faisaient
+             ÉCRASER et « SUPERVISION » disparaissait sous « Quitter ».
+             L'ORDRE CI-DESSOUS EST LA RÈGLE : les pastilles de SÉCURITÉ
+             (base servie, heure simulée) précèdent celles d'information, elles
+             sont donc les dernières à descendre d'un rang. -->
         <div class="pill" id="pill-ecrans"><span class="dot"></span> — écrans</div>
         <div class="pill" id="pill-service">—</div>
         <div class="user" id="bloc-user" style="display: none">
           <div class="avatar" id="avatar">–</div>
           <span id="user-nom">—</span>
-          <span class="role-tag" id="user-role"></span>
+          <!-- CONTENEUR, pas un badge lui-même : il portait `.role-tag`, donc
+               sa largeur fixe de 108 px, et trois badges cumulés s'empilaient
+               verticalement en poussant l'en-tête à 157 px de haut. Dans
+               l'en-tête, les badges s'alignent en LIGNE, à la largeur de leur
+               texte (canevas 1e). -->
+          <span class="badges-entete" id="user-role"></span>
           <button class="leger" id="btn-deconnexion">Quitter</button>
         </div>
       </header>

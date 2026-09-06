@@ -424,3 +424,77 @@ describe('supervision — la barre Publier porte ses trois signaux', () => {
     expect(code).toMatch(/echecPublicationISO = new Date\(\)\.toISOString\(\)/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canevas 1e / 1g — en-tête : badges de rôle et pastilles de sécurité.
+// ---------------------------------------------------------------------------
+
+describe('supervision — l’en-tête ne comprime ni ne tronque jamais', () => {
+  const html = source('supervision.html');
+  const css = source('src/styles/supervision.css');
+
+  it('l’en-tête SE REPLIE plutôt que d’écraser son contenu', () => {
+    // Mesuré à 1280 px avant correction : « TECHNIQUE » et « ADMIN » se
+    // chevauchaient, « SUPERVISION » passait sous le bouton « Quitter ».
+    // Un badge de rôle illisible est pire qu'un badge absent : on croit lire
+    // le sien.
+    expect(css).toMatch(/^header \{[^}]*flex-wrap:\s*wrap/m);
+  });
+
+  it('les pastilles et l’identité NE SE COMPRIMENT PAS', () => {
+    // Ce sont elles qui disent qui on est et sur quelle base on travaille.
+    // C'est le titre qui cède la place — lui se relit.
+    expect(css).toMatch(/header \.pill,\s*\nheader \.user \{[^}]*flex:\s*none/);
+  });
+
+  it('les pastilles de SÉCURITÉ précèdent celles d’information', () => {
+    // C'est cet ordre — et non un seuil en pixels — qui garantit qu'elles
+    // sont les dernières à descendre d'un rang.
+    const base = html.indexOf('id="pill-base"');
+    const simule = html.indexOf('id="pill-simule"');
+    const ecrans = html.indexOf('id="pill-ecrans"');
+    const service = html.indexOf('id="pill-service"');
+    expect(base).toBeGreaterThan(-1);
+    expect(base).toBeLessThan(simule);
+    expect(simule).toBeLessThan(ecrans);
+    expect(ecrans).toBeLessThan(service);
+  });
+
+  it('AUCUN seuil en pixels ne décide du repli de l’en-tête', () => {
+    // Un `@media` à seuil fixe repliait aussi un compte de caisse en
+    // démonstration — un badge, aucune pastille de sécurité — qui tient
+    // pourtant largement, et lui coûtait un rang pour rien.
+    expect(css).not.toContain('.saut-entete');
+    expect(html).not.toContain('saut-entete');
+  });
+
+  it('l’identité reste à DROITE, sur quelque rang qu’elle tombe', () => {
+    expect(css).toMatch(/header \.user \{[^}]*margin-left:\s*auto/);
+  });
+
+  it('dans l’en-tête, les badges tiennent sur UNE ligne', () => {
+    // Le conteneur portait `.role-tag`, donc sa largeur fixe de 108 px : trois
+    // rôles cumulés s'empilaient verticalement et l'en-tête passait de 92 à
+    // 157 px de haut. La largeur fixe sert à aligner les LIGNES utilisateur,
+    // pas une identité unique.
+    expect(html).toContain('class="badges-entete" id="user-role"');
+    expect(html).not.toMatch(/class="role-tag" id="user-role"/);
+    expect(css).toMatch(/\.badges-entete \{[^}]*display:\s*flex/);
+    expect(css).toMatch(/\.badges-entete \.role-tag \{[^}]*width:\s*auto/);
+  });
+
+  it('…mais les lignes utilisateur GARDENT leur largeur fixe', () => {
+    // Sans elle, les commandes des lignes se décalaient les unes par rapport
+    // aux autres selon la longueur du rôle affiché.
+    expect(css).toMatch(/^\.role-tag \{[^}]*width:\s*108px/m);
+  });
+
+  it('les deux pastilles de sécurité restent DISTINCTES de l’état courant', () => {
+    // Elles doivent se voir : on ne doit jamais croire tester alors qu'on
+    // publie en gare, ni prendre un poste à l'heure simulée pour un poste
+    // normal.
+    expect(css).toContain('.pill.base-prod');
+    expect(css).toContain('.pill.base-test');
+    expect(css).toContain('.pill.simule');
+  });
+});
