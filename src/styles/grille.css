@@ -656,3 +656,270 @@ body.mode-simule.mode-demo header {
 body.mode-simule.mode-demo .badge-cache {
   top: 25.5vh;
 }
+
+/* ============ AUTRES FORMATS DE MONITEUR (mesurés, pas supposés) ============
+   La feuille est écrite en vh pour un moniteur PAYSAGE 16:9, où la hauteur
+   est la dimension rare. Relevé au navigateur le 06/09/2026 en valeurs
+   calculées (getBoundingClientRect, getComputedStyle), grand service simulé
+   à 13 colonnes :
+   - 16:10 (1920×1200) et 4:3 (1600×1200) TIENNENT : aucun débordement,
+     colonnes de 233 à 280 px pour ~70 px de texte, en-tête sans
+     chevauchement. Rien n'y est changé.
+   - SOUS 4:3 en paysage (5:4, 1280×1024), la colonne des gares (10 vw)
+     tronque « Saint-Gervais » : 109 px de contenu pour 117 px de texte. À
+     4:3 exactement il reste 0,5 px de marge — qu'une police rendue autrement
+     (Chromium du Raspberry Pi) suffirait à consommer, d'où le seuil INCLUSIF.
+   - En PORTRAIT (1080×1920), tout ce qui est en vh devient trois fois trop
+     large pour la largeur : logo (543 px), titre (896 px) et horloge
+     (366 px) se recouvrent, les six noms de gares sont tronqués, la légende
+     perd plus de la moitié de son contenu (2294 px pour 1054), et à 13
+     colonnes 78 heures se chevauchent (73 px de colonne pour 112 px de
+     texte).
+   Ces règles ne s'appliquent QU'À ces formats : media queries par
+   orientation et rapport d'aspect, jamais par largeur — un 16:9 de 390 px
+   comme de 1920 px garde exactement les valeurs ci-dessus. Même sélecteur
+   que la règle remplacée et déclarées plus bas : à spécificité égale c'est
+   l'ordre qui tranche, vérifié en valeurs calculées. Toujours aucun padding
+   sur `body` (transform de l'anti-burn-in). */
+
+/* Paysage plus étroit que 4:3 (5:4…) : la colonne des gares s'élargit ; les
+   13 colonnes de trains gardent 84 px pour 60 px d'heure à 1280×1024. */
+@media (orientation: landscape) and (max-aspect-ratio: 4/3) {
+  thead th.col-gare {
+    width: 12vw;
+  }
+}
+
+/* 5:4 : la légende (1300 px pour 1249) perdait sa dernière entrée. */
+@media (orientation: landscape) and (max-aspect-ratio: 13/10) {
+  .legende {
+    font-size: 1.3vh;
+  }
+}
+
+/* PORTRAIT (totem) : la largeur devient la dimension rare. Une seule unité
+   de conception, --u, remplace le vh : 0,9 vw — la plus grande valeur pour
+   laquelle le logo (28,3 u) laisse encore 2 vw au titre centré (46,7 u).
+   Les coefficients sont ceux des règles paysage, pour se relire en regard ;
+   toute taille en vh ajoutée plus haut doit trouver ici son pendant
+   (verrouillé par src/pages/responsive-grille.test.ts). Les écrans neutre et
+   d'erreur restent en vh : centrés, leur texte se replie sans rien perdre. */
+@media (orientation: portrait) {
+  :root {
+    --u: 0.9vw;
+  }
+
+  header {
+    flex-basis: calc(12 * var(--u));
+    border-bottom-width: calc(0.9 * var(--u));
+  }
+
+  .logo {
+    height: calc(10.4 * var(--u));
+  }
+
+  .bandeau-section {
+    margin-bottom: calc(1 * var(--u));
+    padding: calc(1 * var(--u)) 1.6vw;
+    border-radius: calc(1 * var(--u));
+    font-size: calc(2.1 * var(--u));
+  }
+
+  .bandeau-section .en {
+    font-size: calc(1.7 * var(--u));
+  }
+
+  .titre-bloc h1 {
+    font-size: calc(4.6 * var(--u));
+  }
+
+  .titre-bloc .en {
+    font-size: calc(1.9 * var(--u));
+    margin-top: calc(0.5 * var(--u));
+  }
+
+  .horloge {
+    font-size: calc(5.8 * var(--u));
+  }
+
+  .horloge .sec {
+    font-size: calc(2.8 * var(--u));
+  }
+
+  .date {
+    font-size: calc(1.85 * var(--u));
+    margin-top: calc(0.4 * var(--u));
+  }
+
+  main {
+    padding: calc(1 * var(--u)) 1.2vw;
+    gap: calc(0.8 * var(--u));
+  }
+
+  .sens h2 {
+    font-size: calc(2.2 * var(--u));
+    padding: calc(0.2 * var(--u)) 0.2vw calc(0.6 * var(--u));
+  }
+
+  .sens h2 span.en {
+    font-size: calc(1.75 * var(--u));
+  }
+
+  thead th {
+    font-size: calc(2.25 * var(--u));
+    padding: calc(0.3 * var(--u)) 0;
+  }
+
+  thead th .num {
+    font-size: calc(1.35 * var(--u));
+  }
+
+  thead th .picto {
+    font-size: calc(1.35 * var(--u));
+  }
+
+  thead th img.motrice {
+    height: calc(3.3 * var(--u));
+  }
+
+  thead th .velo {
+    font-size: calc(1.5 * var(--u));
+  }
+
+  /* 14 vw : « Saint-Gervais » (111 px + 15 px de marges intérieures) tient,
+     et 13 colonnes gardent 69 px pour 57 px d'heure. */
+  thead th.col-gare {
+    width: 14vw;
+    font-size: calc(1.55 * var(--u));
+  }
+
+  tbody th {
+    font-size: calc(1.85 * var(--u));
+    padding: calc(0.25 * var(--u)) 0.7vw;
+  }
+
+  tbody th small {
+    font-size: calc(1.3 * var(--u));
+  }
+
+  tbody td {
+    font-size: calc(2.25 * var(--u));
+    padding: calc(0.15 * var(--u)) 0;
+  }
+
+  td.saute {
+    font-size: calc(1.85 * var(--u));
+  }
+
+  thead th.retard .badge,
+  thead th.supp .badge {
+    font-size: calc(1.25 * var(--u));
+  }
+
+  .train-pos {
+    width: calc(1.7 * var(--u));
+    height: calc(1.7 * var(--u));
+    box-shadow:
+      0 0 0 2px rgba(24, 44, 66, 0.75),
+      0 0 calc(0.9 * var(--u)) rgba(255, 255, 255, 0.9);
+  }
+
+  /* La légende passe sur deux lignes plutôt que de perdre ses dernières
+     entrées ; chaque entrée reste insécable. */
+  .legende {
+    flex-basis: auto;
+    flex-wrap: wrap;
+    white-space: normal;
+    font-size: calc(1.45 * var(--u));
+  }
+
+  .legende .item {
+    white-space: nowrap;
+  }
+
+  .legende .rame-dot {
+    width: calc(1.7 * var(--u));
+    height: calc(1.7 * var(--u));
+  }
+
+  .legende img.motrice {
+    height: calc(2.8 * var(--u));
+  }
+
+  footer {
+    flex-basis: calc(7.5 * var(--u));
+  }
+
+  .ticker-inner {
+    font-size: calc(2.6 * var(--u));
+  }
+
+  .meteo {
+    font-size: calc(2.1 * var(--u));
+  }
+
+  .meteo .t {
+    font-size: calc(3.9 * var(--u));
+  }
+
+  .meteo small {
+    font-size: calc(1.5 * var(--u));
+  }
+
+  .releve {
+    font-size: calc(1.5 * var(--u));
+  }
+
+  .badge-cache {
+    top: calc(13.5 * var(--u));
+    font-size: calc(1.8 * var(--u));
+    padding: calc(0.5 * var(--u)) 1vw;
+    border-radius: calc(0.8 * var(--u));
+  }
+
+  /* Bandeaux de test : leurs deux langues s'empilent (une ligne de 1080 px
+     ne les tient pas côte à côte), d'où 6 u de haut au lieu de 5, repris
+     dans la place que l'en-tête leur fait — jamais en padding sur body. */
+  .bandeau-demo,
+  .bandeau-simule {
+    height: calc(6 * var(--u));
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.1;
+    border-bottom-width: calc(0.4 * var(--u));
+  }
+
+  .bandeau-demo b,
+  .bandeau-simule b {
+    font-size: calc(2.6 * var(--u));
+  }
+
+  .bandeau-demo span,
+  .bandeau-simule span {
+    font-size: calc(1.9 * var(--u));
+  }
+
+  body.mode-demo header,
+  body.mode-simule header {
+    flex-basis: calc(18 * var(--u));
+    padding-top: calc(6 * var(--u));
+  }
+
+  body.mode-demo .badge-cache,
+  body.mode-simule .badge-cache {
+    top: calc(19.5 * var(--u));
+  }
+
+  body.mode-simule.mode-demo .bandeau-demo {
+    top: calc(6 * var(--u));
+  }
+
+  body.mode-simule.mode-demo header {
+    flex-basis: calc(24 * var(--u));
+    padding-top: calc(12 * var(--u));
+  }
+
+  body.mode-simule.mode-demo .badge-cache {
+    top: calc(25.5 * var(--u));
+  }
+}
