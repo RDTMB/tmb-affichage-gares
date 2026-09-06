@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GareId, Message } from '../core/types';
 import { ORDRE_GARES } from '../core/types';
+import { ONGLETS, ROLES, ROLES_QUI_ROUVRENT, plafondOnglets } from '../core/roles';
 import {
   datetimeLocalVersIso,
   identifiantEcran,
@@ -18,6 +19,8 @@ import {
   ajusteSection,
   bandeauSection,
   bornesSectionPossibles,
+  grilleOngletsHtml,
+  etatVisibiliteOnglets,
   decisionBandeauApplication,
   type EtatBandeauApplication,
 } from './supervision-logique';
@@ -406,5 +409,104 @@ describe('bandeauSection : signalé seulement quand la ligne est restreinte', ()
   it('les deux bouts peuvent être fermés en même temps', () => {
     const texte = bandeauSection({ gare_debut: 'saint-gervais', gare_fin: 'col-de-voza' }, nom);
     expect(texte).toContain("Le Fayet, Bellevue, Nid d'Aigle");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Carte « Onglets visibles par rôle ». Ce qu'on vérifie ici, c'est que la
+// grille NE MENT PAS : une case cochable doit correspondre à un geste que la
+// base acceptera, une case grisée à un geste qu'elle refuserait.
+// ---------------------------------------------------------------------------
+
+describe('grilleOngletsHtml', () => {
+  /** État d'une case, lu dans le HTML rendu. */
+  function boite(html: string, role: string, onglet: string): string | null {
+    const motif = new RegExp(`<input[^>]*data-role="${role}"[^>]*data-onglet="${onglet}"[^>]*>`);
+    return motif.exec(html)?.[0] ?? null;
+  }
+  const cochee = (h: string, r: string, o: string): boolean =>
+    (boite(h, r, o) ?? '').includes('checked');
+  const grisee = (h: string, r: string, o: string): boolean =>
+    (boite(h, r, o) ?? '').includes('disabled');
+
+  it('rend une case par rôle et par onglet — la grille est complète', () => {
+    const html = grilleOngletsHtml(null);
+    for (const role of ROLES) {
+      for (const onglet of ONGLETS) {
+        expect(boite(html, role, onglet), `${role} × ${onglet} manquante`).not.toBeNull();
+      }
+    }
+  });
+
+  it('une case HORS PLAFOND est grisée, jamais cochée', () => {
+    const html = grilleOngletsHtml(null);
+    for (const role of ROLES) {
+      for (const onglet of ONGLETS) {
+        if (plafondOnglets(role).includes(onglet)) continue;
+        expect(grisee(html, role, onglet), `${role} × ${onglet} devrait être grisée`).toBe(true);
+        expect(cochee(html, role, onglet)).toBe(false);
+      }
+    }
+  });
+
+  it('elle porte son motif au survol : « aucun droit », et non un silence', () => {
+    const html = grilleOngletsHtml(null);
+    const b = boite(html, 'caisse', 'circulations') ?? '';
+    expect(b).toContain('title=');
+    expect(b).toContain('aucun droit');
+  });
+
+  it('la DERNIÈRE case qui rouvre la porte est cochée mais non décochable', () => {
+    const html = grilleOngletsHtml(null);
+    for (const role of ROLES_QUI_ROUVRENT) {
+      expect(cochee(html, role, 'utilisateurs')).toBe(true);
+      expect(grisee(html, role, 'utilisateurs'), `${role} pourrait s’enfermer dehors`).toBe(true);
+    }
+  });
+
+  it('un onglet MASQUÉ reste recochable : le réglage est réversible', () => {
+    // Le lot 2 vit ici : Horaires masqué à la caisse doit pouvoir revenir en
+    // un clic, sans livraison de code.
+    const html = grilleOngletsHtml({ caisse: ['bandeau', 'medias', 'ecrans', 'journal'] });
+    expect(cochee(html, 'caisse', 'horaires')).toBe(false);
+    expect(grisee(html, 'caisse', 'horaires')).toBe(false);
+  });
+
+  it('un rôle sans réglage s’affiche TOUT COCHÉ, comme il s’affiche à l’écran', () => {
+    // La grille doit montrer l'état EFFECTIF, pas les lignes stockées : sinon
+    // le technique croirait avoir tout masqué pour un rôle non réglé.
+    const html = grilleOngletsHtml({ caisse: ['bandeau'] });
+    for (const onglet of plafondOnglets('supervision')) {
+      expect(cochee(html, 'supervision', onglet)).toBe(true);
+    }
+  });
+
+  it('échappe ce qu’elle affiche', () => {
+    // Les libellés sont des constantes aujourd'hui, mais la fonction passe
+    // par `echapper()` : le jour où un motif viendra d'ailleurs, c'est déjà
+    // fait. Le rendu ne doit contenir aucune balise non voulue.
+    const html = grilleOngletsHtml(null);
+    expect(html).not.toMatch(/<script/i);
+    expect(html.match(/<input/g)?.length).toBe(ROLES.length * ONGLETS.length);
+  });
+});
+
+describe('etatVisibiliteOnglets : le repli se DIT, il ne se devine pas', () => {
+  it('réglage indisponible : la phrase l’annonce franchement', () => {
+    const texte = etatVisibiliteOnglets(null);
+    expect(texte).toContain('indisponible');
+    expect(texte).toContain('repli');
+  });
+
+  it('rôles sans réglage : ils sont nommés', () => {
+    const texte = etatVisibiliteOnglets({ caisse: ['bandeau'] });
+    expect(texte).toContain('Technique');
+    expect(texte).toContain('Supervision');
+    expect(texte).not.toContain('Caisse');
+  });
+
+  it('tout est réglé : pas de bruit inutile', () => {
+    const complet = Object.fromEntries(ROLES.map((r) => [r, plafondOnglets(r)]));
+    expect(etatVisibiliteOnglets(complet)).toBe('');
   });
 });

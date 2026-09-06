@@ -201,6 +201,16 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   `migrations/2026-08-params-forme.sql` pour une base existante) : la base
   refuse la valeur aberrante, ce que le front ne peut pas faire. Les deux
   copies doivent rester identiques (`src/data/securite.test.ts`).
+- **Onglets visibles par rôle** (`onglets_par_role`, réglable en supervision) :
+  la matrice droit × rôle et RLS restent le PLAFOND — cette table ne peut que
+  RETRANCHER. `ongletsVisibles()` intersecte ce qu'elle lit avec ce que les
+  droits ouvrent : une ligne forgée n'accorde RIEN. Ce n'est pas un mécanisme
+  de permissions, c'est du rangement d'interface, et il ne doit jamais en
+  devenir un. Deux replis vers la matrice du code (réglage indisponible, rôle
+  sans ligne), jamais vers « aucun onglet ». Garde-fou d'enfermement en base :
+  au moins un rôle portant `parametres.technique` garde l'onglet Utilisateurs
+  (`trg_onglets_quorum`, différé + verrou consultatif) ; la liste y est écrite
+  en dur et `securite.test.ts` la compare à `ROLES_QUI_ROUVRENT`.
 
 ## Commandes
 

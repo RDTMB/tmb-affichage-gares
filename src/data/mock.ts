@@ -22,7 +22,9 @@ import {
   ROLES,
   estDernierDetenteur,
   motifCompteVerrouille,
+  motifOngletVerrouille,
   peutAttribuer,
+  plafondOnglets,
   peutGererProfil,
   rolesDemoDepuisEmail,
 } from '../core/roles';
@@ -45,7 +47,9 @@ import type {
   Profil,
   PassageGrille,
   Params,
+  Onglet,
   Role,
+  VisibiliteOnglets,
   Session,
   SectionJour,
   TerminusFlag,
@@ -215,6 +219,22 @@ const PARAMS_DEMO: Params = {
   ],
 };
 
+/**
+ * Visibilité des onglets en démonstration : la même photographie que le seed
+ * de `supabase/schema.sql`, calculée depuis la matrice du code pour ne jamais
+ * en diverger, avec l'unique décision de l'exploitant du 06/09/2026 —
+ * l'onglet Horaires est masqué pour la CAISSE.
+ *
+ * La démo doit montrer ce que la production fait : un mock qui montrerait
+ * Horaires à la caisse enseignerait un comportement qui n'existe pas.
+ */
+const ONGLETS_PAR_ROLE_DEMO: Partial<Record<Role, Onglet[]>> = Object.fromEntries(
+  ROLES.map((role) => [
+    role,
+    plafondOnglets(role).filter((o) => !(role === 'caisse' && o === 'horaires')),
+  ]),
+);
+
 // Les comptes de démonstration illustrent le CUMUL : le premier porte les deux
 // rôles de gouvernance, comme le compte réel du chef d'exploitation qui assure
 // aussi, temporairement, la fonction informatique.
@@ -294,6 +314,13 @@ interface EtatMock {
   grillesDesactivees?: string[];
   /** Métadonnées modifiées en place (nom, dates, commentaire), par version. */
   grillesMetadonnees?: Record<string, Partial<MetadonneesGrille>>;
+  /**
+   * Onglets visibles par rôle (table `onglets_par_role`). ABSENT ou vide =
+   * aucun réglage, donc repli sur la matrice du code — c'est le même contrat
+   * qu'en base, et c'est ce qui permet de reproduire en démo le cas « la table
+   * n'existe pas encore ».
+   */
+  ongletsParRole?: Partial<Record<Role, Onglet[]>>;
 }
 
 function litEtat(): EtatMock {
@@ -1261,6 +1288,53 @@ export class MockProvider implements DataProvider {
 
     liste[index] = { ...cible, roles: voulus };
     etat.utilisateurs = liste;
+    ecritEtat(etat);
+  }
+
+  /**
+   * Onglets visibles par rôle. Rend `null` quand rien n'est réglé — c'est le
+   * cas d'une base d'avant la migration, et il doit se comporter en démo comme
+   * en production : repli sur la matrice du code.
+   */
+  async getOngletsParRole(): Promise<VisibiliteOnglets> {
+    return litEtat().ongletsParRole ?? ONGLETS_PAR_ROLE_DEMO;
+  }
+
+  /**
+   * Le mock refuse ce que la base refuserait, sinon la démo enseignerait de
+   * mauvaises habitudes — ici l'anti-enfermement (déclencheur
+   * `trg_onglets_quorum`) et le plafond des droits.
+   */
+  async setOngletRole(role: Role, onglet: Onglet, visible: boolean): Promise<void> {
+    if (!plafondOnglets(role).includes(onglet)) {
+      throw new Error(
+        `Le rôle « ${LIBELLE_ROLE[role]} » n’a aucun droit sur l’onglet « ${onglet} ».`,
+      );
+    }
+    const etat = litEtat();
+    // Premier réglage : on part de l'état COURANT (le seed de démo), pas d'un
+    // ensemble vide — sinon cocher une case masquerait tout le reste d'un coup.
+    const regle: Partial<Record<Role, Onglet[]>> = etat.ongletsParRole ?? ONGLETS_PAR_ROLE_DEMO;
+    const actuels = regle[role] ?? plafondOnglets(role);
+    const voulus = visible
+      ? [...new Set([...actuels, onglet])]
+      : actuels.filter((o) => o !== onglet);
+
+    const apres = { ...regle, [role]: voulus };
+    if (!visible && motifOngletVerrouille(role, onglet, apres) !== null) {
+      throw new Error(
+        'Refusé : au moins un rôle capable de rouvrir ce réglage doit garder l’onglet Utilisateurs.',
+      );
+    }
+
+    // Une ligne de journal par onglet accordé ou masqué, comme en base.
+    // `trace` prend l'auteur dans la session ouverte, comme le déclencheur le
+    // prend dans le jeton.
+    const ligne = { role, onglet };
+    if (visible) trace(etat, 'onglets_par_role', `${role} ${onglet}`, null, ligne, ['onglet']);
+    else trace(etat, 'onglets_par_role', `${role} ${onglet}`, ligne, null, ['onglet']);
+
+    etat.ongletsParRole = apres;
     ecritEtat(etat);
   }
 

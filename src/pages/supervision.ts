@@ -43,7 +43,9 @@ import type {
   Params,
   PassageGrille,
   Profil,
+  Onglet,
   Role,
+  VisibiliteOnglets,
   SectionJour,
   TrainGrille,
   TrainJour,
@@ -117,6 +119,8 @@ import {
   recapCycle,
   resumeJournee,
   routageCirculations,
+  grilleOngletsHtml,
+  etatVisibiliteOnglets,
   initiales,
   libelleUtilisateur,
   etatFraicheurEcran,
@@ -163,6 +167,19 @@ function $(id: string): HTMLElement {
  * la base refuse de toute façon ce qu'elle doit refuser.
  */
 let roles: Role[] = [];
+
+/**
+ * Onglets que l'exploitant a choisi d'afficher, par rôle (table
+ * `onglets_par_role`). `null` = réglage indisponible : chaque rôle voit alors
+ * tout ce que ses droits ouvrent, c'est-à-dire le comportement d'avant ce
+ * réglage. Jamais « aucun onglet » : l'exploitation ne doit pas se retrouver
+ * devant une supervision aveugle parce qu'une table manque.
+ *
+ * ⚠ Ce réglage ne peut que RETRANCHER (`ongletsVisibles()` intersecte avec le
+ * plafond des droits). Ce n'est pas une barrière de sécurité : RLS refuse
+ * exactement ce qu'elle refusait.
+ */
+let visibiliteOnglets: VisibiliteOnglets = null;
 
 /** Raccourci de lecture : l'agent connecté a-t-il ce droit ? */
 function peut(droit: Droit): boolean {
@@ -563,7 +580,7 @@ function rendreBaseServie(): void {
  * mieux que laisser échouer — mais ce n'est qu'un confort : RLS tranche.
  */
 function appliqueRoles(): void {
-  const visibles: string[] = ongletsVisibles(roles);
+  const visibles: string[] = ongletsVisibles(roles, visibiliteOnglets);
   document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
     const nom = b.dataset.t ?? '';
     b.style.display = visibles.includes(nom) ? '' : 'none';
@@ -598,6 +615,68 @@ function appliqueRoles(): void {
   // `journal`), un `montreSi` de plus ne ferait que dupliquer la règle.
   // La purge, elle, garde le sien : elle est plus restrictive que l'onglet.
   montreSi('carte-purge', peut('journal.purger'));
+
+  // Ranger la barre de navigation est un réglage d'INFRASTRUCTURE, au même
+  // titre que la veille de nuit globale ou la purge du journal.
+  montreSi('carte-onglets-roles', peut('parametres.technique'));
+  if (peut('parametres.technique')) rendOngletsParRole();
+}
+
+/**
+ * Carte « Onglets visibles par rôle ». Le rendu est PUR
+ * (`grilleOngletsHtml`) ; il ne reste ici que la pose dans le DOM.
+ */
+function rendOngletsParRole(): void {
+  const hote = document.getElementById('onglets-roles');
+  if (!hote) return;
+  hote.innerHTML = grilleOngletsHtml(visibiliteOnglets);
+  const etat = document.getElementById('onglets-roles-etat');
+  if (etat) etat.textContent = etatVisibiliteOnglets(visibiliteOnglets);
+}
+
+/**
+ * Un clic = un geste = une ligne de journal. On n'envoie donc PAS un ensemble
+ * recalculé : la case cochée dit exactement l'onglet accordé ou masqué.
+ *
+ * En cas de refus (la base garde le dernier mot — anti-enfermement), la case
+ * est remise dans son état précédent et la cause est DITE. Un échec silencieux
+ * laisserait croire que le réglage a pris.
+ */
+let ongletsParRoleBranches = false;
+function brancheOngletsParRole(): void {
+  const hote = document.getElementById('onglets-roles');
+  // Une session peut être rouverte sans recharger la page : sans ce garde,
+  // chaque clic partirait deux fois — donc deux lignes de journal.
+  if (!hote || ongletsParRoleBranches) return;
+  ongletsParRoleBranches = true;
+  hote.addEventListener('change', (e) => {
+    const boite = e.target as HTMLInputElement;
+    if (boite?.type !== 'checkbox') return;
+    const role = boite.dataset.role as Role | undefined;
+    const onglet = boite.dataset.onglet as Onglet | undefined;
+    if (!role || !onglet) return;
+    const visible = boite.checked;
+    boite.disabled = true;
+    void provider
+      .setOngletRole(role, onglet, visible)
+      .then(async () => {
+        visibiliteOnglets = await provider.getOngletsParRole().catch(() => visibiliteOnglets);
+        rendOngletsParRole();
+        // La barre de l'agent connecté peut changer sous ses yeux : c'est
+        // voulu, il vient de la régler et doit en voir l'effet.
+        appliqueRoles();
+      })
+      .catch((erreur: unknown) => {
+        boite.checked = !visible;
+        boite.disabled = false;
+        const etat = document.getElementById('onglets-roles-etat');
+        if (etat) {
+          etat.textContent = `Réglage refusé — ${
+            erreur instanceof Error ? erreur.message : 'cause inconnue'
+          }`;
+        }
+      });
+  });
 }
 
 /** Affiche ou masque un bloc, sans lever si la page ne le contient pas. */
@@ -708,6 +787,9 @@ async function apresConnexion(): Promise<void> {
   $('user-nom').title = profilConnecte?.email ?? '';
   $('avatar').textContent = initiales(profilConnecte);
   $('user-role').innerHTML = badgesRoles(roles);
+  // Écouteur DÉLÉGUÉ sur le conteneur, posé une seule fois : la grille est
+  // réécrite à chaque réglage, des écouteurs par case ne survivraient pas.
+  brancheOngletsParRole();
   appliqueRoles();
   try {
     await chargeTout();
@@ -3793,6 +3875,9 @@ async function demarre(): Promise<void> {
   async function entreAvecSession(): Promise<void> {
     profilConnecte = await provider.getProfil();
     roles = profilConnecte.roles;
+    // Un échec ne bloque RIEN : `null` fait retomber la barre sur la matrice
+    // du code, exactement comme avant l'existence de ce réglage.
+    visibiliteOnglets = await provider.getOngletsParRole().catch(() => null);
     utilisateurs = await provider.listUsers().catch(() => []);
     await apresConnexion();
   }

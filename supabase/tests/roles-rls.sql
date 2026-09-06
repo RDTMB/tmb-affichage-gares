@@ -313,7 +313,8 @@ begin
     raise notice 'OK — supervision : déclarer un écran lui est refusé';
   end;
 
-  -- (b) La caisse ne tient QUE le bandeau.
+  -- (b) La caisse : le bandeau, les médias, la COMMANDE de son écran — et
+  --     rien de l'exploitation ni des comptes (élargissement du 06/09/2026).
   perform set_config('request.jwt.claims',
     json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
 
@@ -322,10 +323,109 @@ begin
   if touchees = 1 then raise notice 'OK — caisse : règle la vitesse du bandeau';
   else raise exception 'ÉCHEC — caisse : n''a pas pu régler la vitesse du bandeau'; end if;
 
+  -- CE QU'ELLE GAGNE. Médias : la FICHE…
+  insert into public.medias (nom, type, chemin, duree_s)
+    values ('recette-roles-media', 'image', 'recette-roles/essai.png', 8);
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : dépose un média';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu déposer un média'; end if;
+
+  update public.medias set actif = false where nom = 'recette-roles-media';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : retire un média de l''affichage';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu retirer un média'; end if;
+
+  delete from public.medias where nom = 'recette-roles-media';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : supprime un média';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu supprimer un média'; end if;
+
+  -- …et le CYCLE d'affichage, l'autre moitié du même droit. On vise
+  -- `duree_horaires_s` et non `mode_medias` : seule la première est amorcée
+  -- par seed.sql, et un UPDATE sur une clé ABSENTE toucherait zéro ligne —
+  -- ce qui se lirait comme un refus RLS alors que la politique est correcte.
+  update public.params set valeur = '20'::jsonb where cle = 'duree_horaires_s';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : règle la durée du cycle des médias';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu régler la durée du cycle'; end if;
+
+  -- Commander son écran : recharger, mettre en veille, ajuster sa vitesse.
+  update public.ecrans set recharger_demande_at = now() where id = 'recette-roles-1';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : recharge un écran';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu recharger un écran'; end if;
+
+  update public.ecrans set veille_debut = '21:00', veille_fin = '06:00'
+    where id = 'recette-roles-1';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : règle la veille de son poste';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu régler la veille du poste'; end if;
+
+  -- CE QU'ELLE NE GAGNE PAS. Cette moitié compte autant : un élargissement
+  -- qui ouvre trop est un incident, pas un détail de finition.
   update public.jours set terminus_bellevue_a_partir_du_train = 1 where date = '2099-12-31';
   get diagnostics touchees = row_count;
   if touchees = 0 then raise notice 'OK — caisse : les circulations lui sont refusées';
   else raise exception 'ÉCHEC — caisse : a pu écrire une journée'; end if;
+
+  -- Paramètres d'EXPLOITATION : le délai « à quai » reste au chef d'exploitation.
+  update public.params set valeur = '300'::jsonb where cle = 'a_quai_origine_s';
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — caisse : le délai « à quai » lui est refusé';
+  else raise exception 'ÉCHEC — caisse : a pu régler le délai « à quai »'; end if;
+
+  -- Paramètres TECHNIQUES : la veille GLOBALE n'est pas la veille d'un poste.
+  update public.params set valeur = '{"debut":"22:00","fin":"05:00"}'::jsonb
+    where cle = 'veille_nuit';
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — caisse : la veille de nuit globale lui est refusée';
+  else raise exception 'ÉCHEC — caisse : a pu régler la veille de nuit globale'; end if;
+
+  -- Listes d'exploitation : machines, motifs, états du ciel.
+  -- ⚠ Sur une table VIDE, un UPDATE touche zéro ligne et ce contrôle passerait
+  -- sans rien contrôler. On exige donc d'abord qu'il y ait quelque chose à
+  -- refuser (la lecture, elle, est publique).
+  select count(*) into touchees from public.machines;
+  if touchees = 0 then
+    raise exception 'RECETTE INVALIDE — aucune rame en base : le refus testé ci-dessous serait vide. Jouer supabase/seed.sql d''abord.';
+  end if;
+  update public.machines set en_service = true where nom is not null;
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — caisse : les rames lui sont refusées';
+  else raise exception 'ÉCHEC — caisse : a pu modifier une rame'; end if;
+
+  -- IDENTITÉ d'un écran : commander n'est pas déclarer.
+  begin
+    update public.ecrans set gare = 'bellevue' where id = 'recette-roles-1';
+    raise exception 'ÉCHEC — caisse : a pu déplacer un écran';
+  exception when insufficient_privilege then
+    raise notice 'OK — caisse : changer la gare d''un écran lui est refusé';
+  end;
+
+  begin
+    insert into public.ecrans (id, gare, type) values ('recette-roles-3', 'bellevue', 'ecran');
+    raise exception 'ÉCHEC — caisse : a pu déclarer un écran';
+  exception when insufficient_privilege then
+    raise notice 'OK — caisse : déclarer un écran lui est refusé';
+  end;
+
+  delete from public.ecrans where id = 'recette-roles-1';
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — caisse : oublier un écran lui est refusé';
+  else raise exception 'ÉCHEC — caisse : a pu oublier un écran'; end if;
+
+  -- COMPTES et rôles : rien, comme avant.
+  update public.profils set nom = 'Renommé par la caisse' where user_id = u_sup;
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — caisse : renommer un compte lui est refusé';
+  else raise exception 'ÉCHEC — caisse : a pu renommer un compte'; end if;
+
+  begin
+    insert into public.profils_roles (user_id, role) values (u_sansrole, 'caisse');
+    raise exception 'ÉCHEC — caisse : a pu attribuer un rôle';
+  exception when insufficient_privilege or check_violation then
+    raise notice 'OK — caisse : attribuer un rôle lui est refusé';
+  end;
 
   -- (c) Le technique protège la base, il ne conduit pas l'exploitation.
   perform set_config('request.jwt.claims',
@@ -384,6 +484,113 @@ begin
   exception when insufficient_privilege then
     raise notice 'OK — la purge du journal est refusée hors rôle technique';
   end;
+
+  -------------------------------------------------------------------------
+  -- 4 bis. ONGLETS VISIBLES PAR RÔLE — l'invariant, démontré en base
+  -------------------------------------------------------------------------
+  -- CE QU'IL FAUT PROUVER : masquer un onglet ne change RIEN à ce que RLS
+  -- accepte ou refuse. C'est un rangement d'interface, pas une permission.
+  -- Si un seul de ces cas basculait, la table serait devenue une barrière de
+  -- sécurité par accident — et une barrière que l'exploitant règle lui-même,
+  -- sans revue, est la pire de toutes.
+
+  -- Cette section suppose la migration 2026-09-onglets-par-role.sql. Sur une
+  -- base qui ne l'a pas encore reçue, on le DIT et on saute — plutôt que
+  -- d'échouer sur « relation inexistante », message qui n'apprend rien.
+  if to_regclass('public.onglets_par_role') is null then
+    raise notice 'IGNORÉ — table onglets_par_role absente : jouer supabase/migrations/2026-09-onglets-par-role.sql pour éprouver cette section.';
+  else
+
+  -- (a) Le réglage est réservé au technique.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  begin
+    insert into public.onglets_par_role (role, onglet) values ('caisse', 'parametres');
+    raise exception 'ÉCHEC — un admin a pu régler la visibilité des onglets';
+  exception when insufficient_privilege then
+    raise notice 'OK — régler les onglets est refusé hors rôle technique';
+  end;
+
+  -- (b) Référence : ce que la caisse peut écrire AVANT tout masquage. Sans ce
+  --     témoin, le cas (d) ne prouverait rien — il passerait aussi si la
+  --     caisse n'avait JAMAIS pu écrire.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.params set valeur = '95'::jsonb where cle = 'vitesse_ticker_px_s';
+  get diagnostics touchees = row_count;
+  if touchees <> 1 then
+    raise exception 'RECETTE INVALIDE — la caisse ne peut déjà plus régler le bandeau ; le cas (d) ne prouverait rien.';
+  end if;
+
+  -- (c) Le technique masque à la caisse l'onglet Bandeau, celui de son métier.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  delete from public.onglets_par_role where role = 'caisse' and onglet = 'bandeau';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — technique : masque un onglet';
+  else raise exception 'ÉCHEC — technique : n''a pas pu masquer un onglet (ligne absente du seed ?)'; end if;
+
+  -- (d) LE POINT DE TOUTE LA SECTION : la caisse écrit toujours.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.params set valeur = '85'::jsonb where cle = 'vitesse_ticker_px_s';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then
+    raise notice 'OK — masquer un onglet ne retire AUCUN droit : la caisse règle toujours le bandeau';
+  else
+    raise exception 'ÉCHEC — masquer un onglet a retiré un droit : la table est devenue une barrière de sécurité';
+  end if;
+
+  -- (e) …et l'inverse : ACCORDER un onglet hors plafond n'ouvre rien.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  insert into public.onglets_par_role (role, onglet) values ('caisse', 'circulations')
+    on conflict do nothing;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.jours set terminus_bellevue_a_partir_du_train = 3 where date = '2099-12-31';
+  get diagnostics touchees = row_count;
+  if touchees = 0 then
+    raise notice 'OK — accorder l''onglet Circulations à la caisse n''ouvre AUCUNE écriture';
+  else
+    raise exception 'ÉCHEC — une ligne d''onglet a ouvert une écriture : l''invariant est rompu';
+  end if;
+
+  -- (f) L'auteur du réglage vient du JETON, pas du client.
+  if exists (
+    select 1 from public.onglets_par_role
+     where role = 'caisse' and onglet = 'circulations'
+       and regle_par is distinct from 'test-technique@exemple.invalid'
+  ) then
+    raise exception 'ÉCHEC — regle_par n''a pas été posée depuis le jeton';
+  end if;
+  raise notice 'OK — l''auteur du réglage est tracé depuis le jeton';
+
+  -- (g) ANTI-ENFERMEMENT : masquer le dernier accès à Utilisateurs est refusé.
+  --     Le déclencheur est DIFFÉRÉ : il tombe à la fin du bloc englobant, pas
+  --     sur le DELETE lui-même. D'où le sous-bloc, qui joue le rôle du COMMIT.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  begin
+    delete from public.onglets_par_role where role = 'technique' and onglet = 'utilisateurs';
+    -- Force la vérification des contraintes différées SANS clore la
+    -- transaction : c'est exactement ce que ferait le COMMIT.
+    set constraints all immediate;
+    raise exception 'ÉCHEC — le dernier accès à l''onglet Utilisateurs a pu être masqué';
+  exception when check_violation then
+    raise notice 'OK — masquer le dernier accès à Utilisateurs est refusé';
+  end;
+  set constraints all deferred;
+
+  -- (h) Remise en état de ce que cette section a bousculé : la recette ne
+  --     laisse RIEN derrière elle, réglages compris.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  delete from public.onglets_par_role where role = 'caisse' and onglet = 'circulations';
+  insert into public.onglets_par_role (role, onglet) values ('caisse', 'bandeau')
+    on conflict do nothing;
+  end if;
 
   execute 'reset role';
 
@@ -491,6 +698,10 @@ begin
 
   delete from public.jours where date = '2099-12-31';
   delete from public.ecrans where id like 'recette-roles-%';
+  -- La caisse supprime elle-même son média au §4 (c'est le cas testé), et un
+  -- échec annule tout le bloc : cette ligne ne rattrape donc rien aujourd'hui.
+  -- Elle est là pour que le nettoyage reste COMPLET si le §4 change un jour.
+  delete from public.medias where nom = 'recette-roles-media';
   -- Les comptes d'abord : la cascade emporte profils puis profils_roles. Le
   -- quorum reste satisfait, les comptes RÉELS de la base gardant leurs rôles.
   delete from auth.users where id = any (tous);

@@ -15,7 +15,16 @@ import type {
   Profil,
   Sens,
 } from '../core/types';
+import type { Onglet, VisibiliteOnglets } from '../core/types';
 import { ORDRE_GARES } from '../core/types';
+import {
+  LIBELLE_ROLE,
+  ONGLETS,
+  ROLES,
+  motifOngletVerrouille,
+  ongletsVisibles,
+  plafondOnglets,
+} from '../core/roles';
 import { origineReelle, sectionComplete, terminusReel } from '../core/horaires';
 import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
@@ -873,4 +882,78 @@ export function resumeJournee(
     sectionRestreinte: !sectionComplete(jour),
     terminusActif: jour.terminus_bellevue !== false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Carte « Onglets visibles par rôle » (onglet Utilisateurs)
+// ---------------------------------------------------------------------------
+
+/** Libellés de la barre de navigation, dans son ordre. */
+const LIBELLE_ONGLET: Record<Onglet, string> = {
+  circulations: 'Circulations',
+  horaires: 'Horaires',
+  bandeau: 'Bandeau',
+  medias: 'Médias',
+  ecrans: 'Écrans',
+  parametres: 'Paramètres',
+  utilisateurs: 'Utilisateurs',
+  journal: 'Journal',
+};
+
+/**
+ * Grille rôles × onglets de la carte de réglage. PURE, donc testable sans DOM.
+ *
+ * ⚠ Une case DÉCOCHÉE et une case GRISÉE ne disent pas la même chose :
+ *  - décochée : le rôle a le droit, l'exploitant a choisi de masquer l'onglet ;
+ *  - grisée : le rôle n'a AUCUN droit dessus — la cocher n'ouvrirait rien, et
+ *    le front ignorerait la ligne de toute façon (l'intersection de
+ *    `ongletsVisibles()`).
+ * Une case cochable mais qui enfermerait tout le monde dehors est grisée elle
+ * aussi, avec son propre motif : la base la refuserait, autant le dire avant.
+ */
+export function grilleOngletsHtml(visibilite: VisibiliteOnglets): string {
+  const entetes = ONGLETS.map((o) => `<th>${echapper(LIBELLE_ONGLET[o])}</th>`).join('');
+  const lignes = ROLES.map((role) => {
+    const vus = ongletsVisibles([role], visibilite);
+    const cases = ONGLETS.map((onglet) => {
+      const coche = vus.includes(onglet);
+      // Motif calculé sur l'état APRÈS décochage : c'est ce geste-là que l'on
+      // veut empêcher, pas l'état courant.
+      const apres = { ...(visibilite ?? {}), [role]: vus.filter((o) => o !== onglet) };
+      const motif = motifOngletVerrouille(role, onglet, apres);
+      // Un onglet hors plafond est toujours verrouillé ; un onglet déjà masqué
+      // doit rester recochable, le motif d'enfermement ne s'applique qu'au
+      // décochage.
+      const horsPlafond = !plafondOnglets(role).includes(onglet);
+      const bloque = horsPlafond || (coche && motif !== null);
+      const titre = bloque && motif ? ` title="${echapper(motif)}"` : '';
+      return (
+        `<td><input type="checkbox" data-role="${echapper(role)}" ` +
+        `data-onglet="${echapper(onglet)}"${coche ? ' checked' : ''}` +
+        `${bloque ? ' disabled' : ''}${titre} /></td>`
+      );
+    }).join('');
+    return `<tr><th scope="row">${echapper(LIBELLE_ROLE[role])}</th>${cases}</tr>`;
+  }).join('');
+  return `<table class="onglets-roles"><thead><tr><th></th>${entetes}</tr></thead><tbody>${lignes}</tbody></table>`;
+}
+
+/**
+ * Phrase d'état sous la grille. Elle doit dire franchement quand le réglage
+ * n'est PAS lu depuis la base : sans cela, un technique croirait avoir masqué
+ * un onglet alors que la table est injoignable et que rien n'est appliqué.
+ */
+export function etatVisibiliteOnglets(visibilite: VisibiliteOnglets): string {
+  if (visibilite === null) {
+    return (
+      'Réglage indisponible : chaque rôle voit tout ce que ses droits ouvrent. ' +
+      'C’est le comportement de repli — la table n’a pas encore été créée, ou elle est injoignable.'
+    );
+  }
+  const sansReglage = ROLES.filter((r) => (visibilite[r] ?? []).length === 0);
+  if (sansReglage.length === 0) return '';
+  return (
+    `Aucun réglage pour : ${sansReglage.map((r) => LIBELLE_ROLE[r]).join(', ')} — ` +
+    'ces rôles voient tout ce que leurs droits ouvrent.'
+  );
 }

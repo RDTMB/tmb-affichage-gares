@@ -168,8 +168,8 @@ create policy "roles: circulations regeneration" on circulations for insert to a
   with check ((select private.a_le_role('technique')));
 
 create policy "roles: medias" on medias for all to authenticated
-  using ((select private.a_un_des_roles(array['admin','supervision'])))
-  with check ((select private.a_un_des_roles(array['admin','supervision'])));
+  using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
 create policy "roles: messages" on messages for all to authenticated
   using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
@@ -194,11 +194,11 @@ create policy "roles: params affichage" on params for all to authenticated
 create policy "roles: params medias" on params for all to authenticated
   using (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   )
   with check (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 create policy "roles: params exploitation" on params for all to authenticated
   using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
@@ -263,8 +263,8 @@ create policy "signal de vie" on ecrans for update to anon
 create policy "roles: ecrans declarer" on ecrans for insert to authenticated
   with check ((select private.a_le_role('technique')));
 create policy "roles: ecrans commander" on ecrans for update to authenticated
-  using ((select private.a_un_des_roles(array['technique','supervision'])))
-  with check ((select private.a_un_des_roles(array['technique','supervision'])));
+  using ((select private.a_un_des_roles(array['technique','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['technique','supervision','caisse'])));
 create policy "roles: ecrans oublier" on ecrans for delete to authenticated
   using ((select private.a_le_role('technique')));
 
@@ -277,13 +277,13 @@ create policy "roles: ecrans oublier" on ecrans for delete to authenticated
 -- l'est à l'exploitation, dont la suppression de fichier a besoin de voir
 -- l'objet. On la RESTREINT au lieu de la retirer.
 create policy "roles: medias lecture" on storage.objects for select to authenticated
-  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));
 create policy "roles: medias ecriture" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  with check (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));
 create policy "roles: medias suppression" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
 commit;
 

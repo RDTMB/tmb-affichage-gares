@@ -2262,3 +2262,41 @@ input:disabled {
   color: var(--alerte);
   font-weight: 700;
 }
+
+/* Carte « Onglets visibles par rôle » (onglet Utilisateurs). Grille
+   rôles × onglets : les en-têtes de colonnes sont étroits, on les laisse
+   respirer plutôt que de les tronquer. Elle défile horizontalement dans sa
+   carte si la fenêtre est étroite — jamais la page entière. */
+#onglets-roles {
+  overflow-x: auto;
+}
+table.onglets-roles {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+table.onglets-roles th,
+table.onglets-roles td {
+  padding: 6px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--bord);
+  white-space: nowrap;
+}
+table.onglets-roles thead th {
+  font-weight: 700;
+  color: var(--sec);
+}
+table.onglets-roles th[scope='row'] {
+  text-align: left;
+  font-weight: 700;
+}
+table.onglets-roles input[type='checkbox'] {
+  cursor: pointer;
+}
+/* Une case grisée n'est pas un oubli : le rôle n'a aucun droit sur cet
+   onglet, ou le décocher fermerait le dernier accès au réglage. Le motif est
+   dans son `title`. */
+table.onglets-roles input[type='checkbox']:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}

@@ -553,13 +553,62 @@ hiérarchie linéaire ne sait dire aucune de ces trois situations.
 | **Technique** | Responsable informatique, prestataire | Grilles horaires ; identité des écrans (déclarer, oublier) ; rechargement et veille d'un poste ; veille de nuit globale et durée du cache ; réinitialisation d'une journée ; comptes techniques ; journal, y compris les lignes de rôles, et sa purge |
 | **Administrateur** | Chef d'exploitation | Comptes d'exploitation ; bibliothèque de modèles ; médias et cycle d'affichage ; machines, motifs, états du ciel, délai « à quai » ; grilles horaires ; bandeau ; journal, y compris les lignes de rôles |
 | **Supervision** | Exploitation courante | Circulations et journées ; grilles horaires ; bandeau ; médias ; rechargement et veille d'un poste ; réinitialisation d'une journée ; publication |
-| **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; grille du jour en lecture |
+| **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; médias et cycle d'affichage ; rechargement et veille d'un poste ; journal ; grille du jour en lecture |
 
 Trois droits sont **délibérément partagés** avec l'exploitation — grilles,
 rechargement d'un écran, réinitialisation d'une journée : un matin de service,
 l'exploitation ne doit jamais attendre l'informatique. Ne restent exclusifs au
 rôle technique que les réglages d'infrastructure, qui n'ont pas d'urgence
 d'exploitation.
+
+**Le guichet suit le même principe** _(06/09/2026)_. La caisse a gagné les
+médias et la commande d'écran : l'agent est souvent seul en gare le matin, et
+un écran resté en veille ne s'attrape pas par téléphone. Aucun droit nouveau
+n'a été créé pour l'occasion — `medias` et `ecrans.commander` existaient déjà
+et étaient portés par d'autres rôles. La caisse voit donc **cinq onglets sur
+huit** : Horaires (lecture seule), Bandeau, Médias, Écrans, Journal.
+
+Ce qu'elle **ne** gagne pas, et qui reste vérifié en base
+(`supabase/tests/roles-rls.sql`) : les circulations et les journées, le délai
+« à quai », les rames, motifs et états du ciel, la veille de nuit **globale**
+(à distinguer de la veille d'un poste), les comptes et les rôles. Elle
+**commande** un écran sans pouvoir le **déclarer**, l'oublier, ni changer sa
+gare ou son type : cette séparation est tenue par un déclencheur, pas
+seulement par une politique, parce que RLS ne sait pas quelles colonnes
+changent.
+
+**Visibilité des onglets — à ne pas confondre avec les droits** _(06/09/2026)_.
+La matrice ci-dessus dit ce que chaque rôle **peut faire**. Une seconde table,
+réglable depuis la supervision (Utilisateurs → carte « Onglets visibles par
+rôle », droit `parametres.technique`), dit ce que chaque rôle **voit** dans la
+barre de navigation. L'exploitant range ainsi ses onglets sans livraison de
+code, et revient sur sa décision en trois clics.
+
+> **Ce réglage ne peut que RETRANCHER, jamais étendre.** La matrice droit ×
+> rôle et les politiques RLS restent le plafond : un onglet ne peut être rendu
+> visible à un rôle que si ses droits l'ouvraient déjà. **Ce n'est donc pas une
+> barrière de sécurité, c'est du rangement d'interface** — aucune écriture
+> nouvelle ne devient possible, la base refuse exactement ce qu'elle refusait.
+> Une ligne écrite à la main qui accorderait « Circulations » à la caisse ne
+> produit rien du tout.
+
+Première valeur livrée : **la caisse ne voit plus l'onglet Horaires**. Le
+choix est passé par la table plutôt que par le code, précisément pour qu'il
+soit réversible sans livraison — la caisse garde par ailleurs le droit
+`bandeau` qui lui ouvrait cet onglet, c'est un masquage et non un retrait.
+
+Deux replis, tous deux vers la matrice du code et jamais vers « aucun onglet » :
+réglage indisponible (base injoignable, table absente ou vide), et rôle dont
+aucune ligne n'a été enregistrée — un rôle créé plus tard naîtrait sinon
+aveugle. L'exploitation ne doit jamais attendre l'informatique un matin de
+service.
+
+Garde-fou : au moins un rôle capable de rouvrir ce réglage doit garder l'onglet
+Utilisateurs. La case correspondante est grisée dans l'écran, et **la base
+refuse le geste** (déclencheur de contrainte différé) — l'interface n'est qu'un
+confort. Supprimer TOUTES les lignes d'un rôle le fait retomber sur la matrice
+du code : c'est la porte de secours, et c'est pourquoi seul le réglage partiel
+est refusé. Chaque onglet accordé ou masqué laisse une ligne au journal.
 
 **Qui attribue quoi.** Le rôle technique s'attribue depuis un compte technique ;
 les rôles admin, supervision et caisse depuis un compte administrateur. Personne
