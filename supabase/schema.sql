@@ -15,7 +15,27 @@ create table if not exists jours (
   -- 1 = journée entière (régime hiver). La colonne `terminus` de chaque
   -- circulation reste l'unique source de vérité pour l'affichage.
   terminus_bellevue_a_partir_du_train int,
-  genere_le timestamptz default now()
+  -- SECTION DE LIGNE EXPLOITÉE ce jour, bornes INCLUSES (travaux, fermeture
+  -- d'un tronçon). « Terminus Bellevue » n'en est qu'un cas particulier : la
+  -- section est la borne EXTÉRIEURE, la colonne `terminus` d'une circulation
+  -- ne peut que réduire davantage, jamais dépasser (docs/01 §2.2).
+  gare_debut text not null default 'le-fayet',
+  gare_fin   text not null default 'nid-daigle',
+  -- Message des gares FERMÉES (hors section). NULL = défaut bilingue
+  -- construit sur la section réelle : un écran ne reste jamais muet.
+  message_troncon_fr text,
+  message_troncon_en text,
+  genere_le timestamptz default now(),
+  -- L'ORDRE DE LA LIGNE est imposé par la base, pas seulement par
+  -- l'interface : une section inversée viderait tous les écrans.
+  constraint jours_section_valide check (
+    gare_debut in ('le-fayet','saint-gervais','motivon','col-de-voza','bellevue','nid-daigle')
+    and gare_fin in ('le-fayet','saint-gervais','motivon','col-de-voza','bellevue','nid-daigle')
+    and array_position(
+          array['le-fayet','saint-gervais','motivon','col-de-voza','bellevue','nid-daigle'], gare_debut)
+      < array_position(
+          array['le-fayet','saint-gervais','motivon','col-de-voza','bellevue','nid-daigle'], gare_fin)
+  )
 );
 
 create table if not exists circulations (
