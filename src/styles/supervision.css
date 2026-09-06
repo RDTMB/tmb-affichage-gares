@@ -177,12 +177,83 @@ header .spacer {
 }
 
 /* ------- Onglets ------- */
+/* UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation garde sa taille à
+   gauche, l'administration passe à droite, plus discrète, derrière un filet.
+   Aucune profondeur ajoutée : tout reste à un clic.
+
+   ⚠ La liste d'onglets est RÉGLABLE en exploitation (`onglets_par_role`) :
+   cette barre doit rester juste de huit entrées à deux. D'où l'écart en
+   `flex: 1` plutôt qu'une largeur, et le groupe vide masqué par le script
+   (`appliqueRoles`) — intitulé et filet compris. */
 nav.tabs {
   display: flex;
-  gap: 4px;
+  align-items: stretch;
   background: #fff;
   border-bottom: 1px solid var(--bord);
   padding: 0 22px;
+}
+
+.groupe-onglets {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* C'est LUI qui pousse l'administration à droite. Un écart élastique, jamais
+   une largeur fixe : à deux onglets visibles comme à huit, la barre reste
+   ancrée à gauche et le groupe droit collé à droite. */
+.ecart-onglets {
+  flex: 1;
+}
+
+.groupe-administration {
+  border-left: 1px solid var(--bord);
+  padding-left: 14px;
+  margin-left: 14px;
+}
+
+.intitule-groupe {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sec);
+  opacity: 0.75;
+  padding-right: 4px;
+}
+
+/* Plus petits et sans soulignement rouge : l'administration se consulte, elle
+   ne se surveille pas. L'onglet actif s'y marque par un fond, pour que la
+   ligne rouge reste le signal de l'exploitation. */
+.groupe-administration button {
+  font-size: 13.5px;
+  padding: 13px 12px;
+}
+
+.groupe-administration button.on {
+  color: var(--marine);
+  border-bottom-color: transparent;
+  background: #eaf2f6;
+  border-radius: 6px 6px 0 0;
+}
+
+/* SEUL GROUPE RESTANT : il s'ancre à gauche comme n'importe quelle barre.
+   Constaté en réglant un rôle sur « Journal » seul — le groupe partait se
+   coller tout à droite d'une barre par ailleurs vide, et son intitulé
+   « Administration » ne distinguait plus rien de rien. Un filet et un titre
+   ne séparent que s'il y a deux choses à séparer. */
+nav.tabs.sans-exploitation .ecart-onglets {
+  display: none;
+}
+
+nav.tabs.sans-exploitation .groupe-administration {
+  border-left: 0;
+  padding-left: 0;
+  margin-left: 0;
+}
+
+nav.tabs.sans-exploitation .intitule-groupe {
+  display: none;
 }
 
 nav.tabs button {

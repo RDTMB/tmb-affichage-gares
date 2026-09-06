@@ -885,6 +885,51 @@ export function resumeJournee(
 }
 
 // ---------------------------------------------------------------------------
+// Barre de navigation : deux groupes, une seule rangée (canevas 1b)
+// ---------------------------------------------------------------------------
+
+/**
+ * Onglets d'ADMINISTRATION : ceux qui ouvrent quelque chose qu'on règle une
+ * fois pour toutes, ou qu'on consulte après coup. Tout le reste est de
+ * l'EXPLOITATION — ce qui sert en cours de journée.
+ *
+ * L'appartenance est fixe et vit dans le CODE ; la VISIBILITÉ, elle, est une
+ * donnée (`onglets_par_role`). Les deux ne se confondent pas : masquer
+ * « Journal » à un rôle ne le fait pas changer de groupe, cela le retire de
+ * la barre.
+ *
+ * Ce n'est PAS une notion de droits : aucun onglet n'est ouvert ni fermé par
+ * son groupe. C'est de la mise en page.
+ */
+const ONGLETS_ADMINISTRATION: readonly Onglet[] = ['parametres', 'utilisateurs', 'journal'];
+
+export interface GroupesNavigation {
+  exploitation: Onglet[];
+  administration: Onglet[];
+}
+
+/**
+ * Répartit les onglets VISIBLES en deux groupes, dans l'ordre de la barre.
+ *
+ * ⚠ La liste d'onglets est réglable en exploitation : la barre doit rester
+ * juste pour n'importe quel sous-ensemble, de huit entrées à deux. D'où le
+ * contrat que respecte l'appelant : un groupe VIDE n'est pas rendu — ni son
+ * intitulé, ni son filet. Sans cela, un « Administration » suivi de rien
+ * flotterait à droite d'une barre de quatre onglets.
+ */
+export function groupesNavigation(visibles: readonly Onglet[]): GroupesNavigation {
+  return {
+    exploitation: visibles.filter((o) => !ONGLETS_ADMINISTRATION.includes(o)),
+    administration: visibles.filter((o) => ONGLETS_ADMINISTRATION.includes(o)),
+  };
+}
+
+/** Un onglet relève-t-il du groupe d'administration ? (rendu de la barre) */
+export function estOngletAdministration(onglet: Onglet): boolean {
+  return ONGLETS_ADMINISTRATION.includes(onglet);
+}
+
+// ---------------------------------------------------------------------------
 // Carte « Onglets visibles par rôle » (onglet Utilisateurs)
 // ---------------------------------------------------------------------------
 

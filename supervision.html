@@ -78,15 +78,27 @@
         </div>
       </header>
 
+      <!-- UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation à gauche,
+           à sa taille ; l'administration à droite, plus discrète, derrière un
+           filet. Aucune profondeur ajoutée : tout reste à un clic.
+           La liste étant réglable en exploitation (`onglets_par_role`), la
+           barre doit rester juste de huit onglets à deux — un groupe VIDE
+           n'est pas rendu, intitulé et filet compris. -->
       <nav class="tabs" id="tabs" style="display: none">
-        <button data-t="circulations" class="on">Circulations</button>
-        <button data-t="horaires">Horaires</button>
-        <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
-        <button data-t="medias">Médias</button>
-        <button data-t="ecrans">Écrans</button>
-        <button data-t="parametres">Paramètres</button>
-        <button data-t="utilisateurs">Utilisateurs</button>
-        <button data-t="journal">Journal</button>
+        <div class="groupe-onglets groupe-exploitation" id="groupe-exploitation">
+          <button data-t="circulations" class="on">Circulations</button>
+          <button data-t="horaires">Horaires</button>
+          <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
+          <button data-t="medias">Médias</button>
+          <button data-t="ecrans">Écrans</button>
+        </div>
+        <div class="ecart-onglets"></div>
+        <div class="groupe-onglets groupe-administration" id="groupe-administration">
+          <span class="intitule-groupe">Administration</span>
+          <button data-t="parametres">Paramètres</button>
+          <button data-t="utilisateurs">Utilisateurs</button>
+          <button data-t="journal">Journal</button>
+        </div>
       </nav>
     </div>
 

@@ -286,3 +286,78 @@ describe('Content-Security-Policy — aucune page ne doit la perdre', () => {
     for (const p of autres) expect(p).toBe(reference);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canevas 1b — barre de navigation à deux groupes.
+//
+// Verrouillage du CÂBLAGE : supervision.ts n'est pas importable ici (elle
+// accède au DOM dès le chargement), on teste donc son TEXTE, comme le fait
+// déjà ce fichier pour les pages d'affichage.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la barre à deux groupes reste câblée', () => {
+  const html = source('supervision.html');
+  const code = codeSeul('src/pages/supervision.ts');
+  const css = source('src/styles/supervision.css');
+
+  it('les deux groupes existent, séparés par un écart ÉLASTIQUE', () => {
+    // `flex: 1` et non une largeur : à deux onglets visibles comme à huit, la
+    // barre reste ancrée à gauche et le groupe droit collé à droite.
+    expect(html).toContain('id="groupe-exploitation"');
+    expect(html).toContain('id="groupe-administration"');
+    expect(html).toContain('class="ecart-onglets"');
+    expect(css).toMatch(/\.ecart-onglets\s*\{[^}]*flex:\s*1/);
+  });
+
+  it('un groupe VIDE n’est pas rendu — intitulé et filet compris', () => {
+    // Sans cela, « Administration » suivi de rien flotterait à droite d'une
+    // barre de quatre onglets.
+    expect(code).toMatch(/groupesNavigation\(/);
+    expect(code).toMatch(/montreSi\('groupe-exploitation'/);
+    expect(code).toMatch(/montreSi\('groupe-administration'/);
+  });
+
+  it('le seul groupe restant s’ancre à GAUCHE', () => {
+    // Constaté à l'écran en réglant un rôle sur « Journal » seul : le groupe
+    // partait à droite d'une barre vide, avec un intitulé qui ne distinguait
+    // plus rien.
+    expect(code).toContain('sans-exploitation');
+    expect(css).toMatch(/nav\.tabs\.sans-exploitation \.ecart-onglets\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/nav\.tabs\.sans-exploitation \.intitule-groupe\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(
+      /nav\.tabs\.sans-exploitation \.groupe-administration\s*\{[^}]*border-left:\s*0/,
+    );
+  });
+
+  it('UNE SEULE RANGÉE : aucun retour à la ligne dans la barre', () => {
+    // Toute la différence avec la proposition écartée (deux rangs) : aucune
+    // profondeur ajoutée, tout reste à un clic.
+    expect(css).not.toMatch(/nav\.tabs\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(css).toMatch(/nav\.tabs\s*\{[^}]*display:\s*flex/);
+  });
+
+  it('l’administration se distingue par le POIDS, pas par la couleur d’alerte', () => {
+    // Plus petits, sans soulignement rouge : le rouge reste le signal de
+    // l'exploitation.
+    expect(css).toMatch(/\.groupe-administration button\s*\{[^}]*font-size:\s*13\.5px/);
+    expect(css).toMatch(
+      /\.groupe-administration button\.on\s*\{[^}]*border-bottom-color:\s*transparent/,
+    );
+  });
+
+  it('les huit onglets sont TOUS répartis, aucun oublié en chemin', () => {
+    const groupes = html.slice(html.indexOf('id="groupe-exploitation"'), html.indexOf('</nav>'));
+    for (const onglet of [
+      'circulations',
+      'horaires',
+      'bandeau',
+      'medias',
+      'ecrans',
+      'parametres',
+      'utilisateurs',
+      'journal',
+    ]) {
+      expect(groupes, `${onglet} absent de la barre`).toContain(`data-t="${onglet}"`);
+    }
+  });
+});

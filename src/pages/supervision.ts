@@ -120,6 +120,7 @@ import {
   resumeJournee,
   routageCirculations,
   grilleOngletsHtml,
+  groupesNavigation,
   etatVisibiliteOnglets,
   initiales,
   libelleUtilisateur,
@@ -580,12 +581,23 @@ function rendreBaseServie(): void {
  * mieux que laisser échouer — mais ce n'est qu'un confort : RLS tranche.
  */
 function appliqueRoles(): void {
-  const visibles: string[] = ongletsVisibles(roles, visibiliteOnglets);
+  const visibles = ongletsVisibles(roles, visibiliteOnglets);
   document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
     const nom = b.dataset.t ?? '';
-    b.style.display = visibles.includes(nom) ? '' : 'none';
+    b.style.display = visibles.includes(nom as Onglet) ? '' : 'none';
     b.classList.toggle('on', nom === visibles[0]);
   });
+  // UN GROUPE VIDE N'EST PAS RENDU — ni son intitulé, ni son filet. La liste
+  // d'onglets étant réglable en exploitation, « Administration » suivi de rien
+  // flotterait sinon à droite d'une barre de quatre onglets.
+  const groupes = groupesNavigation(visibles);
+  montreSi('groupe-exploitation', groupes.exploitation.length > 0);
+  montreSi('groupe-administration', groupes.administration.length > 0);
+  // …et s'il ne reste QUE l'administration, elle s'ancre à gauche : un filet
+  // et un intitulé ne séparent que s'il y a deux choses à séparer.
+  document
+    .getElementById('tabs')
+    ?.classList.toggle('sans-exploitation', groupes.exploitation.length === 0);
   document.querySelectorAll('.onglet').forEach((o) => {
     o.classList.toggle('on', o.id === `t-${visibles[0]}`);
   });

@@ -20,6 +20,8 @@ import {
   bandeauSection,
   bornesSectionPossibles,
   grilleOngletsHtml,
+  groupesNavigation,
+  estOngletAdministration,
   etatVisibiliteOnglets,
   decisionBandeauApplication,
   type EtatBandeauApplication,
@@ -417,6 +419,99 @@ describe('bandeauSection : signalé seulement quand la ligne est restreinte', ()
 // grille NE MENT PAS : une case cochable doit correspondre à un geste que la
 // base acceptera, une case grisée à un geste qu'elle refuserait.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Barre de navigation à deux groupes (canevas 1b).
+//
+// La contrainte qui a fait retenir cette forme plutôt que les deux rangs :
+// la liste d'onglets est RÉGLABLE en exploitation, la barre doit donc rester
+// juste pour n'importe quel sous-ensemble — de huit entrées à une seule.
+// ---------------------------------------------------------------------------
+
+describe('groupesNavigation : la barre tient pour n’importe quel sous-ensemble', () => {
+  it('huit onglets : cinq d’exploitation à gauche, trois d’administration à droite', () => {
+    const g = groupesNavigation([...ONGLETS]);
+    expect(g.exploitation).toEqual(['circulations', 'horaires', 'bandeau', 'medias', 'ecrans']);
+    expect(g.administration).toEqual(['parametres', 'utilisateurs', 'journal']);
+  });
+
+  it('la configuration par défaut de la CAISSE : quatre onglets, deux groupes', () => {
+    const g = groupesNavigation(['bandeau', 'medias', 'ecrans', 'journal']);
+    expect(g.exploitation).toEqual(['bandeau', 'medias', 'ecrans']);
+    expect(g.administration).toEqual(['journal']);
+  });
+
+  it('cas dégradé à DEUX onglets d’exploitation : le groupe droit est VIDE', () => {
+    // L'appelant doit alors ne pas le rendre du tout — ni intitulé, ni filet.
+    const g = groupesNavigation(['bandeau', 'medias']);
+    expect(g.administration).toEqual([]);
+    expect(g.exploitation).toHaveLength(2);
+  });
+
+  it('cas dégradé à UN onglet d’administration : le groupe gauche est VIDE', () => {
+    // Constaté à l'écran : sans traitement, le groupe partait se coller tout à
+    // droite d'une barre par ailleurs vide, avec un intitulé qui ne
+    // distinguait plus rien de rien.
+    const g = groupesNavigation(['journal']);
+    expect(g.exploitation).toEqual([]);
+    expect(g.administration).toEqual(['journal']);
+  });
+
+  it('aucun onglet : deux groupes vides, aucune barre à rendre', () => {
+    const g = groupesNavigation([]);
+    expect(g.exploitation).toEqual([]);
+    expect(g.administration).toEqual([]);
+  });
+
+  it('AUCUN onglet n’est perdu ni dupliqué, quel que soit le sous-ensemble', () => {
+    // Balayage exhaustif des 256 sous-ensembles possibles : la barre étant
+    // réglable, ils sont tous atteignables en exploitation.
+    for (let masque = 0; masque < 1 << ONGLETS.length; masque += 1) {
+      const sousEnsemble = ONGLETS.filter((_, i) => (masque >> i) & 1);
+      const g = groupesNavigation(sousEnsemble);
+      expect([...g.exploitation, ...g.administration].sort()).toEqual([...sousEnsemble].sort());
+    }
+  });
+
+  it('l’ORDRE de la barre est conservé dans chaque groupe', () => {
+    const g = groupesNavigation([...ONGLETS]);
+    for (const groupe of [g.exploitation, g.administration]) {
+      const rangs = groupe.map((o) => ONGLETS.indexOf(o));
+      expect(rangs).toEqual([...rangs].sort((a, b) => a - b));
+    }
+  });
+
+  it('le groupe d’un onglet ne dépend PAS de sa visibilité', () => {
+    // L'appartenance est fixe dans le code ; la visibilité est une donnée.
+    // Masquer « Journal » à un rôle ne le fait pas changer de groupe.
+    expect(estOngletAdministration('journal')).toBe(true);
+    expect(groupesNavigation(['journal']).administration).toEqual(['journal']);
+    expect(groupesNavigation([...ONGLETS]).administration).toContain('journal');
+  });
+
+  it('les trois onglets d’administration sont ceux qui ne servent pas en journée', () => {
+    // Règle de placement du canevas : « exploitation » = ce qui sert en cours
+    // de journée ; « administration » = ce qui se règle une fois, ou se
+    // consulte après coup.
+    for (const onglet of ['parametres', 'utilisateurs', 'journal'] as const) {
+      expect(estOngletAdministration(onglet)).toBe(true);
+    }
+    for (const onglet of ['circulations', 'horaires', 'bandeau', 'medias', 'ecrans'] as const) {
+      expect(estOngletAdministration(onglet)).toBe(false);
+    }
+  });
+
+  it('le groupement ne crée ni ne retire AUCUN droit', () => {
+    // C'est de la mise en page. Un onglet d'administration reste ouvert par
+    // ses droits, exactement comme avant.
+    for (const role of ROLES) {
+      const g = groupesNavigation(plafondOnglets(role));
+      expect([...g.exploitation, ...g.administration].sort()).toEqual(
+        [...plafondOnglets(role)].sort(),
+      );
+    }
+  });
+});
 
 describe('grilleOngletsHtml', () => {
   /** État d'une case, lu dans le HTML rendu. */
