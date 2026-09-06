@@ -570,9 +570,15 @@ create policy "roles: circulations ecriture" on circulations for all to authenti
 create policy "roles: circulations regeneration" on circulations for insert to authenticated
   with check ((select private.a_le_role('technique')));
 
+-- Médias : ouverts au guichet depuis le 06/09/2026. Retirer une affiche
+-- périmée ou en poser une n'a pas à remonter au chef d'exploitation. Cette
+-- politique ne couvre que la FICHE (nom, durée, ordre, gares) : le fichier
+-- lui-même dépend des trois politiques `storage.objects` en fin de script, et
+-- le cycle d'affichage de « roles: params medias ». Les trois vont ensemble —
+-- n'en élargir qu'une donne une interface qui promet ce que la base refuse.
 create policy "roles: medias" on medias for all to authenticated
-  using ((select private.a_un_des_roles(array['admin','supervision'])))
-  with check ((select private.a_un_des_roles(array['admin','supervision'])));
+  using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
 -- Bandeau voyageurs : la caisse le tient au quotidien et ne doit dépendre de
 -- personne pour corriger un message ou une température.
@@ -603,11 +609,11 @@ create policy "roles: params affichage" on params for all to authenticated
 create policy "roles: params medias" on params for all to authenticated
   using (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   )
   with check (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 create policy "roles: params exploitation" on params for all to authenticated
   using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
@@ -705,14 +711,19 @@ create policy "signal de vie" on ecrans for update to anon
   using (true) with check (true);
 -- L'IDENTITÉ d'un poste (le déclarer, l'oublier) relève de l'informatique ;
 -- le COMMANDER — recharger après une mise en ligne, régler sa veille un soir
--- de nocturne — relève de l'exploitation, qui ne doit jamais attendre le
--- prestataire. RLS ne sait pas quelles COLONNES changent : le déclencheur
--- `trg_roles_ecrans_identite` empêche un superviseur de déplacer un écran.
+-- de nocturne, ajuster la vitesse du bandeau de CE poste — relève de
+-- l'exploitation, qui ne doit jamais attendre le prestataire. La CAISSE en
+-- fait partie depuis le 06/09/2026 : l'agent est souvent seul en gare le
+-- matin, et un écran resté sur la veille ne s'attrape pas par téléphone.
+-- RLS ne sait pas quelles COLONNES changent : le déclencheur
+-- `trg_roles_ecrans_identite` réserve `gare` et `type` au rôle technique —
+-- il exige POSITIVEMENT `technique`, il n'énumère aucun rôle interdit, si
+-- bien qu'élargir la politique ci-dessous ne peut pas l'affaiblir.
 create policy "roles: ecrans declarer" on ecrans for insert to authenticated
   with check ((select private.a_le_role('technique')));
 create policy "roles: ecrans commander" on ecrans for update to authenticated
-  using ((select private.a_un_des_roles(array['technique','supervision'])))
-  with check ((select private.a_un_des_roles(array['technique','supervision'])));
+  using ((select private.a_un_des_roles(array['technique','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['technique','supervision','caisse'])));
 create policy "roles: ecrans oublier" on ecrans for delete to authenticated
   using ((select private.a_le_role('technique')));
 
@@ -907,8 +918,14 @@ create trigger trg_roles_auto_desactivation before update of actif on profils
   execute function private.interdire_auto_desactivation();
 
 -- (d) Identité d'un écran : la politique UPDATE ouvre la table au technique ET
---     à l'exploitation, mais RLS ne sait pas quelles COLONNES changent. Seul
---     le technique déplace un poste ou en change le type.
+--     à l'exploitation (supervision, caisse), mais RLS ne sait pas quelles
+--     COLONNES changent. Seul le technique déplace un poste ou en change le
+--     type.
+--     ⚠ La condition est une LISTE BLANCHE d'un seul nom : elle exige
+--     `a_le_role('technique')`, elle n'énumère pas les rôles à refuser.
+--     Ajouter un rôle à la politique UPDATE ne l'affaiblit donc jamais, et
+--     il ne faut PAS la réécrire en liste de rôles interdits — le prochain
+--     rôle créé passerait à travers par défaut.
 create or replace function private.proteger_identite_ecran()
 returns trigger language plpgsql security definer set search_path = '' as $fn$
 begin
@@ -1245,11 +1262,14 @@ on conflict (id) do nothing;
 -- Le bucket reste public : les écrans passent par l'URL publique, qui ne
 -- traverse pas RLS. La lecture RLS n'est donc utile qu'à l'exploitation
 -- (la suppression d'un fichier a besoin de voir l'objet).
+-- Les trois rôles sont les mêmes que ceux de la table `medias` : sans le
+-- SELECT, l'agent voit la fiche mais pas l'objet, et la suppression échoue
+-- à mi-chemin en laissant un fichier orphelin dans le bucket.
 create policy "roles: medias lecture" on storage.objects for select to authenticated
-  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));
 create policy "roles: medias ecriture" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  with check (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));
 create policy "roles: medias suppression" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision'])));
+  using (bucket_id = 'medias' and (select private.a_un_des_roles(array['admin','supervision','caisse'])));

@@ -52,11 +52,11 @@ create policy "roles: params affichage" on params for all to authenticated
 create policy "roles: params medias" on params for all to authenticated
   using (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   )
   with check (
     cle in ('mode_medias', 'duree_horaires_s')
-    and (select private.a_un_des_roles(array['admin','supervision']))
+    and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 
 -- Réglage d'exploitation : le chef d'exploitation.
