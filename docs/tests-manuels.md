@@ -48,3 +48,22 @@ réglable en supervision).
   alterne horaires (`duree_horaires_s`) → média (sa durée) → horaires ;
   jamais de média quand un départ est à moins de 2 min (chip « proche »,
   « < 1 min » ou « À QUAI »).
+
+## 5. Barre de publication — les trois états
+
+En démonstration (`supervision.html?demo=1`), aucune écriture réelle.
+
+- **Rien à publier** : liseré neutre, pastille verte « ✓ », bouton inerte, et
+  la ligne grise dit l'heure de l'état réellement affiché dans les six gares.
+- **Modifications en cours** : liseré bleu de 4 px, pastille ronde bleue
+  portant le compte, résumé de ce qui a changé — en langue d'exploitation
+  (« TRAIN 5 — retard +5 min »), jamais en noms de colonnes.
+- **Échec partiel** : `supervision.html?demo=1&echec=1`, faire une
+  modification puis « Publier ». Attendu : liseré rouge de 4 px, barre plus
+  haute, pastille ronde « ! », la CAUSE conservée dans son encart, le bouton
+  qui devient « Réessayer la publication », et la mention que le message reste
+  affiché jusqu'à la prochaine publication réussie.
+
+Le troisième état ne se provoque pas autrement : sans ce drapeau, il serait
+découvert un matin, en production, par un agent seul en gare. Il est
+inopérant dès qu'une base réelle est configurée (docs/01 §1).

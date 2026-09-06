@@ -19,6 +19,26 @@ d'une même gare sont ainsi deux postes distincts dans « État des écrans » ;
 plusieurs écrans du même type se distinguent par `ecran=`),
 `simule=HH:MM` (démo/tests), `zoom=`.
 
+**Paramètres de la supervision.** `demo=1` sert la démonstration (aucune
+écriture réelle) ; il est reconnu **strictement** — `?demo`, `?demo=true` et
+`?demo=0` ne l'activent pas, une faute de frappe ne doit jamais substituer
+des horaires fictifs à des horaires réels. `simule=HH:MM` décale l'heure du
+poste, qui écrit alors dans la VRAIE base : une pastille l'annonce dans
+l'en-tête, sans quoi on croirait lire un poste normal.
+
+`demo=1&echec=1` fait ÉCHOUER la publication des circulations, et elle seule :
+le bandeau publie normalement. C'est le seul moyen de voir le troisième état
+de la barre de publication — l'échec partiel — sans attendre qu'il survienne
+un matin en gare. Il montre le liseré rouge, la barre plus haute, la cause
+conservée dans son encart et le bouton « Réessayer la publication ».
+
+> Ce drapeau est **inopérant sur une base réelle**, et pas seulement parce
+> qu'une condition le vérifie. Il n'est lu que par le fournisseur de
+> démonstration (`OptionsMock`, `src/data/mock.ts`) ; dès qu'une
+> configuration Supabase existe, `creeProvider()` rend un `SupabaseProvider`,
+> qui n'accepte pas ces options. Sur la production, l'objet capable de lire
+> ce paramètre n'est jamais construit — il n'y a rien à contourner.
+
 ## 2. Données métier
 
 ### 2.1 Grilles de saison (en base, chargées depuis l'Excel exploitation)
