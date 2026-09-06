@@ -1368,6 +1368,12 @@ function initCirculations(): void {
     $('form-depart-sup').style.display = '';
     $('form-train-sup').style.display = 'none';
     majApercuDepart();
+    // Le panneau vit en HAUT de l'onglet, le train supplémentaire tout en BAS
+    // du tableau : ouvert sans rien faire d'autre, il s'affichait hors écran
+    // et le bouton semblait ne rien faire. On l'amène sous les yeux, et le
+    // champ prend le curseur — sur place, l'agent n'a plus qu'à confirmer.
+    $('form-depart-sup').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    champ.focus();
   };
 
   const fermeDepartSup = (): void => {
