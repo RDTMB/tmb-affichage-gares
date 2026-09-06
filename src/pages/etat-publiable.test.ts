@@ -192,12 +192,16 @@ describe('Portée de l’état de référence', () => {
 describe('Résumé consigné à la publication', () => {
   const jour = generationJour(GRAND, DATE);
 
-  it('décrit les écarts réels', () => {
+  it('décrit les écarts dans la LANGUE DE L’EXPLOITATION', () => {
+    // « météo t 8 → 12 » nommait une colonne de base de données dans une
+    // ligne lue par un agent de caisse. Le compte n'y figure plus non plus :
+    // la barre l'annonce déjà juste au-dessus.
     const liste = ecarts(
       instantanePubliable(entrees(params(8), jour)),
       instantanePubliable(entrees(params(12), jour)),
     );
-    expect(resumeEcarts(liste)).toBe('1 modification(s) : météo t 8 → 12');
+    expect(resumeEcarts(liste)).toBe('météo sommet 12 °C');
+    expect(resumeEcarts(liste)).not.toContain('modification(s)');
   });
 
   it('ne mentionne PAS une valeur revenue à son point de départ', () => {
@@ -217,8 +221,11 @@ describe('Résumé consigné à la publication', () => {
       apres: 'b',
     }));
     const resume = resumeEcarts(nombreux);
-    expect(resume).toContain('14 modification(s)');
+    // Dix écarts détaillés, le reste ANNONCÉ : une barre fixe en bas de page
+    // ne peut pas grandir avec la liste, mais elle ne doit rien cacher en
+    // silence.
     expect(resume).toContain('+4 autre(s)');
+    expect(resume.split(' · ')).toHaveLength(11);
   });
 });
 

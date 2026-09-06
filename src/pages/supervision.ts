@@ -65,7 +65,7 @@ import {
   type Droit,
 } from '../core/roles';
 import { creeProvider } from '../data';
-import { baseServie, configSupabasePresente } from '../data/config';
+import { baseServie, configSupabasePresente, estModeDemo } from '../data/config';
 import { initOngletHoraires, type OngletHoraires } from './onglet-horaires';
 import {
   appliqueBrouillonJour,
@@ -141,7 +141,25 @@ import {
  */
 const lienAuth = analyseLienAuth(window.location.hash, window.location.search);
 
-const provider = creeProvider();
+/**
+ * ÉCHEC DE PUBLICATION SIMULÉ, pour montrer l'état 3 de la barre — le seul
+ * des trois qui ne se provoque pas, et qui serait donc découvert un matin en
+ * production par un agent seul en gare.
+ *
+ * DEUX VERROUS, dont un seul suffirait :
+ *  - `estModeDemo()` exige STRICTEMENT `?demo=1` (la fonction du projet :
+ *    `?demo`, `?demo=true`, `?demo=0` ne passent pas), et `echec` suit la
+ *    même discipline ;
+ *  - surtout, le drapeau n'est lu que par `MockProvider`. Dès qu'une
+ *    configuration Supabase existe, `creeProvider()` rend un
+ *    `SupabaseProvider`, qui ignore entièrement `OptionsMock` : sur la
+ *    production, il n'y a personne pour lire ce paramètre. Rien à
+ *    contourner — l'objet qui l'écoute n'est jamais construit.
+ */
+const parametresUrl = new URLSearchParams(window.location.search);
+const echecSimule = estModeDemo(parametresUrl) && parametresUrl.get('echec') === '1';
+
+const provider = creeProvider({ echecSimule });
 
 /**
  * Suffixe d'URL des aperçus. Les pages d'affichage n'acceptent plus le repli
@@ -976,12 +994,22 @@ function ligneCirculation(
   // Course à vide : elle reste pilotable en exploitation (rame, rotation,
   // terminus) mais n'est proposée ni au statut ni au motif voyageurs.
   const aVide = c.sans_voyageurs === true;
-  const sansVoyageurs = `<label class="switch"><input type="checkbox" data-action="sans-voyageurs" data-numero="${n}" ${
+  // TROIS NÉGATIONS EMPILÉES, sur une commande qu'on actionne sous pression :
+  // colonne « Sans voyageurs », interrupteur étiqueté « Voyageurs », en
+  // position éteinte. Il fallait lire les trois pour comprendre que le train
+  // transportait bien du monde.
+  // Seul l'état ACTIF porte désormais un mot — « Sans voyageurs », en ambre.
+  // Au repos, l'interrupteur ne dit rien : le train est normal, il n'y a rien
+  // à signaler.
+  const sansVoyageurs = `<label class="switch${aVide ? ' a-vide' : ''}"><input type="checkbox" data-action="sans-voyageurs" data-numero="${n}" ${
     aVide ? 'checked' : ''
-  }${verrou} />${aVide ? 'À vide' : 'Voyageurs'}</label>`;
+  }${verrou} />${aVide ? 'Sans voyageurs' : ''}</label>`;
 
   const statut = inactif
-    ? '<span style="color:#B4C4D4;font-weight:700">Ne circule pas — absent des écrans</span>'
+    ? // #B4C4D4 sur blanc : illisible. L'atténuation est juste dans son
+      // principe — la ligne ne circule pas — mais un texte qu'on ne peut pas
+      // lire n'atténue plus, il efface.
+      '<span class="hors-service">Ne circule pas — absent des écrans</span>'
     : `<span class="seg">
         <button class="${c.statut === 'ok' ? 'on-ok' : ''}" data-action="statut-ok" data-numero="${n}"${verrou}>À l'heure</button>
         <button class="${c.statut === 'retard' ? 'on-retard' : ''}" data-action="statut-retard" data-numero="${n}"${verrou}>Retard</button>
@@ -1012,11 +1040,11 @@ function ligneCirculation(
           }`
         : ''
     }</td>
-    <td><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
+    <td class="cell-sens"><span class="sens-tag ${montee ? 'up' : 'down'}">${montee ? '↗ Montée' : '↙ Descente'}</span>${
       train.express
         ? `<span class="exp-tag"><img src="${__MOTRICE_MARINE__}" alt="" /> EXPRESS</span>`
         : ''
-    }${train.velos ? '<span class="velo-tag">🚲</span>' : ''}</td>
+    }${train.velos ? '<span class="velo-tag" title="Train vélos">🚲</span>' : ''}</td>
     <td>${rame}</td>
     <td>${terminus}</td>
     <td>${facultatif}</td>
@@ -1135,9 +1163,12 @@ function rendreCirculations(): void {
   const resume = resumeJournee(jour, serviceActif(grilles, dateSel));
   $('jour-lettres').textContent = resume.jourEnLettres;
   $('service-tag').textContent = resume.service;
+  // Les périodes de validité à part, en gris : c'est la DATE qui doit dominer
+  // ce rang, pas l'étiquette de service.
+  $('service-periodes').textContent = resume.servicePeriodes;
   // Plus de troncature : l'étiquette a sa propre ligne. Le title reste utile
   // aux lecteurs d'écran et aux postes très étroits.
-  $('service-tag').title = resume.service;
+  $('service-tag').title = [resume.service, resume.servicePeriodes].filter(Boolean).join(' — ');
   const etatJour = $('etat-jour');
   etatJour.textContent = resume.etatLibelle;
   etatJour.className = `etat-jour ${resume.etat}`;
@@ -2603,8 +2634,13 @@ async function rendreEcrans(): Promise<void> {
   );
   const enLigne = (id: string): boolean => etats.get(id)?.statut !== 'hors-ligne';
   const actifs = liste.filter((e) => enLigne(e.id)).length;
-  $('pill-ecrans').innerHTML =
-    `<span class="dot ${actifs === liste.length ? '' : 'rouge'}"></span> ${actifs}/${liste.length || '—'} écrans en ligne`;
+  // « 0/— écrans en ligne » ne veut rien dire. Quand AUCUN poste n'est
+  // déclaré, la pastille le dit en toutes lettres — c'est un état
+  // d'installation, pas une panne, et le point vert d'une flotte saine
+  // n'aurait aucun sens non plus.
+  $('pill-ecrans').innerHTML = liste.length
+    ? `<span class="dot ${actifs === liste.length ? '' : 'rouge'}"></span> ${actifs}/${liste.length} écrans en ligne`
+    : '<span class="dot neutre"></span> aucun écran déclaré';
 
   // Bandeau de publication : synthèse « Appliqué sur N/N écrans »
   majResumeApplication(liste, maintenant);
@@ -2670,7 +2706,13 @@ async function rendreEcrans(): Promise<void> {
       </div>`;
         })
         .join('')
-    : '<div class="note">Aucun écran déclaré. Déclarez les postes ci-dessous : un écran ne s’inscrit plus de lui-même.</div>';
+    : // ÉTAT, pas panne. Une phrase cassée sur deux lignes au milieu d'une
+      // carte vide se lit comme un bug ; celle-ci s'annonce et dit quoi faire.
+      `<div class="etat-vide">
+        <b>Aucun écran déclaré</b>
+        <span>Un poste ne s’inscrit plus de lui-même : déclarez-le ci-dessous pour qu’il
+        apparaisse ici et reçoive les ordres de rechargement.</span>
+      </div>`;
 }
 
 let resumeId = 0;

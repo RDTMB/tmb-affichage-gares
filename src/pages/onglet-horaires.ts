@@ -261,7 +261,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         <div class="note">Une grille décrit le service théorique : la modifier ne change aucune journée déjà préparée, sauf celles cochées ci-dessus. <b>Pour modifier les trains d’aujourd’hui, utilisez l’onglet Circulations.</b></div>
         <div class="validation-import">
           <ul id="edition-raisons"></ul>
-          <button class="primaire" id="edition-enregistrer" disabled>Enregistrer les modifications</button>
+          <button class="principal" id="edition-enregistrer" disabled>Enregistrer les modifications</button>
         </div>
       </div>`;
     rendreValidationEdition();
@@ -479,7 +479,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       ${importEnCours.feuilles.map((f, i) => feuilleHtml(f, i)).join('')}
       <div class="validation-import">
         <ul id="import-raisons"></ul>
-        <button class="primaire" id="import-valider" disabled>Enregistrer et mettre en service</button>
+        <button class="principal" id="import-valider" disabled>Enregistrer et mettre en service</button>
       </div>`;
     rendreValidation();
   }

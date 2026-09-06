@@ -820,8 +820,15 @@ export type EtatJournee = 'enregistree' | 'apercu' | 'hors-saison';
 export interface ResumeJournee {
   /** « jeudi 4 septembre 2026 » — le format ISO seul fait travailler sur le mauvais jour. */
   jourEnLettres: string;
-  /** Étiquette de service COMPLÈTE : elle a sa propre ligne, plus de troncature. */
+  /** NOM du service seul — « Petit service ». */
   service: string;
+  /**
+   * Périodes de validité, en jj/mm. Rendues en GRIS et séparées du nom : elles
+   * répondent à une question qu'on se pose rarement, la date à celle qu'on se
+   * pose toujours. Collées au nom, elles faisaient de l'étiquette l'élément le
+   * plus lourd du rang, devant la date.
+   */
+  servicePeriodes: string;
   etat: EtatJournee;
   etatLibelle: string;
   /** Trains facultatifs : on compte les CIRCULATIONS, comme le bouton d'action groupée. */
@@ -858,13 +865,20 @@ export function resumeJournee(
 
   return {
     jourEnLettres: dateEnToutesLettres(jour.date),
-    // Périodes en jj/mm : le petit service en a DEUX, et les écrire en entier
-    // doublerait la longueur de l'étiquette sans rien apprendre.
+    // LE NOM SEUL. Les périodes de validité étaient collées ici, ce qui
+    // faisait de l'étiquette de service l'élément le plus lourd du rang —
+    // devant la date, qui est pourtant ce qu'on vient lire. Elles ont
+    // maintenant leur propre champ, rendu en gris.
     service: service
-      ? `${service.libelle.split('—')[0]?.trim()} (${service.periodes
-          .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)}→${p.au.slice(8)}/${p.au.slice(5, 7)}`)
-          .join(' · ')})`
+      ? (service.libelle.split('—')[0]?.trim() ?? '')
       : 'Hors saison / service hiver',
+    // Périodes en jj/mm : le petit service en a DEUX, et les écrire en entier
+    // doublerait la longueur sans rien apprendre.
+    servicePeriodes: service
+      ? service.periodes
+          .map((p) => `${p.du.slice(8)}/${p.du.slice(5, 7)}→${p.au.slice(8)}/${p.au.slice(5, 7)}`)
+          .join(' · ')
+      : '',
     etat,
     etatLibelle:
       etat === 'hors-saison'

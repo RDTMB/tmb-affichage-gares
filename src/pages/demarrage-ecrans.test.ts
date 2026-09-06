@@ -550,3 +550,66 @@ describe('supervision — la vue caisse n’est pas un cas particulier', () => {
     expect(code).toMatch(/ongletsVisibles\(roles, visibiliteOnglets\)/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Lot B — l'échec de publication devient OBSERVABLE, sans ouvrir de porte.
+//
+// Le risque de ce lot est nommé : simuler une panne, c'est frôler la règle la
+// plus stricte du projet — la démonstration ne s'applique JAMAIS
+// implicitement à une page vue par un voyageur (C-02).
+// ---------------------------------------------------------------------------
+
+describe('échec de publication simulé : le garde-fou tient par CONSTRUCTION', () => {
+  const code = codeSeul('src/pages/supervision.ts');
+  const mock = codeSeul('src/data/mock.ts');
+  const index = codeSeul('src/data/index.ts');
+
+  it('le drapeau n’est LU que par le fournisseur de démonstration', () => {
+    // C'est le verrou principal, et il n'est pas une condition : c'est un fait
+    // de structure. `OptionsMock` n'est lu que par `MockProvider` ;
+    // `SupabaseProvider` ne le reçoit même pas.
+    expect(mock).toMatch(/echecSimule\?: boolean/);
+    expect(mock).toMatch(/this\.options\.echecSimule/);
+    // Le fournisseur RÉEL ne reçoit aucune option.
+    expect(index).toMatch(/new SupabaseProvider\(config\.supabaseUrl, config\.supabaseKey\)/);
+    expect(index).not.toMatch(/new SupabaseProvider\([^)]*options/);
+  });
+
+  it('aucune simulation ne vit dans le code de PUBLICATION', () => {
+    // Rien n'a été ajouté à `publieLeBrouillon()` : pas de branche à garder,
+    // donc pas de branche à mal garder.
+    const publication = code.slice(
+      code.indexOf('async function publieLeBrouillon'),
+      code.indexOf('function afficheEchecPublication'),
+    );
+    expect(publication.length).toBeGreaterThan(100);
+    expect(publication).not.toContain('echecSimule');
+    expect(publication).not.toContain('demo');
+  });
+
+  it('la démonstration reste demandée STRICTEMENT, via la fonction du projet', () => {
+    // `estModeDemo()` n'accepte que `?demo=1` — ni `?demo`, ni `?demo=true`,
+    // ni `?demo=0`. Une faute de frappe n'ouvre rien.
+    expect(code).toMatch(/estModeDemo\(parametresUrl\)/);
+    expect(code).toMatch(/parametresUrl\.get\('echec'\) === '1'/);
+    // Les deux conditions sont liées par ET, jamais par OU.
+    expect(code).toMatch(/estModeDemo\(parametresUrl\) && parametresUrl\.get\('echec'\)/);
+  });
+
+  it('la supervision ne force JAMAIS le mock : la config réelle garde la main', () => {
+    // `creeProvider()` rend Supabase dès qu'une configuration existe. Le
+    // paramètre d'URL ne peut donc pas substituer la démonstration à la vraie
+    // base — il n'y a personne pour l'écouter.
+    expect(code).toMatch(/creeProvider\(\{ echecSimule \}\)/);
+    expect(code).not.toMatch(/creeProviderDemo\(/);
+    expect(index).toMatch(/if \(config\?\.supabaseUrl && config\.supabaseKey\)/);
+  });
+
+  it('l’échec simulé est PARTIEL, et ressemble à un vrai refus de la base', () => {
+    // Un échec total ne montrerait pas ce qu'on veut montrer : c'est la
+    // cohabitation « publié / resté en attente » qui est difficile à lire.
+    const bloc = mock.slice(mock.indexOf('async saveCirculations'));
+    expect(bloc).toMatch(/if \(this\.options\.echecSimule\)/);
+    expect(bloc).toMatch(/violates check constraint/);
+  });
+});

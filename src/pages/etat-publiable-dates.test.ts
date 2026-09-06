@@ -203,7 +203,7 @@ describe('Le résumé de publication ne parle que des dates concernées', () => 
       ),
     };
     const liste = compteur(reference, publies, [{ date: EN_PETIT, jour: modifie }]);
-    expect(resumeEcarts(liste)).toBe('1 modification(s) : TRAIN 1 statut ok → supprime');
+    expect(resumeEcarts(liste)).toBe('TRAIN 1 — supprimé');
     expect(liste.every((e) => !e.cle.includes(EN_GRAND))).toBe(true);
   });
 });
