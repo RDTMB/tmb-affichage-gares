@@ -7,8 +7,12 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import { paramsValides } from '../core/params';
 import type { Grille, Message, Params } from '../core/types';
 import {
+  avecDelai,
+  CACHE_MAX_MINUTES,
+  CACHE_MIN_MINUTES,
   contenuTicker,
   creeJournalHeartbeat,
+  dureeCacheMinutes,
   INTERVALLE_HEARTBEAT_MS,
   meteoHtml,
 } from './affichage-commun';
@@ -173,5 +177,131 @@ describe('meteoHtml — la charge d’attaque n’atteint jamais le DOM', () => 
       meteo_sommet: { t: 9, ciel_fr: 'A', ciel_en: 'B', heure_releve: 915 },
     } as unknown as Params;
     expect(() => meteoHtml(brut, GRILLE)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-06 — ?cache= est une commande de TEST, pas une porte ouverte.
+// ---------------------------------------------------------------------------
+
+describe('dureeCacheMinutes : la bascule vers l’écran neutre reste bornée', () => {
+  const BASE = 15;
+
+  it('sans surcharge, le paramètre de base s’applique', () => {
+    expect(dureeCacheMinutes(null, BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('', BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('   ', BASE)).toBe(BASE);
+  });
+
+  it('sans paramètre de base non plus, on retombe sur 15 min', () => {
+    // Un instantané d'avant le déploiement n'a pas la colonne.
+    expect(dureeCacheMinutes(null, undefined)).toBe(15);
+  });
+
+  it('?cache=5 est bien APPLIQUÉ : la commande de test sert encore', () => {
+    expect(dureeCacheMinutes('5', BASE)).toBe(5);
+    expect(dureeCacheMinutes('30', BASE)).toBe(30);
+  });
+
+  it('?cache=0 retombe sur la base : jamais d’écran neutre immédiat', () => {
+    // Zéro basculait l'écran en neutre à la seconde même, en pleine journée
+    // d'exploitation, sans que personne sur place puisse en trouver la cause.
+    expect(dureeCacheMinutes('0', BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('-10', BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('2', BASE)).toBe(BASE);
+  });
+
+  it('?cache=99999 retombe sur la base : jamais les horaires de la veille', () => {
+    // L'inverse, et le plus grave : des horaires périmés affichés comme
+    // valides, indéfiniment.
+    expect(dureeCacheMinutes('99999', BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('61', BASE)).toBe(BASE);
+    expect(dureeCacheMinutes('Infinity', BASE)).toBe(BASE);
+  });
+
+  it('?cache=abc retombe sur la base, sans NaN qui contamine le calcul', () => {
+    // `Number('abc')` valait NaN, et toute comparaison avec NaN étant fausse,
+    // l'écran ne passait JAMAIS en neutre.
+    for (const brut of ['abc', 'quinze', '1e999', 'null']) {
+      const d = dureeCacheMinutes(brut, BASE);
+      expect(Number.isFinite(d)).toBe(true);
+      expect(d).toBe(BASE);
+    }
+  });
+
+  it('les bornes exactes sont acceptées', () => {
+    expect(dureeCacheMinutes(String(CACHE_MIN_MINUTES), BASE)).toBe(CACHE_MIN_MINUTES);
+    expect(dureeCacheMinutes(String(CACHE_MAX_MINUTES), BASE)).toBe(CACHE_MAX_MINUTES);
+  });
+
+  it('quelle que soit l’entrée, la durée reste exploitable', () => {
+    for (const brut of [null, '', 'abc', '0', '-1', '99999', '7', 'NaN']) {
+      const d = dureeCacheMinutes(brut, BASE);
+      expect(d).toBeGreaterThanOrEqual(CACHE_MIN_MINUTES);
+      expect(d).toBeLessThanOrEqual(CACHE_MAX_MINUTES);
+    }
+  });
+});
+
+describe('avecDelai : une première synchronisation ne bloque jamais la page', () => {
+  // `avecDelai` s'appuie sur `window.setTimeout` (code de page) ; la suite
+  // tourne en environnement Node.
+  function avecFenetre<T>(action: () => Promise<T>): Promise<T> {
+    vi.stubGlobal('window', { setTimeout, clearTimeout });
+    return action().finally(() => vi.unstubAllGlobals());
+  }
+
+  it('rend la valeur quand la promesse aboutit à temps', async () => {
+    await avecFenetre(async () => {
+      expect(await avecDelai(Promise.resolve(true), 1000, false)).toBe(true);
+    });
+  });
+
+  it('rend la valeur de repli quand la promesse ÉCHOUE', async () => {
+    await avecFenetre(async () => {
+      expect(await avecDelai(Promise.reject(new Error('réseau')), 1000, false)).toBe(false);
+    });
+  });
+
+  it('rend la valeur de repli quand la promesse ne revient JAMAIS', async () => {
+    // Le cas réel : une requête qui ne rend pas la main laissait la page sur
+    // sa coquille HTML, tableau VIDE — lu en gare comme « plus aucun train ».
+    await avecFenetre(async () => {
+      const jamais = new Promise<boolean>(() => {});
+      expect(await avecDelai(jamais, 20, false)).toBe(false);
+    });
+  });
+
+  it('une promesse tardive n’écrase pas le repli déjà rendu', async () => {
+    await avecFenetre(async () => {
+      let resoud: (v: boolean) => void = () => {};
+      const tardive = new Promise<boolean>((r) => (resoud = r));
+      const resultat = await avecDelai(tardive, 20, false);
+      expect(resultat).toBe(false);
+      resoud(true); // arrive après : la valeur déjà rendue ne change pas
+      expect(resultat).toBe(false);
+    });
+  });
+
+  it('le minuteur est TOUJOURS nettoyé (18 h d’affichage par jour)', async () => {
+    const poses = new Set<unknown>();
+    vi.stubGlobal('window', {
+      setTimeout: (fn: () => void, ms: number) => {
+        const id = setTimeout(fn, ms);
+        poses.add(id);
+        return id;
+      },
+      clearTimeout: (id: unknown) => {
+        poses.delete(id);
+        clearTimeout(id as ReturnType<typeof setTimeout>);
+      },
+    });
+    try {
+      await avecDelai(Promise.resolve(true), 5000, false);
+      await avecDelai(Promise.reject(new Error('réseau')), 5000, false);
+      expect(poses.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

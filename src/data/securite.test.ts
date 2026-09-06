@@ -865,3 +865,98 @@ describe('Localisation de node : le terminal peut mentir sur LOCALAPPDATA', () =
     expect(script).toContain('Trouver-Npx -Impose $Node');
   });
 });
+
+// ---------------------------------------------------------------------------
+// C-01, seconde barrière — la forme des valeurs de `params`.
+//
+// La contrainte a été écrite dans une migration parce que la production
+// existait déjà. Tant qu'elle n'est PAS aussi dans schema.sql, toute nouvelle
+// installation repart sans elle : le trou se rouvre en silence, et personne ne
+// le voit avant la prochaine injection.
+// ---------------------------------------------------------------------------
+
+describe('Contraintes de forme de `params` : schema.sql ne doit pas les perdre', () => {
+  const MIGRATION_PARAMS = 'migrations/2026-08-params-forme.sql';
+  const schema = instructions(sql('schema.sql'));
+  const migration = instructions(sql(MIGRATION_PARAMS));
+
+  /** Noms des contraintes réellement AJOUTÉES par un script. */
+  function contraintesAjoutees(texte: string): string[] {
+    return [...texte.matchAll(/add constraint (params_\w+)/g)].map((m) => m[1] as string).sort();
+  }
+
+  it('les six contraintes de la migration figurent toutes dans schema.sql', () => {
+    const attendues = contraintesAjoutees(migration);
+    expect(attendues.length).toBe(6);
+    expect(contraintesAjoutees(schema)).toEqual(attendues);
+  });
+
+  it('chacune est précédée d’un `drop … if exists` : le fichier reste rejouable', () => {
+    for (const nom of contraintesAjoutees(schema)) {
+      expect(schema).toContain(`drop constraint if exists ${nom}`);
+    }
+  });
+
+  it('la clé écrite par le rôle le MOINS privilégié est bornée', () => {
+    // `caisse` écrit meteo_sommet et vitesse_ticker_px_s via l'API REST :
+    // ce sont exactement les deux clés qu'un attaquant atteint en premier.
+    expect(schema).toContain('params_meteo_sommet_forme');
+    expect(schema).toContain('params_vitesse_ticker_forme');
+    // Le type de `t` est vérifié avant tout cast : une chaîne HTML est refusée.
+    expect(schema).toMatch(/jsonb_typeof\(valeur -> 't'\) = 'number'/);
+  });
+
+  it('les bornes de schema.sql sont celles de la migration, au chiffre près', () => {
+    // Deux copies qui divergent, c'est une base neuve plus permissive que la
+    // production — le pire des deux mondes.
+    for (const borne of [
+      'between -50 and 50',
+      'between 3 and 60',
+      'between 0 and 1800',
+      'between 20 and 400',
+    ]) {
+      expect(migration).toContain(borne);
+      expect(schema).toContain(borne);
+    }
+  });
+
+  it('teste la PRÉSENCE des clés : un objet vide ne doit pas passer', () => {
+    // Sans l'opérateur `?`, jsonb_typeof(NULL) vaut NULL, la contrainte n'est
+    // ni vraie ni fausse, et PostgreSQL l'accepte : `{}` entrerait.
+    for (const cle of ["valeur ? 't'", "valeur ? 'ciel_fr'", "valeur ? 'ciel_en'"]) {
+      expect(schema).toContain(cle);
+    }
+  });
+
+  it('`duree_cache_min` n’accepte pas 0 : il figerait l’écran en neutre', () => {
+    // 0 rendrait tout écran définitivement neutre, en pleine exploitation.
+    // Pour tester l'écran neutre en gare, `?cache=` est prévu pour cela.
+    expect(schema).toMatch(/duree_cache_min[\s\S]{0,300}between 3 and 60/);
+  });
+
+  it('`duree_horaires_s` reste VOLONTAIREMENT libre', () => {
+    // La supervision l'écrit sans bornage : une contrainte remonterait à
+    // l'agent une erreur PostgreSQL brute au lieu d'un message clair.
+    expect(schema).not.toContain('params_duree_horaires_s_forme');
+  });
+
+  it('les valeurs d’amorçage de seed.sql satisfont ces contraintes', () => {
+    // Une base neuve doit s'installer d'un trait : un seed refusé par sa
+    // propre contrainte ne se découvre qu'en installant.
+    const seed = sql('seed.sql');
+    expect(seed).toMatch(/'meteo_sommet',\s*'\{[^']*"t":\s*-?\d/);
+    expect(seed).toMatch(/'meteo_sommet',\s*'\{[^']*"ciel_fr"/);
+    expect(seed).toMatch(/'meteo_sommet',\s*'\{[^']*"ciel_en"/);
+    expect(seed).toMatch(/'veille_nuit',\s*'\{[^']*"debut"[^']*"fin"/);
+    for (const [cle, min, max] of [
+      ['duree_cache_min', 3, 60],
+      ['a_quai_origine_s', 0, 1800],
+      ['vitesse_ticker_px_s', 20, 400],
+    ] as const) {
+      const valeur = new RegExp(`'${cle}',\\s*'(-?\\d+)'`).exec(seed)?.[1];
+      expect(valeur, `${cle} absente de seed.sql`).toBeDefined();
+      expect(Number(valeur)).toBeGreaterThanOrEqual(min);
+      expect(Number(valeur)).toBeLessThanOrEqual(max);
+    }
+  });
+});

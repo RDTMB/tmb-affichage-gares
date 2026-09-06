@@ -135,6 +135,63 @@ export function meteoHtml(params: Params, grille: Grille): string {
 export const INTERVALLE_HEARTBEAT_MS = 60_000;
 
 /**
+ * Bornes de `duree_cache_min`, identiques à la contrainte SQL. La surcharge
+ * d'URL `?cache=N` n'était bornée NULLE PART : `?cache=99999` repoussait
+ * l'écran neutre de plusieurs mois, et le poste affichait des horaires
+ * périmés indéfiniment.
+ */
+export const CACHE_MIN_MINUTES = 3;
+export const CACHE_MAX_MINUTES = 60;
+
+/**
+ * Durée du cache retenue, en minutes. La surcharge d'URL n'est appliquée que
+ * si elle est FINIE et dans les bornes ; sinon on retombe sur le paramètre de
+ * base, lui-même borné par la contrainte SQL. PURE et testée : c'est elle qui
+ * décide quand l'écran passe en neutre.
+ */
+export function dureeCacheMinutes(surchargeUrl: string | null, base: number | undefined): number {
+  const n = Number(surchargeUrl);
+  if (
+    surchargeUrl !== null &&
+    surchargeUrl.trim() !== '' &&
+    Number.isFinite(n) &&
+    n >= CACHE_MIN_MINUTES &&
+    n <= CACHE_MAX_MINUTES
+  ) {
+    return n;
+  }
+  return base ?? 15;
+}
+
+/**
+ * Promesse bornée dans le temps. La PREMIÈRE synchronisation ne doit jamais
+ * pouvoir bloquer indéfiniment : tant qu'elle n'a pas rendu la main, la boucle
+ * de rendu n'est pas armée et l'écran reste sur la coquille HTML — tableau
+ * VIDE, ce qui se lit en gare comme « plus aucun train aujourd'hui ».
+ *
+ * L'expiration vaut ÉCHEC de synchronisation, donc écran neutre : jamais un
+ * tableau vide. Le minuteur est toujours nettoyé (18 h d'affichage par jour).
+ */
+export function avecDelai<T>(promesse: Promise<T>, delaiMs: number, siExpire: T): Promise<T> {
+  return new Promise<T>((resoud) => {
+    const minuteur = window.setTimeout(() => resoud(siExpire), delaiMs);
+    void promesse.then(
+      (v) => {
+        window.clearTimeout(minuteur);
+        resoud(v);
+      },
+      () => {
+        window.clearTimeout(minuteur);
+        resoud(siExpire);
+      },
+    );
+  });
+}
+
+/** Au-delà, la première synchronisation est abandonnée (écran neutre). */
+export const DELAI_PREMIERE_SYNCHRO_MS = 10_000;
+
+/**
  * Un signal de vie en échec ne doit JAMAIS interrompre l'affichage
  * voyageurs : on trace UNE fois par cause (un kiosque tourne 18 h par jour,
  * pas question d’inonder la console) et le cycle suivant réessaie.

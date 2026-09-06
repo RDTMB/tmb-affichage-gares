@@ -55,6 +55,9 @@ import {
   creeJournalHeartbeat,
   creeTicker,
   echapper,
+  avecDelai,
+  DELAI_PREMIERE_SYNCHRO_MS,
+  dureeCacheMinutes,
   INTERVALLE_HEARTBEAT_MS,
   messagesVisibles,
   meteoHtml,
@@ -100,6 +103,12 @@ const url = new URLSearchParams(window.location.search);
 const gareParam = url.get('gare');
 const heure = creeSourceHeure(url.get('simule'));
 
+// HEURE SIMULÉE : le drapeau existait dans horloge-source.ts mais aucune
+// page d'affichage ne le lisait — seule la supervision s'en servait. Un
+// écran lancé avec ?simule= affichait un tableau parfaitement crédible mais
+// décalé, sans aucune marque. Posé ICI, avant tout await : le bandeau est là
+// même si le démarrage échoue ensuite.
+if (heure.simulee) document.body.classList.add('mode-simule');
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 
@@ -155,9 +164,9 @@ function motifBilingue(fr: string): string {
 
 /** Durée du cache avant écran neutre (paramètre, surchargée par ?cache=N pour les tests). */
 function dureeCacheMs(): number {
-  const surcharge = Number(url.get('cache'));
-  const minutes = surcharge > 0 ? surcharge : (params?.duree_cache_min ?? 15);
-  return minutes * 60_000;
+  // La surcharge d'URL est bornée comme la colonne en base (3–60 min) :
+  // `?cache=99999` repoussait l'écran neutre de plusieurs mois.
+  return dureeCacheMinutes(url.get('cache'), params?.duree_cache_min) * 60_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -577,6 +586,15 @@ async function demarre(): Promise<void> {
   }
   const gare = gareParam as GareId;
 
+  // HORLOGE ARMÉE AVANT TOUT AWAIT. Elle était lancée à la toute fin de
+  // `demarre()` : si une attente ne rendait jamais la main, elle ne démarrait
+  // jamais et l'écran restait sur la coquille HTML, horloge figée. Ce minuteur
+  // de secours est LIBÉRÉ dès que la boucle de rendu prend le relais — elle
+  // met l'heure à jour elle-même, et deux minuteurs à la seconde tourneraient
+  // pour rien 18 h par jour.
+  const horlogeSecours = window.setInterval(() => majHorloge(heure.maintenantS()), 1000);
+  majHorloge(heure.maintenantS());
+
   enregistreServiceWorker();
   demarreAntiBurnIn();
 
@@ -586,6 +604,7 @@ async function demarre(): Promise<void> {
   // suppression INVENTÉS par-dessus la vraie grille officielle.
   const mode = modeDonnees(configSupabasePresente(), estModeDemo(url));
   if (mode === 'aucune') {
+    window.clearInterval(horlogeSecours); // l'écran neutre a sa propre horloge
     afficheNeutrePermanent();
     return;
   }
@@ -636,7 +655,12 @@ async function demarre(): Promise<void> {
     // L'instantané relu ne passe pas par getParams() : même assainissement.
     valide: (d) => ({ ...d, params: paramsValides(d.params) }),
   });
-  await sync.demarre(); // sans réseau ni cache : la boucle affiche l'écran neutre
+  // BORNÉE DANS LE TEMPS : tant que la première synchronisation n'a pas rendu
+  // la main, la boucle de rendu n'est pas armée et l'écran reste sur la
+  // coquille HTML — tableau VIDE, qui se lit en gare comme « plus aucun train
+  // aujourd'hui ». L'expiration vaut échec : écran neutre, jamais un tableau
+  // vide. Sans réseau ni cache, la boucle affiche l'écran neutre de même.
+  await avecDelai(sync.demarre(), DELAI_PREMIERE_SYNCHRO_MS, false);
 
   // Resynchronisation : temps réel (onChange), périodique 30 s, retour réseau,
   // et changement de date (minuit) détecté dans la boucle.
@@ -674,6 +698,7 @@ async function demarre(): Promise<void> {
     window.setInterval(bat, INTERVALLE_HEARTBEAT_MS);
   }
 
+  window.clearInterval(horlogeSecours); // la boucle ci-dessous s'en charge
   rendre(gare);
   window.setInterval(() => {
     if (jour && jour.date !== heure.dateISO()) sync?.resynchronise(); // passage de minuit
@@ -681,4 +706,12 @@ async function demarre(): Promise<void> {
   }, 1000);
 }
 
-void demarre();
+// Un démarrage qui échoue ne doit JAMAIS laisser le tableau vide : sans ce
+// filet, une exception (getGrilles() qui rejette, erreur dans applique())
+// arrêtait tout et l'écran affichait une coquille sans départs.
+void demarre().catch(() =>
+  afficheErreur(
+    'Écran indisponible / Screen unavailable',
+    'Le démarrage a échoué. / Startup failed.<br><br>L’écran retentera automatiquement. / The screen will retry automatically.',
+  ),
+);

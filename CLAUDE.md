@@ -184,6 +184,23 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   docs/02 §5, docs/securite.md §2). Miroir de confort du front dans
   `src/core/roles.ts` ; recette RLS dans `supabase/tests/roles-rls.sql`.
 - Supervision derrière connexion obligatoire.
+- **Content-Security-Policy** en `<meta>` dans les QUATRE pages, identique
+  partout (GitHub Pages n'autorise aucune en-tête HTTP). C'est un SECOND
+  verrou : l'échappement (`echapper()`) reste la première défense. Elle
+  interdit tout script injecté (`script-src 'self'`, sans `unsafe-inline` ni
+  `unsafe-eval`) et n'autorise que ce que le code utilise vraiment —
+  `img-src data:` (logos inlinés au build), `font-src data:` (Vite inline les
+  `.woff` de repli), `style-src 'unsafe-inline'` (71 attributs `style=""` en
+  supervision), Supabase en `https:` ET `wss:` sur le DOMAINE `*.supabase.co`
+  et non une référence de projet (prod et base de test diffèrent).
+  `frame-ancestors` est absente car ignorée dans un `<meta>`. Toute origine
+  ajoutée doit être RELEVÉE dans le code, jamais supposée, et VÉRIFIÉE au
+  navigateur console ouverte : une CSP qui casse l'affichage en gare serait
+  pire que son absence. Verrouillée par `src/pages/demarrage-ecrans.test.ts`.
+- Contraintes de FORME sur `params` (`schema.sql`, et
+  `migrations/2026-08-params-forme.sql` pour une base existante) : la base
+  refuse la valeur aberrante, ce que le front ne peut pas faire. Les deux
+  copies doivent rester identiques (`src/data/securite.test.ts`).
 
 ## Commandes
 

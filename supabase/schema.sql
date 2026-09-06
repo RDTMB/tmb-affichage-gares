@@ -143,6 +143,97 @@ create table if not exists params (
 -- clés : meteo_sommet {t,ciel_fr,ciel_en}, veille_nuit {debut,fin},
 --        duree_horaires_s, duree_cache_min
 
+-- Forme des valeurs jsonb (correctif C-01, seconde barrière).
+-- Base EXISTANTE : passer par supabase/migrations/2026-08-params-forme.sql,
+-- qui contient les vérifications préalables à lancer avant chaque contrainte.
+--
+-- POURQUOI. `valeur` est du jsonb : la base n'impose aucune forme, et le rôle
+-- `caisse` — le moins privilégié — écrit `meteo_sommet` et
+-- `vitesse_ticker_px_s` via l'API REST (politique « roles: params affichage »).
+-- Une chaîne contenant du HTML dans `meteo_sommet.t` était interpolée telle
+-- quelle dans les écrans de gare. Le front valide déjà tout ce qu'il LIT
+-- (src/core/params.ts, `paramsValides`) ; ces contraintes empêchent la valeur
+-- aberrante d'ENTRER, ce que le front ne peut pas faire.
+--
+-- Chaque ligne de la table est une clé différente : d'où la forme
+-- « cle <> '…' or (…) », qui laisse passer les autres clés sans les
+-- contraindre. `?` teste la PRÉSENCE d'une clé — sans lui, `jsonb_typeof(NULL)`
+-- vaut NULL, et PostgreSQL ACCEPTE une contrainte qui vaut NULL : `{}`
+-- passerait. Le `case when` n'est pas une coquetterie : c'est le seul construit
+-- dont PostgreSQL garantisse l'ordre d'évaluation, un cast écrit en clair
+-- pouvant être évalué AVANT le test de type.
+--
+-- Bornes alignées sur src/core/params.ts. `duree_cache_min` exclut 0, qui
+-- rendrait tout écran définitivement neutre ; le paramètre d'URL `?cache=`
+-- est prévu pour tester l'écran neutre en gare. `duree_horaires_s` est
+-- VOLONTAIREMENT absente : la supervision l'écrit sans bornage, et une
+-- contrainte ici remonterait à l'agent une erreur PostgreSQL brute au lieu
+-- d'un message clair. À traiter côté interface d'abord.
+alter table params drop constraint if exists params_meteo_sommet_forme;
+alter table params add constraint params_meteo_sommet_forme check (
+  cle <> 'meteo_sommet' or (
+    jsonb_typeof(valeur) = 'object'
+    -- température : présente, numérique, plausible. Négative acceptée :
+    -- il gèle au Nid d'Aigle.
+    and (valeur ? 't') and jsonb_typeof(valeur -> 't') = 'number'
+    and (case when jsonb_typeof(valeur -> 't') = 'number'
+              then (valeur ->> 't')::numeric end) between -50 and 50
+    -- état du ciel : les deux langues, en texte
+    and (valeur ? 'ciel_fr') and jsonb_typeof(valeur -> 'ciel_fr') = 'string'
+    and (valeur ? 'ciel_en') and jsonb_typeof(valeur -> 'ciel_en') = 'string'
+    -- heure du relevé : facultative, mais « HH:MM » si présente
+    and (not (valeur ? 'heure_releve')
+         or (jsonb_typeof(valeur -> 'heure_releve') = 'string'
+             and (valeur ->> 'heure_releve') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'))
+  )
+);
+
+-- veille de nuit : deux heures « HH:MM ». AUCUN ordre imposé entre debut et
+-- fin — la veille franchit minuit.
+alter table params drop constraint if exists params_veille_nuit_forme;
+alter table params add constraint params_veille_nuit_forme check (
+  cle <> 'veille_nuit' or (
+    jsonb_typeof(valeur) = 'object'
+    and (valeur ? 'debut') and (valeur ? 'fin')
+    and (valeur ->> 'debut') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    and (valeur ->> 'fin')   ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+  )
+);
+
+alter table params drop constraint if exists params_mode_medias_forme;
+alter table params add constraint params_mode_medias_forme check (
+  cle <> 'mode_medias' or (
+    jsonb_typeof(valeur) = 'string' and (valeur #>> '{}') in ('alterne', 'serie')
+  )
+);
+
+alter table params drop constraint if exists params_duree_cache_min_forme;
+alter table params add constraint params_duree_cache_min_forme check (
+  cle <> 'duree_cache_min' or (
+    jsonb_typeof(valeur) = 'number'
+    and (case when jsonb_typeof(valeur) = 'number'
+              then (valeur #>> '{}')::numeric end) between 3 and 60
+  )
+);
+
+alter table params drop constraint if exists params_a_quai_origine_s_forme;
+alter table params add constraint params_a_quai_origine_s_forme check (
+  cle <> 'a_quai_origine_s' or (
+    jsonb_typeof(valeur) = 'number'
+    and (case when jsonb_typeof(valeur) = 'number'
+              then (valeur #>> '{}')::numeric end) between 0 and 1800
+  )
+);
+
+alter table params drop constraint if exists params_vitesse_ticker_forme;
+alter table params add constraint params_vitesse_ticker_forme check (
+  cle <> 'vitesse_ticker_px_s' or (
+    jsonb_typeof(valeur) = 'number'
+    and (case when jsonb_typeof(valeur) = 'number'
+              then (valeur #>> '{}')::numeric end) between 20 and 400
+  )
+);
+
 create table if not exists profils (
   user_id uuid primary key references auth.users(id) on delete cascade,
   nom text not null,
