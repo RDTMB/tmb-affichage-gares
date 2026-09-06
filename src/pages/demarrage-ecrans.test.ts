@@ -498,3 +498,42 @@ describe('supervision — l’en-tête ne comprime ni ne tronque jamais', () => 
     expect(css).toContain('.pill.simule');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canevas 1f — vue caisse.
+//
+// Rien à recoder ici : le comportement voulu découle déjà de la structure.
+// Ces tests le VERROUILLENT, pour qu'une session future ne réintroduise pas
+// une variante de barre « allégée » par rôle.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la vue caisse n’est pas un cas particulier', () => {
+  const code = codeSeul('src/pages/supervision.ts');
+
+  it('la caisse PUBLIE : aucune variante de barre par rôle', () => {
+    // La barre de publication est la barre de TRAVAIL de l'agent de caisse —
+    // un message de bandeau qu'elle saisit sans le publier n'atteint aucun
+    // écran. Elle est donc affichée sans condition de rôle.
+    expect(code).toMatch(/\$\('barre-publier'\)\.style\.display = '';/);
+    // Aucun droit ne la conditionne, ni ne la remplace par une variante.
+    expect(code).not.toMatch(/peut\('publier'\)/);
+    expect(code).not.toMatch(/barre-publier[^\n]*peut\(/);
+    // …et un seul bouton « Publier » existe dans toute la page.
+    expect((code.match(/\$\('btn-publier'\)/g) ?? []).length).toBeLessThanOrEqual(3);
+  });
+
+  it('l’onglet d’arrivée est le PREMIER onglet visible, quel que soit le rôle', () => {
+    // C'est ce qui fait arriver la caisse sur Bandeau une fois Horaires
+    // masqué — par construction, et non par une liste en dur qu'il faudrait
+    // corriger au prochain changement de configuration.
+    expect(code).toMatch(/visibles\[0\]/);
+    expect(code).not.toMatch(/=== 'caisse'/);
+    expect(code).not.toMatch(/roles\.includes\('caisse'\)/);
+  });
+
+  it('aucune liste d’onglets n’est codée en dur pour un rôle', () => {
+    // Les vues par profil sont des CONFIGURATIONS PAR DÉFAUT, pas des
+    // vérités : l'exploitant peut les changer sans livraison.
+    expect(code).toMatch(/ongletsVisibles\(roles, visibiliteOnglets\)/);
+  });
+});
