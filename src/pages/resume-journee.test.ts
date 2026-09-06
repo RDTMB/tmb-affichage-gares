@@ -62,19 +62,38 @@ describe('Date en toutes lettres', () => {
 });
 
 describe('Étiquette de service', () => {
-  it('grand service : une seule période', () => {
-    expect(resumeJournee(jourGrand(), GRAND).service).toBe('Grand service (04/07→30/08)');
+  // Le NOM et les PÉRIODES sont désormais deux champs. Collées au nom, les
+  // périodes faisaient de l'étiquette l'élément le plus lourd du rang, devant
+  // la date du jour — qui est pourtant ce qu'on vient lire.
+  it('grand service : le nom seul, la période à part', () => {
+    const r = resumeJournee(jourGrand(), GRAND);
+    expect(r.service).toBe('Grand service');
+    expect(r.servicePeriodes).toBe('04/07→30/08');
   });
 
-  it('petit service : les DEUX périodes, en entier', () => {
+  it('petit service : les DEUX périodes, en entier et hors du nom', () => {
     // C'est ce libellé que la barre tronquait : il doit sortir complet.
     const j = generationJour(PETIT, EN_PETIT);
-    expect(resumeJournee(j, PETIT).service).toBe('Petit service (13/06→03/07 · 31/08→27/09)');
+    const r = resumeJournee(j, PETIT);
+    expect(r.service).toBe('Petit service');
+    expect(r.servicePeriodes).toBe('13/06→03/07 · 31/08→27/09');
   });
 
-  it('hors saison : dit qu’aucun service ne circule', () => {
+  it('le nom ne porte JAMAIS de parenthèse de période', () => {
+    // Garde-fou : c'est la fusion des deux qui créait le déséquilibre.
+    for (const [j, g] of [
+      [jourGrand(), GRAND],
+      [generationJour(PETIT, EN_PETIT), PETIT],
+    ] as const) {
+      expect(resumeJournee(j, g).service).not.toContain('(');
+      expect(resumeJournee(j, g).service).not.toContain('→');
+    }
+  });
+
+  it('hors saison : dit qu’aucun service ne circule, sans période', () => {
     const j = jourGrand({ hors_saison: true });
     expect(resumeJournee(j, null).service).toBe('Hors saison / service hiver');
+    expect(resumeJournee(j, null).servicePeriodes).toBe('');
     expect(resumeJournee(j, null).etat).toBe('hors-saison');
     expect(resumeJournee(j, null).etatLibelle).toBe('aucun service ne circule');
   });

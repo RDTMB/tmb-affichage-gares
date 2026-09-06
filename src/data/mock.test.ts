@@ -773,7 +773,7 @@ describe('Journal d’exploitation : trace permanente de chaque écriture', () =
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.saveMotif({ fr: 'Vent', en: 'Wind' });
     const avant = (await provider.listJournal({})).length;
-    await provider.logPublication('1 modification(s) : motif Vent — → Wind');
+    await provider.logPublication('motif Vent — traduction modifiée');
     expect(await provider.listJournal({})).toHaveLength(avant);
     expect(await provider.dernierePublication()).toBeTruthy();
   });

@@ -301,18 +301,140 @@ export function ecartsPublies(
   return ecarts(reference, instantanePubliable(courant));
 }
 
+/** « oui » → true, tout le reste → false (valeurs normalisées). */
+function vrai(v: string): boolean {
+  return v === 'oui';
+}
+
+/**
+ * UN ÉCART, dit dans la langue de l'exploitation.
+ *
+ * Le résumé affichait jusqu'ici des noms de COLONNES bruts —
+ * « TRAIN 5 retard_min 0 → 5 » — dans une ligne que lit un agent de caisse
+ * sous pression. `retard_min`, `facultatif_actif` et `sans_voyageurs` sont
+ * des noms de base de données ; personne ne les emploie en gare.
+ *
+ * Deux règles de rédaction :
+ *  - dire l'ÉTAT ATTEINT, pas la transition, quand la valeur d'avant n'aide
+ *    pas à comprendre (« motif Météo », et non « motif — → Météo ») ;
+ *  - garder les deux valeurs quand le changement se lit mieux ainsi (une rame
+ *    remplacée par une autre, une heure corrigée).
+ *
+ * Le repli final reste lisible : il n'invente rien pour les clés rares, il
+ * met simplement en forme ce qu'il a.
+ */
+export function phraseEcart(e: Ecart): string {
+  const [type = '', a = '', b = '', c = ''] = e.cle.split('|');
+  const de = e.avant;
+  const vers = e.apres;
+
+  if (type === 'circulation') {
+    const train = c === 'sup' ? `train supplémentaire ${b}` : `TRAIN ${b}`;
+    switch (c) {
+      case 'sup':
+        // La clé « sup » condense toute la rotation : on ne détaille pas.
+        return !de ? `${train} — créé` : !vers ? `${train} — supprimé` : `${train} — modifié`;
+      case 'retard_min':
+        return !vers || vers === '0'
+          ? `${train} — retard levé`
+          : !de || de === '0'
+            ? `${train} — retard +${vers} min`
+            : `${train} — retard ramené à ${vers} min`;
+      case 'statut':
+        return vers === 'supprime'
+          ? `${train} — supprimé`
+          : vers === 'retard'
+            ? `${train} — signalé en retard`
+            : `${train} — remis à l’heure`;
+      case 'motif':
+        return vers ? `${train} — motif ${vers}` : `${train} — motif retiré`;
+      case 'rame':
+        return de && vers ? `${train} — rame ${de} → ${vers}` : `${train} — rame ${vers || '—'}`;
+      case 'terminus':
+        return `${train} — terminus ${vers}`;
+      case 'facultatif_actif':
+        return vrai(vers) ? `${train} — facultatif activé` : `${train} — facultatif désactivé`;
+      case 'sans_voyageurs':
+        return vrai(vers) ? `${train} — sans voyageurs` : `${train} — rouvert aux voyageurs`;
+      case 'depart_reel':
+        return vers ? `${train} — départ réel ${vers}` : `${train} — départ réel effacé`;
+      default:
+        break;
+    }
+  }
+
+  if (type === 'jour') {
+    switch (b) {
+      case 'terminus_bellevue':
+        return vers ? `terminus Bellevue à partir du TRAIN ${vers}` : 'terminus Bellevue levé';
+      case 'gare_debut':
+        return `ligne exploitée — début ${vers}`;
+      case 'gare_fin':
+        return `ligne exploitée — fin ${vers}`;
+      case 'message_troncon_fr':
+        return vers ? 'message gares fermées (FR) modifié' : 'message gares fermées (FR) retiré';
+      case 'message_troncon_en':
+        return vers ? 'message gares fermées (EN) modifié' : 'message gares fermées (EN) retiré';
+      default:
+        break;
+    }
+  }
+
+  // Objets qu'on AJOUTE, MODIFIE ou RETIRE : l'identifiant technique n'apprend
+  // rien à personne, seul le geste compte.
+  const objets: Record<string, string> = {
+    message: 'message',
+    media: 'média',
+    modele: 'modèle de message',
+  };
+  if (objets[type]) {
+    const nom = objets[type];
+    if (c === 'actif' || b === 'actif') {
+      return vrai(vers) ? `${nom} activé` : `${nom} retiré de l’affichage`;
+    }
+    return !de ? `${nom} ajouté` : !vers ? `${nom} supprimé` : `${nom} modifié`;
+  }
+
+  if (type === 'ecran') {
+    const bout = b.replace('veille_', '');
+    return vers ? `écran ${a} — veille ${bout} ${vers}` : `écran ${a} — veille ${bout} retirée`;
+  }
+  if (type === 'machine') {
+    return b === 'en_service'
+      ? vrai(vers)
+        ? `rame ${a} — remise en service`
+        : `rame ${a} — retirée du service`
+      : `rame ${a} — couleur modifiée`;
+  }
+  if (type === 'motif') return `motif ${a} — traduction modifiée`;
+  if (type === 'ciel') {
+    return b === 'ordre' ? `ciel ${a} — rang modifié` : `ciel ${a} — traduction modifiée`;
+  }
+  if (type === 'params') {
+    if (a === 'meteo') {
+      return b === 't' ? `météo sommet ${vers} °C` : `météo sommet — ciel ${vers}`;
+    }
+    if (a === 'veille') return `veille de nuit ${b} ${vers}`;
+    return `${a.replace(/_/g, ' ')} ${vers}`;
+  }
+
+  // Repli : la formulation d'origine, qui reste compréhensible.
+  return `${e.libelle} ${de || '—'} → ${vers || '—'}`;
+}
+
 /**
  * Résumé consigné à la publication, construit sur les ÉCARTS RÉELS : une
  * température revenue à sa valeur d'origine n'y figure pas.
+ *
+ * Il ne répète PLUS le compte : la barre l'annonce déjà juste au-dessus
+ * (« 2 modifications pas encore sur les écrans »), et le consigner deux fois
+ * dans la même phrase n'apprenait rien.
  */
 export function resumeEcarts(liste: Ecart[], max = 10): string {
   if (liste.length === 0) return 'publication sans modification';
-  const details = liste
-    .slice(0, max)
-    .map((e) => `${e.libelle} ${e.avant || '—'} → ${e.apres || '—'}`)
-    .join(' · ');
+  const details = liste.slice(0, max).map(phraseEcart).join(' · ');
   const reste = liste.length > max ? ` · +${liste.length - max} autre(s)` : '';
-  return `${liste.length} modification(s) : ${details}${reste}`;
+  return `${details}${reste}`;
 }
 
 // ---------------------------------------------------------------------------

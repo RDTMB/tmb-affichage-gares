@@ -180,6 +180,7 @@
               </div>
               <span class="jour-lettres" id="jour-lettres">—</span>
               <span class="service-tag" id="service-tag">—</span>
+              <span class="service-periodes" id="service-periodes"></span>
               <span class="etat-jour" id="etat-jour"></span>
             </div>
             <div class="rang rang-reglages">
@@ -311,7 +312,7 @@
               cet écran ne dit rien de la disponibilité du sillon.
             </div>
             <div class="ligne">
-              <button class="primaire leger" id="btn-sup-valider">Créer le train</button>
+              <button class="principal leger" id="btn-sup-valider">Créer le train</button>
               <button class="leger" id="btn-sup-annuler">Annuler</button>
             </div>
           </div>
@@ -392,7 +393,7 @@
             Grilles horaires
             <span class="sous">quelle grille s’applique à quelles dates</span>
             <div class="actions">
-              <button class="primaire leger" id="btn-grille-importer">
+              <button class="principal leger" id="btn-grille-importer">
                 Charger un fichier Excel…
               </button>
               <input
@@ -488,7 +489,7 @@
                 </select>
               </label>
               <input type="datetime-local" id="msg-expire-date" style="display: none" />
-              <button class="primaire leger" id="btn-msg">Ajouter</button>
+              <button class="principal leger" id="btn-msg">Ajouter</button>
               <button class="leger" id="btn-msg-annuler" style="display: none">Annuler</button>
             </div>
             <div style="font-size: 12px; color: var(--sec)">
@@ -585,7 +586,7 @@
                 diffusé qu'en français.
               </div>
               <div class="ligne">
-                <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
+                <button class="principal leger" id="btn-modele-valider">Enregistrer</button>
                 <button class="leger" id="btn-modele-annuler">Annuler</button>
               </div>
             </div>
@@ -632,7 +633,7 @@
           <h2>
             Médias diffusés entre les pages horaires
             <div class="actions">
-              <button class="primaire leger" id="btn-media-ajout">+ Ajouter un média</button>
+              <button class="principal leger" id="btn-media-ajout">+ Ajouter un média</button>
               <input
                 type="file"
                 id="media-fichier"
@@ -754,7 +755,7 @@
               <div class="ligne">
                 <input type="text" id="user-nouveau-nom" placeholder="Nom" />
                 <input type="email" id="user-nouveau-email" placeholder="email@…" />
-                <button class="primaire leger" id="btn-user-inviter">Inviter par email</button>
+                <button class="principal leger" id="btn-user-inviter">Inviter par email</button>
               </div>
               <div class="ligne user-roles" id="user-nouveau-roles"></div>
             </div>
@@ -771,11 +772,22 @@
 
           <div class="carte" id="carte-onglets-roles">
             <h2>Onglets visibles par rôle</h2>
+            <!-- La note décrivait « une case grisée », vocabulaire de l'ancien
+                 traitement. Il y a QUATRE états rendus, dont un — cochée et
+                 verrouillée — n'était documenté nulle part. -->
             <div class="note">
               Range la barre de navigation sans livraison de code. Ce réglage ne peut que
-              <b>masquer</b> : il n'accorde jamais un droit. Une case grisée signifie que le rôle
-              n'a aucun droit sur cet onglet — la décocher ou non ne change rien à ce que la base
-              accepte d'écrire.
+              <b>masquer</b> : il n'accorde jamais un droit, et la base refuse exactement ce qu'elle
+              refusait. Quatre états&nbsp;:
+              <span class="legende-case"><i class="ex-case cochee"></i>affiché</span>
+              <span class="legende-case"><i class="ex-case decochee"></i>masqué par choix</span>
+              <span class="legende-case"
+                ><i class="ex-case impossible"></i>le rôle n'a aucun droit sur cet onglet</span
+              >
+              <span class="legende-case"
+                ><i class="ex-case verrouillee"></i>affiché et non décochable — c'est le dernier
+                accès au réglage</span
+              >
             </div>
             <div id="onglets-roles"></div>
             <div class="note" id="onglets-roles-etat"></div>

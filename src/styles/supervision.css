@@ -255,13 +255,25 @@ nav.tabs {
 
 /* Plus petits et sans soulignement rouge : l'administration se consulte, elle
    ne se surveille pas. L'onglet actif s'y marque par un fond, pour que la
-   ligne rouge reste le signal de l'exploitation. */
-.groupe-administration button {
+   ligne rouge reste le signal de l'exploitation.
+
+   ⚠ `nav.tabs` DEVANT le sélecteur, sans quoi la règle ne s'applique pas :
+   `nav.tabs button` vaut (0,1,2) contre (0,1,1) pour `.groupe-administration
+   button`, et il est déclaré plus bas. Les onglets d'administration étaient
+   donc rendus à 15 px comme les autres — le second poids de la barre avait
+   disparu, mesuré à l'écran. */
+nav.tabs .groupe-administration button {
   font-size: 13.5px;
   padding: 13px 12px;
 }
 
-.groupe-administration button.on {
+/* Même piège de spécificité que ci-dessus, et il coûtait plus cher : sans
+   `nav.tabs` devant, `nav.tabs button.on` gardait la main et l'onglet
+   d'administration actif portait ENCORE le soulignement rouge. Le second
+   poids de la barre en dépendait entièrement — le rouge doit rester le
+   signal de l'exploitation. Mesuré à l'écran : rgb(229,42,35) au lieu de
+   transparent. */
+nav.tabs .groupe-administration button.on {
   color: var(--marine);
   border-bottom-color: transparent;
   /* #EAF2FA dans le canevas — le projet le possédait déjà sous `--bleu-bg`.
@@ -419,6 +431,34 @@ button.primaire:hover {
   background: #c81f18;
 }
 
+/* UN SEUL BOUTON ROUGE PAR ÉCRAN. Le rouge dit « c'est l'action à faire » et
+   ne peut le dire qu'une fois ; il appartient à « Publier », visible en
+   permanence en bas de page. Les actions de la page — ajouter un message, un
+   média, inviter quelqu'un — sont des gestes réels mais SECONDS : elles
+   prennent le marine.
+
+   Gardent le rouge, et eux seuls : « Publier », les deux écrans de connexion
+   (aucune barre Publier derrière eux) et les modales, dont la superposition
+   fait un écran à part entière. */
+button.principal {
+  background: var(--marine);
+  border-color: var(--marine);
+  color: #fff;
+}
+
+button.principal:hover {
+  background: #17293c;
+  border-color: #17293c;
+}
+
+button.principal:disabled,
+button.principal:disabled:hover {
+  background: #e7edf3;
+  border-color: var(--bord);
+  color: #9fb0c0;
+  cursor: not-allowed;
+}
+
 button.leger {
   font-size: 13px;
   padding: 5px 10px;
@@ -518,7 +558,7 @@ input[type='color'] {
 .jour-lettres {
   font-weight: 900;
   color: var(--marine);
-  font-size: 14px;
+  font-size: 15.5px;
   white-space: nowrap;
 }
 
@@ -627,12 +667,12 @@ input[type='color'] {
 }
 
 .service-tag {
-  font-weight: 900;
+  font-weight: 700;
   color: var(--marine);
   background: var(--bleu-bg);
   border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 13.5px;
+  padding: 4px 10px;
+  font-size: 13px;
 }
 
 /* Au repos, la bascule Terminus Bellevue reste sobre : elle ne crie qu'une
@@ -880,8 +920,10 @@ tr.paire-fin td {
 }
 
 .velo-tag {
-  font-size: 12px;
-  margin-left: 6px;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .seg {
@@ -2530,11 +2572,15 @@ table.onglets-roles input[type='checkbox']:focus-visible {
 /* Une case grisée n'est pas un oubli : le rôle n'a aucun droit sur cet
    onglet, ou le décocher fermerait le dernier accès au réglage. Le motif est
    dans son `title`. */
+/* HACHURÉ RENFORCÉ. À #eef2f7 sur 3 px, le motif se lisait « case vide » —
+   ce qui annulait tout le bénéfice d'avoir trois formes : « masqué par
+   choix » et « impossible » redevenaient indiscernables. Bandes plus larges
+   et plus sombres, bord plus marqué. */
 table.onglets-roles input[type='checkbox']:disabled {
   cursor: not-allowed;
   border-style: dashed;
-  border-color: #c3cedb;
-  background: repeating-linear-gradient(45deg, #fff, #fff 3px, #eef2f7 3px, #eef2f7 6px);
+  border-color: #9fb0c0;
+  background: repeating-linear-gradient(45deg, #fff, #fff 2px, #b9c6d4 2px, #b9c6d4 5px);
 }
 /* Cochée ET verrouillée : le motif hachuré effacerait la coche. Case pleine,
    éteinte, au bord pointillé. */
@@ -2542,4 +2588,130 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
   background: var(--bleu-gris);
   border-color: var(--bleu-gris);
   border-style: dashed;
+}
+
+/* Légende des quatre états de case (carte « Onglets visibles par rôle »).
+   Les exemples reprennent EXACTEMENT le rendu des vraies cases : une légende
+   qui ne ressemble pas à ce qu'elle décrit n'aide personne. */
+.legende-case {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 14px;
+  white-space: nowrap;
+}
+
+.ex-case {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--bleu-gris);
+  border-radius: 4px;
+  background: #fff;
+  display: inline-block;
+  flex: none;
+  position: relative;
+}
+
+.ex-case.cochee {
+  background: var(--marine);
+  border-color: var(--marine);
+}
+
+.ex-case.cochee::after,
+.ex-case.verrouillee::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.ex-case.impossible {
+  border-style: dashed;
+  border-color: #9fb0c0;
+  background: repeating-linear-gradient(45deg, #fff, #fff 2px, #b9c6d4 2px, #b9c6d4 5px);
+}
+
+.ex-case.verrouillee {
+  background: var(--bleu-gris);
+  border-color: var(--bleu-gris);
+  border-style: dashed;
+}
+
+/* A5 — LA DATE DOIT DOMINER SON RANG. L'étiquette de service portait ses
+   périodes de validité collées au nom, en 900 sur fond bleu : elle pesait
+   plus lourd que la date du jour, alors qu'on vient lire la date et qu'on ne
+   consulte les périodes qu'exceptionnellement. Le nom garde sa pastille,
+   allégée ; les périodes passent en gris, sans fond. */
+.service-periodes {
+  color: var(--sec);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* A6 — « Sans voyageurs » ne s'écrit QUE lorsque c'est vrai. La colonne
+   s'intitule ainsi, l'interrupteur portait « Voyageurs », et il était éteint :
+   trois négations à démêler pour conclure que le train transporte du monde.
+   Au repos l'interrupteur ne dit plus rien ; actif, il le dit en ambre. */
+.switch.a-vide {
+  color: var(--retard);
+  font-weight: 900;
+}
+
+/* A7 — CONTRASTE DES LIGNES QUI NE CIRCULENT PAS. #B4C4D4 sur blanc donnait
+   un rapport d'environ 2:1 : sous le seuil de lisibilité, et la phrase
+   disparaissait. Le gris de texte du projet (--sec) atteint ~4,7:1 tout en
+   restant nettement plus léger qu'une ligne active, qui est en marine et en
+   900. L'atténuation vient de la ligne entière (fond, opacité des heures),
+   pas d'un texte qu'on ne peut plus lire. */
+.hors-service {
+  color: var(--sec);
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* A9 — LE PICTO VÉLO FLOTTAIT HORS DE SON ÉTIQUETTE. `.sens-tag` est une
+   boîte `inline-flex` avec ses marges internes, l'emoji un simple texte posé
+   sur la ligne de base : les deux ne pouvaient pas s'aligner. La cellule
+   devient une rangée flex, et tout ce qu'elle contient s'y centre. */
+td.cell-sens {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* A8 — ÉTAT VIDE, pas message d'erreur. Une phrase cassée sur deux lignes au
+   milieu d'une carte vide se lit comme une panne ; celle-ci s'annonce, puis
+   dit quoi faire. */
+.etat-vide {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  padding: 32px 22px;
+  color: var(--sec);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.etat-vide b {
+  color: var(--marine);
+  font-size: 15px;
+}
+
+.etat-vide span {
+  max-width: 46ch;
+}
+
+/* Pastille d'en-tête quand aucun poste n'est déclaré : ni vert (rien ne
+   tourne), ni rouge (rien n'est en panne). */
+.dot.neutre {
+  background: #9fb0c0;
+  box-shadow: none;
 }
