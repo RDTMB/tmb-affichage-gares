@@ -1,0 +1,87 @@
+/* Portail de test — ajustements PROPRES à index.html.
+   base.css est partagé par les quatre surfaces : on n'y touche pas, on le
+   complète ici. Cette feuille est importée par src/pages/index.ts APRÈS
+   ./commun (qui charge base.css) : elle l'emporte par la cascade, à
+   spécificité égale, sans aucun !important.
+
+   Usage visé : rebrancher un boîtier en gare, téléphone à la main, et ouvrir
+   l'écran de la bonne gare. Les liens doivent donc se TAPER au doigt (cible
+   ≥ 44 px) et rester lisibles à 390 px, sans débordement horizontal. */
+
+/* Liens « Écran » / « Grille » / « Poste de supervision » : des cibles
+   tactiles, à toute largeur — un texte souligné de 19 px de haut se rate au
+   pouce, sur une tablette comme sur un téléphone. La taille de police n'est
+   pas touchée (16 px hérités). */
+.liens-portail a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(189, 220, 244, 0.55); /* bleu clair de la charte, adouci */
+  border-radius: 6px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.liens-portail a:hover,
+.liens-portail a:focus-visible {
+  background: rgba(189, 220, 244, 0.12);
+  border-color: var(--tmb-bleu-clair);
+}
+
+/* Téléphone (≤ 600 px) : deux colonnes égales — le nom de gare et l'altitude
+   sur la première ligne, les deux liens côte à côte sur la seconde. En flex
+   (base.css), « Écran » se glissait derrière les noms courts et « Grille »
+   partait seul sur sa ligne : la position du bouton changeait d'une gare à
+   l'autre. La grille fixe l'emplacement. */
+@media (max-width: 600px) {
+  .liens-portail li {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 12px 14px;
+    gap: 10px 12px;
+  }
+
+  .liens-portail .nom-gare,
+  .liens-portail .altitude {
+    min-width: 0; /* base.css réserve 11rem + 5.5rem : trop pour 342 px utiles */
+  }
+
+  .liens-portail .altitude {
+    justify-self: end;
+  }
+
+  /* « Poste de supervision », seul lien de sa ligne : toute la largeur. */
+  .liens-portail a:only-child {
+    grid-column: 1 / -1;
+  }
+
+  /* Bandeau : à 32 px, le titre passait sur QUATRE lignes (243 px de haut,
+     un tiers de l'écran avant la première gare). */
+  .bandeau {
+    gap: 12px;
+    padding: 10px 14px;
+  }
+
+  .bandeau-logo {
+    height: 48px;
+  }
+
+  .bandeau-titre {
+    font-size: 1.4rem;
+  }
+
+  .bandeau-sous-titre {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+
+  #horloge {
+    font-size: 1.25rem;
+  }
+
+  main {
+    padding: 20px 14px;
+  }
+}
