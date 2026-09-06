@@ -19,6 +19,7 @@ import type {
   MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
+  PassageGrille,
   Params,
   Role,
   Session,
@@ -96,6 +97,17 @@ export interface DataProvider {
    * statut « supprimé ».
    */
   supprimerTrainSup(date: string, numeroMontee: number): Promise<void>;
+  /**
+   * DÉPART RÉEL constaté d'une descente supplémentaire : écrit l'heure et les
+   * passages recalculés. Écriture IMMÉDIATE, hors brouillon — voir
+   * `confirmeDepartSup()` dans supervision.ts pour la raison.
+   */
+  confirmerDepartSup(
+    date: string,
+    numeroDescente: number,
+    departReel: string,
+    passages: PassageGrille[],
+  ): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   /**
    * SECTION EXPLOITÉE du jour (travaux) et message des gares fermées.

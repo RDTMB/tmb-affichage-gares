@@ -89,6 +89,18 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
     expect(ts).toMatch(/nomGare\(p\.destination\)\)\}\$\{motrice\}<\/div>/);
   });
 
+  it('la mention du départ constaté est NEUTRE, jamais du « retard »', () => {
+    // Ce train n'est pas en retard : son heure n'était pas encore ferme. Ni
+    // <b> (couleur retard via `.note b`), ni heure barrée, ni classe d'alerte.
+    const ligne = /if \(p\.departConfirme\) note \+= ([^;]+);/.exec(ts)?.[1] ?? '';
+    expect(ligne).toContain('Horaire confirmé / Departure confirmed');
+    expect(ligne).not.toContain('<b>');
+    expect(ligne).not.toContain('retard');
+    expect(ligne).not.toContain('class=');
+    // …et elle est posée AVANT la branche « supprimé », qui remplace la note.
+    expect(ts.indexOf('p.departConfirme')).toBeLessThan(ts.indexOf('motif-supprime'));
+  });
+
   it('la colonne Rame ne porte plus le numéro', () => {
     expect(ts).not.toContain('class="num"');
     // Le libellé long reste réservé à la supervision et à la grille du jour.

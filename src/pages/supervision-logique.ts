@@ -631,6 +631,12 @@ export interface EntreesCelluleTerminus {
    * afficheront, pas celui qui dort en base.
    */
   passagesEffectifs?: readonly { gare: GareId }[] | null;
+  /**
+   * La montée de la rotation est-elle DÉJÀ arrivée à son terminus ? Tant
+   * qu'elle ne l'est pas, il n'y a aucun départ à constater — le bouton
+   * n'apparaît pas.
+   */
+  monteeArrivee?: boolean;
 }
 
 /** Infobulle du terminus d'un train supplémentaire : il se change en le recréant. */
@@ -662,6 +668,7 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
     lectureSeule,
     nomGare,
     passagesEffectifs,
+    monteeArrivee,
   } = e;
   const n = c.numero;
   const verrou = lectureSeule ? ' disabled' : '';
@@ -676,7 +683,23 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
     const gare = montee ? terminusReel(source) : origineReelle(source);
     const libelle = gare === null ? '—' : nomGare(gare);
     const texte = montee ? libelle : `Départ de ${libelle}`;
-    return `<span class="term-fixe" title="${echapper(AIDE_TERMINUS_SUP)}">${echapper(texte)}</span>`;
+    const fixe = `<span class="term-fixe" title="${echapper(AIDE_TERMINUS_SUP)}">${echapper(texte)}</span>`;
+    if (montee) return fixe;
+
+    // DESCENTE de renfort : son heure de départ du terminus n'est qu'une
+    // ESTIMATION tant que l'agent ne l'a pas constatée. Le bouton n'apparaît
+    // qu'une fois la montée arrivée — avant, il n'y a rien à constater.
+    const constate = (c.depart_reel ?? '').trim();
+    const parti =
+      constate === ''
+        ? ''
+        : `<span class="depart-constate">parti à ${echapper(constate.slice(0, 5))}</span>`;
+    const bouton = monteeArrivee
+      ? `<button class="leger" data-action="depart-sup" data-numero="${n}"${verrou}>${
+          constate === '' ? 'Le train est reparti' : "Corriger l'heure de départ"
+        }</button>`
+      : '';
+    return `${fixe}${parti}${bouton}`;
   }
 
   // Rotation limitée = colonne Terminus de la MONTÉE sur Bellevue (pour une

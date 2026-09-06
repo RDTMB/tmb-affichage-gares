@@ -21,10 +21,12 @@ import type {
   MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
+  PassageGrille,
   Params,
   Role,
   Session,
   SectionJour,
+  Sens,
   TerminusFlag,
   User,
   EntreeJournal,
@@ -648,6 +650,40 @@ export class SupabaseProvider implements DataProvider {
         `Train supplémentaire incomplet — ${resultat.data?.length ?? 0} circulation(s) sur 2 enregistrée(s)`,
       );
     }
+  }
+
+  async confirmerDepartSup(
+    date: string,
+    numeroDescente: number,
+    departReel: string,
+    passages: PassageGrille[],
+  ): Promise<void> {
+    // Garde-fou identique aux autres écritures de renfort : on ne touche
+    // qu'une DESCENTE supplémentaire. Un train de grille n'a pas de départ à
+    // constater, ses heures viennent du document d'exploitation.
+    const { data, error } = await this.client
+      .from('circulations')
+      .select('numero, sens, supplementaire')
+      .eq('date', date)
+      .eq('numero', numeroDescente)
+      .maybeSingle();
+    verifie(error);
+    const ligne = data as { sens: Sens; supplementaire: boolean } | null;
+    if (!ligne) throw new Error(`TRAIN ${numeroDescente} introuvable au ${date}`);
+    if (!ligne.supplementaire || ligne.sens !== 'descente') {
+      throw new Error(
+        `TRAIN ${numeroDescente} n'est pas une descente supplémentaire : départ réel refusé`,
+      );
+    }
+    exigeLignes(
+      await this.client
+        .from('circulations')
+        .update({ depart_reel: departReel, passages })
+        .eq('date', date)
+        .eq('numero', numeroDescente)
+        .select(),
+      'descente supplémentaire introuvable',
+    );
   }
 
   async supprimerTrainSup(date: string, numeroMontee: number): Promise<void> {

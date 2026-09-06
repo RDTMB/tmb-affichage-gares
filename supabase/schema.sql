@@ -42,6 +42,12 @@ create table if not exists circulations (
   -- serait invisible partout (docs/01 §2.7).
   supplementaire boolean not null default false,
   passages jsonb,
+  -- DÉPART RÉEL constaté depuis le terminus (descente d'une rotation
+  -- supplémentaire). NULL = horaire estimé à la création ; renseignée =
+  -- l'agent a constaté l'heure à laquelle le train est reparti, et les
+  -- passages de la descente ont été recalculés depuis elle. Conserve aussi
+  -- la trace du départ, utile à l'exploitation.
+  depart_reel time,
   maj timestamptz not null default now(),
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.

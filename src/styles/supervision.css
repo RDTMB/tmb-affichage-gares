@@ -2057,6 +2057,42 @@ input:disabled {
   background: #fbfcfe;
 }
 
+/* Départ constaté d'une descente de renfort : information NEUTRE, jamais le
+   traitement d'un retard — ce train n'est pas en retard. */
+.depart-constate {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--sec);
+}
+
+.carte-section .ligne .depart-estime,
+.carte-depart .depart-estime {
+  color: var(--sec);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.depart-alerte {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--alerte-bg);
+  border: 1px solid #f2c9c5;
+  color: var(--alerte);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.depart-avert {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fdf3e0;
+  color: #7a6017;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
 .carte-sup h3 {
   margin: 0 0 8px;
   font-size: 14px;

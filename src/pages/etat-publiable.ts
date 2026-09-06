@@ -125,6 +125,10 @@ export function instantaneJours(jours: JourPubliable[]): Instantane {
           } ${passages}`
             .replace(/\s+/g, ' ')
             .trim();
+        // Le DÉPART RÉEL a sa propre clé : il s'écrit hors brouillon (voir
+        // `confirmeDepartSup()`), et sans elle la correction n'apparaîtrait
+        // dans aucun journal d'écarts.
+        instantane[`circulation|${date}|${c.numero}|depart_reel`] = normalise(c.depart_reel);
         continue;
       }
       for (const champ of CHAMPS_CIRCULATION) {
@@ -216,7 +220,11 @@ export function libelleDeCle(cle: string): string {
   const [type = '', a = '', b = '', c = ''] = cle.split('|');
   switch (type) {
     case 'circulation':
-      return c === 'sup' ? `train supplémentaire ${b}` : `TRAIN ${b} ${c}`;
+      return c === 'sup'
+        ? `train supplémentaire ${b}`
+        : c === 'depart_reel'
+          ? `TRAIN ${b} départ réel`
+          : `TRAIN ${b} ${c}`;
     case 'jour':
       switch (b) {
         case 'gare_debut':

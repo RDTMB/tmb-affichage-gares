@@ -441,6 +441,9 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
         motif: circulation?.motif ?? null,
         terminusExceptionnel: false,
         supplementaire: false,
+        // Un train de GRILLE n'a pas de départ à constater : ses heures sont
+        // celles du document d'exploitation, pas une estimation.
+        departConfirme: false,
         passages: resoudPassages(trainGrille, grille.arret_intermediaire_s),
       });
     }
@@ -476,6 +479,9 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
       motif: circulation.motif,
       terminusExceptionnel: false,
       supplementaire: true,
+      // Départ CONSTATÉ depuis le terminus : seule une descente de renfort
+      // peut en porter un. Ce n'est pas un retard, l'écran le dit en neutre.
+      departConfirme: circulation.sens === 'descente' && Boolean(circulation.depart_reel),
       passages: resoudPassages(
         {
           numero: circulation.numero,
@@ -687,6 +693,7 @@ export function passagesPourGare(
       destination,
       terminusExceptionnel: train.terminusExceptionnel,
       supplementaire: train.supplementaire,
+      departConfirme: train.departConfirme,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,
       depart_s: passage.depart_s === null ? null : passage.depart_s + decalage,
       arrivee_theorique_s: passage.arrivee_s,

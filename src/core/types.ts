@@ -181,6 +181,13 @@ export interface Circulation {
    * grille — contrainte SQL circulations_sup_passages.
    */
   passages?: PassageGrille[] | null;
+  /**
+   * DÉPART RÉEL depuis le terminus, « HH:MM:SS » — descente d'une rotation
+   * SUPPLÉMENTAIRE uniquement. null = horaire encore ESTIMÉ (le battement
+   * choisi à la création) ; renseignée = l'agent a constaté l'heure de
+   * départ, et `passages` a été recalculé depuis elle.
+   */
+  depart_reel?: string | null;
 }
 
 export interface Jour {
@@ -247,6 +254,12 @@ export interface TrainJour {
   terminusExceptionnel: boolean;
   /** Train de renfort, absent des grilles (docs/01 §2.7). */
   supplementaire: boolean;
+  /**
+   * Descente supplémentaire dont le départ du terminus a été CONSTATÉ : ses
+   * heures ne sont plus une estimation. Ce n'est PAS un retard — l'écran le
+   * dit en couleur neutre.
+   */
+  departConfirme: boolean;
   passages: PassageTrain[];
 }
 
@@ -267,6 +280,8 @@ export interface PassageGare {
   terminusExceptionnel: boolean;
   /** Train de renfort, absent des grilles (docs/01 §2.7). */
   supplementaire: boolean;
+  /** Descente supplémentaire au départ CONSTATÉ (mention neutre, jamais « retard »). */
+  departConfirme: boolean;
   /** Heures réelles (retard inclus) ; un supprimé garde ses heures théoriques (affichées barrées). */
   arrivee_s: number | null;
   depart_s: number | null;
