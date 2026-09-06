@@ -19,6 +19,7 @@ import type {
   Motif,
   Ciel,
   MetadonneesGrille,
+  Onglet,
   OptionsEnregistrementGrille,
   Profil,
   PassageGrille,
@@ -29,6 +30,7 @@ import type {
   Sens,
   TerminusFlag,
   User,
+  VisibiliteOnglets,
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
@@ -962,6 +964,48 @@ export class SupabaseProvider implements DataProvider {
         `retrait du rôle « ${role} » refusé`,
       );
     }
+  }
+
+  /**
+   * Onglets visibles par rôle. Rend `null` — et NON un objet vide — dès que le
+   * réglage est indisponible : table absente sur une base d'avant la migration,
+   * requête en échec, ou table vide. L'appelant retombe alors sur la matrice du
+   * code, jamais sur « aucun onglet » : l'exploitation ne doit pas se retrouver
+   * devant une supervision aveugle parce qu'une table manque.
+   */
+  async getOngletsParRole(): Promise<VisibiliteOnglets> {
+    const { data, error } = await this.client.from('onglets_par_role').select('role, onglet');
+    if (error || !data || data.length === 0) return null;
+    const parRole: Partial<Record<Role, Onglet[]>> = {};
+    for (const ligne of data as { role: Role; onglet: Onglet }[]) {
+      (parRole[ligne.role] ??= []).push(ligne.onglet);
+    }
+    return parRole;
+  }
+
+  /**
+   * Un geste = une ligne. Accorder est un INSERT, masquer un DELETE : deux
+   * politiques distinctes, deux lignes de journal. Le refus du dernier accès à
+   * l'onglet Utilisateurs vient du déclencheur DIFFÉRÉ — il tombe donc au
+   * COMMIT, avec son propre message, que l'on laisse remonter tel quel.
+   */
+  async setOngletRole(role: Role, onglet: Onglet, visible: boolean): Promise<void> {
+    if (visible) {
+      exigeLignes(
+        await this.client.from('onglets_par_role').insert({ role, onglet }).select(),
+        `l’onglet « ${onglet} » n’a pas pu être rendu au rôle « ${role} »`,
+      );
+      return;
+    }
+    exigeLignes(
+      await this.client
+        .from('onglets_par_role')
+        .delete()
+        .eq('role', role)
+        .eq('onglet', onglet)
+        .select(),
+      `l’onglet « ${onglet} » n’a pas pu être masqué pour le rôle « ${role} »`,
+    );
   }
 
   async deleteUser(user_id: string): Promise<void> {

@@ -17,11 +17,13 @@ import type {
   Motif,
   Ciel,
   MetadonneesGrille,
+  Onglet,
   OptionsEnregistrementGrille,
   Profil,
   PassageGrille,
   Params,
   Role,
+  VisibiliteOnglets,
   Session,
   SectionJour,
   TerminusFlag,
@@ -157,6 +159,22 @@ export interface DataProvider {
    * commencer par donner.
    */
   setRolesUser(user_id: string, roles: Role[]): Promise<void>;
+  /**
+   * Onglets visibles par rôle (table `onglets_par_role`). `null` = réglage
+   * INDISPONIBLE — base injoignable, table absente ou vide : l'appelant
+   * retombe alors sur la matrice du code (`ongletsVisibles()`).
+   *
+   * ⚠ Ce réglage ne peut que RETRANCHER. Il n'accorde rien : RLS refuse
+   * exactement ce qu'elle refusait. Voir src/core/roles.ts.
+   */
+  getOngletsParRole(): Promise<VisibiliteOnglets>;
+  /**
+   * Rend un onglet visible à un rôle, ou le masque. Un geste = une ligne, donc
+   * une ligne de journal : accorder et masquer ne se confondent jamais.
+   * La base refuse le masquage qui fermerait le dernier accès à l'onglet
+   * Utilisateurs (déclencheur de contrainte différé).
+   */
+  setOngletRole(role: Role, onglet: Onglet, visible: boolean): Promise<void>;
   /** Suppression définitive (Edge Function — clé secrète jamais côté front). */
   deleteUser(user_id: string): Promise<void>;
   /** Création par invitation email (Edge Function — clé secrète jamais côté front). */

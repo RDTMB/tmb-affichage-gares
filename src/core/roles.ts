@@ -210,10 +210,97 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   journal: ['journal'],
 };
 
-/** Onglets visibles pour un ensemble de rôles, dans l'ordre de la barre. */
-export function ongletsVisibles(roles: readonly Role[]): Onglet[] {
-  const acquis = droits(roles);
-  return ONGLETS.filter((onglet) => DROITS_DE_L_ONGLET[onglet].some((droit) => acquis.has(droit)));
+/**
+ * PLAFOND d'un rôle : les onglets que ses droits ouvrent. C'est la limite
+ * haute, fixée par le code et par RLS — rien ne peut la dépasser.
+ */
+export function plafondOnglets(role: Role): Onglet[] {
+  const acquis = DROITS_PAR_ROLE[role] ?? [];
+  return ONGLETS.filter((onglet) =>
+    DROITS_DE_L_ONGLET[onglet].some((droit) => acquis.includes(droit)),
+  );
+}
+
+/**
+ * Visibilité RÉGLÉE en supervision (table `onglets_par_role`), telle qu'elle
+ * arrive de la base. `null` = réglage indisponible ou table vide.
+ */
+export type VisibiliteOnglets = Partial<Record<Role, readonly Onglet[]>> | null;
+
+/**
+ * Onglets visibles pour un ensemble de rôles, dans l'ordre de la barre.
+ *
+ * ⚠ INVARIANT, à ne jamais assouplir : le réglage ne peut que RETRANCHER.
+ * L'intersection avec `plafondOnglets()` ci-dessous n'est pas une précaution,
+ * c'est la garantie elle-même — une ligne forgée en base qui accorderait
+ * « circulations » à la caisse ne produit rien du tout.
+ *
+ * Ce réglage n'est donc PAS une barrière de sécurité : c'est du rangement
+ * d'interface. Aucune écriture nouvelle ne devient possible, RLS refuse
+ * exactement ce qu'elle refusait. Une session future qui le prendrait pour un
+ * mécanisme de permissions se tromperait de deux façons à la fois : elle lui
+ * ferait porter une garantie qu'il n'offre pas, et elle serait tentée de le
+ * laisser accorder des droits.
+ *
+ * DEUX REPLIS, tous deux vers la matrice du code — jamais vers « rien » :
+ *  - `visibilite` à `null` (base injoignable, table absente ou vide) ;
+ *  - aucune ligne pour CE rôle : c'est un rôle que personne n'a réglé, pas un
+ *    rôle réglé à zéro onglet. Sans ce repli, tout rôle créé plus tard
+ *    naîtrait aveugle, et la personne capable de le rouvrir pourrait être
+ *    justement celle qui le porte.
+ * L'exploitation ne doit jamais attendre l'informatique un matin de service.
+ */
+export function ongletsVisibles(
+  roles: readonly Role[],
+  visibilite: VisibiliteOnglets = null,
+): Onglet[] {
+  const retenus = new Set<Onglet>();
+  for (const role of roles) {
+    const plafond = plafondOnglets(role);
+    const regles = visibilite?.[role];
+    const vus = regles && regles.length > 0 ? plafond.filter((o) => regles.includes(o)) : plafond;
+    for (const onglet of vus) retenus.add(onglet);
+  }
+  return ONGLETS.filter((onglet) => retenus.has(onglet));
+}
+
+/**
+ * Rôles capables de ROUVRIR la porte : ceux qui portent
+ * `parametres.technique`, le droit qui ouvre la carte « Onglets visibles par
+ * rôle ». Au moins l'un d'eux doit garder l'onglet Utilisateurs, sans quoi
+ * plus personne n'atteint le réglage qui vient de tout masquer.
+ *
+ * ⚠ Cette liste est MIROIR de celle codée en dur dans le déclencheur
+ * `private.verifier_quorum_onglets()` (supabase/schema.sql). Le test
+ * src/data/securite.test.ts compare les deux : ajouter ici un rôle sans
+ * l'ajouter là-bas fait rougir la suite.
+ */
+export const ROLES_QUI_ROUVRENT: readonly Role[] = ROLES.filter((r) =>
+  (DROITS_PAR_ROLE[r] ?? []).includes('parametres.technique'),
+);
+
+/** Onglet dont le masquage enfermerait tout le monde dehors. */
+export const ONGLET_DE_SECOURS: Onglet = 'utilisateurs';
+
+/**
+ * Le réglage proposé enferme-t-il tout le monde dehors ? Motif à afficher, ou
+ * null. L'interface s'en sert pour griser la case ; la base tranche de toute
+ * façon (déclencheur de contrainte différé).
+ */
+export function motifOngletVerrouille(
+  role: Role,
+  onglet: Onglet,
+  visibiliteApres: VisibiliteOnglets,
+): string | null {
+  if (!plafondOnglets(role).includes(onglet)) {
+    return `Le rôle « ${LIBELLE_ROLE[role]} » n’a aucun droit sur cet onglet.`;
+  }
+  if (onglet !== ONGLET_DE_SECOURS || !ROLES_QUI_ROUVRENT.includes(role)) return null;
+  const restants = ROLES_QUI_ROUVRENT.filter((r) =>
+    ongletsVisibles([r], visibiliteApres).includes(ONGLET_DE_SECOURS),
+  );
+  if (restants.length > 0) return null;
+  return `Dernier accès à cet onglet : le masquer fermerait le seul chemin qui permet de le rouvrir.`;
 }
 
 // ---------------------------------------------------------------------------

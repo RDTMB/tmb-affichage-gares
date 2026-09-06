@@ -4,8 +4,8 @@
 // Les rôles, leur matrice d'attribution et les droits qu'ils ouvrent vivent
 // dans src/core/roles.ts. `Role` est ré-exporté ici pour que les modules qui
 // importaient déjà ce fichier n'aient rien à changer.
-import type { Role } from './roles';
-export type { Role };
+import type { Onglet, Role, VisibiliteOnglets } from './roles';
+export type { Onglet, Role, VisibiliteOnglets };
 
 /** Gares dans l'ordre de la ligne, du Fayet (580 m) au Nid d'Aigle (2 412 m). */
 export const ORDRE_GARES = [

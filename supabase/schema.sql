@@ -277,6 +277,39 @@ create table if not exists profils_roles (
 );
 create index if not exists idx_profils_roles_role on profils_roles (role);
 
+-- ONGLETS VISIBLES PAR RÔLE (docs/01 §5.5). L'exploitant range lui-même la
+-- barre de navigation, sans livraison de code.
+-- Ajout sur base existante : supabase/migrations/2026-09-onglets-par-role.sql
+--
+-- ⚠ INVARIANT : cette table ne peut que RETRANCHER, jamais ÉTENDRE. La
+-- matrice droit × rôle (src/core/roles.ts) et les politiques RLS restent le
+-- PLAFOND ; le front intersecte ce qu'il lit ici avec ce que les droits
+-- ouvrent (`ongletsVisibles()`), si bien qu'une ligne forgée accordant
+-- « circulations » à la caisse ne produit RIEN.
+--
+-- Ce n'est donc PAS une barrière de sécurité, c'est du rangement d'interface.
+-- Aucune écriture nouvelle ne devient possible ; RLS refuse exactement ce
+-- qu'elle refusait. Ne jamais s'en servir pour accorder quoi que ce soit.
+--
+-- Une ligne = un onglet VISIBLE. Table de liaison, pas une colonne text[] :
+-- RLS s'évalue ligne à ligne et le journal reçoit une ligne par onglet
+-- accordé ou masqué.
+--
+-- AUCUNE LIGNE POUR UN RÔLE = aucun réglage, donc repli sur la matrice du
+-- code — et non « ce rôle ne voit rien ». Sans ce repli, un rôle créé plus
+-- tard naîtrait aveugle.
+create table if not exists onglets_par_role (
+  role text not null references roles(code) on delete cascade,
+  onglet text not null check (onglet in (
+    'circulations','horaires','bandeau','medias','ecrans',
+    'parametres','utilisateurs','journal')),
+  regle_le timestamptz not null default now(),
+  -- Adresse de l'agent, FORCÉE par déclencheur depuis son jeton : jamais une
+  -- valeur fournie par le client (même règle que profils_roles.attribue_par).
+  regle_par text,
+  primary key (role, onglet)
+);
+
 insert into roles (code, libelle, protege, attribuable_par, ordre) values
   ('technique',   'Technique',      true,  array['technique'], 10),
   ('admin',       'Administrateur', true,  array['admin'],     20),
@@ -287,6 +320,46 @@ on conflict (code) do update set
   protege = excluded.protege,
   attribuable_par = excluded.attribuable_par,
   ordre = excluded.ordre;
+
+-- ÉTAT DE DÉPART de la visibilité des onglets : la photographie EXACTE de ce
+-- que la matrice droit × rôle produisait au 06/09/2026, à UNE exception près,
+-- décidée par l'exploitant — l'onglet Horaires est masqué pour la CAISSE.
+--
+-- Cette exception est livrée comme une DONNÉE et non comme une ligne de code :
+-- le jour où l'exploitant changera d'avis, il rendra l'onglet en trois clics,
+-- sans livraison. C'est le cas d'usage qui motive toute cette table, et il lui
+-- sert de recette.
+--
+-- ⚠ Conséquence à connaître : ces lignes FIGENT ce que chaque rôle voit. Si un
+-- rôle gagne un droit plus tard (comme la caisse a gagné `medias` le
+-- 06/09/2026), l'onglet correspondant n'apparaîtra pas tout seul — sa case
+-- deviendra cochable dans la carte « Onglets visibles par rôle », et c'est là
+-- que ça se voit. Aucune livraison n'est nécessaire pour autant.
+--
+-- `on conflict do nothing` : rejouable, et ne réécrit JAMAIS un réglage que
+-- l'exploitant aurait changé depuis.
+insert into onglets_par_role (role, onglet) values
+  ('technique', 'horaires'),
+  ('technique', 'ecrans'),
+  ('technique', 'utilisateurs'),
+  ('technique', 'journal'),
+  ('admin', 'horaires'),
+  ('admin', 'bandeau'),
+  ('admin', 'medias'),
+  ('admin', 'parametres'),
+  ('admin', 'utilisateurs'),
+  ('admin', 'journal'),
+  ('supervision', 'circulations'),
+  ('supervision', 'horaires'),
+  ('supervision', 'bandeau'),
+  ('supervision', 'medias'),
+  ('supervision', 'ecrans'),
+  ('supervision', 'journal'),
+  ('caisse', 'bandeau'),
+  ('caisse', 'medias'),
+  ('caisse', 'ecrans'),
+  ('caisse', 'journal')
+on conflict (role, onglet) do nothing;
 
 create table if not exists ecrans (
   id text primary key,
@@ -504,6 +577,7 @@ alter table params enable row level security;
 alter table profils enable row level security;
 alter table roles enable row level security;
 alter table profils_roles enable row level security;
+alter table onglets_par_role enable row level security;
 alter table ecrans enable row level security;
 alter table publications enable row level security;
 alter table grilles enable row level security;
@@ -522,6 +596,12 @@ revoke all on profils_roles from anon, authenticated;
 -- déclencheur, jamais par le client.
 grant select, delete on profils_roles to authenticated;
 grant insert (user_id, role) on profils_roles to authenticated;
+-- Onglets par rôle : même forme, mêmes raisons. Pas d'UPDATE — accorder et
+-- masquer sont deux gestes, deux contrôles, deux lignes de journal. `regle_par`
+-- est posée par déclencheur depuis le jeton, jamais par le client.
+revoke all on onglets_par_role from anon, authenticated;
+grant select, delete on onglets_par_role to authenticated;
+grant insert (role, onglet) on onglets_par_role to authenticated;
 -- L'annuaire du personnel ne garde QUE les droits dont il a besoin : `anon`
 -- n'a rien à y faire (les écrans ne lisent jamais les comptes), et
 -- `authenticated` n'écrit ni `role` — le miroir est tenu par un déclencheur —
@@ -665,6 +745,19 @@ create policy "roles: liaison retrait" on profils_roles for delete to authentica
     and source = 'manuel'
     and (select private.peut_attribuer(role))
   );
+-- ONGLETS VISIBLES PAR RÔLE. Lecture pour tout compte connecté : chacun a
+-- besoin de savoir ce que SES rôles lui montrent, et la table ne dit rien de
+-- confidentiel — quels onglets un rôle affiche, pas ce qu'il peut écrire.
+create policy "onglets: lecture" on onglets_par_role for select to authenticated
+  using (true);
+-- Écriture réservée au droit `parametres.technique`, donc au rôle technique :
+-- même logique que la veille de nuit globale ou la purge du journal, c'est un
+-- réglage d'infrastructure. ⚠ Cette liste est le MIROIR de ROLES_QUI_ROUVRENT
+-- (src/core/roles.ts) ; src/data/securite.test.ts compare les deux.
+create policy "onglets: reglage" on onglets_par_role for insert to authenticated
+  with check ((select private.a_le_role('technique')));
+create policy "onglets: masquage" on onglets_par_role for delete to authenticated
+  using ((select private.a_le_role('technique')));
 
 -- Grilles horaires : PARTAGÉES entre l'informatique et l'exploitation. Un
 -- horaire corrigé un matin de service ne doit pas attendre le prestataire.
@@ -897,6 +990,91 @@ create constraint trigger trg_roles_quorum_profils
   after update or delete on profils
   deferrable initially deferred
   for each row execute function private.verifier_quorum_roles();
+-- (b bis) ONGLETS PAR RÔLE — deux garde-fous, en BASE et pas seulement dans
+--     l'écran, parce que ni RLS ni l'interface ne couvrent `service_role` ni
+--     le tableau de bord Supabase.
+--
+--     1. IDENTITÉ DE L'AUTEUR. `regle_par` est posée depuis le JETON, jamais
+--        fournie par le client — le GRANT d'INSERT ne porte d'ailleurs que
+--        sur (role, onglet). Contrairement à `profils_roles`, une écriture
+--        « sans visage » n'a pas à être REVENDIQUÉE : cette table n'accorde
+--        aucun droit, elle ne fait que ranger une barre de navigation. Exiger
+--        un `set local` ici serait de la friction sans contrepartie.
+create or replace function private.marquer_reglage_onglet()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
+begin
+  new.regle_par := coalesce(private.email_appelant(), 'script');
+  new.regle_le := now();
+  return new;
+end $fn$;
+revoke all on function private.marquer_reglage_onglet() from public;
+
+drop trigger if exists trg_onglets_auteur on onglets_par_role;
+create trigger trg_onglets_auteur before insert on onglets_par_role
+  for each row execute function private.marquer_reglage_onglet();
+
+--     2. ANTI-ENFERMEMENT. Le risque propre à ce réglage : masquer l'onglet
+--        Utilisateurs à tout le monde et perdre le seul chemin qui permet de
+--        le rouvrir. La carte « Onglets visibles par rôle » y vit, et elle
+--        demande `parametres.technique`.
+--
+--        Règle MINIMALE : au moins un rôle capable de rouvrir la porte doit
+--        continuer à voir l'onglet Utilisateurs. « Voir » a ici exactement le
+--        sens de `ongletsVisibles()` côté front — un rôle SANS AUCUNE LIGNE
+--        retombe sur la matrice du code, donc voit l'onglet : ce cas ne ferme
+--        rien et n'a pas à être refusé. Tout supprimer se soigne donc tout
+--        seul ; c'est le réglage PARTIEL qui enferme.
+--
+--        Un seul onglet est protégé, et un seul rôle en pratique : c'est
+--        volontairement le strict nécessaire pour rouvrir la porte. Depuis
+--        Utilisateurs, le technique rétablit tout le reste.
+--
+--        DIFFÉRÉ + VERROU CONSULTATIF, comme le quorum des rôles : différé
+--        pour qu'un échange « masquer ici, accorder là » passe dans une même
+--        transaction ; verrouillé pour que deux transactions supprimant
+--        chacune l'un des deux derniers accès ne réussissent pas toutes deux.
+create or replace function private.verifier_quorum_onglets()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
+declare
+  -- MIROIR de ROLES_QUI_ROUVRENT (src/core/roles.ts) : les rôles portant
+  -- `parametres.technique`. Si un rôle gagne ce droit un jour, l'ajouter ici.
+  rouvreurs constant text[] := array['technique'];
+  onglet_secours constant text := 'utilisateurs';
+  restants int;
+begin
+  perform pg_advisory_xact_lock(hashtext('tmb.quorum_onglets'));
+
+  select count(*) into restants
+    from unnest(rouvreurs) as r(code)
+   where not exists (
+           select 1 from public.onglets_par_role o where o.role = r.code)
+      or exists (
+           select 1 from public.onglets_par_role o
+            where o.role = r.code and o.onglet = onglet_secours);
+
+  if restants = 0 then
+    raise exception
+      'Refusé : au moins un rôle capable de rouvrir ce réglage doit garder l''onglet Utilisateurs.'
+      using errcode = 'check_violation',
+            hint = 'Rendez d''abord l''onglet Utilisateurs à un rôle technique, puis recommencez. Pour tout rouvrir depuis l''éditeur SQL : delete from onglets_par_role where role = ''technique'';';
+  end if;
+  return null;
+end $fn$;
+revoke all on function private.verifier_quorum_onglets() from public;
+
+drop trigger if exists trg_onglets_quorum on onglets_par_role;
+create constraint trigger trg_onglets_quorum
+  after insert or delete on onglets_par_role
+  deferrable initially deferred
+  for each row execute function private.verifier_quorum_onglets();
+
+-- TRUNCATE ne déclenche aucun déclencheur de ligne : il lui faut le sien.
+-- Ici, vider la table RESTAURE le comportement du code (repli) et n'enferme
+-- personne — mais l'interdire garde la trace au journal, qui ne verrait rien
+-- passer autrement.
+drop trigger if exists trg_onglets_pas_de_truncate on onglets_par_role;
+create trigger trg_onglets_pas_de_truncate before truncate on onglets_par_role
+  execute function private.interdire_truncate_roles();
 
 -- (c) On ne se désactive pas soi-même (ceinture et bretelles : la politique
 --     « roles: profils gestion » l'interdit déjà par peut_gerer_profil).
@@ -1124,6 +1302,13 @@ drop trigger if exists trg_journal_medias on medias;
 create trigger trg_journal_medias
   after insert or update or delete on medias
   for each row execute function private.tracer_ecriture('id', '');
+-- Onglets par rôle : une ligne de journal par onglet accordé ou masqué, au
+-- même titre qu'un changement de rôle. La clé métier « technique horaires »
+-- se lit sans décodage.
+drop trigger if exists trg_journal_onglets on onglets_par_role;
+create trigger trg_journal_onglets
+  after insert or delete on onglets_par_role
+  for each row execute function private.tracer_ecriture('role,onglet', '');
 
 drop trigger if exists trg_journal_params on params;
 create trigger trg_journal_params
@@ -1250,6 +1435,10 @@ grant execute on function private.purge_journal_exploitation(int) to authenticat
 -- ---------------------------------------------------------------- realtime
 -- `profils`, `profils_roles` et `roles` restent HORS de la publication :
 -- l'annuaire du personnel et ses habilitations n'ont pas à être diffusés.
+-- `onglets_par_role` en reste également DEHORS, pour une autre raison : une
+-- barre de navigation qui se réorganise sous les doigts de quelqu'un en train
+-- de saisir est pire que le délai d'un rechargement. Le réglage prend effet au
+-- chargement suivant de la supervision.
 alter publication supabase_realtime add table jours, circulations, messages,
   medias, params, machines, motifs, ciels, modeles_messages, ecrans, grilles;
 
