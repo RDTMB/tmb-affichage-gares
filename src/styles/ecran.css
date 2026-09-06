@@ -881,3 +881,235 @@ body.mode-simule.mode-demo header {
 body.mode-simule.mode-demo .badge-cache {
   top: 25.5vh;
 }
+
+/* ============ FORMATS ÉTROITS (rapport largeur/hauteur ≤ 4:3) ============ */
+/* La feuille dimensionne les TEXTES en vh et les COLONNES en vw : elle
+   suppose donc un rapport largeur/hauteur, celui de la maquette (16:9). Mesuré
+   au navigateur le 06/09/2026 (getBoundingClientRect, hauteur 1080, largeur
+   décroissante), rien ne bouge en 16:10 ni en 4:3 ; en dessous, ça casse par
+   paliers :
+     r < 1,32 — le statut « Retard +10 min » est COUPÉ au bord droit ;
+     r < 1,26 — l'heure de départ déborde de sa colonne (5:4 : 149 px pour
+                147 px, l'heure touche la flèche) ;
+     r < 1,07 — le logo recouvre le nom de la gare ;
+     r < 0,93 — chips et rangées coupées ; en portrait 9:16 plus rien ne tient.
+
+   Correction : sous 4:3, l'unité verticale devient 0,75 vw. À exactement 4:3,
+   0,75 vw = 1 vh : la bascule est CONTINUE (aucun saut de taille au seuil) et,
+   au-dessus du seuil, ce bloc ne s'applique pas — le 16:9 de Saint-Gervais
+   reste identique au pixel. En dessous, la page prend les proportions
+   horizontales de la page 4:3, qui a été mesurée sans coupure ni
+   chevauchement : rien ne peut donc plus déborder, et les rangées (flex: 1)
+   absorbent la hauteur excédentaire. Ce n'est pas une mise en page portrait
+   OPTIMISÉE (elle demanderait une maquette validée par l'exploitant), c'est la
+   maquette validée rendue CORRECTE sur un écran étroit.
+
+   Règles d'écriture, verrouillées par src/pages/responsive-ecran.test.ts :
+   - chaque déclaration ci-dessous reprend le COEFFICIENT EXACT de la règle de
+     base qu'elle surcharge (« 5.6vh » → « calc(5.6 * var(--u)) ») ; rien
+     n'est redessiné, la taille relative du badge de train (2,8 / 4,3) en
+     particulier reste celle observée sur place ;
+   - même sélecteur que la règle de base, déclaré PLUS BAS : à spécificité
+     égale c'est l'ordre qui tranche, y compris pour `body.mode-demo header`
+     qui, sans sa propre surcharge, l'emporterait sur `header` ;
+   - jamais de padding sur `body` (transform de l'anti-burn-in) ;
+   - seuil en RAPPORT, jamais en largeur : un `max-width` toucherait le 16:9.
+   Les calques CENTRÉS (neutre, veille, fin de service, tronçon fermé, erreur,
+   médias) ne sont volontairement pas convertis : sans `nowrap`, ils passent à
+   la ligne et se centrent — mesurés sans débordement en portrait — et un
+   message centré gagne à rester grand sur un écran haut. */
+@media (max-aspect-ratio: 4/3) {
+  :root {
+    --u: 0.75vw;
+  }
+
+  /* Bandeau haut */
+  header {
+    flex: 0 0 calc(14 * var(--u));
+    border-bottom: calc(0.9 * var(--u)) solid var(--rouge);
+  }
+  .logo {
+    height: calc(12.2 * var(--u));
+  }
+  .gare-nom {
+    font-size: calc(6.4 * var(--u));
+  }
+  .gare-alt {
+    font-size: calc(2.1 * var(--u));
+    margin-top: calc(0.7 * var(--u));
+  }
+  .horloge {
+    font-size: calc(6.8 * var(--u));
+  }
+  .horloge .sec {
+    font-size: calc(3.2 * var(--u));
+  }
+  .date {
+    font-size: calc(1.95 * var(--u));
+    margin-top: calc(0.5 * var(--u));
+  }
+
+  /* Tableau */
+  .titre-tableau {
+    padding: calc(1.5 * var(--u)) 2vw calc(0.7 * var(--u));
+  }
+  .titre-tableau h1 {
+    font-size: calc(3.2 * var(--u));
+  }
+  .titre-tableau .en {
+    font-size: calc(2 * var(--u));
+  }
+  .entetes {
+    font-size: calc(1.7 * var(--u));
+    padding-bottom: calc(0.7 * var(--u));
+  }
+  .entetes small {
+    font-size: calc(1.4 * var(--u));
+  }
+  .r-dep {
+    font-size: calc(5.6 * var(--u));
+  }
+  .r-dep .retard-old {
+    font-size: calc(1.9 * var(--u));
+  }
+  .fleche {
+    width: calc(5 * var(--u));
+    height: calc(5 * var(--u));
+    border-radius: calc(1 * var(--u));
+  }
+  .fleche svg {
+    width: calc(3.2 * var(--u));
+    height: calc(3.2 * var(--u));
+  }
+  .r-dest .dest {
+    font-size: calc(4.3 * var(--u));
+  }
+  .badge-train {
+    font-size: calc(2.8 * var(--u));
+    border-radius: calc(0.9 * var(--u));
+    padding: calc(0.2 * var(--u)) calc(1.2 * var(--u));
+    margin-right: calc(1.5 * var(--u));
+  }
+  .r-dest .dest img.motrice-dest {
+    height: calc(7 * var(--u));
+    vertical-align: calc(-1.9 * var(--u));
+  }
+  .r-dest .note {
+    font-size: calc(1.95 * var(--u));
+  }
+  .r-dest .note.note-exp {
+    font-size: calc(1.62 * var(--u));
+  }
+  .pastille {
+    width: calc(3 * var(--u));
+    height: calc(3 * var(--u));
+    box-shadow: 0 0 0 calc(0.4 * var(--u)) rgba(255, 255, 255, 0.14);
+  }
+  .r-train .nom-rame {
+    font-size: calc(2.9 * var(--u));
+  }
+  .chip {
+    font-size: calc(3.2 * var(--u));
+    padding: calc(0.7 * var(--u)) 0.4vw;
+    border-radius: calc(1.1 * var(--u));
+    min-height: calc(7.4 * var(--u));
+  }
+  .chip b {
+    font-size: calc(2.4 * var(--u));
+  }
+  .chip small {
+    font-size: calc(1.4 * var(--u));
+  }
+  .r-statut {
+    font-size: calc(2.5 * var(--u));
+  }
+  .r-statut small {
+    font-size: calc(1.75 * var(--u));
+  }
+  .st-ok::before,
+  .st-retard::before,
+  .st-supp::before {
+    font-size: calc(1.7 * var(--u));
+    vertical-align: calc(0.4 * var(--u));
+  }
+  .arrivee {
+    padding: calc(1.2 * var(--u)) 2vw;
+    font-size: calc(2.25 * var(--u));
+  }
+  .arrivee .lbl {
+    font-size: calc(1.75 * var(--u));
+  }
+
+  /* Bas */
+  footer {
+    flex: 0 0 calc(8.5 * var(--u));
+  }
+  .ticker-inner {
+    font-size: calc(2.9 * var(--u));
+  }
+  .meteo {
+    font-size: calc(2.3 * var(--u));
+  }
+  .meteo .t {
+    font-size: calc(4.4 * var(--u));
+  }
+  .meteo small {
+    font-size: calc(1.65 * var(--u));
+  }
+  .releve {
+    font-size: calc(1.5 * var(--u));
+  }
+
+  /* Badge « données de HH:MM » et bandeaux : ancrés sur la hauteur de
+     l'en-tête, ils suivent la même unité que lui. */
+  .badge-cache {
+    top: calc(15.5 * var(--u));
+    font-size: calc(1.8 * var(--u));
+    padding: calc(0.5 * var(--u)) 1vw;
+    border-radius: calc(0.8 * var(--u));
+  }
+  .bandeau-demo {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--marine);
+  }
+  .bandeau-demo b {
+    font-size: calc(2.6 * var(--u));
+  }
+  .bandeau-demo span {
+    font-size: calc(1.9 * var(--u));
+  }
+  body.mode-demo header {
+    flex-basis: calc(19 * var(--u));
+    padding-top: calc(5 * var(--u));
+  }
+  body.mode-demo .badge-cache {
+    top: calc(20.5 * var(--u));
+  }
+  .bandeau-simule {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--jaune);
+  }
+  .bandeau-simule b {
+    font-size: calc(2.6 * var(--u));
+  }
+  .bandeau-simule span {
+    font-size: calc(1.9 * var(--u));
+  }
+  body.mode-simule header {
+    flex-basis: calc(19 * var(--u));
+    padding-top: calc(5 * var(--u));
+  }
+  body.mode-simule .badge-cache {
+    top: calc(20.5 * var(--u));
+  }
+  body.mode-simule.mode-demo .bandeau-demo {
+    top: calc(5 * var(--u));
+  }
+  body.mode-simule.mode-demo header {
+    flex-basis: calc(24 * var(--u));
+    padding-top: calc(10 * var(--u));
+  }
+  body.mode-simule.mode-demo .badge-cache {
+    top: calc(25.5 * var(--u));
+  }
+}
