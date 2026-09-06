@@ -952,9 +952,23 @@ tr.paire-fin td {
   color: var(--ok);
 }
 
+/* LE RETARD DOIT SE REPÉRER D'UN BALAYAGE, parmi quinze lignes calmes. Il
+   s'affichait exactement comme un train à l'heure : segment ambre PÂLE sur
+   fond blanc, illisible à deux mètres.
+
+   Ce qu'on ne fait PAS, et il faut savoir pourquoi pour ne pas y revenir :
+   faire porter le retard par l'heure de départ. L'heure de la ligne est ce
+   qui permet de RETROUVER un train quand un collègue annonce « le 11 h 00 » —
+   elle doit rester l'horaire théorique. On n'augmente donc que l'intensité
+   du badge, sans toucher ni à l'heure, ni à la structure, ni au vocabulaire.
+
+   La retenue compte autant que la visibilité : si toutes les lignes crient,
+   aucune ne dit rien. « À l'heure » et les lignes facultatives ne bougent
+   pas — seul l'état de retard passe en plein. */
 .seg button.on-retard {
-  background: var(--retard-bg);
-  color: var(--retard);
+  background: var(--retard);
+  color: #fff;
+  font-weight: 900;
 }
 
 .seg button.on-supp {
