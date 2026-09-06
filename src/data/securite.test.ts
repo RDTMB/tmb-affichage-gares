@@ -7,7 +7,16 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { ATTRIBUABLE_PAR, LIBELLE_ROLE, ROLES, ROLES_PROTEGES } from '../core/roles';
+import {
+  ATTRIBUABLE_PAR,
+  LIBELLE_ROLE,
+  ONGLETS,
+  ONGLET_DE_SECOURS,
+  ROLES,
+  ROLES_PROTEGES,
+  ROLES_QUI_ROUVRENT,
+  plafondOnglets,
+} from '../core/roles';
 import { REF_PROJET_PRODUCTION } from './config';
 
 function chemin(fichier: string): string {
@@ -1159,3 +1168,235 @@ const ELARGIES_ATTENDUES = [
   'roles: medias ecriture',
   'roles: medias suppression',
 ];
+
+// ---------------------------------------------------------------------------
+// Onglets visibles par rôle (06/09/2026).
+//
+// Ce qui se joue ici : ce réglage ressemble à un mécanisme de permissions et
+// n'en est pas un. Les tests ci-dessous verrouillent la différence des DEUX
+// côtés — la table ne peut rien accorder, et elle ne peut enfermer personne.
+// ---------------------------------------------------------------------------
+
+const MIGRATION_ONGLETS = 'migrations/2026-09-onglets-par-role.sql';
+
+describe('Table onglets_par_role : forme et droits', () => {
+  for (const fichier of ['schema.sql', MIGRATION_ONGLETS]) {
+    const code = instructions(sql(fichier));
+
+    it(`${fichier} : table de LIAISON, une ligne par rôle × onglet`, () => {
+      // Pas une colonne text[] : RLS s'évalue ligne à ligne, et le journal doit
+      // recevoir une ligne par onglet accordé ou masqué.
+      expect(code).toMatch(/create table if not exists onglets_par_role/);
+      expect(code).toMatch(/primary key \(role, onglet\)/);
+      expect(code).toMatch(/role text not null references roles\(code\)/);
+      expect(code).not.toMatch(/onglets text\[\]/);
+    });
+
+    it(`${fichier} : les huit onglets sont énumérés par une CONTRAINTE`, () => {
+      // Un onglet inconnu n'a aucun sens et ne doit pas pouvoir entrer.
+      const contrainte = code.match(/check \(onglet in \(([\s\S]*?)\)\)/)?.[1] ?? '';
+      for (const onglet of ONGLETS) expect(contrainte).toContain(`'${onglet}'`);
+    });
+
+    it(`${fichier} : RLS activée et droits par défaut RÉVOQUÉS`, () => {
+      expect(code).toMatch(/alter table onglets_par_role enable row level security/);
+      expect(code).toMatch(/revoke all on onglets_par_role from anon, authenticated/);
+    });
+
+    it(`${fichier} : pas d’UPDATE, et \`regle_par\` hors du GRANT d’INSERT`, () => {
+      // Accorder et masquer sont deux gestes, deux lignes de journal. Et
+      // l'auteur d'un réglage vient du jeton, jamais du client.
+      expect(code).toMatch(/grant select, delete on onglets_par_role to authenticated/);
+      expect(code).toMatch(/grant insert \(role, onglet\) on onglets_par_role to authenticated/);
+      expect(code).not.toMatch(/grant[^\n]*update[^\n]* on onglets_par_role to/);
+      expect(code).not.toMatch(/grant insert \([^)]*regle_par/);
+    });
+
+    it(`${fichier} : lecture ouverte, ÉCRITURE au seul rôle technique`, () => {
+      expect(code).toMatch(
+        /create policy "onglets: lecture" on onglets_par_role for select to authenticated\s*\n?\s*using \(true\)/,
+      );
+      for (const nom of ['onglets: reglage', 'onglets: masquage']) {
+        const bloc = code.match(new RegExp(`create policy "${nom}"[\\s\\S]*?;`))?.[0];
+        expect(bloc, `${nom} introuvable`).toBeDefined();
+        expect(bloc).toContain("private.a_le_role('technique')");
+      }
+    });
+  }
+});
+
+describe('onglets_par_role : les garde-fous d’enfermement', () => {
+  for (const fichier of ['schema.sql', MIGRATION_ONGLETS]) {
+    const code = instructions(sql(fichier));
+    const quorum =
+      code.match(
+        /create or replace function private\.verifier_quorum_onglets[\s\S]*?\$fn\$;/,
+      )?.[0] ?? '';
+
+    it(`${fichier} : le quorum est DIFFÉRÉ et sérialisé par un verrou`, () => {
+      // Différé : « masquer ici, accorder là » doit passer en une transaction.
+      // Verrou : sans lui, deux transactions supprimant chacune l'un des deux
+      // derniers accès réussiraient toutes les deux.
+      expect(quorum).toContain('pg_advisory_xact_lock');
+      expect(code).toMatch(
+        /create constraint trigger trg_onglets_quorum[\s\S]*?deferrable initially deferred/,
+      );
+      // INSERT autant que DELETE : un réglage partiel enferme aussi.
+      expect(code).toMatch(/trg_onglets_quorum\s*\n?\s*after insert or delete on onglets_par_role/);
+    });
+
+    it(`${fichier} : le rôle qui rouvre la porte est le MIROIR de roles.ts`, () => {
+      // La base ne connaît pas la matrice droit × rôle : la liste y est écrite
+      // en dur. Si elle diverge du miroir TypeScript, le garde-fou protège le
+      // mauvais rôle — et personne ne s'en aperçoit avant l'enfermement.
+      const liste = quorum.match(/rouvreurs constant text\[\] := array\[([^\]]*)\]/)?.[1] ?? '';
+      const codesSql = [...liste.matchAll(/'([a-z]+)'/g)].map((m) => m[1]).sort();
+      expect(codesSql).toEqual([...ROLES_QUI_ROUVRENT].sort());
+    });
+
+    it(`${fichier} : l’onglet protégé est le MIROIR de ONGLET_DE_SECOURS`, () => {
+      expect(quorum).toContain(`onglet_secours constant text := '${ONGLET_DE_SECOURS}'`);
+    });
+
+    it(`${fichier} : un rôle SANS AUCUNE LIGNE ne déclenche pas le refus`, () => {
+      // C'est le même repli que côté front : tout supprimer se soigne seul,
+      // seul le réglage PARTIEL enferme. Sans ce `not exists`, une base fraîche
+      // refuserait toute écriture.
+      expect(quorum).toMatch(/not exists \([\s\S]{0,120}from public\.onglets_par_role/);
+    });
+
+    it(`${fichier} : le message de refus dit COMMENT s’en sortir`, () => {
+      expect(quorum).toContain('hint =');
+      expect(quorum).toMatch(/delete from onglets_par_role where role = ''technique''/);
+    });
+
+    it(`${fichier} : l’auteur du réglage vient du JETON`, () => {
+      const marque =
+        code.match(
+          /create or replace function private\.marquer_reglage_onglet[\s\S]*?\$fn\$;/,
+        )?.[0] ?? '';
+      expect(marque).toContain('private.email_appelant()');
+      expect(code).toMatch(/create trigger trg_onglets_auteur before insert on onglets_par_role/);
+    });
+
+    it(`${fichier} : TRUNCATE a son propre déclencheur`, () => {
+      // Il ne déclenche aucun déclencheur de LIGNE : le journal ne verrait
+      // rien passer.
+      expect(code).toMatch(/trg_onglets_pas_de_truncate before truncate on onglets_par_role/);
+    });
+
+    it(`${fichier} : chaque réglage laisse une ligne de journal`, () => {
+      expect(code).toMatch(
+        /create trigger trg_journal_onglets\s*\n?\s*after insert or delete on onglets_par_role/,
+      );
+      expect(code).toMatch(/tracer_ecriture\('role,onglet', ''\)/);
+    });
+  }
+});
+
+describe('onglets_par_role : le seed est la PHOTOGRAPHIE de la matrice', () => {
+  /** Lignes du seed, telles qu'écrites dans un script. */
+  function seed(fichier: string): Set<string> {
+    const bloc = instructions(sql(fichier)).match(
+      /insert into onglets_par_role \(role, onglet\) values([\s\S]*?)on conflict/,
+    )?.[1];
+    expect(bloc, `seed introuvable dans ${fichier}`).toBeDefined();
+    return new Set(
+      [...(bloc ?? '').matchAll(/\('([a-z]+)', '([a-z]+)'\)/g)].map((m) => `${m[1]} ${m[2]}`),
+    );
+  }
+
+  /** Ce que la matrice du code produit, moins la décision du lot 2. */
+  const ATTENDU = new Set(
+    ROLES.flatMap((r) =>
+      plafondOnglets(r)
+        .filter((o) => !(r === 'caisse' && o === 'horaires'))
+        .map((o) => `${r} ${o}`),
+    ),
+  );
+
+  for (const fichier of ['schema.sql', MIGRATION_ONGLETS]) {
+    it(`${fichier} : le seed dit EXACTEMENT ce que la matrice produit aujourd’hui`, () => {
+      // Le jour de la bascule ne doit rien changer pour personne — sauf pour
+      // la caisse, et seulement sur Horaires. Un seed qui dériverait de la
+      // matrice masquerait des onglets sans que personne l'ait décidé.
+      expect([...seed(fichier)].sort()).toEqual([...ATTENDU].sort());
+    });
+
+    it(`${fichier} : le lot 2 est bien là — la caisse SANS Horaires`, () => {
+      const lignes = seed(fichier);
+      expect(lignes.has('caisse horaires')).toBe(false);
+      expect(lignes.has('caisse bandeau')).toBe(true);
+    });
+
+    it(`${fichier} : le seed est REJOUABLE et n’écrase aucun réglage`, () => {
+      // `do nothing`, jamais `do update` : rejouer le script ne doit pas
+      // rendre un onglet que l'exploitant avait masqué depuis.
+      const code = instructions(sql(fichier));
+      expect(code).toMatch(
+        /insert into onglets_par_role[\s\S]*?on conflict \(role, onglet\) do nothing/,
+      );
+      expect(code).not.toMatch(/insert into onglets_par_role[\s\S]*?on conflict[^;]*do update/);
+    });
+  }
+
+  it('les deux scripts posent le MÊME seed', () => {
+    expect([...seed('schema.sql')].sort()).toEqual([...seed(MIGRATION_ONGLETS)].sort());
+  });
+
+  it('le mock de démonstration montre la même chose que la production', () => {
+    // Une démo qui montrerait Horaires à la caisse enseignerait un
+    // comportement qui n'existe pas.
+    const mock = readFileSync(
+      fileURLToPath(new URL('./mock.ts', import.meta.url)),
+      'utf-8',
+    ).replace(/\r\n/g, '\n');
+    expect(mock).toContain('ONGLETS_PAR_ROLE_DEMO');
+    expect(mock).toMatch(/role === 'caisse' && o === 'horaires'/);
+    // Calculé depuis `plafondOnglets`, jamais recopié à la main.
+    expect(mock).toMatch(/ONGLETS_PAR_ROLE_DEMO[\s\S]{0,200}plafondOnglets\(role\)/);
+  });
+});
+
+describe(`${MIGRATION_ONGLETS} : refuse de s’exécuter sur une base inconnue`, () => {
+  const code = instructions(sql(MIGRATION_ONGLETS));
+
+  it('contrôle l’état de départ AVANT de créer quoi que ce soit', () => {
+    // Le piège du 05/09 : un `create ... if not exists` suivi d'un `insert`
+    // qui suppose le schéma complet laisse la base à moitié migrée.
+    const verrou = code.indexOf('raise exception');
+    expect(verrou).toBeGreaterThan(-1);
+    expect(verrou).toBeLessThan(code.indexOf('create table if not exists onglets_par_role'));
+    expect(verrou).toBeLessThan(code.indexOf('insert into onglets_par_role'));
+  });
+
+  it('exige tout ce dont la suite dépend, pas seulement la table des rôles', () => {
+    expect(code).toContain("to_regclass('public.roles')");
+    // Les quatre codes : sans eux, le seed échoue sur sa clé étrangère.
+    for (const role of ROLES) expect(code).toContain(`'${role}'`);
+    // L'identité de l'auteur et le journal : sans eux, un réglage ne laisse
+    // aucune trace, ce qui est justement ce qu'on veut éviter.
+    expect(code).toContain("to_regprocedure('private.email_appelant()')");
+    expect(code).toContain("to_regprocedure('private.tracer_ecriture()')");
+    expect(code).toContain("to_regprocedure('private.interdire_truncate_roles()')");
+  });
+
+  it('dit que « Success. No rows returned » ne prouve rien', () => {
+    const brut = sql(MIGRATION_ONGLETS);
+    expect(brut).toContain('Success. No rows returned');
+    expect(brut).toMatch(/base de TEST/);
+  });
+
+  it('fournit la porte de SECOURS en clair', () => {
+    // Si quelqu'un s'enferme malgré tout (dépannage SQL, service_role), la
+    // sortie doit être écrite noir sur blanc dans le fichier.
+    expect(sql(MIGRATION_ONGLETS)).toMatch(
+      /delete from onglets_par_role where role = 'technique';/,
+    );
+  });
+
+  it('ne touche à AUCUNE autre table', () => {
+    expect(code).not.toMatch(/create policy[^\n]*on (?!onglets_par_role)/);
+    expect(code).not.toMatch(/alter table (?!onglets_par_role)/);
+  });
+});

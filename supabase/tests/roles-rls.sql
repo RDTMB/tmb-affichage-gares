@@ -485,6 +485,113 @@ begin
     raise notice 'OK — la purge du journal est refusée hors rôle technique';
   end;
 
+  -------------------------------------------------------------------------
+  -- 4 bis. ONGLETS VISIBLES PAR RÔLE — l'invariant, démontré en base
+  -------------------------------------------------------------------------
+  -- CE QU'IL FAUT PROUVER : masquer un onglet ne change RIEN à ce que RLS
+  -- accepte ou refuse. C'est un rangement d'interface, pas une permission.
+  -- Si un seul de ces cas basculait, la table serait devenue une barrière de
+  -- sécurité par accident — et une barrière que l'exploitant règle lui-même,
+  -- sans revue, est la pire de toutes.
+
+  -- Cette section suppose la migration 2026-09-onglets-par-role.sql. Sur une
+  -- base qui ne l'a pas encore reçue, on le DIT et on saute — plutôt que
+  -- d'échouer sur « relation inexistante », message qui n'apprend rien.
+  if to_regclass('public.onglets_par_role') is null then
+    raise notice 'IGNORÉ — table onglets_par_role absente : jouer supabase/migrations/2026-09-onglets-par-role.sql pour éprouver cette section.';
+  else
+
+  -- (a) Le réglage est réservé au technique.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  begin
+    insert into public.onglets_par_role (role, onglet) values ('caisse', 'parametres');
+    raise exception 'ÉCHEC — un admin a pu régler la visibilité des onglets';
+  exception when insufficient_privilege then
+    raise notice 'OK — régler les onglets est refusé hors rôle technique';
+  end;
+
+  -- (b) Référence : ce que la caisse peut écrire AVANT tout masquage. Sans ce
+  --     témoin, le cas (d) ne prouverait rien — il passerait aussi si la
+  --     caisse n'avait JAMAIS pu écrire.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.params set valeur = '95'::jsonb where cle = 'vitesse_ticker_px_s';
+  get diagnostics touchees = row_count;
+  if touchees <> 1 then
+    raise exception 'RECETTE INVALIDE — la caisse ne peut déjà plus régler le bandeau ; le cas (d) ne prouverait rien.';
+  end if;
+
+  -- (c) Le technique masque à la caisse l'onglet Bandeau, celui de son métier.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  delete from public.onglets_par_role where role = 'caisse' and onglet = 'bandeau';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — technique : masque un onglet';
+  else raise exception 'ÉCHEC — technique : n''a pas pu masquer un onglet (ligne absente du seed ?)'; end if;
+
+  -- (d) LE POINT DE TOUTE LA SECTION : la caisse écrit toujours.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.params set valeur = '85'::jsonb where cle = 'vitesse_ticker_px_s';
+  get diagnostics touchees = row_count;
+  if touchees = 1 then
+    raise notice 'OK — masquer un onglet ne retire AUCUN droit : la caisse règle toujours le bandeau';
+  else
+    raise exception 'ÉCHEC — masquer un onglet a retiré un droit : la table est devenue une barrière de sécurité';
+  end if;
+
+  -- (e) …et l'inverse : ACCORDER un onglet hors plafond n'ouvre rien.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  insert into public.onglets_par_role (role, onglet) values ('caisse', 'circulations')
+    on conflict do nothing;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  update public.jours set terminus_bellevue_a_partir_du_train = 3 where date = '2099-12-31';
+  get diagnostics touchees = row_count;
+  if touchees = 0 then
+    raise notice 'OK — accorder l''onglet Circulations à la caisse n''ouvre AUCUNE écriture';
+  else
+    raise exception 'ÉCHEC — une ligne d''onglet a ouvert une écriture : l''invariant est rompu';
+  end if;
+
+  -- (f) L'auteur du réglage vient du JETON, pas du client.
+  if exists (
+    select 1 from public.onglets_par_role
+     where role = 'caisse' and onglet = 'circulations'
+       and regle_par is distinct from 'test-technique@exemple.invalid'
+  ) then
+    raise exception 'ÉCHEC — regle_par n''a pas été posée depuis le jeton';
+  end if;
+  raise notice 'OK — l''auteur du réglage est tracé depuis le jeton';
+
+  -- (g) ANTI-ENFERMEMENT : masquer le dernier accès à Utilisateurs est refusé.
+  --     Le déclencheur est DIFFÉRÉ : il tombe à la fin du bloc englobant, pas
+  --     sur le DELETE lui-même. D'où le sous-bloc, qui joue le rôle du COMMIT.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  begin
+    delete from public.onglets_par_role where role = 'technique' and onglet = 'utilisateurs';
+    -- Force la vérification des contraintes différées SANS clore la
+    -- transaction : c'est exactement ce que ferait le COMMIT.
+    set constraints all immediate;
+    raise exception 'ÉCHEC — le dernier accès à l''onglet Utilisateurs a pu être masqué';
+  exception when check_violation then
+    raise notice 'OK — masquer le dernier accès à Utilisateurs est refusé';
+  end;
+  set constraints all deferred;
+
+  -- (h) Remise en état de ce que cette section a bousculé : la recette ne
+  --     laisse RIEN derrière elle, réglages compris.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  delete from public.onglets_par_role where role = 'caisse' and onglet = 'circulations';
+  insert into public.onglets_par_role (role, onglet) values ('caisse', 'bandeau')
+    on conflict do nothing;
+  end if;
+
   execute 'reset role';
 
   -------------------------------------------------------------------------

@@ -13,8 +13,15 @@ import {
   estDernierDetenteur,
   motifCaseVerrouillee,
   motifCompteVerrouille,
+  motifOngletVerrouille,
+  ONGLETS,
+  ONGLET_DE_SECOURS,
+  ROLES_QUI_ROUVRENT,
   ongletsVisibles,
   peutAttribuer,
+  plafondOnglets,
+  type Onglet,
+  type VisibiliteOnglets,
   peutGererProfil,
   rolesAttribuables,
   rolesDemoDepuisEmail,
@@ -138,6 +145,9 @@ describe('Onglets visibles', () => {
     // `journal.purger`, que la caisse n'a pas — son droit `journal` ne menait
     // donc à AUCUN écran. Un onglet dédié le rend accessible.
     // 06/09/2026 : `medias` et `ecrans.commander` ouvrent deux onglets de plus.
+    // ⚠ C'est le PLAFOND, pas ce que la caisse voit en service : le seed livré
+    // lui masque Horaires (voir « Lot 2 » plus bas). Les deux cohabitent —
+    // le plafond dit ce qui est permis, le réglage ce qui est affiché.
     expect(ongletsVisibles(['caisse'])).toEqual([
       'horaires',
       'bandeau',
@@ -393,5 +403,202 @@ describe('Rôles de démonstration déduits de l’e-mail (mock)', () => {
 
   it('ignore la casse et l’ordre de saisie', () => {
     expect(rolesDemoDepuisEmail('Admin+Technique@demo')).toEqual(['technique', 'admin']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Visibilité des onglets réglable en supervision (table `onglets_par_role`).
+//
+// L'INVARIANT est ici, et rien d'autre ne compte autant : ce réglage ne peut
+// que RETRANCHER. Il n'est pas une barrière de sécurité — RLS l'est — c'est du
+// rangement d'interface.
+// ---------------------------------------------------------------------------
+
+describe('Onglets par rôle : le réglage ne peut que RETRANCHER', () => {
+  it('un réglage qui ACCORDE hors plafond ne produit RIEN', () => {
+    // Le cas d'attaque : une ligne écrite à la main en base, ou une réponse
+    // d'API falsifiée, qui donnerait Circulations et Utilisateurs à la caisse.
+    const forge: VisibiliteOnglets = {
+      caisse: ['circulations', 'parametres', 'utilisateurs', 'bandeau'],
+    };
+    // Seul « bandeau » survit : c'est le seul des quatre que ses droits ouvrent.
+    expect(ongletsVisibles(['caisse'], forge)).toEqual(['bandeau']);
+  });
+
+  it('AUCUN rôle ne peut gagner un onglet hors de son plafond, quoi qu’on écrive', () => {
+    // Balayage exhaustif : on donne TOUT à chaque rôle et on vérifie que le
+    // résultat ne dépasse jamais ce que ses droits ouvraient déjà.
+    for (const role of ROLES) {
+      const tout: VisibiliteOnglets = { [role]: [...ONGLETS] };
+      expect(ongletsVisibles([role], tout)).toEqual(plafondOnglets(role));
+    }
+  });
+
+  it('il RETRANCHE, en revanche, bel et bien', () => {
+    const sansHoraires: VisibiliteOnglets = { caisse: ['bandeau', 'medias', 'ecrans', 'journal'] };
+    expect(ongletsVisibles(['caisse'])).toContain('horaires');
+    expect(ongletsVisibles(['caisse'], sansHoraires)).not.toContain('horaires');
+  });
+
+  it('l’ordre de la barre est conservé, quel que soit l’ordre des lignes', () => {
+    const desordre: VisibiliteOnglets = { supervision: ['journal', 'bandeau', 'circulations'] };
+    expect(ongletsVisibles(['supervision'], desordre)).toEqual([
+      'circulations',
+      'bandeau',
+      'journal',
+    ]);
+  });
+
+  it('le CUMUL de rôles réunit les visibilités', () => {
+    // Horaires masqué à la caisse, mais pas à la supervision : un agent qui
+    // porte les deux le voit. Les droits s'additionnent, la visibilité aussi.
+    const v: VisibiliteOnglets = {
+      caisse: ['bandeau'],
+      supervision: ['horaires', 'circulations'],
+    };
+    expect(ongletsVisibles(['caisse', 'supervision'], v)).toEqual([
+      'circulations',
+      'horaires',
+      'bandeau',
+    ]);
+  });
+});
+
+describe('Onglets par rôle : les deux replis vont vers la matrice, jamais vers « rien »', () => {
+  it('réglage INDISPONIBLE (null) : chacun voit ce que ses droits ouvrent', () => {
+    // Base injoignable, table absente, table vide. L'exploitation ne doit
+    // jamais attendre l'informatique un matin de service : une supervision
+    // aveugle parce qu'une table manque serait pire que pas de réglage.
+    for (const role of ROLES) {
+      expect(ongletsVisibles([role], null)).toEqual(plafondOnglets(role));
+      expect(ongletsVisibles([role])).toEqual(plafondOnglets(role));
+    }
+  });
+
+  it('un rôle SANS AUCUNE LIGNE suit la matrice, il ne devient pas aveugle', () => {
+    // Cas réel : un rôle créé après la migration, que personne n'a réglé.
+    // Le traiter comme « réglé à zéro onglet » l'enfermerait dehors — et la
+    // personne capable de le rouvrir pourrait être justement celle qui le porte.
+    const seulementLaCaisse: VisibiliteOnglets = { caisse: ['bandeau'] };
+    expect(ongletsVisibles(['supervision'], seulementLaCaisse)).toEqual(
+      plafondOnglets('supervision'),
+    );
+    expect(ongletsVisibles(['caisse'], seulementLaCaisse)).toEqual(['bandeau']);
+  });
+
+  it('une liste VIDE pour un rôle est traitée comme une absence de réglage', () => {
+    // `{ caisse: [] }` peut venir d'une requête filtrée, pas d'une décision.
+    expect(ongletsVisibles(['caisse'], { caisse: [] })).toEqual(plafondOnglets('caisse'));
+  });
+
+  it('aucun rôle ne donne aucun onglet, réglage ou pas', () => {
+    expect(ongletsVisibles([], null)).toEqual([]);
+    expect(ongletsVisibles([], { caisse: ['bandeau'] })).toEqual([]);
+  });
+});
+
+describe('Onglets par rôle : on ne s’enferme pas dehors', () => {
+  it('le rôle qui rouvre la porte est celui qui porte `parametres.technique`', () => {
+    expect(ROLES_QUI_ROUVRENT.length).toBeGreaterThan(0);
+    for (const role of ROLES_QUI_ROUVRENT)
+      expect(aLeDroit([role], 'parametres.technique')).toBe(true);
+    for (const role of ROLES) {
+      if (aLeDroit([role], 'parametres.technique')) expect(ROLES_QUI_ROUVRENT).toContain(role);
+    }
+  });
+
+  it('l’onglet de secours est bien celui qui héberge la carte de réglage', () => {
+    expect(ONGLET_DE_SECOURS).toBe('utilisateurs');
+    for (const role of ROLES_QUI_ROUVRENT) {
+      expect(plafondOnglets(role)).toContain(ONGLET_DE_SECOURS);
+    }
+  });
+
+  it('masquer le DERNIER accès à Utilisateurs est refusé', () => {
+    const apres: VisibiliteOnglets = Object.fromEntries(
+      ROLES_QUI_ROUVRENT.map((r) => [r, plafondOnglets(r).filter((o) => o !== 'utilisateurs')]),
+    );
+    for (const role of ROLES_QUI_ROUVRENT) {
+      expect(motifOngletVerrouille(role, 'utilisateurs', apres)).toContain('rouvrir');
+    }
+  });
+
+  it('…mais le masquer à un rôle qui n’en est pas le dernier accès reste permis', () => {
+    // L'admin voit Utilisateurs sans pouvoir régler cette carte : le lui
+    // masquer ne ferme aucune porte.
+    expect(motifOngletVerrouille('admin', 'utilisateurs', null)).toBeNull();
+  });
+
+  it('un onglet HORS PLAFOND est verrouillé, et le dit clairement', () => {
+    const motif = motifOngletVerrouille('caisse', 'circulations', null);
+    expect(motif).toContain('aucun droit');
+    // Le message nomme le rôle : l'exploitant règle quatre rôles à la fois.
+    expect(motif).toContain('Caisse');
+  });
+
+  it('les autres onglets ne sont jamais verrouillés sans raison', () => {
+    for (const role of ROLES) {
+      for (const onglet of plafondOnglets(role)) {
+        if (onglet === ONGLET_DE_SECOURS && ROLES_QUI_ROUVRENT.includes(role)) continue;
+        expect(motifOngletVerrouille(role, onglet, null)).toBeNull();
+      }
+    }
+  });
+});
+
+describe('Onglets par rôle : ce n’est PAS un mécanisme de permissions', () => {
+  it('masquer un onglet ne retire AUCUN droit', () => {
+    // La démonstration de l'invariant, côté droits cette fois : les onglets
+    // sont un rangement d'écran, `aLeDroit()` ne les regarde même pas.
+    const toutMasque: VisibiliteOnglets = Object.fromEntries(ROLES.map((r) => [r, ['journal']]));
+    for (const role of ROLES) {
+      for (const droit of DROITS) {
+        const avant = aLeDroit([role], droit);
+        expect(ongletsVisibles([role], toutMasque).length).toBeLessThanOrEqual(
+          plafondOnglets(role).length,
+        );
+        expect(aLeDroit([role], droit)).toBe(avant);
+      }
+    }
+  });
+
+  it('accorder un onglet hors plafond ne donne AUCUN droit non plus', () => {
+    const forge: VisibiliteOnglets = { caisse: [...ONGLETS] };
+    void ongletsVisibles(['caisse'], forge);
+    expect(aLeDroit(['caisse'], 'circulations')).toBe(false);
+    expect(aLeDroit(['caisse'], 'comptes.gerer')).toBe(false);
+    expect(aLeDroit(['caisse'], 'parametres.exploitation')).toBe(false);
+  });
+});
+
+describe('Lot 2 : Horaires masqué pour la caisse', () => {
+  /** Le réglage livré en seed (supabase/schema.sql et le mock de démo). */
+  const SEED: VisibiliteOnglets = Object.fromEntries(
+    ROLES.map((r) => [r, plafondOnglets(r).filter((o) => !(r === 'caisse' && o === 'horaires'))]),
+  ) as Record<Role, Onglet[]>;
+
+  it('la caisse ne voit plus Horaires', () => {
+    expect(ongletsVisibles(['caisse'], SEED)).toEqual(['bandeau', 'medias', 'ecrans', 'journal']);
+  });
+
+  it('elle garde le DROIT sous-jacent : c’est un masquage, pas un retrait', () => {
+    // `bandeau` est ce qui lui ouvrait Horaires. Le retirer aurait cassé son
+    // métier ; c'est pourquoi la décision passe par la table et non par la
+    // ligne `horaires:` de DROITS_DE_L_ONGLET.
+    expect(aLeDroit(['caisse'], 'bandeau')).toBe(true);
+    expect(ongletsVisibles(['caisse'], SEED)).toContain('bandeau');
+  });
+
+  it('les trois autres rôles ne changent PAS d’un onglet', () => {
+    // Le seed est une photographie : le jour de la bascule ne doit rien
+    // changer pour qui que ce soit d'autre.
+    for (const role of ['technique', 'admin', 'supervision'] as Role[]) {
+      expect(ongletsVisibles([role], SEED)).toEqual(ongletsVisibles([role], null));
+    }
+  });
+
+  it('l’exploitant peut revenir en arrière sans livraison', () => {
+    const rendu: VisibiliteOnglets = { ...SEED, caisse: [...(SEED?.caisse ?? []), 'horaires'] };
+    expect(ongletsVisibles(['caisse'], rendu)).toContain('horaires');
   });
 });
