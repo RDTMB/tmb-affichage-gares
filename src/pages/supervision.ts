@@ -1365,21 +1365,28 @@ function initCirculations(): void {
     champ.value = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(
       Math.floor((s % 3600) / 60),
     ).padStart(2, '0')}`;
-    $('form-depart-sup').style.display = '';
+    // SUPERPOSITION : plus aucun retour en haut de page. La fenêtre s'ouvre
+    // par-dessus, quelle que soit la position de la ligne dans le tableau.
+    $('modale-depart').style.display = '';
     $('form-train-sup').style.display = 'none';
     majApercuDepart();
-    // Le panneau vit en HAUT de l'onglet, le train supplémentaire tout en BAS
-    // du tableau : ouvert sans rien faire d'autre, il s'affichait hors écran
-    // et le bouton semblait ne rien faire. On l'amène sous les yeux, et le
-    // champ prend le curseur — sur place, l'agent n'a plus qu'à confirmer.
-    $('form-depart-sup').scrollIntoView({ behavior: 'smooth', block: 'center' });
     champ.focus();
   };
 
   const fermeDepartSup = (): void => {
     departEnCours = null;
-    $('form-depart-sup').style.display = 'none';
+    $('modale-depart').style.display = 'none';
   };
+
+  // Clic HORS de la fenêtre : on ferme, comme partout ailleurs. Le clic à
+  // l'intérieur ne doit évidemment rien fermer.
+  $('modale-depart').addEventListener('click', (e) => {
+    if (e.target === $('modale-depart')) fermeDepartSup();
+  });
+  // Échap : sortie sans rien écrire — la confirmation reste un choix explicite.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && departEnCours !== null) fermeDepartSup();
+  });
 
   $('depart-heure').addEventListener('input', majApercuDepart);
   $('btn-depart-annuler').addEventListener('click', fermeDepartSup);

@@ -171,27 +171,40 @@
           <!-- DÉPART RÉEL d'une descente de renfort. Un seul contrôle couvre
                les deux usages : sur place on valide l'heure pré-remplie, plus
                tard on la corrige. -->
-          <div class="carte-sup carte-depart" id="form-depart-sup" style="display: none">
-            <h3 id="depart-titre">Le train est reparti</h3>
-            <div class="ligne">
-              <label
-                >Heure de départ réelle
-                <input type="time" id="depart-heure" step="60" />
-              </label>
-              <span class="depart-estime" id="depart-estime"></span>
-            </div>
-            <div class="depart-alerte" id="depart-refus" style="display: none"></div>
-            <div class="depart-avert" id="depart-avert" style="display: none"></div>
-            <div class="apercu-sup" id="depart-apercu"></div>
-            <div class="note">
-              Les horaires de la descente sont recalculés depuis cette heure et écrits
-              <b>immédiatement</b> : des voyageurs attendent en bas, une publication différée
-              laisserait une heure fausse à l'écran. La desserte choisie à la création n'est pas
-              modifiée.
-            </div>
-            <div class="ligne">
-              <button class="primaire leger" id="btn-depart-valider">Confirmer</button>
-              <button class="leger" id="btn-depart-annuler">Annuler</button>
+          <!-- SUPERPOSITION : la ligne du train supplémentaire est tout en bas
+               du tableau, et un encart en haut de l'onglet s'ouvrait hors
+               écran. Une modale ne dépend d'aucune position et survit à un
+               re-rendu du tableau, contrairement à un encart inséré dans la
+               table. -->
+          <div class="modale" id="modale-depart" style="display: none">
+            <div
+              class="carte-sup carte-depart"
+              id="form-depart-sup"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="depart-titre"
+            >
+              <h3 id="depart-titre">Le train est reparti</h3>
+              <div class="ligne">
+                <label
+                  >Heure de départ réelle
+                  <input type="time" id="depart-heure" step="60" />
+                </label>
+                <span class="depart-estime" id="depart-estime"></span>
+              </div>
+              <div class="depart-alerte" id="depart-refus" style="display: none"></div>
+              <div class="depart-avert" id="depart-avert" style="display: none"></div>
+              <div class="apercu-sup" id="depart-apercu"></div>
+              <div class="note">
+                Les horaires de la descente sont recalculés depuis cette heure et écrits
+                <b>immédiatement</b> : des voyageurs attendent en bas, une publication différée
+                laisserait une heure fausse à l'écran. La desserte choisie à la création n'est pas
+                modifiée.
+              </div>
+              <div class="ligne">
+                <button class="primaire leger" id="btn-depart-valider">Confirmer</button>
+                <button class="leger" id="btn-depart-annuler">Annuler</button>
+              </div>
             </div>
           </div>
           <div class="carte-sup" id="form-train-sup" style="display: none">
