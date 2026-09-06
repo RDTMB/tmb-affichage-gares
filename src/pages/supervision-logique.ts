@@ -885,6 +885,106 @@ export function resumeJournee(
 }
 
 // ---------------------------------------------------------------------------
+// Barre de publication : trois états (canevas 1d)
+// ---------------------------------------------------------------------------
+
+const HEURE_PARIS = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris',
+  hourCycle: 'h23',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/** « HH:MM » d'un horodatage ISO, ou null s'il est absent ou illisible. */
+export function heureCourte(iso: string | null): string | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) ? HEURE_PARIS.format(new Date(t)) : null;
+}
+
+export type EtatBarrePublication = 'publie' | 'en-cours' | 'echec';
+
+export interface BarrePublication {
+  etat: EtatBarrePublication;
+  /** Compteur de la pastille, null quand il n'y a rien à compter. */
+  compteur: number | null;
+  titre: string;
+  /** Ce que les écrans affichent MAINTENANT — l'information qui manquait. */
+  detail: string;
+  libelleBouton: string;
+  boutonActif: boolean;
+}
+
+/**
+ * État de la barre de publication, PUR et testable.
+ *
+ * Le vocabulaire est celui du canevas et il n'est pas cosmétique : « en
+ * attente de publication » décrivait le brouillon, « pas encore sur les
+ * écrans » décrit ce que voient les voyageurs. Même fait, formulé du point de
+ * vue du guichet — et c'est ce point de vue qui compte quand on se demande si
+ * ce qu'on lit à l'écran est bien en gare.
+ *
+ * La ligne de détail répond toujours à la même question : « ce que je vois
+ * est-il en gare ? ». Elle remplace la phrase fixe qui prétendait que les
+ * modifications s'appliquaient immédiatement — ce qui était faux depuis
+ * l'introduction du brouillon.
+ */
+export function barrePublication(etat: {
+  modifs: number;
+  /** Modifications restées en attente après une publication incomplète. */
+  echecs: number;
+  /** Horodatage ISO de la dernière publication réussie. */
+  derniereISO: string | null;
+  /** Horodatage ISO de la tentative incomplète, s'il y en a eu une. */
+  echecISO?: string | null;
+}): BarrePublication {
+  const heure = heureCourte(etat.derniereISO);
+  // « les 6 gares » n'est pas une approximation : c'est le périmètre exact de
+  // la publication, et le bouton porte le même nombre.
+  const publieA = heure
+    ? `Les 6 gares affichent l’état publié à ${heure}`
+    : 'Les 6 gares affichent le dernier état publié';
+
+  if (etat.echecs > 0) {
+    const h = heureCourte(etat.echecISO ?? null);
+    const n = etat.echecs;
+    return {
+      etat: 'echec',
+      compteur: n,
+      titre:
+        `Publication incomplète${h ? ` à ${h}` : ''} — ` +
+        `${n} modification${n > 1 ? 's ne sont pas' : ' n’est pas'} en gare`,
+      detail: publieA,
+      libelleBouton: 'Réessayer la publication',
+      boutonActif: true,
+    };
+  }
+
+  if (etat.modifs > 0) {
+    const n = etat.modifs;
+    return {
+      etat: 'en-cours',
+      compteur: n,
+      titre: `${n} modification${n > 1 ? 's' : ''} pas encore sur les écrans`,
+      detail: heure
+        ? `Les 6 gares affichent toujours l’état publié à ${heure}`
+        : 'Les 6 gares affichent toujours le dernier état publié',
+      libelleBouton: 'Publier sur les 6 gares',
+      boutonActif: true,
+    };
+  }
+
+  return {
+    etat: 'publie',
+    compteur: null,
+    titre: 'Tout est publié',
+    detail: publieA,
+    libelleBouton: 'Publier sur les 6 gares',
+    boutonActif: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Barre de navigation : deux groupes, une seule rangée (canevas 1b)
 // ---------------------------------------------------------------------------
 

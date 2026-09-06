@@ -828,9 +828,15 @@
       </section>
     </main>
 
+    <!-- TROIS ÉTATS, trois signaux REDONDANTS (canevas 1d) : le filet
+         supérieur (absent / bleu / rouge), la hauteur de la barre, et la forme
+         de la pastille. Un seul suffit à trancher à deux mètres, et aucun
+         n'est une alerte permanente au repos — la couleur n'est jamais dans le
+         fond entier. -->
     <div class="publier" id="barre-publier" style="display: none">
-      <div>
-        <div class="etat" id="etat-pub">Tout est publié ✓</div>
+      <div class="pastille-pub" id="pastille-pub" style="display: none">—</div>
+      <div class="bloc-etat-pub">
+        <div class="etat" id="etat-pub">Tout est publié</div>
         <div class="resume-application" id="resume-application" style="display: none"></div>
         <!-- Cause RÉELLE d'une publication incomplète : elle reste affichée
              jusqu'à la publication suivante, là où le toast s'effaçait avant

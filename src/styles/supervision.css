@@ -1886,11 +1886,60 @@ tr.paire-fin td {
   z-index: 40;
 }
 
+/* TROIS ÉTATS, TROIS SIGNAUX REDONDANTS (canevas 1d) : le filet supérieur, la
+   hauteur de la barre, la forme de la pastille. Un seul suffit à trancher à
+   deux mètres. La couleur n'est JAMAIS dans le fond entier — une barre rouge
+   en permanence cesse d'alerter au bout d'une heure. */
+.publier.pub-publie {
+  border-top-color: var(--bord);
+}
+
+.publier.pub-en-cours {
+  border-top: 3px solid #2b7ab5;
+  padding-top: 11px;
+}
+
+/* Le plus haut des trois, et le seul à porter un encart : un échec de
+   publication laisse des voyageurs devant un horaire faux. */
+.publier.pub-echec {
+  border-top: 3px solid var(--rouge);
+  padding-top: 11px;
+  padding-bottom: 15px;
+}
+
+.publier .bloc-etat-pub {
+  min-width: 0;
+}
+
 .publier .etat {
   font-weight: 700;
 }
 
-.publier .etat b {
+/* Pastille du compteur. Bleue en travail, rouge à l'échec : l'état de travail
+   n'est pas une alerte, et le rouge garde son sens. */
+.pastille-pub {
+  flex: none;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  background: #2b7ab5;
+}
+
+.pub-echec .pastille-pub {
+  background: var(--rouge);
+  /* Carrée aux angles adoucis : la FORME distingue déjà les deux états, même
+     pour qui ne perçoit pas la différence de couleur. */
+  border-radius: 7px;
+}
+
+.pub-echec .etat {
   color: var(--rouge);
 }
 

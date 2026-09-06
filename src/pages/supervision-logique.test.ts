@@ -19,6 +19,8 @@ import {
   ajusteSection,
   bandeauSection,
   bornesSectionPossibles,
+  barrePublication,
+  heureCourte,
   grilleOngletsHtml,
   groupesNavigation,
   estOngletAdministration,
@@ -419,6 +421,116 @@ describe('bandeauSection : signalé seulement quand la ligne est restreinte', ()
 // grille NE MENT PAS : une case cochable doit correspondre à un geste que la
 // base acceptera, une case grisée à un geste qu'elle refuserait.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Barre de publication — les trois états (canevas 1d).
+//
+// Ce qui se joue ici n'est pas cosmétique : la barre répond à « ce que je vois
+// est-il en gare ? ». Elle a longtemps prétendu que les modifications
+// s'appliquaient immédiatement, ce qui est faux depuis le brouillon.
+// ---------------------------------------------------------------------------
+
+describe('barrePublication : les trois états et leur vocabulaire', () => {
+  const PUBLIE_A = '2026-09-06T08:12:00.000Z'; // 10:12 à Paris
+
+  it('ÉTAT 1 — rien à publier : bouton inerte, et ce que les gares affichent', () => {
+    const v = barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.etat).toBe('publie');
+    expect(v.titre).toBe('Tout est publié');
+    expect(v.compteur).toBeNull();
+    expect(v.boutonActif).toBe(false);
+    // La ligne grise ne raconte plus une règle fausse : elle date l'état vu
+    // en gare.
+    expect(v.detail).toContain('10:12');
+    expect(v.detail).toContain('Les 6 gares');
+  });
+
+  it('ÉTAT 2 — le compteur parle des ÉCRANS, pas du brouillon', () => {
+    // « en attente de publication » décrivait le brouillon ; « pas encore sur
+    // les écrans » décrit ce que voient les voyageurs. Même fait, point de vue
+    // du guichet — et c'est celui qui compte.
+    const v = barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.etat).toBe('en-cours');
+    expect(v.titre).toBe('2 modifications pas encore sur les écrans');
+    expect(v.titre).not.toContain('en attente de publication');
+    expect(v.compteur).toBe(2);
+    expect(v.boutonActif).toBe(true);
+    // …et la ligne grise dit que les gares n'ont pas bougé.
+    expect(v.detail).toContain('toujours');
+    expect(v.detail).toContain('10:12');
+  });
+
+  it('ÉTAT 2 au singulier : « 1 modification », sans « s »', () => {
+    const v = barrePublication({ modifs: 1, echecs: 0, derniereISO: PUBLIE_A });
+    expect(v.titre).toBe('1 modification pas encore sur les écrans');
+  });
+
+  it('ÉTAT 3 — échec partiel : il PRIME sur le compteur ordinaire', () => {
+    // Un échec laisse des voyageurs devant un horaire faux : il passe devant.
+    const v = barrePublication({
+      modifs: 3,
+      echecs: 1,
+      derniereISO: PUBLIE_A,
+      echecISO: '2026-09-06T08:21:00.000Z',
+    });
+    expect(v.etat).toBe('echec');
+    expect(v.titre).toContain('Publication incomplète');
+    expect(v.titre).toContain('10:21');
+    expect(v.titre).toContain('n’est pas en gare');
+    expect(v.libelleBouton).toBe('Réessayer la publication');
+    expect(v.boutonActif).toBe(true);
+  });
+
+  it('ÉTAT 3 au pluriel : l’accord suit le nombre resté en attente', () => {
+    const v = barrePublication({ modifs: 5, echecs: 2, derniereISO: PUBLIE_A });
+    expect(v.titre).toContain('2 modifications ne sont pas en gare');
+  });
+
+  it('l’état 3 garde la DATE de la dernière publication réussie', () => {
+    // Ce qui est en gare reste l'état d'avant : la ligne grise ne doit pas
+    // laisser croire que la tentative ratée a changé quelque chose.
+    const v = barrePublication({
+      modifs: 3,
+      echecs: 1,
+      derniereISO: PUBLIE_A,
+      echecISO: '2026-09-06T08:21:00.000Z',
+    });
+    expect(v.detail).toContain('10:12');
+    expect(v.detail).not.toContain('10:21');
+  });
+
+  it('AUCUNE publication encore faite : pas d’heure inventée', () => {
+    // Une base neuve, ou un poste ouvert avant la première publication du
+    // jour. Afficher « publié à 00:00 » serait un mensonge.
+    const v = barrePublication({ modifs: 0, echecs: 0, derniereISO: null });
+    expect(v.detail).not.toMatch(/\d{2}:\d{2}/);
+    expect(v.detail).toContain('dernier état publié');
+  });
+
+  it('un horodatage ILLISIBLE ne casse pas la barre', () => {
+    const v = barrePublication({ modifs: 1, echecs: 0, derniereISO: 'pas une date' });
+    expect(v.etat).toBe('en-cours');
+    expect(v.detail).not.toContain('Invalid');
+    expect(v.detail).not.toMatch(/NaN/);
+  });
+
+  it('les trois états sont bien DISTINCTS — aucun libellé partagé', () => {
+    const etats = [
+      barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }),
+    ];
+    expect(new Set(etats.map((e) => e.etat)).size).toBe(3);
+    expect(new Set(etats.map((e) => e.titre)).size).toBe(3);
+  });
+
+  it('heureCourte : Europe/Paris, et null plutôt qu’une date bancale', () => {
+    expect(heureCourte('2026-09-06T08:12:00.000Z')).toBe('10:12'); // été
+    expect(heureCourte('2026-01-06T08:12:00.000Z')).toBe('09:12'); // hiver
+    expect(heureCourte(null)).toBeNull();
+    expect(heureCourte('n’importe quoi')).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Barre de navigation à deux groupes (canevas 1b).

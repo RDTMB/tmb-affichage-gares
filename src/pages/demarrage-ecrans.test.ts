@@ -361,3 +361,66 @@ describe('supervision — la barre à deux groupes reste câblée', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Canevas 1d — barre Publier, trois états.
+// ---------------------------------------------------------------------------
+
+describe('supervision — la barre Publier porte ses trois signaux', () => {
+  const html = source('supervision.html');
+  const code = codeSeul('src/pages/supervision.ts');
+  const css = source('src/styles/supervision.css');
+
+  it('l’état est porté par UNE classe, pas par trois réglages à tenir d’accord', () => {
+    expect(code).toMatch(/barrePublication\(/);
+    expect(code).toMatch(/pub-\$\{vue\.etat\}/);
+    for (const classe of ['pub-publie', 'pub-en-cours', 'pub-echec']) {
+      expect(css, `${classe} absente de la feuille`).toContain(`.publier.${classe}`);
+    }
+  });
+
+  it('TROIS SIGNAUX REDONDANTS : filet, hauteur, forme de pastille', () => {
+    // Un seul suffit à trancher à deux mètres — et un daltonien lit la forme.
+    expect(css).toMatch(/\.publier\.pub-en-cours\s*\{[^}]*border-top:\s*3px solid #2b7ab5/);
+    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*border-top:\s*3px solid var\(--rouge\)/);
+    // L'échec est le seul plus haut : padding-bottom augmenté.
+    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*padding-bottom/);
+    // …et le seul dont la pastille change de FORME.
+    expect(css).toMatch(/\.pub-echec \.pastille-pub\s*\{[^}]*border-radius:\s*7px/);
+    expect(css).toMatch(/\.pastille-pub\s*\{[^}]*border-radius:\s*99px/);
+  });
+
+  it('la couleur n’est JAMAIS dans le fond entier de la barre', () => {
+    // Une barre rouge en permanence cesse d'alerter au bout d'une heure.
+    for (const etat of ['pub-en-cours', 'pub-echec']) {
+      const bloc = css.match(new RegExp(`\.publier\.${etat}\s*\{[^}]*\}`))?.[0] ?? '';
+      expect(bloc, `${etat} teinte le fond`).not.toMatch(/[^-]background:/);
+    }
+  });
+
+  it('la phrase périmée ne peut pas revenir', () => {
+    // « Les modifications s'appliquent immédiatement » était faux depuis
+    // l'introduction du brouillon : c'est la ligne qui mentait, pas le code.
+    expect(html).not.toMatch(/s.appliquent imm[ée]diatement/i);
+    expect(code).not.toMatch(/s.appliquent imm[ée]diatement/i);
+  });
+
+  it('la cause d’un échec reste affichée jusqu’à la publication suivante', () => {
+    // Contrainte métier : un diagnostic qui s'efface avant d'être lu ne sert
+    // à personne. Le compteur d'échec n'est remis à zéro qu'en même temps que
+    // le bandeau, et par rien d'autre.
+    expect(html).toContain('id="echec-publication"');
+    // Une seule REMISE À ZÉRO dans tout le fichier — la déclaration
+    // `let echecsEnAttente = 0` n'en est pas une, d'où la négation.
+    const remises = code.match(/(?<!let )echecsEnAttente = 0/g) ?? [];
+    expect(remises).toHaveLength(1);
+    const fonction = code.match(/function afficheEchecPublication[\s\S]*?\n}/)?.[0] ?? '';
+    expect(fonction).toContain('echecsEnAttente = 0');
+    expect(fonction).toContain('echecPublicationISO = null');
+  });
+
+  it('l’échec est armé par le COMPTE réel des modifications restées en attente', () => {
+    expect(code).toMatch(/echecsEnAttente = echecs\.length/);
+    expect(code).toMatch(/echecPublicationISO = new Date\(\)\.toISOString\(\)/);
+  });
+});

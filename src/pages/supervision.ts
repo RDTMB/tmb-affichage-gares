@@ -119,6 +119,7 @@ import {
   recapCycle,
   resumeJournee,
   routageCirculations,
+  barrePublication,
   grilleOngletsHtml,
   groupesNavigation,
   etatVisibiliteOnglets,
@@ -212,6 +213,15 @@ let ecartsCourants: Ecart[] = [];
 let modifs = 0;
 /** Dernière publication connue, tous postes confondus. */
 let dernierePublicationVue: string | null = null;
+
+/**
+ * ÉCHEC PARTIEL de publication. Ces deux valeurs survivent à la tentative :
+ * la cause reste affichée jusqu'à la publication suivante, parce qu'un
+ * diagnostic qui s'efface avant d'être lu ne sert à personne. Elles ne sont
+ * remises à zéro que par une nouvelle tentative ou une réussite.
+ */
+let echecsEnAttente = 0;
+let echecPublicationISO: string | null = null;
 /** Dernière liste d'écrans lue : la veille par poste entre dans l'état publiable. */
 let ecransConnus: EcranInfo[] = [];
 /**
@@ -427,19 +437,38 @@ function recalculeEcarts(): void {
 }
 
 function majBarrePublication(): void {
-  $('etat-pub').innerHTML =
-    modifs === 0
-      ? 'Tout est publié ✓'
-      : `<b>${modifs} modification${modifs > 1 ? 's' : ''}</b> en attente de publication`;
+  const vue = barrePublication({
+    modifs,
+    echecs: echecsEnAttente,
+    derniereISO: dernierePublicationVue,
+    echecISO: echecPublicationISO,
+  });
+
+  // L'ÉTAT porte la signature visuelle : filet, hauteur, pastille. Une seule
+  // classe le dit, plutôt que trois réglages à tenir d'accord.
+  const barre = $('barre-publier');
+  barre.classList.remove('pub-publie', 'pub-en-cours', 'pub-echec');
+  barre.classList.add(`pub-${vue.etat}`);
+
+  $('etat-pub').textContent = vue.titre;
+  // La ligne de détail répond toujours à « ce que je vois est-il en gare ? ».
+  // Elle a remplacé la phrase fixe qui prétendait que les modifications
+  // s'appliquaient immédiatement — faux depuis le brouillon.
+  $('detail-pub').textContent = vue.detail;
+
+  const pastille = $('pastille-pub');
+  pastille.style.display = vue.compteur === null ? 'none' : '';
+  pastille.textContent = vue.compteur === null ? '' : String(vue.compteur);
+
   // Rien à publier : bouton neutre et inerte, plutôt qu'un rouge qui appelle
   // un clic sans effet.
   const bouton = $('btn-publier') as HTMLButtonElement;
-  bouton.disabled = modifs === 0;
-  bouton.setAttribute('aria-disabled', String(modifs === 0));
-  bouton.title =
-    modifs === 0
-      ? 'Aucune modification depuis la dernière publication'
-      : `Publier ${modifs} modification${modifs > 1 ? 's' : ''} sur les 6 gares`;
+  bouton.textContent = vue.libelleBouton;
+  bouton.disabled = !vue.boutonActif;
+  bouton.setAttribute('aria-disabled', String(!vue.boutonActif));
+  bouton.title = vue.boutonActif
+    ? vue.libelleBouton
+    : 'Aucune modification depuis la dernière publication';
 }
 
 function bump(detail: string): void {
@@ -3769,6 +3798,10 @@ async function publieLeBrouillon(): Promise<boolean> {
   if (echecs.length > 0) {
     // La CAUSE dans un bandeau persistant, le résumé dans le toast : un
     // diagnostic qui s'efface avant d'être lu ne sert à personne.
+    // Le COMPTE, lui, alimente la barre : c'est lui qui la fait passer en
+    // état « échec » — filet rouge, barre plus haute, « Réessayer ».
+    echecsEnAttente = echecs.length;
+    echecPublicationISO = new Date().toISOString();
     afficheEchecPublication(causes);
     toast(
       `⚠ Publication incomplète — resté(e) en attente : ${echecs.join(', ')}. Réessayez « Publier ».`,
@@ -3791,6 +3824,12 @@ function afficheEchecPublication(causes: string[], titre = 'Publication incompl�
   if (causes.length === 0) {
     bloc.style.display = 'none';
     bloc.textContent = '';
+    // La barre repasse de l'état « échec » à l'état réel : c'est le SEUL
+    // endroit qui efface l'échec, appelé par une réussite ou par une nouvelle
+    // tentative. Jamais par le simple écoulement du temps.
+    echecsEnAttente = 0;
+    echecPublicationISO = null;
+    majBarrePublication();
     return;
   }
   bloc.style.display = '';
