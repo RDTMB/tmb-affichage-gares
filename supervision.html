@@ -433,52 +433,6 @@
             </div>
           </div>
         </div>
-        <div class="carte" id="carte-modeles">
-          <h2>
-            Bibliothèque de messages
-            <span class="sous">messages préenregistrés bilingues, proposés à la saisie</span>
-            <div class="actions">
-              <button class="leger" id="btn-modele-ajout">+ Ajouter un modèle</button>
-            </div>
-          </h2>
-          <div class="ajout" id="form-modele" style="display: none">
-            <div class="ligne">
-              <input
-                type="text"
-                id="modele-titre"
-                placeholder="Titre (ex. Vent fort)"
-                style="width: 200px"
-              />
-              <input
-                type="text"
-                id="modele-categorie"
-                placeholder="Catégorie"
-                style="width: 140px"
-              />
-              <input type="number" id="modele-ordre" placeholder="Ordre" style="width: 80px" />
-            </div>
-            <input type="text" id="modele-fr" placeholder="Texte en français…" maxlength="200" />
-            <input
-              type="text"
-              id="modele-en"
-              placeholder="English — proposé automatiquement, modifiable"
-              maxlength="200"
-            />
-            <div class="avert-trad" id="modele-trad-avert" style="display: none">
-              ⚠ Traduction automatique indisponible — saisissez l'anglais, sinon ce modèle ne sera
-              diffusé qu'en français.
-            </div>
-            <div class="ligne">
-              <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
-              <button class="leger" id="btn-modele-annuler">Annuler</button>
-            </div>
-          </div>
-          <div id="modeles"></div>
-          <div class="note">
-            Un modèle désactivé n'est plus proposé à la saisie mais reste conservé. L'ordre
-            détermine la place dans la liste déroulante.
-          </div>
-        </div>
         <div class="carte">
           <h2>
             Vitesse du bandeau
@@ -488,6 +442,14 @@
             <label style="font-weight: 700; color: var(--texte)"
               >Vitesse de défilement :
               <select id="vitesse-ticker"></select>
+            </label>
+            <!-- Vitesse LIBRE : masquée tant que « Personnaliser » n'est pas
+                 choisi, pour ne pas alourdir le cas courant. -->
+            <label
+              id="vitesse-perso-bloc"
+              style="font-weight: 700; color: var(--texte); display: none"
+              >Vitesse exacte :
+              <input type="number" id="vitesse-ticker-perso" style="width: 84px" /> px/s
             </label>
             <div class="apercu-ticker">
               <div class="apercu-ticker-inner" id="apercu-ticker"></div>
@@ -517,26 +479,86 @@
             heure ne dit pas si elle date de dix minutes ou de la veille.
           </div>
         </div>
-        <div class="carte" id="carte-ciels">
-          <h2>
-            États du ciel (météo)
-            <div class="actions">
+        <!-- RÉGLAGES du bandeau, rangés en bas et repliés : on les touche
+             rarement, alors que les messages et la météo s'éditent en cours
+             de journée. Même traitement que les motifs dans Circulations. -->
+        <details class="carte-repliee" id="details-modeles">
+          <summary>Modifier la bibliothèque de messages…</summary>
+          <div class="carte" id="carte-modeles">
+            <h2>
+              Bibliothèque de messages
+              <span class="sous">messages préenregistrés bilingues, proposés à la saisie</span>
+              <div class="actions">
+                <button class="leger" id="btn-modele-ajout">+ Ajouter un modèle</button>
+              </div>
+            </h2>
+            <div class="ajout" id="form-modele" style="display: none">
+              <div class="ligne">
+                <input
+                  type="text"
+                  id="modele-titre"
+                  placeholder="Titre (ex. Vent fort)"
+                  style="width: 200px"
+                />
+                <input
+                  type="text"
+                  id="modele-categorie"
+                  placeholder="Catégorie"
+                  style="width: 140px"
+                />
+                <input type="number" id="modele-ordre" placeholder="Ordre" style="width: 80px" />
+              </div>
+              <input type="text" id="modele-fr" placeholder="Texte en français…" maxlength="200" />
               <input
                 type="text"
-                id="nouveau-ciel"
-                placeholder="Nouvel état (FR)…"
-                style="width: 140px"
+                id="modele-en"
+                placeholder="English — proposé automatiquement, modifiable"
+                maxlength="200"
               />
-              <input type="text" id="nouveau-ciel-en" placeholder="English…" style="width: 130px" />
-              <button class="leger" id="btn-ciel-ajout">+ Ajouter</button>
+              <div class="avert-trad" id="modele-trad-avert" style="display: none">
+                ⚠ Traduction automatique indisponible — saisissez l'anglais, sinon ce modèle ne sera
+                diffusé qu'en français.
+              </div>
+              <div class="ligne">
+                <button class="primaire leger" id="btn-modele-valider">Enregistrer</button>
+                <button class="leger" id="btn-modele-annuler">Annuler</button>
+              </div>
             </div>
-          </h2>
-          <div id="ciels"></div>
-          <div class="note">
-            Liste des états proposés au choix avec la température. Un état affiché actuellement en
-            gare ne peut pas être supprimé.
+            <div id="modeles"></div>
+            <div class="note">
+              Un modèle désactivé n'est plus proposé à la saisie mais reste conservé. L'ordre
+              détermine la place dans la liste déroulante.
+            </div>
           </div>
-        </div>
+        </details>
+        <details class="carte-repliee" id="details-ciels">
+          <summary>Modifier la liste des états du ciel…</summary>
+          <div class="carte" id="carte-ciels">
+            <h2>
+              États du ciel (météo)
+              <div class="actions">
+                <input
+                  type="text"
+                  id="nouveau-ciel"
+                  placeholder="Nouvel état (FR)…"
+                  style="width: 140px"
+                />
+                <input
+                  type="text"
+                  id="nouveau-ciel-en"
+                  placeholder="English…"
+                  style="width: 130px"
+                />
+                <button class="leger" id="btn-ciel-ajout">+ Ajouter</button>
+              </div>
+            </h2>
+            <div id="ciels"></div>
+            <div class="note">
+              Liste des états proposés au choix avec la température. Un état affiché actuellement en
+              gare ne peut pas être supprimé.
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- ================= MÉDIAS ================= -->

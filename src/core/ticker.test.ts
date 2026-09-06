@@ -4,9 +4,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  choixVitesseTicker,
   dureeDefilementS,
   NIVEAUX_VITESSE_TICKER,
+  VITESSE_PERSONNALISEE,
   VITESSE_TICKER_DEFAUT,
+  VITESSE_TICKER_MAX,
+  VITESSE_TICKER_MIN,
   vitesseTickerValide,
 } from './ticker';
 
@@ -71,5 +75,61 @@ describe('vitesseTickerValide', () => {
 
   it('accepte une valeur numérique en chaîne (lecture depuis un select)', () => {
     expect(vitesseTickerValide('130')).toBe(130);
+  });
+});
+
+describe('choixVitesseTicker : niveau ou vitesse LIBRE', () => {
+  it('une vitesse qui tombe sur un niveau ne montre pas le champ libre', () => {
+    for (const n of NIVEAUX_VITESSE_TICKER) {
+      const c = choixVitesseTicker(n.px_s);
+      expect(c.selection).toBe(String(n.px_s));
+      expect(c.px_s).toBe(n.px_s);
+      expect(c.personnalisee).toBe(false);
+    }
+  });
+
+  it('une vitesse hors niveaux ouvre « Personnaliser » et la CONSERVE', () => {
+    // Elle n'est PAS ramenée au niveau le plus proche : l'exploitant a le
+    // droit de choisir 105 px/s.
+    const c = choixVitesseTicker(105);
+    expect(c.selection).toBe(VITESSE_PERSONNALISEE);
+    expect(c.px_s).toBe(105);
+    expect(c.personnalisee).toBe(true);
+  });
+
+  it('une valeur hors bornes est ramenée dans les bornes, en restant libre', () => {
+    expect(choixVitesseTicker(5).px_s).toBe(VITESSE_TICKER_MIN);
+    expect(choixVitesseTicker(9999).px_s).toBe(VITESSE_TICKER_MAX);
+    expect(choixVitesseTicker(9999).personnalisee).toBe(true);
+  });
+
+  it('une valeur absente ou illisible retombe sur le niveau « Normal »', () => {
+    for (const brut of [undefined, null, '', 'vite', 0, -30, Number.NaN]) {
+      const c = choixVitesseTicker(brut);
+      expect(c.px_s).toBe(VITESSE_TICKER_DEFAUT);
+      // 90 px/s EST un niveau : le champ libre reste fermé.
+      expect(c.personnalisee).toBe(false);
+    }
+  });
+
+  it('une vitesse en TEXTE est acceptée : le <select> ne rend que des chaînes', () => {
+    expect(choixVitesseTicker('130')).toEqual({
+      selection: '130',
+      px_s: 130,
+      personnalisee: false,
+    });
+    expect(choixVitesseTicker('105').personnalisee).toBe(true);
+  });
+
+  it('les bornes exactes sont acceptées', () => {
+    expect(choixVitesseTicker(VITESSE_TICKER_MIN).px_s).toBe(VITESSE_TICKER_MIN);
+    expect(choixVitesseTicker(VITESSE_TICKER_MAX).px_s).toBe(VITESSE_TICKER_MAX);
+  });
+
+  it('la vitesse retenue reste cohérente avec la durée de défilement', () => {
+    // Le réglage n'a d'intérêt que s'il change vraiment la durée à l'écran.
+    const lent = choixVitesseTicker(30).px_s;
+    const rapide = choixVitesseTicker(300).px_s;
+    expect(dureeDefilementS(3000, lent)).toBeGreaterThan(dureeDefilementS(3000, rapide));
   });
 });
