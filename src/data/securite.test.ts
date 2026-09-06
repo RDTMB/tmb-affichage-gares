@@ -259,8 +259,36 @@ describe('Périmètre des rôles, tel que validé par l’exploitant', () => {
     it(`${fichier} : recharger un écran reste ouvert à l’exploitation`, () => {
       // Le rituel de mise en ligne fait recharger les écrans depuis la
       // supervision : l'exploitation ne doit pas attendre l'informatique.
+      // 06/09/2026 : la CAISSE aussi — l'agent est souvent seul en gare le
+      // matin, et un écran resté en veille ne s'attrape pas par téléphone.
       expect(code).toMatch(
-        /create policy "roles: ecrans commander"[\s\S]*?array\['technique','supervision'\]/,
+        /create policy "roles: ecrans commander"[\s\S]*?array\['technique','supervision','caisse'\]/,
+      );
+    });
+
+    it(`${fichier} : les médias sont ouverts au guichet, FICHE ET FICHIER`, () => {
+      // Les quatre politiques vont ENSEMBLE. Élargir la fiche sans le bucket
+      // donne une interface qui promet ce que la base refuse ; élargir le
+      // bucket sans le SELECT laisse la suppression échouer à mi-chemin, en
+      // abandonnant un fichier orphelin.
+      for (const politique of [
+        'roles: medias',
+        'roles: medias lecture',
+        'roles: medias ecriture',
+        'roles: medias suppression',
+      ]) {
+        const bloc = code.match(new RegExp(`create policy "${politique}"[\\s\\S]*?;`))?.[0];
+        expect(bloc, `${politique} introuvable`).toBeDefined();
+        expect(bloc).toContain("array['admin','supervision','caisse']");
+      }
+    });
+
+    it(`${fichier} : le CYCLE des médias suit la même ouverture`, () => {
+      // `mode_medias` et `duree_horaires_s` sont l'autre moitié du droit
+      // `medias` du miroir TypeScript : les laisser en arrière ferait mentir
+      // src/core/roles.ts.
+      expect(code).toMatch(
+        /create policy "roles: params medias"[\s\S]*?array\['admin','supervision','caisse'\]/,
       );
     });
 
@@ -960,3 +988,174 @@ describe('Contraintes de forme de `params` : schema.sql ne doit pas les perdre',
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Élargissement du rôle `caisse` (06/09/2026) — médias et commande d'écran.
+//
+// Le piège de ce chantier n'était pas d'écrire la politique : c'était de
+// découvrir que QUATRE scripts rejouables recréent les mêmes politiques. Un
+// seul oublié, et rejouer securite-advisors.sql un jour d'audit annulerait
+// l'élargissement sans un mot — la supervision continuerait d'afficher le
+// bouton, et la base refuserait l'écriture.
+// ---------------------------------------------------------------------------
+
+const MIGRATION_CAISSE = 'migrations/2026-09-caisse-medias-ecrans.sql';
+
+describe('Le rôle caisse est élargi PARTOUT, ou nulle part', () => {
+  /** Tous les scripts qui recréent au moins une des six politiques visées. */
+  const PORTEURS = [
+    'schema.sql',
+    'securite-advisors.sql',
+    'ajout-bandeau-veille.sql',
+    MIGRATION_ROLES,
+    MIGRATION_CAISSE,
+  ];
+
+  /** Le bloc d'une politique nommée, du `create policy` au `;` qui le clôt. */
+  function politique(fichier: string, nom: string): string | undefined {
+    return instructions(sql(fichier)).match(new RegExp(`create policy "${nom}"[\\s\\S]*?;`))?.[0];
+  }
+
+  const ELARGIES = [
+    ['roles: medias', "array['admin','supervision','caisse']"],
+    ['roles: params medias', "array['admin','supervision','caisse']"],
+    ['roles: medias lecture', "array['admin','supervision','caisse']"],
+    ['roles: medias ecriture', "array['admin','supervision','caisse']"],
+    ['roles: medias suppression', "array['admin','supervision','caisse']"],
+    ['roles: ecrans commander', "array['technique','supervision','caisse']"],
+  ] as const;
+
+  for (const fichier of PORTEURS) {
+    for (const [nom, attendu] of ELARGIES) {
+      const bloc = politique(fichier, nom);
+      // Chaque fichier ne porte pas toutes les politiques (ajout-bandeau-veille
+      // n'en recrée qu'une) : on ne contrôle que celles qu'il contient — mais
+      // celles-là doivent être à jour.
+      if (!bloc) continue;
+      it(`${fichier} : « ${nom} » inclut la caisse`, () => {
+        expect(bloc).toContain(attendu);
+      });
+    }
+  }
+
+  it('au moins un script porte chacune des six politiques', () => {
+    // Sans ce contrôle, une politique renommée disparaîtrait de la boucle
+    // ci-dessus sans faire échouer un seul test : tous les blocs seraient
+    // simplement « introuvables », donc ignorés.
+    for (const [nom] of ELARGIES) {
+      const porteurs = PORTEURS.filter((f) => politique(f, nom));
+      expect(porteurs.length, `aucun script ne crée « ${nom} »`).toBeGreaterThan(0);
+    }
+  });
+
+  it('les politiques HORS PÉRIMÈTRE n’ont pas suivi', () => {
+    // Un élargissement se fait de proche en proche si personne ne regarde.
+    const code = instructions(sql('schema.sql'));
+    for (const nom of [
+      'roles: circulations ecriture',
+      'roles: jours ecriture',
+      'roles: machines',
+      'roles: motifs',
+      'roles: ciels',
+      'roles: modeles ecriture',
+      'roles: params exploitation',
+      'roles: params technique',
+      'roles: ecrans declarer',
+      'roles: ecrans oublier',
+      'roles: profils creation',
+      'roles: profils gestion',
+      'roles: liaison attribution',
+    ]) {
+      const bloc = code.match(new RegExp(`create policy "${nom}"[\\s\\S]*?;`))?.[0];
+      expect(bloc, `${nom} introuvable : ce contrôle ne contrôle plus rien`).toBeDefined();
+      expect(bloc, `${nom} s’est ouverte à la caisse`).not.toContain('caisse');
+    }
+  });
+
+  it('le déclencheur d’identité d’écran reste une LISTE BLANCHE d’un seul nom', () => {
+    // Il exige POSITIVEMENT `technique` ; il n'énumère aucun rôle interdit.
+    // C'est ce qui fait qu'élargir « roles: ecrans commander » ne peut pas
+    // l'affaiblir. Le réécrire en liste de rôles refusés serait une
+    // régression : le prochain rôle créé passerait à travers par défaut.
+    const code = instructions(sql('schema.sql'));
+    const fonction = code.match(
+      /create or replace function private\.proteger_identite_ecran[\s\S]*?\$fn\$;/,
+    )?.[0];
+    expect(fonction).toBeDefined();
+    expect(fonction).toMatch(/not private\.a_le_role\('technique'\)/);
+    // Aucune énumération de rôles : ni tableau, ni mention d'un rôle précis.
+    expect(fonction).not.toMatch(/a_un_des_roles/);
+    expect(fonction).not.toContain("'caisse'");
+    expect(fonction).not.toContain("'supervision'");
+    // …et il reste bien posé, sur les deux colonnes d'identité.
+    expect(code).toMatch(
+      /create trigger trg_roles_ecrans_identite before update of gare, type on ecrans/,
+    );
+  });
+});
+
+describe(`${MIGRATION_CAISSE} : refuse de s’exécuter sur une base inconnue`, () => {
+  const code = instructions(sql(MIGRATION_CAISSE));
+
+  it('contrôle l’état de départ AVANT de créer quoi que ce soit', () => {
+    // Une migration qui s'exécute sur une base qu'elle n'a pas comprise fait
+    // plus de dégâts qu'une migration qui refuse.
+    const verrou = code.indexOf('raise exception');
+    const premiereCreation = code.indexOf('create policy');
+    expect(verrou).toBeGreaterThan(-1);
+    expect(verrou).toBeLessThan(premiereCreation);
+  });
+
+  it('exige les fonctions d’habilitation et le rôle caisse au catalogue', () => {
+    expect(code).toContain("to_regprocedure('private.a_un_des_roles(text[])')");
+    expect(code).toMatch(/from public\.roles where code = 'caisse'/);
+  });
+
+  it('est REJOUABLE : chaque politique est supprimée avant d’être recréée', () => {
+    const creees = [...code.matchAll(/create policy "([^"]+)"/g)].map((m) => m[1] as string);
+    expect(creees).toHaveLength(6);
+    for (const nom of creees) {
+      expect(code).toContain(`drop policy if exists "${nom}"`);
+    }
+  });
+
+  it('ne touche à AUCUNE politique hors périmètre', () => {
+    const creees = new Set([...code.matchAll(/create policy "([^"]+)"/g)].map((m) => m[1]));
+    const attendues = new Set(ELARGIES_ATTENDUES);
+    expect([...creees].sort()).toEqual([...attendues].sort());
+    // Ni la table `circulations`, ni les comptes n'apparaissent en écriture.
+    expect(code).not.toMatch(/(drop|create) policy[^\n]*on (circulations|jours|profils)/);
+  });
+
+  it('la contre-vérification contrôle ses PROPRES noms de politiques', () => {
+    // Un nom mal orthographié ne serait trouvé nulle part, la requête
+    // renverrait zéro ligne, et l'absence de résultat se lirait comme un
+    // succès. Un contrôle qui ne contrôle rien est pire que pas de contrôle.
+    expect(code).toContain('INTROUVABLE');
+    // Et les noms cités doivent exister pour de vrai dans schema.sql.
+    const schema = instructions(sql('schema.sql'));
+    const contre = code.slice(code.indexOf('with attendues(policyname)'));
+    const cites = [...contre.matchAll(/\('(roles: [^']+)'\)/g)].map((m) => m[1] as string);
+    expect(cites.length).toBeGreaterThan(10);
+    for (const nom of cites) {
+      expect(schema, `« ${nom} » n’existe pas dans schema.sql`).toContain(`create policy "${nom}"`);
+    }
+  });
+
+  it('n’est pas présentée comme applicable sans vérification', () => {
+    // L'éditeur SQL de Supabase n'affiche pas les `notice` : « Success. No
+    // rows returned » est le résultat NORMAL d'une migration réussie.
+    expect(code + sql(MIGRATION_CAISSE)).toContain('Success. No rows returned');
+    expect(sql(MIGRATION_CAISSE)).toMatch(/base de TEST/);
+  });
+});
+
+/** Les six politiques que la migration a le droit de recréer, et rien d'autre. */
+const ELARGIES_ATTENDUES = [
+  'roles: medias',
+  'roles: params medias',
+  'roles: ecrans commander',
+  'roles: medias lecture',
+  'roles: medias ecriture',
+  'roles: medias suppression',
+];

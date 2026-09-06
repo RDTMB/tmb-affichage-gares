@@ -30,7 +30,9 @@ describe('Union des droits (jamais de hiérarchie)', () => {
     expect(aLeDroit(['technique'], 'bandeau')).toBe(false);
     expect(aLeDroit(['admin'], 'circulations')).toBe(false);
     expect(aLeDroit(['supervision'], 'comptes.gerer')).toBe(false);
-    expect(aLeDroit(['caisse'], 'medias')).toBe(false);
+    // `medias` a rejoint la caisse le 06/09/2026 ; l'exemple qui tenait ici
+    // est remplacé par un droit qu'elle n'a toujours pas.
+    expect(aLeDroit(['caisse'], 'circulations')).toBe(false);
   });
 
   it('le cumul additionne, sans rien retirer', () => {
@@ -131,12 +133,58 @@ describe('Onglets visibles', () => {
     ]);
   });
 
-  it('caisse : horaires, bandeau… et le JOURNAL, enfin atteignable', () => {
-    // Correctif : l'onglet « Paramètres » exigeait `comptes.lire` ou
+  it('caisse : cinq onglets sur huit depuis l’élargissement du 06/09', () => {
+    // Correctif antérieur : l'onglet « Paramètres » exigeait `comptes.lire` ou
     // `journal.purger`, que la caisse n'a pas — son droit `journal` ne menait
     // donc à AUCUN écran. Un onglet dédié le rend accessible.
-    expect(ongletsVisibles(['caisse'])).toEqual(['horaires', 'bandeau', 'journal']);
-    expect(ongletsVisibles(['caisse'])).toContain('journal');
+    // 06/09/2026 : `medias` et `ecrans.commander` ouvrent deux onglets de plus.
+    expect(ongletsVisibles(['caisse'])).toEqual([
+      'horaires',
+      'bandeau',
+      'medias',
+      'ecrans',
+      'journal',
+    ]);
+  });
+
+  it('…et la caisse n’atteint TOUJOURS PAS les trois onglets sensibles', () => {
+    // L'élargissement ne doit pas se faire de proche en proche : ce qu'il
+    // laisse fermé compte autant que ce qu'il ouvre.
+    const vus = ongletsVisibles(['caisse']);
+    expect(vus).not.toContain('circulations');
+    expect(vus).not.toContain('parametres');
+    expect(vus).not.toContain('utilisateurs');
+  });
+
+  it('les droits gagnés par la caisse sont ceux d’un rôle EXISTANT, pas des nouveaux', () => {
+    // Aucun droit n'a été créé pour l'occasion : la caisse rejoint des droits
+    // que d'autres rôles portaient déjà. Un droit fabriqué pour un seul rôle
+    // serait le début d'une matrice illisible.
+    for (const droit of ['medias', 'ecrans.commander'] as const) {
+      expect(aLeDroit(['caisse'], droit)).toBe(true);
+      const autresPorteurs = (['technique', 'admin', 'supervision'] as Role[]).filter((r) =>
+        aLeDroit([r], droit),
+      );
+      expect(autresPorteurs.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('la caisse ne gagne rien sur l’exploitation ni sur les comptes', () => {
+    for (const droit of [
+      'circulations',
+      'journee.reinitialiser',
+      'parametres.exploitation',
+      'parametres.technique',
+      'grilles',
+      'modeles',
+      'ecrans.declarer',
+      'comptes.lire',
+      'comptes.gerer',
+      'journal.roles',
+      'journal.purger',
+    ] as const) {
+      expect(aLeDroit(['caisse'], droit), `caisse ne doit pas porter ${droit}`).toBe(false);
+    }
   });
 
   it('le cumul réunit les onglets, dans l’ordre de la barre', () => {
