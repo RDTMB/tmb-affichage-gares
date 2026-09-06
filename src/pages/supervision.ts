@@ -26,7 +26,7 @@ import {
   monteesSansRetour,
   serviceActif,
 } from '../core/horaires';
-import { construitRotationSup, prochainNumeroSup } from '../core/train-sup';
+import { construitRotationSup, prepareDepartSup, prochainNumeroSup } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from '../core/types';
 import type {
@@ -80,6 +80,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
+import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
 import type { ModeMedias } from '../core/cycle-medias';
 import type { EtatBandeauApplication } from './supervision-logique';
@@ -270,6 +271,21 @@ function dateISO(decalageJours: number): string {
   d.setDate(d.getDate() + decalageJours);
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(d);
 }
+
+/**
+ * HEURE DU POSTE, simulable par `?simule=HH:MM[:SS]` comme sur les écrans.
+ *
+ * Plusieurs commandes ne s'ouvrent qu'à partir d'une certaine heure — le
+ * départ réel d'un renfort n'apparaît qu'une fois sa montée arrivée. Sans
+ * heure simulée, il fallait attendre l'heure réelle pour les essayer, ou
+ * créer un train à une heure passée : la recette devenait impraticable.
+ *
+ * `?simule=` ne décale QUE l'heure du jour, jamais la date. Et les
+ * horodatages absolus (fraîcheur des écrans, signal de vie) continuent de
+ * venir de `Date.now()` : ce sont des instants réels, pas des heures de
+ * service.
+ */
+const heurePoste = creeSourceHeure(new URLSearchParams(window.location.search).get('simule'));
 
 /**
  * Grille de la journée affichée : celle qui l'a générée, sinon celle en
@@ -510,6 +526,26 @@ function rendreBaseServie(): void {
   pastille.title = base.detail;
   pastille.className = `pill base ${base.classe}`;
   pastille.style.display = '';
+
+  // HEURE SIMULÉE : elle change ce que le poste croit être « maintenant », et
+  // donc ce qu'il écrit (une heure de départ constatée, par exemple). Ça doit
+  // se voir en permanence, pas seulement dans l'URL.
+  const simule = $('pill-simule');
+  if (!heurePoste.simulee) {
+    simule.style.display = 'none';
+    return;
+  }
+  simule.style.display = '';
+  simule.title =
+    'Heure simulée par ?simule= : les commandes qui dépendent de l’heure se comportent comme à cette heure-là. Les écritures, elles, partent dans la VRAIE base.';
+  const tic = (): void => {
+    const s = heurePoste.maintenantS();
+    simule.textContent = `⏱ ${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(
+      Math.floor((s % 3600) / 60),
+    ).padStart(2, '0')} simulée`;
+  };
+  tic();
+  window.setInterval(tic, 1000);
 }
 
 /**
@@ -689,9 +725,27 @@ async function apresConnexion(): Promise<void> {
 
 function heurePassee(depart: string): boolean {
   if (dateSel !== dateISO(0)) return false;
-  const d = new Date();
-  const maintenant = d.getHours() * 3600 + d.getMinutes() * 60;
-  return maintenant > heureVersSecondes(depart) + 75 * 60;
+  return maintenantS() > heureVersSecondes(depart) + 75 * 60;
+}
+
+/** Secondes depuis minuit, heure du poste (simulable par `?simule=`). */
+function maintenantS(): number {
+  return heurePoste.maintenantS();
+}
+
+/**
+ * La montée d'une rotation supplémentaire est-elle DÉJÀ arrivée à son
+ * terminus ? Tant qu'elle ne l'est pas, il n'y a aucun départ à constater.
+ * Une date passée compte comme arrivée, une date à venir jamais.
+ */
+function monteeSupArrivee(montee: Circulation | null): boolean {
+  if (!montee?.supplementaire) return false;
+  if (dateSel > dateISO(0)) return false;
+  if (dateSel < dateISO(0)) return true;
+  const passages = montee.passages ?? [];
+  const dernier = passages[passages.length - 1];
+  const arrivee = dernier?.a ?? dernier?.d;
+  return arrivee !== undefined && maintenantS() >= heureVersSecondes(arrivee);
 }
 
 function optionsMotifs(selection: string | null): string {
@@ -765,6 +819,7 @@ function ligneCirculation(
     lectureSeule,
     nomGare: nomDeGare,
     passagesEffectifs: trainsEffectifs.get(c.numero)?.passages ?? null,
+    monteeArrivee: monteeSupArrivee(circMontee),
   });
 
   const facultatif = c.facultatif
@@ -1218,6 +1273,161 @@ function initCirculations(): void {
     majApercuSup();
   };
 
+  // -------------------------------------------------------------------------
+  // DÉPART RÉEL d'une descente supplémentaire
+  //
+  // EXCEPTION ASSUMÉE : cette écriture est IMMÉDIATE, alors que tout l'onglet
+  // Circulations passe par le brouillon et « Publier ». La correction a lieu
+  // au moment où le train s'en va, avec des voyageurs qui attendent en bas :
+  // un clic de publication supplémentaire laisserait une heure fausse à
+  // l'écran pendant ce temps. Ne PAS « corriger » cette incohérence apparente
+  // — elle est documentée dans CLAUDE.md, section des règles métier.
+  // En contrepartie, l'échec est dit franchement : message PERSISTANT sous la
+  // barre de publication, anciennes heures conservées à l'écran.
+  // -------------------------------------------------------------------------
+
+  /** Descente dont on constate le départ, null quand la fenêtre est fermée. */
+  let departEnCours: number | null = null;
+
+  const descenteDuDepart = (): Circulation | null =>
+    departEnCours === null ? null : circulationDe(departEnCours);
+
+  /** Recalcule l'aperçu à chaque frappe : l'agent voit ce qu'il va écrire. */
+  const majApercuDepart = (): void => {
+    const grille = grilleDuJour();
+    const descente = descenteDuDepart();
+    const montee = departEnCours === null ? null : circulationDe(departEnCours - 1);
+    const champ = $('depart-heure') as HTMLInputElement;
+    const valider = $('btn-depart-valider') as HTMLButtonElement;
+    const apercu = $('depart-apercu');
+    delete apercu.dataset.passages;
+    if (!grille || !descente || !montee || !champ.value) {
+      apercu.innerHTML = '<i>Indiquez l’heure de départ réelle.</i>';
+      valider.disabled = true;
+      return;
+    }
+
+    const prepare = prepareDepartSup(grille, {
+      montee,
+      descente,
+      departReel_s: heureVersSecondes(champ.value),
+      maintenant_s: maintenantS(),
+    });
+    const { controle, passages } = prepare;
+
+    const refus = $('depart-refus');
+    refus.style.display = controle.refus === null ? 'none' : '';
+    refus.textContent = controle.refus ?? '';
+    const avert = $('depart-avert');
+    avert.style.display = controle.avertissement === null ? 'none' : '';
+    avert.textContent = controle.avertissement ?? '';
+
+    valider.disabled = passages === null;
+    if (passages === null) {
+      apercu.innerHTML = '';
+      return;
+    }
+    // Récapitulatif GARE PAR GARE : c'est ce que les écrans afficheront.
+    apercu.innerHTML =
+      '<div class="sens"><b>Nouvelles heures</b>' +
+      passages
+        .map(
+          (p) =>
+            `<span class="etape"><i>${echapper(nomDeGare(p.gare))}</i>${echapper(
+              (p.a ?? p.d ?? '').slice(0, 5),
+            )}</span>`,
+        )
+        .join('') +
+      '</div>';
+    apercu.dataset.passages = JSON.stringify(passages);
+  };
+
+  /** Ouvre la fenêtre, champ PRÉ-REMPLI à l'heure courante. */
+  const ouvreDepartSup = (numeroDescente: number): void => {
+    departEnCours = numeroDescente;
+    const descente = circulationDe(numeroDescente);
+    const constate = (descente?.depart_reel ?? '').trim();
+    $('depart-titre').textContent =
+      constate === '' ? 'Le train est reparti' : 'Corriger l’heure de départ';
+    // Au SECOND passage, `passages[0].d` porte le départ déjà constaté, plus
+    // l'estimation de la création : le libellé doit dire lequel des deux.
+    const reference = (descente?.passages ?? [])[0]?.d ?? '';
+    $('depart-estime').textContent =
+      reference === ''
+        ? ''
+        : constate === ''
+          ? `Horaire estimé à la création : ${reference.slice(0, 5)}`
+          : `Départ constaté précédemment : ${constate.slice(0, 5)}`;
+    const champ = $('depart-heure') as HTMLInputElement;
+    // Un seul contrôle pour les deux usages : sur place on valide tel quel,
+    // plus tard on corrige.
+    const s = maintenantS();
+    champ.value = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(
+      Math.floor((s % 3600) / 60),
+    ).padStart(2, '0')}`;
+    // SUPERPOSITION : plus aucun retour en haut de page. La fenêtre s'ouvre
+    // par-dessus, quelle que soit la position de la ligne dans le tableau.
+    $('modale-depart').style.display = '';
+    $('form-train-sup').style.display = 'none';
+    majApercuDepart();
+    champ.focus();
+  };
+
+  const fermeDepartSup = (): void => {
+    departEnCours = null;
+    $('modale-depart').style.display = 'none';
+  };
+
+  // Clic HORS de la fenêtre : on ferme, comme partout ailleurs. Le clic à
+  // l'intérieur ne doit évidemment rien fermer.
+  $('modale-depart').addEventListener('click', (e) => {
+    if (e.target === $('modale-depart')) fermeDepartSup();
+  });
+  // Échap : sortie sans rien écrire — la confirmation reste un choix explicite.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && departEnCours !== null) fermeDepartSup();
+  });
+
+  $('depart-heure').addEventListener('input', majApercuDepart);
+  $('btn-depart-annuler').addEventListener('click', fermeDepartSup);
+
+  $('btn-depart-valider').addEventListener('click', () => {
+    const numero = departEnCours;
+    const brut = $('depart-apercu').dataset.passages;
+    const champ = $('depart-heure') as HTMLInputElement;
+    if (numero === null || !brut || !champ.value) return;
+    const passages = JSON.parse(brut) as PassageGrille[];
+    const heure = champ.value.length === 5 ? `${champ.value}:00` : champ.value;
+    const valider = $('btn-depart-valider') as HTMLButtonElement;
+    valider.disabled = true;
+
+    void provider
+      .confirmerDepartSup(dateSel, numero, heure, passages)
+      .then(() => rechargeJour())
+      .then(() => {
+        afficheEchecPublication([]); // un succès efface l'échec précédent
+        bump(`départ réel du TRAIN ${numero} : ${heure.slice(0, 5)}`);
+        fermeDepartSup();
+        toast(`Départ confirmé à ${heure.slice(0, 5)} — les écrans sont à jour`);
+      })
+      .catch((erreur: unknown) => {
+        // Écriture refusée : les ANCIENNES heures restent affichées, et on le
+        // dit dans un message PERSISTANT. Un toast fugace a déjà coûté trois
+        // fois à ce projet une écriture qu'on croyait passée.
+        afficheEchecPublication(
+          [
+            `TRAIN ${numero} : ${
+              erreur instanceof Error ? erreur.message : String(erreur)
+            } — les horaires précédents restent affichés en gare.`,
+          ],
+          // Rien n'est « publié » ici : l'écriture est immédiate. Le titre
+          // doit dire ce qui s'est réellement passé.
+          'Départ réel non enregistré',
+        );
+        valider.disabled = false;
+      });
+  });
+
   $('btn-train-sup').addEventListener('click', () => {
     if (!jour || jour.hors_saison || jour.enregistre === false) return;
     const bloc = $('form-train-sup');
@@ -1499,6 +1709,8 @@ function initCirculations(): void {
       c.rame = (cible as HTMLSelectElement).value;
       stageCirculationEtRafraichit(c, `rame TRAIN ${numero} → ${c.rame}`);
       toast('Rame en attente de publication (la descente de la même rotation suivra)');
+    } else if (action === 'depart-sup') {
+      ouvreDepartSup(numero);
     } else if (action === 'terminus') {
       c.terminus = (cible as HTMLSelectElement).value as Circulation['terminus'];
       stageCirculationEtRafraichit(c, `terminus TRAIN ${numero} → ${c.terminus}`);
@@ -3379,7 +3591,7 @@ async function publieLeBrouillon(): Promise<boolean> {
  * Bandeau des causes d'une publication incomplète. Persistant : il n'est
  * effacé que par une publication qui réussit, ou par une nouvelle tentative.
  */
-function afficheEchecPublication(causes: string[]): void {
+function afficheEchecPublication(causes: string[], titre = 'Publication incomplète'): void {
   const bloc = $('echec-publication');
   if (causes.length === 0) {
     bloc.style.display = 'none';
@@ -3388,7 +3600,7 @@ function afficheEchecPublication(causes: string[]): void {
   }
   bloc.style.display = '';
   bloc.innerHTML =
-    '<b>⚠ Publication incomplète</b><ul>' +
+    `<b>⚠ ${echapper(titre)}</b><ul>` +
     causes.map((c) => `<li>${echapper(c)}</li>`).join('') +
     '</ul>';
 }

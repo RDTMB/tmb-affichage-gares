@@ -531,6 +531,15 @@ input[type='color'] {
 
 /* Restriction de ligne : un simple lien tant qu'elle ne sert pas — la barre
    du jour est déjà chargée, et une ligne complète est le cas courant. */
+/* Heure simulée : suffisamment voyante pour qu'on ne prenne jamais ce poste
+   pour un poste normal, l'écriture partant dans la vraie base. */
+.pill.simule {
+  background: #fdf3e0;
+  color: #7a6017;
+  border: 1px solid #e6c98a;
+  font-weight: 900;
+}
+
 .lien-section {
   border: 0;
   background: none;
@@ -2048,6 +2057,28 @@ input:disabled {
 }
 
 /* Train supplémentaire : formulaire de création et repérage dans la liste */
+/* Fenêtre en SUPERPOSITION. Au-dessus de la barre de publication (z-index 40)
+   mais SOUS le toast (50), qui doit rester lisible par-dessus. */
+.modale {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(33, 59, 87, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modale > .carte-sup {
+  margin: 0;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
 .carte-sup {
   margin: 10px 18px;
   padding: 12px 14px;
@@ -2055,6 +2086,42 @@ input:disabled {
   border-left: 4px solid var(--rouge);
   border-radius: 9px;
   background: #fbfcfe;
+}
+
+/* Départ constaté d'une descente de renfort : information NEUTRE, jamais le
+   traitement d'un retard — ce train n'est pas en retard. */
+.depart-constate {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--sec);
+}
+
+.carte-section .ligne .depart-estime,
+.carte-depart .depart-estime {
+  color: var(--sec);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.depart-alerte {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--alerte-bg);
+  border: 1px solid #f2c9c5;
+  color: var(--alerte);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+.depart-avert {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fdf3e0;
+  color: #7a6017;
+  font-weight: 700;
+  font-size: 12.5px;
 }
 
 .carte-sup h3 {

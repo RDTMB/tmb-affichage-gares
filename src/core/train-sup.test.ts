@@ -11,15 +11,26 @@ import { heureVersSecondes } from './horaires';
 import {
   calculePassagesSup,
   construitRotationSup,
+  controleDepartSup,
   garesSautees,
   NUMERO_SUP_MIN,
+  prepareDepartSup,
   prochainNumeroSup,
+  recalculeDescenteSup,
   tempsDeGrille,
 } from './train-sup';
 import type { GareId, Grille } from './types';
 
 const GRAND = grandServiceJson as unknown as Grille;
 const h = heureVersSecondes;
+
+/** « HH:MM:SS » depuis des secondes — miroir local du format des grilles. */
+function formatHmsTest(s: number): string {
+  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
 
 /** Heure d'arrivée (ou de départ à l'origine) à une gare donnée. */
 function heureA(passages: { gare: GareId; a?: string; d?: string }[], gare: GareId): string {
@@ -263,5 +274,207 @@ describe('Grille hiver fictive : le calcul suit la grille', () => {
     );
     expect(heureA(passages, 'saint-gervais')).toBe('17:20:00');
     expect(heureA(passages, 'col-de-voza')).toBe('17:58:00'); // +3 min d'arrêt
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DÉPART RÉEL depuis le terminus
+//
+// Le battement choisi à la création n'est qu'une ESTIMATION : le temps de
+// stationnement en haut change, et les heures affichées en gare deviennent
+// fausses. L'agent constate l'heure réelle, la descente est recalculée.
+// ---------------------------------------------------------------------------
+
+/** Rotation de renfort, telle que la supervision la crée. */
+function rotation(garesMontee: GareId[] = ['le-fayet', 'col-de-voza'], depart = '15:00') {
+  const r = construitRotationSup(GRAND, {
+    heureDepart_s: h(depart),
+    garesMontee,
+    garesDescente: [...garesMontee].reverse(),
+  });
+  return { montee: { passages: r.montee }, descente: { passages: r.descente } };
+}
+
+describe('Recalcul d’une descente sur son départ réel', () => {
+  it('un départ 12 min plus tard décale TOUTES les heures de 12 min', () => {
+    const { descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const recalcule = recalculeDescenteSup(GRAND, descente, h(estime) + 12 * 60);
+    expect(recalcule).toHaveLength(descente.passages.length);
+    recalcule.forEach((p, i) => {
+      const avant = descente.passages[i];
+      expect(p.gare).toBe(avant?.gare);
+      if (avant?.d !== undefined) expect(h(p.d ?? '')).toBe(h(avant.d) + 12 * 60);
+      if (avant?.a !== undefined) expect(h(p.a ?? '')).toBe(h(avant.a) + 12 * 60);
+    });
+  });
+
+  it('exemple de l’exploitant : estimée à 16:30, partie à 16:42', () => {
+    const { descente } = rotation();
+    // On repositionne l'estimation à 16:30 pile pour lire les heures en clair.
+    const base = recalculeDescenteSup(GRAND, descente, h('16:30'));
+    const reel = recalculeDescenteSup(GRAND, { passages: base }, h('16:42'));
+    expect(base[0]?.d).toBe('16:30:00');
+    expect(reel[0]?.d).toBe('16:42:00');
+    const arriveeBase = base[base.length - 1]?.a ?? '';
+    const arriveeReel = reel[reel.length - 1]?.a ?? '';
+    expect(h(arriveeReel) - h(arriveeBase)).toBe(12 * 60);
+  });
+
+  it('la DESSERTE choisie à la création est conservée, jamais réinventée', () => {
+    // Un renfort qui dessert Motivon et Saint-Gervais garde exactement ces
+    // deux arrêts : le recalcul ne décide pas à la place de l'agent.
+    const { descente } = rotation(['le-fayet', 'saint-gervais', 'motivon', 'col-de-voza']);
+    const recalcule = recalculeDescenteSup(GRAND, descente, h('17:00'));
+    expect(recalcule.map((p) => p.gare)).toEqual([
+      'col-de-voza',
+      'motivon',
+      'saint-gervais',
+      'le-fayet',
+    ]);
+  });
+
+  it('une desserte RÉDUITE le reste : Voza → Le Fayet sans arrêt intermédiaire', () => {
+    const { descente } = rotation(['le-fayet', 'col-de-voza']);
+    const recalcule = recalculeDescenteSup(GRAND, descente, h('17:00'));
+    expect(recalcule.map((p) => p.gare)).toEqual(['col-de-voza', 'le-fayet']);
+  });
+
+  it('deux corrections successives : la seconde part de l’heure RÉELLE', () => {
+    const { descente } = rotation();
+    const premiere = recalculeDescenteSup(GRAND, descente, h('16:42'));
+    const seconde = recalculeDescenteSup(GRAND, { passages: premiere }, h('16:50'));
+    expect(seconde[0]?.d).toBe('16:50:00');
+    // Le décalage se compte depuis 16:42, pas depuis l'estimation d'origine.
+    const arr = (ps: typeof premiere): number => h(ps[ps.length - 1]?.a ?? '');
+    expect(arr(seconde) - arr(premiere)).toBe(8 * 60);
+  });
+
+  it('sans desserte enregistrée, on refuse plutôt que d’inventer', () => {
+    expect(() => recalculeDescenteSup(GRAND, { passages: [] }, h('16:42'))).toThrow(
+      /sans desserte enregistrée/,
+    );
+    expect(() => recalculeDescenteSup(GRAND, { passages: null }, h('16:42'))).toThrow();
+  });
+});
+
+describe('Garde-fous du départ constaté', () => {
+  const controle = (departReel: string, maintenant: number) => {
+    const { montee, descente } = rotation();
+    return controleDepartSup({
+      montee,
+      descente,
+      departReel_s: h(departReel),
+      maintenant_s: maintenant,
+    });
+  };
+
+  it('une heure normale passe, sans avertissement', () => {
+    const { montee, descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const r = controleDepartSup({
+      montee,
+      descente,
+      departReel_s: h(estime) + 5 * 60,
+      maintenant_s: h(estime) + 5 * 60,
+    });
+    expect(r.refus).toBeNull();
+    expect(r.avertissement).toBeNull();
+    expect(r.ecart_s).toBe(5 * 60);
+  });
+
+  it('ANTÉRIEURE à l’arrivée de la montée : refus, avec les DEUX heures', () => {
+    const { montee, descente } = rotation();
+    const arrivee = montee.passages[montee.passages.length - 1]?.a ?? '';
+    const r = controleDepartSup({
+      montee,
+      descente,
+      departReel_s: h(arrivee) - 60,
+      maintenant_s: h('23:00'),
+    });
+    expect(r.refus).toContain('ne peut pas repartir');
+    // Les DEUX heures doivent figurer : sinon l'agent ignore son écart.
+    expect(r.refus).toContain(arrivee.slice(0, 5));
+  });
+
+  it('dans le FUTUR de plus de 2 min : refus — on constate, on ne programme pas', () => {
+    const r = controle('17:10', h('17:00'));
+    expect(r.refus).toContain('constate un départ');
+    expect(r.refus).toContain('10 min');
+  });
+
+  it('2 min d’avance ou moins : toléré (l’agent clique juste avant le départ)', () => {
+    expect(controle('17:02', h('17:00')).refus).toBeNull();
+    expect(controle('17:03', h('17:00')).refus).toContain('constate un départ');
+  });
+
+  it('écart de 45 min : ACCEPTÉ, mais averti — c’est le profil d’une faute de frappe', () => {
+    const { montee, descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const r = controleDepartSup({
+      montee,
+      descente,
+      departReel_s: h(estime) + 45 * 60,
+      maintenant_s: h(estime) + 45 * 60,
+    });
+    expect(r.refus).toBeNull();
+    expect(r.avertissement).toContain('45 min');
+    expect(r.avertissement).toContain(estime.slice(0, 5));
+  });
+
+  it('30 min pile ne déclenche pas encore l’avertissement', () => {
+    const { montee, descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const aEcart = (minutes: number) =>
+      controleDepartSup({
+        montee,
+        descente,
+        departReel_s: h(estime) + minutes * 60,
+        maintenant_s: h(estime) + minutes * 60,
+      }).avertissement;
+    expect(aEcart(30)).toBeNull();
+    expect(aEcart(31)).not.toBeNull();
+  });
+
+  it('le REFUS prime sur l’avertissement', () => {
+    // Reparti 40 min avant l'estimation, donc avant d'être arrivé : c'est le
+    // refus qui doit sortir, pas un simple avertissement.
+    const { montee, descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const r = controleDepartSup({
+      montee,
+      descente,
+      departReel_s: h(estime) - 40 * 60,
+      maintenant_s: h('23:00'),
+    });
+    expect(r.refus).not.toBeNull();
+    expect(r.avertissement).toBeNull();
+  });
+});
+
+describe('prepareDepartSup : ce que la confirmation affiche', () => {
+  it('heure recevable : contrôle vert ET passages recalculés', () => {
+    const { montee, descente } = rotation();
+    const estime = descente.passages[0]?.d ?? '';
+    const p = prepareDepartSup(GRAND, {
+      montee,
+      descente,
+      departReel_s: h(estime) + 12 * 60,
+      maintenant_s: h(estime) + 12 * 60,
+    });
+    expect(p.controle.refus).toBeNull();
+    expect(p.passages?.[0]?.d).toBe(formatHmsTest(h(estime) + 12 * 60));
+  });
+
+  it('heure refusée : AUCUN passage recalculé — rien à confirmer', () => {
+    const { montee, descente } = rotation();
+    const p = prepareDepartSup(GRAND, {
+      montee,
+      descente,
+      departReel_s: h('17:10'),
+      maintenant_s: h('17:00'),
+    });
+    expect(p.controle.refus).not.toBeNull();
+    expect(p.passages).toBeNull();
   });
 });

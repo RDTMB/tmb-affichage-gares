@@ -234,6 +234,10 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   if (p.terminusExceptionnel && p.sens === 'montee') {
     note += ' · <b>Terminus exceptionnel / Exceptional terminus</b>';
   }
+  // Départ CONSTATÉ depuis le terminus (descente de renfort) : mention NEUTRE.
+  // Surtout pas le traitement d'un retard — ce train n'est pas en retard, son
+  // heure n'était simplement pas encore ferme. Même couleur que « Descente ».
+  if (p.departConfirme) note += ' · Horaire confirmé / Departure confirmed';
   if (p.velos) note += ' · Vélos acceptés / Bikes allowed';
   if (retard && p.motif) note += ` · <b>${echapper(motifBilingue(p.motif))}</b>`;
   if (supprime) {

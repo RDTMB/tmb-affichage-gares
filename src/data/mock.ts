@@ -43,6 +43,7 @@ import type {
   MetadonneesGrille,
   OptionsEnregistrementGrille,
   Profil,
+  PassageGrille,
   Params,
   Role,
   Session,
@@ -883,6 +884,36 @@ export class MockProvider implements DataProvider {
       trace(etat, 'circulations', `${date} ${c.numero}`, null, c, undefined, date);
       jour.circulations[String(c.numero)] = c;
     }
+    ecritEtat(etat);
+  }
+
+  async confirmerDepartSup(
+    date: string,
+    numeroDescente: number,
+    departReel: string,
+    passages: PassageGrille[],
+  ): Promise<void> {
+    const etat = litEtat();
+    const jour = etat.jours[date];
+    const descente = jour?.circulations[String(numeroDescente)];
+    if (!jour || !descente) throw new Error(`TRAIN ${numeroDescente} introuvable au ${date}`);
+    // Même garde-fou qu'en production : seule une DESCENTE supplémentaire a un
+    // départ à constater.
+    if (descente.supplementaire !== true || descente.sens !== 'descente') {
+      throw new Error(
+        `TRAIN ${numeroDescente} n'est pas une descente supplémentaire : départ réel refusé`,
+      );
+    }
+    trace(
+      etat,
+      'circulations',
+      `${date} ${numeroDescente}`,
+      { depart_reel: descente.depart_reel ?? null, passages: descente.passages ?? null },
+      { depart_reel: departReel, passages },
+      ['depart_reel', 'passages'],
+      date,
+    );
+    jour.circulations[String(numeroDescente)] = { ...descente, depart_reel: departReel, passages };
     ecritEtat(etat);
   }
 

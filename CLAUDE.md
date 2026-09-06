@@ -104,6 +104,25 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   REPORTE sur la journée suivante à sa création (`sectionReportee()`) : un
   chantier dure des semaines, et une journée oubliée annoncerait des trains
   qui ne circulent pas.
+- **Départ RÉEL d'un train supplémentaire** (`circulations.depart_reel`) :
+  le temps de stationnement au terminus est ESTIMÉ à la création (battement),
+  et les horaires de la descente en découlent. Sur la ligne de DESCENTE, un
+  bouton « Le train est reparti » ouvre une confirmation (heure pré-remplie à
+  l'heure courante, récapitulatif gare par gare recalculé en direct), puis
+  « Corriger l'heure de départ » — une heure constatée reste rectifiable.
+  `recalculeDescenteSup()` relit la desserte dans les passages EXISTANTS et ne
+  la réinvente jamais : l'agent l'a choisie à la création. Refus si l'heure
+  précède l'arrivée de la montée, ou dépasse l'heure courante de plus de
+  2 min (on CONSTATE un départ, on ne le programme pas) ; avertissement
+  non bloquant au-delà de 30 min d'écart avec l'estimation.
+  EXCEPTION ASSUMÉE, à ne pas « corriger » : cette écriture est IMMÉDIATE
+  alors que tout l'onglet Circulations passe par le brouillon et « Publier ».
+  La correction a lieu au moment où le train s'en va, avec des voyageurs qui
+  attendent en bas ; un clic de publication supplémentaire laisserait une
+  heure fausse à l'écran pendant ce temps. En contrepartie, l'échec est dit
+  franchement — message PERSISTANT, anciennes heures conservées. L'écran de
+  gare l'annonce en couleur NEUTRE (« Horaire confirmé / Departure
+  confirmed ») : ce train n'est pas en retard, son heure n'était pas ferme.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir
