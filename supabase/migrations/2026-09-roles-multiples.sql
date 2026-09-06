@@ -280,7 +280,7 @@ grant insert (user_id, role) on profils_roles to authenticated;
 -- Le catalogue, alimenté avant que quoi que ce soit ne s'y réfère.
 insert into roles (code, libelle, protege, attribuable_par, ordre) values
   ('technique',   'Technique',      true,  array['technique'], 10),
-  ('admin',       'Administrateur', true,  array['admin'],     20),
+  ('admin',       'Admin', true,  array['admin'],     20),
   ('supervision', 'Supervision',    false, array['admin'],     30),
   ('caisse',      'Caisse',         false, array['admin'],     40)
 on conflict (code) do update set

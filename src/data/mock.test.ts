@@ -973,7 +973,7 @@ describe('Rôles multiples (mock)', () => {
   it('un technique n’attribue que « technique »', async () => {
     const provider = await connecte(new MockProvider(), 'technique@demo');
     await expect(provider.setRolesUser('demo-sup', ['supervision', 'admin'])).rejects.toThrow(
-      /Administrateur/,
+      /Admin/,
     );
     await provider.setRolesUser('demo-sup', ['supervision', 'technique']);
     expect((await provider.listUsers()).find((u) => u.user_id === 'demo-sup')?.roles).toEqual([
