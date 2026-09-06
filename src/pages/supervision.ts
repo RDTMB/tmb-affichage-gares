@@ -576,11 +576,18 @@ function appliqueRoles(): void {
 
   // Paramètres : chaque carte a son droit.
   montreSi('carte-machines', peut('parametres.exploitation'));
-  montreSi('carte-motifs', peut('parametres.exploitation'));
-  montreSi('carte-ciels', peut('parametres.exploitation'));
   montreSi('carte-a-quai', peut('parametres.exploitation'));
-  montreSi('carte-users', peut('comptes.lire'));
-  montreSi('carte-journal', peut('journal'));
+
+  // Motifs et états du ciel ont DÉMÉNAGÉ au contact de ce qui les consomme —
+  // Circulations et Bandeau — mais restent des réglages : la supervision voit
+  // désormais ces onglets sans forcément pouvoir éditer les listes.
+  montreSi('details-motifs', peut('parametres.exploitation'));
+  montreSi('carte-ciels', peut('parametres.exploitation'));
+
+  // `carte-users` et `carte-journal` occupent seuls leur onglet : la
+  // visibilité de l'onglet porte déjà exactement leur droit (`comptes.lire`,
+  // `journal`), un `montreSi` de plus ne ferait que dupliquer la règle.
+  // La purge, elle, garde le sien : elle est plus restrictive que l'onglet.
   montreSi('carte-purge', peut('journal.purger'));
 }
 

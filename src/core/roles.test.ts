@@ -93,26 +93,50 @@ describe('Périmètre validé par l’exploitant le 05/09/2026', () => {
 });
 
 describe('Onglets visibles', () => {
-  it('technique : horaires, écrans, paramètres — pas les circulations', () => {
-    expect(ongletsVisibles(['technique'])).toEqual(['horaires', 'ecrans', 'parametres']);
+  it('technique : horaires, écrans, utilisateurs, journal', () => {
+    expect(ongletsVisibles(['technique'])).toEqual([
+      'horaires',
+      'ecrans',
+      'utilisateurs',
+      'journal',
+    ]);
   });
 
-  it('admin : horaires, bandeau, médias, paramètres', () => {
-    expect(ongletsVisibles(['admin'])).toEqual(['horaires', 'bandeau', 'medias', 'parametres']);
+  it('technique n’a PLUS « Paramètres » : il n’y reste que de l’exploitation', () => {
+    // Machines, motifs, états du ciel, délai « à quai » relèvent de
+    // `parametres.exploitation`, que l'informatique ne porte pas. Ses propres
+    // réglages (veille globale, cache) vivent dans l'onglet Écrans.
+    expect(ongletsVisibles(['technique'])).not.toContain('parametres');
   });
 
-  it('supervision : tout sauf paramètres', () => {
+  it('admin : horaires, bandeau, médias, paramètres, utilisateurs, journal', () => {
+    expect(ongletsVisibles(['admin'])).toEqual([
+      'horaires',
+      'bandeau',
+      'medias',
+      'parametres',
+      'utilisateurs',
+      'journal',
+    ]);
+  });
+
+  it('supervision : tout sauf paramètres et utilisateurs', () => {
     expect(ongletsVisibles(['supervision'])).toEqual([
       'circulations',
       'horaires',
       'bandeau',
       'medias',
       'ecrans',
+      'journal',
     ]);
   });
 
-  it('caisse : bandeau et horaires (lecture)', () => {
-    expect(ongletsVisibles(['caisse'])).toEqual(['horaires', 'bandeau']);
+  it('caisse : horaires, bandeau… et le JOURNAL, enfin atteignable', () => {
+    // Correctif : l'onglet « Paramètres » exigeait `comptes.lire` ou
+    // `journal.purger`, que la caisse n'a pas — son droit `journal` ne menait
+    // donc à AUCUN écran. Un onglet dédié le rend accessible.
+    expect(ongletsVisibles(['caisse'])).toEqual(['horaires', 'bandeau', 'journal']);
+    expect(ongletsVisibles(['caisse'])).toContain('journal');
   });
 
   it('le cumul réunit les onglets, dans l’ordre de la barre', () => {
@@ -122,6 +146,8 @@ describe('Onglets visibles', () => {
       'medias',
       'ecrans',
       'parametres',
+      'utilisateurs',
+      'journal',
     ]);
     expect(ongletsVisibles(['admin', 'supervision'])).toEqual([
       'circulations',
@@ -130,6 +156,8 @@ describe('Onglets visibles', () => {
       'medias',
       'ecrans',
       'parametres',
+      'utilisateurs',
+      'journal',
     ]);
   });
 

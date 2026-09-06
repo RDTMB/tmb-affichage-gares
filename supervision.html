@@ -44,6 +44,8 @@
         <button data-t="medias">Médias</button>
         <button data-t="ecrans">Écrans</button>
         <button data-t="parametres">Paramètres</button>
+        <button data-t="utilisateurs">Utilisateurs</button>
+        <button data-t="journal">Journal</button>
       </nav>
     </div>
 
@@ -285,6 +287,37 @@
             </button>
           </div>
         </div>
+        <!-- Motifs de perturbation : ils se CHOISISSENT dans le tableau
+             ci-dessus. En ajouter un pendant une perturbation obligeait à
+             quitter l'onglet. Replié par défaut : c'est un réglage, pas
+             une commande d'exploitation courante. -->
+        <details class="carte-repliee" id="details-motifs">
+          <summary>Modifier la liste des motifs de perturbation…</summary>
+          <div class="carte" id="carte-motifs">
+            <h2>
+              Motifs de perturbation
+              <div class="actions">
+                <input
+                  type="text"
+                  id="nouveau-motif"
+                  placeholder="Nouveau motif…"
+                  style="width: 140px"
+                />
+                <input
+                  type="text"
+                  id="nouveau-motif-en"
+                  placeholder="English…"
+                  style="width: 130px"
+                />
+                <button class="leger" id="btn-motif-ajout">+ Ajouter</button>
+              </div>
+            </h2>
+            <div class="motifs" id="motifs"></div>
+            <div class="note">
+              Liste des motifs proposés au choix sur chaque train, affichés en gare « FR / EN ».
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- ================= HORAIRES (grilles) ================= -->
@@ -484,6 +517,26 @@
             heure ne dit pas si elle date de dix minutes ou de la veille.
           </div>
         </div>
+        <div class="carte" id="carte-ciels">
+          <h2>
+            États du ciel (météo)
+            <div class="actions">
+              <input
+                type="text"
+                id="nouveau-ciel"
+                placeholder="Nouvel état (FR)…"
+                style="width: 140px"
+              />
+              <input type="text" id="nouveau-ciel-en" placeholder="English…" style="width: 130px" />
+              <button class="leger" id="btn-ciel-ajout">+ Ajouter</button>
+            </div>
+          </h2>
+          <div id="ciels"></div>
+          <div class="note">
+            Liste des états proposés au choix avec la température. Un état affiché actuellement en
+            gare ne peut pas être supprimé.
+          </div>
+        </div>
       </section>
 
       <!-- ================= MÉDIAS ================= -->
@@ -580,55 +633,29 @@
               d'anneau, ex. Marguerite). Une machine « hors service » ne peut plus être affectée.
             </div>
           </div>
-          <div class="carte" id="carte-motifs">
-            <h2>
-              Motifs de perturbation
-              <div class="actions">
-                <input
-                  type="text"
-                  id="nouveau-motif"
-                  placeholder="Nouveau motif…"
-                  style="width: 140px"
-                />
-                <input
-                  type="text"
-                  id="nouveau-motif-en"
-                  placeholder="English…"
-                  style="width: 130px"
-                />
-                <button class="leger" id="btn-motif-ajout">+ Ajouter</button>
-              </div>
-            </h2>
-            <div class="motifs" id="motifs"></div>
+          <div class="carte" id="carte-a-quai">
+            <h2>Grille en service et durées d'affichage</h2>
+            <div class="saisons" id="saisons"></div>
+            <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
+              <label style="font-weight: 700; color: var(--texte)"
+                >« À quai » en gare d'origine :
+                <input type="number" id="a-quai-origine" min="0" max="30" style="width: 62px" />
+                min avant le départ</label
+              >
+            </div>
             <div class="note">
-              Proposés dans l'onglet Circulations et affichés en gare « FR / EN ».
+              Le Fayet en montée et le Nid d'Aigle en descente n'ont pas d'heure d'arrivée : la rame
+              y est annoncée « À QUAI » ce délai avant son départ. Ailleurs, c'est l'heure d'arrivée
+              réelle qui fait foi. La veille des écrans est réglée dans l'onglet Écrans, le bandeau
+              et la météo dans l'onglet Bandeau.
             </div>
           </div>
-          <div class="carte" id="carte-ciels">
-            <h2>
-              États du ciel (météo)
-              <div class="actions">
-                <input
-                  type="text"
-                  id="nouveau-ciel"
-                  placeholder="Nouvel état (FR)…"
-                  style="width: 140px"
-                />
-                <input
-                  type="text"
-                  id="nouveau-ciel-en"
-                  placeholder="English…"
-                  style="width: 130px"
-                />
-                <button class="leger" id="btn-ciel-ajout">+ Ajouter</button>
-              </div>
-            </h2>
-            <div id="ciels"></div>
-            <div class="note">
-              Proposés dans le sélecteur météo de l'onglet Bandeau. Un état affiché actuellement en
-              gare ne peut pas être supprimé.
-            </div>
-          </div>
+        </div>
+      </section>
+
+      <!-- ================= UTILISATEURS ================= -->
+      <section class="onglet" id="t-utilisateurs">
+        <div class="param-grid">
           <div class="carte" id="carte-users">
             <h2>
               Utilisateurs et droits
@@ -654,24 +681,11 @@
               un compte actif Administrateur : la base refuse de retirer le dernier.
             </div>
           </div>
-          <div class="carte" id="carte-a-quai">
-            <h2>Grille en service et durées d'affichage</h2>
-            <div class="saisons" id="saisons"></div>
-            <div class="note" style="display: flex; gap: 18px; flex-wrap: wrap">
-              <label style="font-weight: 700; color: var(--texte)"
-                >« À quai » en gare d'origine :
-                <input type="number" id="a-quai-origine" min="0" max="30" style="width: 62px" />
-                min avant le départ</label
-              >
-            </div>
-            <div class="note">
-              Le Fayet en montée et le Nid d'Aigle en descente n'ont pas d'heure d'arrivée : la rame
-              y est annoncée « À QUAI » ce délai avant son départ. Ailleurs, c'est l'heure d'arrivée
-              réelle qui fait foi. La veille des écrans est réglée dans l'onglet Écrans, le bandeau
-              et la météo dans l'onglet Bandeau.
-            </div>
-          </div>
         </div>
+      </section>
+
+      <!-- ================= JOURNAL ================= -->
+      <section class="onglet" id="t-journal">
         <div class="carte" id="carte-journal">
           <h2>
             Journal d'exploitation

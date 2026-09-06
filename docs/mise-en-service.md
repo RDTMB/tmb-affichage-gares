@@ -206,7 +206,7 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
    fait **choisir son mot de passe** (12 caractères minimum, comme l'annonce
    `docs/securite.md` §4), puis entre
    directement. Elle se connectera ensuite avec e-mail + mot de passe. Le
-   bouton « Réinitialiser le mot de passe » de l'onglet Paramètres suit le
+   bouton « Réinitialiser le mot de passe » de l'onglet Utilisateurs suit le
    même chemin.
 
    > Lien « expiré ou déjà utilisé » alors que la personne vient de le

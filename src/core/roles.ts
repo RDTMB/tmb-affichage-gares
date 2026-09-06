@@ -171,6 +171,8 @@ export const ONGLETS = [
   'medias',
   'ecrans',
   'parametres',
+  'utilisateurs',
+  'journal',
 ] as const;
 
 export type Onglet = (typeof ONGLETS)[number];
@@ -184,7 +186,14 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   bandeau: ['bandeau'],
   medias: ['medias'],
   ecrans: ['ecrans.declarer', 'ecrans.commander', 'parametres.technique'],
-  parametres: ['parametres.exploitation', 'comptes.lire', 'journal.purger'],
+  // UN ONGLET = UN DROIT. « Paramètres » mélangeait trois natures : des listes
+  // d'exploitation, l'administration des comptes et un journal en lecture
+  // seule. Il exigeait donc `comptes.lire` ET `journal.purger` — si bien que
+  // la caisse, qui porte pourtant `journal`, n'atteignait le journal par
+  // AUCUN chemin.
+  parametres: ['parametres.exploitation'],
+  utilisateurs: ['comptes.lire'],
+  journal: ['journal'],
 };
 
 /** Onglets visibles pour un ensemble de rôles, dans l'ordre de la barre. */
