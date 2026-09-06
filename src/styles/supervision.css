@@ -531,6 +531,15 @@ input[type='color'] {
 
 /* Restriction de ligne : un simple lien tant qu'elle ne sert pas — la barre
    du jour est déjà chargée, et une ligne complète est le cas courant. */
+/* Heure simulée : suffisamment voyante pour qu'on ne prenne jamais ce poste
+   pour un poste normal, l'écriture partant dans la vraie base. */
+.pill.simule {
+  background: #fdf3e0;
+  color: #7a6017;
+  border: 1px solid #e6c98a;
+  font-weight: 900;
+}
+
 .lien-section {
   border: 0;
   background: none;

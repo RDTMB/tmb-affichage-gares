@@ -80,6 +80,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { echapper } from './affichage-commun';
+import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
 import type { ModeMedias } from '../core/cycle-medias';
 import type { EtatBandeauApplication } from './supervision-logique';
@@ -270,6 +271,21 @@ function dateISO(decalageJours: number): string {
   d.setDate(d.getDate() + decalageJours);
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(d);
 }
+
+/**
+ * HEURE DU POSTE, simulable par `?simule=HH:MM[:SS]` comme sur les écrans.
+ *
+ * Plusieurs commandes ne s'ouvrent qu'à partir d'une certaine heure — le
+ * départ réel d'un renfort n'apparaît qu'une fois sa montée arrivée. Sans
+ * heure simulée, il fallait attendre l'heure réelle pour les essayer, ou
+ * créer un train à une heure passée : la recette devenait impraticable.
+ *
+ * `?simule=` ne décale QUE l'heure du jour, jamais la date. Et les
+ * horodatages absolus (fraîcheur des écrans, signal de vie) continuent de
+ * venir de `Date.now()` : ce sont des instants réels, pas des heures de
+ * service.
+ */
+const heurePoste = creeSourceHeure(new URLSearchParams(window.location.search).get('simule'));
 
 /**
  * Grille de la journée affichée : celle qui l'a générée, sinon celle en
@@ -510,6 +526,26 @@ function rendreBaseServie(): void {
   pastille.title = base.detail;
   pastille.className = `pill base ${base.classe}`;
   pastille.style.display = '';
+
+  // HEURE SIMULÉE : elle change ce que le poste croit être « maintenant », et
+  // donc ce qu'il écrit (une heure de départ constatée, par exemple). Ça doit
+  // se voir en permanence, pas seulement dans l'URL.
+  const simule = $('pill-simule');
+  if (!heurePoste.simulee) {
+    simule.style.display = 'none';
+    return;
+  }
+  simule.style.display = '';
+  simule.title =
+    'Heure simulée par ?simule= : les commandes qui dépendent de l’heure se comportent comme à cette heure-là. Les écritures, elles, partent dans la VRAIE base.';
+  const tic = (): void => {
+    const s = heurePoste.maintenantS();
+    simule.textContent = `⏱ ${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(
+      Math.floor((s % 3600) / 60),
+    ).padStart(2, '0')} simulée`;
+  };
+  tic();
+  window.setInterval(tic, 1000);
 }
 
 /**
@@ -689,15 +725,12 @@ async function apresConnexion(): Promise<void> {
 
 function heurePassee(depart: string): boolean {
   if (dateSel !== dateISO(0)) return false;
-  const d = new Date();
-  const maintenant = d.getHours() * 3600 + d.getMinutes() * 60;
-  return maintenant > heureVersSecondes(depart) + 75 * 60;
+  return maintenantS() > heureVersSecondes(depart) + 75 * 60;
 }
 
-/** Secondes depuis minuit, heure du poste. */
+/** Secondes depuis minuit, heure du poste (simulable par `?simule=`). */
 function maintenantS(): number {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+  return heurePoste.maintenantS();
 }
 
 /**
