@@ -952,9 +952,23 @@ tr.paire-fin td {
   color: var(--ok);
 }
 
+/* LE RETARD DOIT SE REPÉRER D'UN BALAYAGE, parmi quinze lignes calmes. Il
+   s'affichait exactement comme un train à l'heure : segment ambre PÂLE sur
+   fond blanc, illisible à deux mètres.
+
+   Ce qu'on ne fait PAS, et il faut savoir pourquoi pour ne pas y revenir :
+   faire porter le retard par l'heure de départ. L'heure de la ligne est ce
+   qui permet de RETROUVER un train quand un collègue annonce « le 11 h 00 » —
+   elle doit rester l'horaire théorique. On n'augmente donc que l'intensité
+   du badge, sans toucher ni à l'heure, ni à la structure, ni au vocabulaire.
+
+   La retenue compte autant que la visibilité : si toutes les lignes crient,
+   aucune ne dit rien. « À l'heure » et les lignes facultatives ne bougent
+   pas — seul l'état de retard passe en plein. */
 .seg button.on-retard {
-  background: var(--retard-bg);
-  color: var(--retard);
+  background: var(--retard);
+  color: #fff;
+  font-weight: 900;
 }
 
 .seg button.on-supp {
@@ -1167,15 +1181,23 @@ tr.paire-fin td {
   color: var(--retard);
 }
 
-/* Aperçu en direct du bandeau défilant (réglage de vitesse) */
+/* Aperçu en direct du bandeau défilant (réglage de vitesse).
+   LA COULEUR NE BOUGE PAS : c'est elle qui rend l'aperçu honnête, l'agent
+   doit voir ce que verra le voyageur. C'est sa SURFACE qui lui donnait une
+   dominance qu'il n'a pas à avoir — mesuré à 1037 × 32 px sur une carte de
+   1381, soit 3,6 fois la surface du bouton « Publier ». Il se lisait comme
+   une alerte et volait la priorité à la seule action de la page.
+   Réduit à un ÉCHANTILLON : plafonné en largeur, plus court, texte à la
+   taille du bandeau réel. */
 .apercu-ticker {
-  flex: 1 1 260px;
+  flex: 0 1 420px;
   min-width: 200px;
+  max-width: 420px;
   overflow: hidden;
   background: var(--rouge);
   color: #fff;
-  border-radius: 8px;
-  padding: 6px 0;
+  border-radius: 6px;
+  padding: 3px 0;
   display: flex;
   align-items: center;
 }
@@ -1184,7 +1206,7 @@ tr.paire-fin td {
   display: inline-block;
   white-space: nowrap;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   padding-left: 100%;
   animation: apercu-defile 20s linear infinite;
 }
@@ -2679,11 +2701,29 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
    boîte `inline-flex` avec ses marges internes, l'emoji un simple texte posé
    sur la ligne de base : les deux ne pouvaient pas s'aligner. La cellule
    devient une rangée flex, et tout ce qu'elle contient s'y centre. */
-td.cell-sens {
+/* A9, CORRIGÉ. Ma première version posait `display: flex` sur le `<td>`
+   lui-même. Un `<td>` qui n’est plus un `table-cell` SORT de la mise en page
+   du rang : il cesse de participer à la hauteur commune, `vertical-align`
+   ne s’applique plus, et ses bordures se tracent sur sa propre boîte. Mesuré
+   avant correction : 39-40 px de cellule pour 52 px de rang, et 58 pour 59
+   sur la ligne à vélo — treize pixels que l’œil lit comme un décalage.
+
+   La cellule reste donc un `table-cell` et c’est un élément INTÉRIEUR qui
+   porte le flex. Rien n’est compensé en `padding` ni en `margin` : la
+   cellule reprend la hauteur du rang, elle ne la simule pas. */
+td.cell-sens > .sens-groupe {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* Le picto vélo ne DÉBORDE plus sur la hauteur du rang : il tenait sur une
+   seconde ligne, ce qui donnait 59 px à la ligne du TRAIN 1 contre 52 aux
+   quinze autres. `nowrap` le garde au fil de l’étiquette ; la colonne est
+   assez large pour les trois éléments, express compris. */
+td.cell-sens > .sens-groupe {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* A8 — ÉTAT VIDE, pas message d'erreur. Une phrase cassée sur deux lignes au
