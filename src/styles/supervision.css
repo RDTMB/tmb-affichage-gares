@@ -1181,15 +1181,23 @@ tr.paire-fin td {
   color: var(--retard);
 }
 
-/* Aperçu en direct du bandeau défilant (réglage de vitesse) */
+/* Aperçu en direct du bandeau défilant (réglage de vitesse).
+   LA COULEUR NE BOUGE PAS : c'est elle qui rend l'aperçu honnête, l'agent
+   doit voir ce que verra le voyageur. C'est sa SURFACE qui lui donnait une
+   dominance qu'il n'a pas à avoir — mesuré à 1037 × 32 px sur une carte de
+   1381, soit 3,6 fois la surface du bouton « Publier ». Il se lisait comme
+   une alerte et volait la priorité à la seule action de la page.
+   Réduit à un ÉCHANTILLON : plafonné en largeur, plus court, texte à la
+   taille du bandeau réel. */
 .apercu-ticker {
-  flex: 1 1 260px;
+  flex: 0 1 420px;
   min-width: 200px;
+  max-width: 420px;
   overflow: hidden;
   background: var(--rouge);
   color: #fff;
-  border-radius: 8px;
-  padding: 6px 0;
+  border-radius: 6px;
+  padding: 3px 0;
   display: flex;
   align-items: center;
 }
@@ -1198,7 +1206,7 @@ tr.paire-fin td {
   display: inline-block;
   white-space: nowrap;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   padding-left: 100%;
   animation: apercu-defile 20s linear infinite;
 }
