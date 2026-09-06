@@ -906,9 +906,21 @@ export type EtatBarrePublication = 'publie' | 'en-cours' | 'echec';
 
 export interface BarrePublication {
   etat: EtatBarrePublication;
-  /** Compteur de la pastille, null quand il n'y a rien à compter. */
+  /**
+   * Contenu de la pastille : « ✓ », le compte, ou « ! ». Elle est TOUJOURS
+   * présente — c'est l'un des trois signaux redondants qui distinguent les
+   * états à deux mètres, avec le liseré et la hauteur de barre.
+   */
+  pastille: string;
+  /** Compteur numérique, null quand il n'y a rien à compter. */
   compteur: number | null;
   titre: string;
+  /**
+   * CE QUI A CHANGÉ, en une ligne (état 2 seulement). C'est `resumeEcarts()`,
+   * déjà calculé côté code : l'agent doit pouvoir relire ce qu'il s'apprête à
+   * publier sans quitter la barre.
+   */
+  resume: string;
   /** Ce que les écrans affichent MAINTENANT — l'information qui manquait. */
   detail: string;
   libelleBouton: string;
@@ -937,24 +949,31 @@ export function barrePublication(etat: {
   derniereISO: string | null;
   /** Horodatage ISO de la tentative incomplète, s'il y en a eu une. */
   echecISO?: string | null;
+  /** `resumeEcarts()` : ce qui a changé, pour l'état 2. */
+  resume?: string;
 }): BarrePublication {
   const heure = heureCourte(etat.derniereISO);
   // « les 6 gares » n'est pas une approximation : c'est le périmètre exact de
   // la publication, et le bouton porte le même nombre.
   const publieA = heure
-    ? `Les 6 gares affichent l’état publié à ${heure}`
-    : 'Les 6 gares affichent le dernier état publié';
+    ? `Les 6 gares affichent l’état publié à ${heure}.`
+    : 'Les 6 gares affichent le dernier état publié.';
 
   if (etat.echecs > 0) {
     const h = heureCourte(etat.echecISO ?? null);
     const n = etat.echecs;
     return {
       etat: 'echec',
+      pastille: '!',
       compteur: n,
       titre:
         `Publication incomplète${h ? ` à ${h}` : ''} — ` +
         `${n} modification${n > 1 ? 's ne sont pas' : ' n’est pas'} en gare`,
-      detail: publieA,
+      resume: '',
+      // La CAUSE est dans son encart juste au-dessus ; cette ligne dit que le
+      // message ne s'effacera pas tout seul. C'est ce que l'agent a besoin de
+      // savoir pour aller chercher de l'aide sans craindre de le perdre.
+      detail: 'Ce message reste affiché jusqu’à la prochaine publication réussie.',
       libelleBouton: 'Réessayer la publication',
       boutonActif: true,
     };
@@ -964,11 +983,13 @@ export function barrePublication(etat: {
     const n = etat.modifs;
     return {
       etat: 'en-cours',
+      pastille: String(n),
       compteur: n,
       titre: `${n} modification${n > 1 ? 's' : ''} pas encore sur les écrans`,
+      resume: etat.resume ?? '',
       detail: heure
-        ? `Les 6 gares affichent toujours l’état publié à ${heure}`
-        : 'Les 6 gares affichent toujours le dernier état publié',
+        ? `Les 6 gares affichent toujours l’état publié à ${heure}.`
+        : 'Les 6 gares affichent toujours le dernier état publié.',
       libelleBouton: 'Publier sur les 6 gares',
       boutonActif: true,
     };
@@ -976,8 +997,11 @@ export function barrePublication(etat: {
 
   return {
     etat: 'publie',
+    // Le SEUL vert de la barre : il ne sert qu'à dire « rien à faire ».
+    pastille: '✓',
     compteur: null,
     titre: 'Tout est publié',
+    resume: '',
     detail: publieA,
     libelleBouton: 'Publier sur les 6 gares',
     boutonActif: false,

@@ -379,15 +379,28 @@ describe('supervision — la barre Publier porte ses trois signaux', () => {
     }
   });
 
-  it('TROIS SIGNAUX REDONDANTS : filet, hauteur, forme de pastille', () => {
-    // Un seul suffit à trancher à deux mètres — et un daltonien lit la forme.
-    expect(css).toMatch(/\.publier\.pub-en-cours\s*\{[^}]*border-top:\s*3px solid #2b7ab5/);
-    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*border-top:\s*3px solid var\(--rouge\)/);
+  it('TROIS SIGNAUX REDONDANTS : liseré, hauteur, contenu de pastille', () => {
+    // Valeurs RELEVÉES DANS LE SOURCE du canevas, pas lues sur une capture :
+    // liseré de 4 px, `--bleu` (#2E74B5) en travail, `--alerte` (#C1281E) à
+    // l'échec. La première transposition disait 3 px et #2B7AB5.
+    expect(css).toMatch(/\.publier\.pub-en-cours\s*\{[^}]*border-top:\s*4px solid var\(--bleu\)/);
+    expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*border-top:\s*4px solid var\(--alerte\)/);
     // L'échec est le seul plus haut : padding-bottom augmenté.
     expect(css).toMatch(/\.publier\.pub-echec\s*\{[^}]*padding-bottom/);
-    // …et le seul dont la pastille change de FORME.
-    expect(css).toMatch(/\.pub-echec \.pastille-pub\s*\{[^}]*border-radius:\s*7px/);
-    expect(css).toMatch(/\.pastille-pub\s*\{[^}]*border-radius:\s*99px/);
+    // Trois pastilles distinctes : ✓ vert au repos (le seul vert de la
+    // barre), compte bleu en travail, « ! » rouge à l'échec.
+    expect(css).toMatch(/\.pub-publie \.pastille-pub\s*\{[^}]*background:\s*var\(--ok-bg\)/);
+    expect(css).toMatch(/\.pastille-pub\s*\{[^}]*background:\s*var\(--bleu\)/);
+    expect(css).toMatch(/\.pub-echec \.pastille-pub\s*\{[^}]*background:\s*var\(--alerte\)/);
+  });
+
+  it('l’onglet d’administration actif prend le bleu du canevas', () => {
+    // #EAF2FA, que le projet possédait déjà sous `--bleu-bg`. J'avais lu
+    // #EAF2F6 sur une capture — deux caractères de trop.
+    expect(css).toMatch(
+      /\.groupe-administration button\.on\s*\{[^}]*background:\s*var\(--bleu-bg\)/,
+    );
+    expect(css).not.toContain('#eaf2f6');
   });
 
   it('la couleur n’est JAMAIS dans le fond entier de la barre', () => {

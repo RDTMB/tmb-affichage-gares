@@ -486,17 +486,60 @@ describe('barrePublication : les trois états et leur vocabulaire', () => {
     expect(v.titre).toContain('2 modifications ne sont pas en gare');
   });
 
-  it('l’état 3 garde la DATE de la dernière publication réussie', () => {
-    // Ce qui est en gare reste l'état d'avant : la ligne grise ne doit pas
-    // laisser croire que la tentative ratée a changé quelque chose.
+  it('l’état 3 dit que le message NE S’EFFACERA PAS tout seul', () => {
+    // Libellé du canevas, vérifié dans son source. La CAUSE est dans son
+    // encart juste au-dessus ; cette ligne-ci répond à l'autre question de
+    // l'agent — « puis-je aller chercher de l'aide sans le perdre ? ».
     const v = barrePublication({
       modifs: 3,
       echecs: 1,
       derniereISO: PUBLIE_A,
       echecISO: '2026-09-06T08:21:00.000Z',
     });
-    expect(v.detail).toContain('10:12');
-    expect(v.detail).not.toContain('10:21');
+    expect(v.detail).toBe('Ce message reste affiché jusqu’à la prochaine publication réussie.');
+  });
+
+  it('les libellés sont ceux du CANEVAS, au caractère près', () => {
+    // Relevés dans `Supervision TMB.dc.html`, pas lus sur une capture : la
+    // première transposition avait perdu le point final et deux couleurs.
+    const publie = barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A });
+    expect(publie.titre).toBe('Tout est publié');
+    expect(publie.detail).toBe('Les 6 gares affichent l’état publié à 10:12.');
+    expect(publie.pastille).toBe('✓');
+
+    const enCours = barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A });
+    expect(enCours.titre).toBe('2 modifications pas encore sur les écrans');
+    expect(enCours.detail).toBe('Les 6 gares affichent toujours l’état publié à 10:12.');
+    expect(enCours.pastille).toBe('2');
+
+    const echec = barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A });
+    expect(echec.pastille).toBe('!');
+    expect(echec.libelleBouton).toBe('Réessayer la publication');
+  });
+
+  it('la pastille n’est JAMAIS vide : c’est un des trois signaux', () => {
+    for (const v of [
+      barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 0, derniereISO: PUBLIE_A }),
+      barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }),
+    ]) {
+      expect(v.pastille).not.toBe('');
+    }
+  });
+
+  it('l’état 2 porte le RÉSUMÉ de ce qui a changé', () => {
+    // `resumeEcarts()` est déjà calculé pour l'historique : l'agent doit
+    // pouvoir relire ce qu'il publie sans quitter la barre.
+    const v = barrePublication({
+      modifs: 2,
+      echecs: 0,
+      derniereISO: PUBLIE_A,
+      resume: 'TRAIN 11 retard — → +10 min · Météo 9 → 12',
+    });
+    expect(v.resume).toContain('TRAIN 11');
+    // …et les deux autres états n'en portent pas : rien à relire.
+    expect(barrePublication({ modifs: 0, echecs: 0, derniereISO: PUBLIE_A }).resume).toBe('');
+    expect(barrePublication({ modifs: 2, echecs: 1, derniereISO: PUBLIE_A }).resume).toBe('');
   });
 
   it('AUCUNE publication encore faite : pas d’heure inventée', () => {

@@ -442,6 +442,7 @@ function majBarrePublication(): void {
     echecs: echecsEnAttente,
     derniereISO: dernierePublicationVue,
     echecISO: echecPublicationISO,
+    resume: modifs > 0 ? resumeEcarts(ecartsCourants) : '',
   });
 
   // L'ÉTAT porte la signature visuelle : filet, hauteur, pastille. Une seule
@@ -456,9 +457,14 @@ function majBarrePublication(): void {
   // s'appliquaient immédiatement — faux depuis le brouillon.
   $('detail-pub').textContent = vue.detail;
 
-  const pastille = $('pastille-pub');
-  pastille.style.display = vue.compteur === null ? 'none' : '';
-  pastille.textContent = vue.compteur === null ? '' : String(vue.compteur);
+  // La pastille est TOUJOURS présente : « ✓ », le compte, ou « ! ». C'est
+  // l'un des trois signaux redondants qui distinguent les états à deux
+  // mètres, avec le liseré et la hauteur de barre.
+  $('pastille-pub').textContent = vue.pastille;
+
+  const resume = $('resume-ecarts');
+  resume.style.display = vue.resume === '' ? 'none' : '';
+  resume.textContent = vue.resume;
 
   // Rien à publier : bouton neutre et inerte, plutôt qu'un rouge qui appelle
   // un clic sans effet.

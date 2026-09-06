@@ -846,9 +846,13 @@
          n'est une alerte permanente au repos — la couleur n'est jamais dans le
          fond entier. -->
     <div class="publier" id="barre-publier" style="display: none">
-      <div class="pastille-pub" id="pastille-pub" style="display: none">—</div>
+      <div class="pastille-pub" id="pastille-pub">✓</div>
       <div class="bloc-etat-pub">
         <div class="etat" id="etat-pub">Tout est publié</div>
+        <!-- CE QUI A CHANGÉ, en une ligne : l'agent relit ce qu'il s'apprête à
+             publier sans quitter la barre. C'est `resumeEcarts()`, déjà
+             calculé pour le résumé consigné à l'historique. -->
+        <div class="resume-ecarts" id="resume-ecarts" style="display: none"></div>
         <div class="resume-application" id="resume-application" style="display: none"></div>
         <!-- Cause RÉELLE d'une publication incomplète : elle reste affichée
              jusqu'à la publication suivante, là où le toast s'effaçait avant

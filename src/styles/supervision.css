@@ -243,14 +243,14 @@ nav.tabs {
   margin-left: 14px;
 }
 
+/* Valeurs relevées dans le source du canevas. */
 .intitule-groupe {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--sec);
-  opacity: 0.75;
-  padding-right: 4px;
+  color: #9fb0c0;
+  padding: 0 10px 0 0;
 }
 
 /* Plus petits et sans soulignement rouge : l'administration se consulte, elle
@@ -264,7 +264,9 @@ nav.tabs {
 .groupe-administration button.on {
   color: var(--marine);
   border-bottom-color: transparent;
-  background: #eaf2f6;
+  /* #EAF2FA dans le canevas — le projet le possédait déjà sous `--bleu-bg`.
+     J'avais lu #EAF2F6 sur une capture : deux caractères de trop. */
+  background: var(--bleu-bg);
   border-radius: 6px 6px 0 0;
 }
 
@@ -1937,20 +1939,23 @@ tr.paire-fin td {
    hauteur de la barre, la forme de la pastille. Un seul suffit à trancher à
    deux mètres. La couleur n'est JAMAIS dans le fond entier — une barre rouge
    en permanence cesse d'alerter au bout d'une heure. */
+/* Valeurs relevées dans le source du canevas, pas à l'œil sur une capture :
+   liseré de 4 px, `--bleu` (#2E74B5) en travail et `--alerte` (#C1281E) à
+   l'échec — deux couleurs que le projet possédait déjà. */
 .publier.pub-publie {
   border-top-color: var(--bord);
 }
 
 .publier.pub-en-cours {
-  border-top: 3px solid #2b7ab5;
-  padding-top: 11px;
+  border-top: 4px solid var(--bleu);
+  padding-top: 10px;
 }
 
 /* Le plus haut des trois, et le seul à porter un encart : un échec de
    publication laisse des voyageurs devant un horaire faux. */
 .publier.pub-echec {
-  border-top: 3px solid var(--rouge);
-  padding-top: 11px;
+  border-top: 4px solid var(--alerte);
+  padding-top: 10px;
   padding-bottom: 15px;
 }
 
@@ -1962,32 +1967,56 @@ tr.paire-fin td {
   font-weight: 700;
 }
 
-/* Pastille du compteur. Bleue en travail, rouge à l'échec : l'état de travail
-   n'est pas une alerte, et le rouge garde son sens. */
+/* CE QUI A CHANGÉ, entre le titre et la ligne d'état : l'agent relit ce qu'il
+   s'apprête à publier sans quitter la barre. Tronqué plutôt que replié — la
+   barre est fixe en bas de page et ne doit pas grandir avec la liste. */
+.resume-ecarts {
+  font-size: 12.5px;
+  color: var(--texte);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 62vw;
+}
+
+/* Pastille : TOUJOURS présente, elle porte « ✓ », le compte, ou « ! ». Trois
+   états, trois traitements — le vert du repos ne se voit nulle part ailleurs
+   dans la barre, et le rouge garde son sens d'alerte. */
 .pastille-pub {
   flex: none;
   min-width: 26px;
   height: 26px;
-  padding: 0 7px;
+  padding: 0 8px;
   border-radius: 99px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: 900;
   font-size: 14px;
   color: #fff;
-  background: #2b7ab5;
+  background: var(--bleu);
+}
+
+.pub-publie .pastille-pub {
+  width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 15px;
 }
 
 .pub-echec .pastille-pub {
-  background: var(--rouge);
-  /* Carrée aux angles adoucis : la FORME distingue déjà les deux états, même
-     pour qui ne perçoit pas la différence de couleur. */
-  border-radius: 7px;
+  width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--alerte);
+  font-size: 15px;
 }
 
 .pub-echec .etat {
-  color: var(--rouge);
+  color: var(--alerte);
 }
 
 .publier .detail {
