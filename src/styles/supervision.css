@@ -1247,7 +1247,11 @@ tr.paire-fin td {
 /* La carte des utilisateurs prend toute la largeur : une ligne y porte le nom,
    l'adresse, plusieurs badges de rôle, quatre cases à cocher et trois
    commandes — en demi-largeur, les cases se scindaient sur deux rangs. */
-#carte-users {
+#carte-users,
+/* La grille rôles × onglets compte neuf colonnes : en demi-largeur, les
+   dernières (Utilisateurs, Journal) n'étaient atteignables qu'en faisant
+   défiler la carte horizontalement, à 1440 px de fenêtre déjà. */
+#carte-onglets-roles {
   grid-column: 1 / -1;
 }
 
@@ -2290,13 +2294,56 @@ table.onglets-roles th[scope='row'] {
   text-align: left;
   font-weight: 700;
 }
+/* TROIS FORMES, pas deux. « Décoché par choix » et « impossible à cocher » se
+   présentaient tous deux comme un carré vide pâle : rien ne les distinguait.
+   Cochée = marine plein ; décochée = blanc à bord net ; impossible =
+   hachuré à bord pointillé. */
 table.onglets-roles input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--bleu-gris);
+  border-radius: 4px;
+  background: #fff;
   cursor: pointer;
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+}
+table.onglets-roles input[type='checkbox']:checked {
+  background: var(--marine);
+  border-color: var(--marine);
+}
+table.onglets-roles input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+table.onglets-roles input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--bleu);
+  outline-offset: 2px;
 }
 /* Une case grisée n'est pas un oubli : le rôle n'a aucun droit sur cet
    onglet, ou le décocher fermerait le dernier accès au réglage. Le motif est
    dans son `title`. */
 table.onglets-roles input[type='checkbox']:disabled {
   cursor: not-allowed;
-  opacity: 0.35;
+  border-style: dashed;
+  border-color: #c3cedb;
+  background: repeating-linear-gradient(45deg, #fff, #fff 3px, #eef2f7 3px, #eef2f7 6px);
+}
+/* Cochée ET verrouillée : le motif hachuré effacerait la coche. Case pleine,
+   éteinte, au bord pointillé. */
+table.onglets-roles input[type='checkbox']:checked:disabled {
+  background: var(--bleu-gris);
+  border-color: var(--bleu-gris);
+  border-style: dashed;
 }

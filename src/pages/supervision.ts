@@ -1,8 +1,8 @@
 // Supervision (étapes 6-7-8) — fidèle à maquettes/supervision.html.
 // Connexion obligatoire ; le rôle filtre les onglets (caisse : Messages
 // uniquement ; supervision : tout sauf Paramètres ; admin : tout).
-// Les modifications s'appliquent immédiatement ; « Publier » journalise un
-// résumé horodaté (docs/01 §5.6).
+// Rien n'atteint les écrans avant le clic « Publier » : les modifications
+// vivent dans un brouillon jusque-là (src/pages/brouillon.ts, docs/01 §5.6).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/400.css';

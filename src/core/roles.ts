@@ -19,7 +19,7 @@ export type Role = (typeof ROLES)[number];
 /** Libellés d'interface (le badge affiche, lui, le code en majuscules). */
 export const LIBELLE_ROLE: Record<Role, string> = {
   technique: 'Technique',
-  admin: 'Administrateur',
+  admin: 'Admin',
   supervision: 'Supervision',
   caisse: 'Caisse',
 };
