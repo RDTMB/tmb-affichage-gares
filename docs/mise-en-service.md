@@ -395,6 +395,74 @@ suppression définitive depuis l'interface attendent ces fonctions. Toute la
 mécanique des rôles — badges, cases à cocher, attribution, garde-fous —
 s'éprouve sans elles.
 
+### Les clés d'API : sortir des clés « legacy » (constat S9)
+
+Le projet porte DEUX générations de clés d'API. Les anciennes, dites
+« legacy » — `anon` et `service_role`, deux JWT — et les nouvelles —
+`sb_publishable_…` et `sb_secret_…` —, seules réellement en service dans le
+front et dans les secrets des fonctions. Les anciennes restent ACTIVES tant
+qu'on ne les désactive pas : c'est une porte qui ne sert plus et qui reste
+ouverte.
+
+Ce n'est pas un interrupteur, parce que les trois Edge Functions lisent une clé
+à chaque appel. Depuis septembre 2026 elles lisent d'abord le trousseau que
+Supabase injecte tout seul dans leur environnement — `SUPABASE_SECRET_KEYS` et
+`SUPABASE_PUBLISHABLE_KEYS`, au PLURIEL, chacun un objet JSON indexé par nom de
+clé, dont on lit l'entrée `default` — puis, seulement en repli, les anciennes
+variables `SUPABASE_SERVICE_ROLE_KEY` et `SUPABASE_ANON_KEY`.
+
+⚠ **Après la désactivation, les anciennes variables ne disparaissent pas** :
+elles gardent leur JWT périmé, que Supabase refuse alors (« Legacy API keys are
+disabled »). Le repli ne protège donc de RIEN après la coupure. Il ne couvre
+que la fenêtre entre le déploiement du code et la coupure elle-même, et il est
+à retirer ensuite — le bloc de code porte la mention « À RETIRER ».
+
+**Le contrôle qui décide de tout.** À chaque fois que le repli sert, la
+fonction écrit dans ses journaux une ligne qui commence par `[cles]` et qui dit
+de ne pas couper. Sans cette ligne, le repli réussirait en silence : on
+essaierait les trois parcours, tout marcherait — grâce à l'ANCIENNE clé —, on
+en conclurait que la coupure est sûre, on couperait, et tout casserait. L'état
+cible n'écrit rien du tout, et c'est cette ABSENCE de trace qui autorise la
+coupure.
+
+Les six étapes, dans cet ordre, et jamais autrement :
+
+1. **Déployer les trois fonctions** sur le projet de TEST (§E ci-dessus,
+   `.\outils\deployer-edge-functions.cmd -Projet test`).
+2. **Essayer les trois parcours en vrai**, depuis la supervision branchée sur
+   le test : traduire un message, supprimer un compte, inviter un compte.
+   L'invitation en DERNIER et une seule fois : sans serveur SMTP propre,
+   Supabase limite l'envoi à **2 e-mails par heure**, et un essai raté coûte
+   une heure d'attente.
+3. **Lire les journaux** des trois fonctions : Edge Functions → la fonction →
+   *Logs*. Aucune ligne `[cles]` ne doit apparaître. S'il y en a une, le
+   trousseau n'est pas lu : ne pas couper, corriger d'abord (le message nomme
+   la variable qui manque).
+4. **Refaire 1 à 3 en production** (`-Projet prod`, qui exige de taper
+   `PRODUCTION` en toutes lettres).
+5. **Désactiver les clés legacy**, en production : Project Settings → API Keys
+   → onglet *Legacy API keys* → *Disable*. **C'est RÉVERSIBLE** depuis le même
+   écran, ce qui fait de cette étape la moins risquée de la liste — à condition
+   que les quatre précédentes soient faites.
+6. **Refaire les trois parcours** juste après la coupure, plus les deux
+   contrôles de la §F (`[ ]` clé publishable refusée, `[ ]` aucune trace de
+   `sb_secret`). Puis retirer le repli du code, dans une pull request à part.
+
+**« Verify JWT » reste ACTIF, ne pas le désactiver.** Un fil public rapporte
+qu'appeler une fonction avec une clé publishable en jeton porteur ferait échouer
+la vérification de la passerelle, et conseille de déployer avec
+`--no-verify-jwt`. Ce n'est PAS notre cas, et c'est vérifié deux fois :
+le SDK n'envoie jamais la clé publishable en jeton porteur vers une fonction
+(`omitApiKeyAsBearer`, `@supabase/supabase-js` 2.112), et nos trois fonctions
+ne sont appelées que depuis une supervision où l'agent est CONNECTÉ — le jeton
+porteur est donc son jeton de session. Mesuré sur le projet de test le
+07/09/2026 : un appel avec la clé publishable en jeton porteur reçoit un 401
+`Non connecté` écrit par NOTRE code, donc la passerelle l'a bien laissé passer ;
+un jeton volontairement invalide reçoit un 401 `UNAUTHORIZED_INVALID_JWT_FORMAT`
+écrit par la PASSERELLE, ce qui prouve que la vérification est en place. Le
+constat S2 est donc satisfait tel quel, et `--no-verify-jwt` retirerait une
+protection sans rien résoudre.
+
 ## F. Vérifications finales
 
 - [ ] `…/index.html` : portail, 6 gares listées.
@@ -418,7 +486,19 @@ s'éprouve sans elles.
 - [ ] Écriture anonyme rejetée : depuis un terminal,
       `curl -X POST "https://xxxx.supabase.co/rest/v1/messages" -H "apikey: sb_publishable_…" -H "Content-Type: application/json" -d "{\"texte_fr\":\"test\"}"`
       doit répondre **401/403** (RLS).
-- [ ] `git grep sb_secret` ne renvoie rien.
+- [ ] `git grep sb_secret` ne renvoie rien — et la clé `sb_secret_…` n'est
+      posée QUE dans les secrets des Edge Functions (Supabase → Edge Functions
+      → *Secrets*) : ni dans une variable de dépôt GitHub, ni dans
+      `public/config.js`, ni dans un `.env` du poste (constat S13).
+- [ ] **Après la coupure des clés legacy** (§E) : la clé publishable ne vaut
+      pas un jeton d'agent. Depuis un terminal,
+      `curl -X POST "https://xxxx.supabase.co/functions/v1/traduire" -H "apikey: sb_publishable_…" -H "Authorization: Bearer sb_publishable_…" -H "Content-Type: application/json" -d "{\"texte\":\"essai\"}"`
+      doit répondre **401** (constat S1). Le corps de la réponse dit QUI a
+      refusé : `Non connecté` vient de la fonction, un JSON
+      `UNAUTHORIZED_INVALID_JWT_FORMAT` viendrait de la passerelle. Les deux
+      sont des refus ; c'est un 200 qui serait un défaut.
+- [ ] **Après la coupure**, les journaux des trois fonctions ne portent plus
+      aucune ligne `[cles]` sur un parcours complet (§E).
 - [ ] **Écrans déclarés** : Supervision → Écrans → déclarer chaque poste
       (gare + type) AVANT de le mettre en service. Un écran non déclaré
       affiche correctement les horaires mais reste invisible en supervision.
