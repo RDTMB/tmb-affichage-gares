@@ -28,6 +28,19 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 const CHEMIN = 'supabase/functions/supprimer-utilisateur/index.ts';
 
+/**
+ * Le fichier tel qu'il sera déployé, ramené en fins de ligne LF.
+ *
+ * Le dépôt est en CRLF sur le poste de développement et en LF sur le coureur
+ * d'intégration — aucun `.gitattributes` ne fixe les `.ts`. Un repère de texte
+ * qui porterait un retour chariot passerait donc ici et tomberait là-bas.
+ * C'est arrivé le 07/09/2026, et c'est la seule raison de cette normalisation.
+ */
+function sourceDeployee(): string {
+  const url = new URL(`../../${CHEMIN}`, import.meta.url);
+  return readFileSync(fileURLToPath(url), 'utf-8').replace(/\r\n/g, '\n');
+}
+
 /** Clés rendues par le faux environnement ; elles disent QUI agit. */
 const CLE_SECRETE = 'sb_secret_du-test';
 const CLE_PUBLIABLE = 'sb_publishable_du-test';
@@ -226,8 +239,7 @@ type Gestionnaire = (req: Request) => Promise<Response>;
  * qu'il sera déployé, commentaires en moins.
  */
 async function gestionnaire(base: Base): Promise<Gestionnaire> {
-  const url = new URL(`../../${CHEMIN}`, import.meta.url);
-  const brut = readFileSync(fileURLToPath(url), 'utf-8');
+  const brut = sourceDeployee();
   const IMPORT = "import { createClient } from 'jsr:@supabase/supabase-js@2';";
   expect(brut.split(IMPORT), `import de createClient introuvable dans ${CHEMIN}`).toHaveLength(2);
   const sansImport = brut.replace(IMPORT, '// createClient est injecté par le test');
@@ -474,10 +486,11 @@ describe('le défaut du 05/09/2026 ne peut plus revenir', () => {
     // Verrou de TEXTE, en plus de l'exécution : une réécriture qui remettrait
     // l'appel Auth en premier casserait la trace, mais ce repère-ci dit
     // pourquoi en un coup d'œil dans le diff.
-    const url = new URL(`../../${CHEMIN}`, import.meta.url);
-    const src = readFileSync(fileURLToPath(url), 'utf-8');
+    // Source ramenée en LF : le repère de la relecture enjambe une ligne, et
+    // un « \r\n » codé en dur ne se trouverait que sur le poste Windows.
+    const src = sourceDeployee();
     const retrait = src.indexOf("appelant.from('profils_roles').delete()");
-    const relecture = src.indexOf("admin\n      .from('profils_roles')".replace('\n', '\r\n'));
+    const relecture = src.indexOf("admin\n      .from('profils_roles')");
     const suppression = src.indexOf('admin.auth.admin.deleteUser(');
     expect(retrait, 'retrait des rôles par le jeton de l’agent').toBeGreaterThan(0);
     expect(suppression, 'appel deleteUser').toBeGreaterThan(0);
