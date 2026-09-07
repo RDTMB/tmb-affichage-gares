@@ -4,9 +4,13 @@ import { readFileSync } from 'node:fs';
 
 // Logos officiels de public/logos/ inlinés au build en data URI base64
 // (docs/02 §4) : l'affichage ne dépend d'aucune requête, même hors ligne.
-function logoDataUri(nom: string): string {
+function fichierDataUri(nom: string, type: string): string {
   const chemin = fileURLToPath(new URL(`public/logos/${nom}`, import.meta.url));
-  return JSON.stringify(`data:image/svg+xml;base64,${readFileSync(chemin).toString('base64')}`);
+  return JSON.stringify(`data:${type};base64,${readFileSync(chemin).toString('base64')}`);
+}
+
+function logoDataUri(nom: string): string {
+  return fichierDataUri(nom, 'image/svg+xml');
 }
 
 // Multi-pages : quatre entrées HTML indépendantes (portail de test, écran de
@@ -30,6 +34,14 @@ export default defineConfig(({ mode }) => ({
     __LOGO_LONG__: logoDataUri('logo-long.svg'),
     __MOTRICE_BLANC__: logoDataUri('motrice-direct_blanc_FFFFFF.svg'),
     __MOTRICE_MARINE__: logoDataUri('motrice-direct_marine_213B57.svg'),
+    // Icône d'onglet. Le logo officiel porte quatre lignes de texte : illisible
+    // dans 16 px. Monogramme dédié, tracé dans l'Amaranth du projet (les
+    // lettres sont des CONTOURS, pas du texte : une icône ne charge pas les
+    // polices de la page). Le PNG est le repli des navigateurs qui refusent
+    // une icône SVG ; le 180 sert l'ajout à l'écran d'accueil d'un téléphone.
+    __FAVICON_SVG__: logoDataUri('favicon-tmb.svg'),
+    __FAVICON_PNG__: fichierDataUri('favicon-tmb-64.png', 'image/png'),
+    __FAVICON_TACTILE__: fichierDataUri('favicon-tmb-180.png', 'image/png'),
   },
   build: {
     // Les logos officiels sont inlinés en base64 dans le JS (démarrage hors

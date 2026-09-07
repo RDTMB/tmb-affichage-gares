@@ -1423,6 +1423,16 @@ tr.paire-fin td {
 /* La carte des utilisateurs prend toute la largeur : une ligne y porte le nom,
    l'adresse, plusieurs badges de rôle, quatre cases à cocher et trois
    commandes — en demi-largeur, les cases se scindaient sur deux rangs. */
+/* Logo des cartes de connexion : les seuls écrans vus avant identification.
+   Version COULEUR du logo rond — la carte est blanche, le logo blanc de
+   l'en-tête y serait invisible. */
+.logo-connexion {
+  display: block;
+  width: 84px;
+  height: auto;
+  margin: 0 auto 6px;
+}
+
 #carte-users,
 /* La grille rôles × onglets compte neuf colonnes : en demi-largeur, les
    dernières (Utilisateurs, Journal) n'étaient atteignables qu'en faisant

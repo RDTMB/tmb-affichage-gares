@@ -81,6 +81,7 @@ import {
   type BrouillonMessages,
   type BrouillonTerminus,
 } from './brouillon';
+import { poseFavicon } from './favicon';
 import { echapper } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
@@ -3947,7 +3948,13 @@ function initPublication(): void {
 // ---------------------------------------------------------------------------
 
 async function demarre(): Promise<void> {
+  poseFavicon();
   ($('logo') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+  // Logo sur les cartes de connexion : les seuls écrans vus avant d'être
+  // identifié, et les seuls où le logo COULEUR a sa place (fond blanc).
+  document
+    .querySelectorAll<HTMLImageElement>('.logo-connexion')
+    .forEach((img) => (img.src = __LOGO_ROND__));
   rendreBaseServie();
   initOnglets();
   initCirculations();

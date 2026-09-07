@@ -1,10 +1,12 @@
 // Portail de test : liens vers les écrans des 6 gares + la grille + la supervision.
 import { initBandeau } from './commun';
+import { poseFavicon } from './favicon';
 import { ORDRE_GARES, type GareId } from '../core/types';
 // Après ./commun (qui charge base.css) : la feuille du portail l'emporte par la cascade.
 import '../styles/index.css';
 
 initBandeau();
+poseFavicon();
 
 // Noms et altitudes officiels (identiques aux grilles JSON, dupliqués ici pour
 // éviter de charger une grille complète sur le portail).

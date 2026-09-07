@@ -59,6 +59,10 @@ import {
   type Synchronisation,
 } from './resilience';
 
+import { poseFavicon } from './favicon';
+
+poseFavicon();
+
 const RAME_INCONNUE: Machine = { nom: '?', couleur: '#708DA4', en_service: true };
 
 function $(id: string): HTMLElement {

@@ -62,6 +62,7 @@ import {
   messagesVisibles,
   meteoHtml,
 } from './affichage-commun';
+import { poseFavicon } from './favicon';
 import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
 import {
@@ -73,6 +74,8 @@ import {
 } from './resilience';
 
 // Flèches obliques ↗ / ↙ de la maquette (inline, aucune ressource externe)
+poseFavicon();
+
 const FLECHE_UP =
   '<svg viewBox="0 0 24 24" fill="none"><path d="M7 17 L17 7 M17 7 H9.5 M17 7 V14.5" stroke="#BDDCF4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const FLECHE_DOWN =
