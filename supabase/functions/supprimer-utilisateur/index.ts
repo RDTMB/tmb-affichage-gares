@@ -1,17 +1,24 @@
 // Edge Function « supprimer-utilisateur » (Deno) — suppression définitive
 // d'un compte (docs/02 §5).
 //
-// DEUX TEMPS, VOULUS :
+// TROIS TEMPS, VOULUS :
 //   1. le compte est DÉSACTIVÉ avec le JETON de l'agent. Cette écriture
 //      traverse RLS (`peut_gerer_profil` : il faut pouvoir attribuer TOUS les
 //      rôles de la cible) et le garde-fou du dernier détenteur. Elle prouve
 //      donc le droit, elle libère le quorum, et son message d'erreur est
 //      lisible — au lieu du « Database error deleting user » générique que
 //      renverrait GoTrue si la cascade heurtait un déclencheur ;
+//   1 bis. ses RÔLES sont retirés, toujours avec le jeton de l'agent, puis
+//      relus avec la clé secrète pour vérifier qu'il n'en reste aucun. Cette
+//      étape n'est pas un ornement : sans elle la 2 échoue toujours, la
+//      cascade réveillant un déclencheur qui refuse les écritures de rôle
+//      « sans visage » (détail au-dessus du code) ;
 //   2. le compte Auth est supprimé avec la clé secrète, `on delete cascade`
-//      emportant `profils` puis `profils_roles`.
-// Si la seconde étape échoue, le compte reste désactivé : un état sûr et
-// réversible, jamais un compte à demi supprimé.
+//      emportant `profils` — qui n'a alors plus aucune liaison à emporter.
+// Si une étape échoue, le compte reste désactivé : un état sûr et réversible,
+// jamais un compte à demi supprimé. Conséquence utile : la fonction est
+// REJOUABLE sur un compte déjà désactivé, ce qui est l'état dans lequel les
+// tentatives d'avant le correctif ont laissé des comptes.
 //
 // Déploiement : supabase functions deploy supprimer-utilisateur
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -176,6 +183,80 @@ Deno.serve(async (req) => {
       return new Response(
         'Ce compte porte un rôle que vous n’attribuez pas : sa suppression revient au rôle correspondant.',
         { status: 403, headers: entetes },
+      );
+    }
+
+    // ÉTAPE 1 bis — RETRAIT DES RÔLES, par le JETON de l'agent.
+    //
+    // Sans elle, l'étape 2 échoue. `deleteUser` passe par GoTrue SANS jeton ;
+    // la cascade `auth.users → profils → profils_roles` réveille
+    // `trg_roles_proteger`, qui refuse toute écriture de rôle dont
+    // `auth.uid()` est NULL (« Attribution de rôle sans utilisateur connecté
+    // refusée. », que GoTrue enveloppe en « Database error deleting user »).
+    // Deux garde-fous corrects et incompatibles : l'un veut qu'aucune écriture
+    // de rôle ne soit sans visage, l'autre supprime avec une clé qui, par
+    // construction, n'en a pas.
+    //
+    // Retirer AVANT, avec `appelant`, lève les deux : `auth.uid()` est
+    // renseigné, donc plus d'écriture sans visage ; et
+    // `private.peut_attribuer(role)` est réellement vérifié POUR CHAQUE rôle
+    // retiré, ce qui n'avait jamais lieu jusqu'ici — le correctif RESSERRE le
+    // contrôle au lieu de le contourner. La cascade n'a plus rien à emporter.
+    //
+    // Ne PAS remplacer par un retrait avec `admin` : ce serait rendre la clé
+    // secrète capable de retirer n'importe quel rôle sans visage, exactement
+    // ce que le garde-fou interdit.
+    //
+    // Le quorum ne s'y oppose pas : `verifier_quorum_roles` compte les
+    // détenteurs ACTIFS, et l'étape 1 vient de désactiver la cible.
+    const retrait = await appelant.from('profils_roles').delete().eq('user_id', user_id);
+    if (retrait.error) {
+      return new Response(`${retrait.error.message} — le compte a été désactivé mais pas supprimé.`, {
+        status: 409,
+        headers: entetes,
+      });
+    }
+
+    // On ne SUPPOSE pas que le retrait a tout emporté : on relit avec la clé
+    // secrète, qui voit tout. Une ligne retenue par RLS ne lève AUCUNE erreur,
+    // elle est simplement absente du DELETE — enchaîner sur l'étape 2 en
+    // supposant, ce serait retomber dans le « Database error deleting user »
+    // d'aujourd'hui, mais après avoir cru le contraire. Relire vaut mieux que
+    // compter les lignes rendues : c'est l'invariant qui compte vraiment (plus
+    // aucune liaison), et il tient même si un rôle est attribué entre-temps.
+    // Zéro rôle est un cas NORMAL : une ligne `profils` peut exister sans
+    // aucune liaison, et zéro retiré sur zéro attendu doit passer.
+    const restants = await admin
+      .from('profils_roles')
+      .select('role, source')
+      .eq('user_id', user_id);
+    if (restants.error) {
+      return new Response(
+        `${restants.error.message} — le compte a été désactivé mais pas supprimé.`,
+        { status: 409, headers: entetes },
+      );
+    }
+    const bloquants = (restants.data ?? []) as { role: string; source: string }[];
+    if (bloquants.length > 0) {
+      // L'étape 1 a DÉJÀ prouvé que l'agent peut attribuer tous les rôles de
+      // la cible : `peut_gerer_profil` l'exige, sinon l'UPDATE n'aurait touché
+      // aucune ligne. Le seul filtre qui puisse encore retenir une liaison est
+      // donc le `source = 'manuel'` de la politique de retrait, c'est-à-dire
+      // un rôle venu de l'annuaire. On le DIT : rien ne vaut mieux que faux, et
+      // une panne muette se répète — c'est précisément ce qui a laissé la
+      // suppression cassée deux jours.
+      const noms = bloquants.map((r) => r.role).join(', ');
+      const tousSso = bloquants.every((r) => r.source === 'entra');
+      const explication = tousSso
+        ? 'Ce compte tient ce ou ces rôles de l’annuaire (SSO) : ils ne se retirent pas depuis la ' +
+          'supervision. Retirez la personne du groupe correspondant dans l’annuaire, laissez la ' +
+          'synchronisation passer, puis recommencez.'
+        : 'Ils n’ont pas pu être retirés avec votre jeton : la suppression revient au rôle ' +
+          'correspondant.';
+      return new Response(
+        `Rôles encore attachés à ce compte : ${noms}. ${explication} Le compte est désactivé, ` +
+          `il n’est pas supprimé.`,
+        { status: 409, headers: entetes },
       );
     }
 
