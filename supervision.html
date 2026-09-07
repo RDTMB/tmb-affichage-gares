@@ -324,21 +324,28 @@
               <button class="leger" id="btn-csv">Exporter CSV</button>
             </div>
           </h2>
-          <table id="tab-circ">
-            <thead>
-              <tr>
-                <th style="width: 78px">Train</th>
-                <th style="width: 118px">Sens</th>
-                <th style="width: 150px">Rame</th>
-                <th style="width: 150px">Terminus</th>
-                <th style="width: 140px">Facultatif</th>
-                <th style="width: 132px">Sans voyageurs</th>
-                <th>Statut</th>
-                <th style="width: 160px">Motif</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <!-- ENVELOPPE DÉFILABLE : entre 769 et ~1075 px, le tableau (1 022 px
+               au plus serré) dépasse la carte, dont `overflow: hidden` rognait
+               la colonne Motif sans rien dire. Ici il défile dans son cadre.
+               Sous 768 px il n'est plus un tableau (une carte par train,
+               supervision.css) et l'enveloppe ne fait rien. -->
+          <div class="defilable">
+            <table id="tab-circ">
+              <thead>
+                <tr>
+                  <th style="width: 78px">Train</th>
+                  <th style="width: 118px">Sens</th>
+                  <th style="width: 150px">Rame</th>
+                  <th style="width: 150px">Terminus</th>
+                  <th style="width: 140px">Facultatif</th>
+                  <th style="width: 132px">Sans voyageurs</th>
+                  <th>Statut</th>
+                  <th style="width: 160px">Motif</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
           <div class="note">
             Les trains sont présentés par rotation : la montée et « sa » descente (assurées par la
             même machine) sont l'une sous l'autre — la rame se choisit sur la montée et s'applique
@@ -407,19 +414,23 @@
             </div>
           </h2>
           <div class="note recap-import" id="horaires-recap" style="display: none"></div>
-          <table id="tab-grilles">
-            <thead>
-              <tr>
-                <th>Grille</th>
-                <th>Dates de validité</th>
-                <th style="width: 190px">Trains</th>
-                <th style="width: 170px">État</th>
-                <th style="width: 190px">Chargée le / par</th>
-                <th style="width: 190px"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <!-- Quatre colonnes à largeur fixe (740 px) : au téléphone la table
+               défile dans son cadre plutôt que d'être rognée par la carte. -->
+          <div class="defilable">
+            <table id="tab-grilles">
+              <thead>
+                <tr>
+                  <th>Grille</th>
+                  <th>Dates de validité</th>
+                  <th style="width: 190px">Trains</th>
+                  <th style="width: 170px">État</th>
+                  <th style="width: 190px">Chargée le / par</th>
+                  <th style="width: 190px"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
           <div class="note">
             Une grille ne s’applique qu’à ses dates de validité. Si deux grilles actives couvrent la
             même date, la <b>plus récemment chargée l’emporte</b> : charger une grille corrigée
