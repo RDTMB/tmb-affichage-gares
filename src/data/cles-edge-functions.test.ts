@@ -55,17 +55,25 @@ interface Lecteurs {
   cleApi(nomTrousseau: string, nomLegacy: string): string;
   cleSecrete(): string;
   clePubliable(): string;
+  /** Ce qui est parti dans `console.error` : les vraies pannes. */
   journal: string[];
+  /** Ce qui est parti dans `console.warn` : le repli sur l'ancienne variable. */
+  alertes: string[];
 }
 
 /**
  * Compile le bloc et l'exécute avec l'environnement donné.
  *
- * `console.error` est remplacé par une collecte : le contrat de `cleApi()` est
- * de TOUJOURS journaliser avant de lever, sans quoi la panne serait muette chez
- * un appelant qui transforme l'échec en réponse neutre — c'est le cas de
- * `traduire`. Un test qui ne regarderait que la valeur de retour laisserait
- * passer précisément le défaut qu'on veut interdire.
+ * `console.error` ET `console.warn` sont remplacés par des collectes, parce
+ * que les deux portent une garantie :
+ *   - `error` : `cleApi()` journalise TOUJOURS avant de lever, sans quoi la
+ *     panne serait muette chez un appelant qui répond neutre — c'est le cas de
+ *     `traduire` ;
+ *   - `warn` : le repli sur l'ancienne variable se DIT. C'est le contrôle
+ *     d'avant-coupure : un repli silencieux ferait passer l'essai, puis la
+ *     coupure casserait ce que l'essai venait de déclarer bon.
+ * Un test qui ne regarderait que la valeur de retour laisserait passer
+ * précisément les deux défauts qu'on veut interdire.
  */
 async function lecteurs(env: EnvSimule): Promise<Lecteurs> {
   const { code: js } = await transformWithEsbuild(blocDe('inviter-utilisateur'), 'bloc-cles.ts', {
@@ -73,19 +81,23 @@ async function lecteurs(env: EnvSimule): Promise<Lecteurs> {
     target: 'es2020',
   });
   const journal: string[] = [];
+  const alertes: string[] = [];
   const fabrique = new Function(
     'Deno',
     'console',
     `${js}\nreturn { cleApi, cleSecrete, clePubliable };`,
   ) as (
     deno: { env: { get(nom: string): string | undefined } },
-    faussseConsole: { error(message: string): void },
-  ) => Omit<Lecteurs, 'journal'>;
+    fausseConsole: { error(message: string): void; warn(message: string): void },
+  ) => Omit<Lecteurs, 'journal' | 'alertes'>;
   const api = fabrique(
     { env: { get: (nom: string) => env[nom] } },
-    { error: (message: string) => void journal.push(message) },
+    {
+      error: (message: string) => void journal.push(message),
+      warn: (message: string) => void alertes.push(message),
+    },
   );
-  return { ...api, journal };
+  return { ...api, journal, alertes };
 }
 
 describe('les trois copies du bloc sont identiques', () => {
@@ -153,10 +165,13 @@ describe('cleApi() — le trousseau JSON d’abord', () => {
     });
   });
 
-  it('lit la clé « default » du trousseau, sans rien journaliser', async () => {
+  it('lit la clé « default » du trousseau, sans rien dire du tout', async () => {
+    // État CIBLE : aucune trace. C'est cette absence de trace qui autorise la
+    // coupure des clés legacy.
     expect(vu.cleSecrete()).toBe('sb_secret_abc');
     expect(vu.clePubliable()).toBe('sb_publishable_xyz');
     expect(vu.journal).toEqual([]);
+    expect(vu.alertes).toEqual([]);
   });
 
   it('le trousseau L’EMPORTE sur l’ancienne variable, même si les deux sont là', async () => {
@@ -168,15 +183,40 @@ describe('cleApi() — le trousseau JSON d’abord', () => {
     });
     expect(deux.cleSecrete()).toBe('sb_secret_neuve');
     expect(deux.journal).toEqual([]);
+    expect(deux.alertes).toEqual([]);
   });
 });
 
 describe('cleApi() — le repli temporaire sur les anciens noms', () => {
-  it('sert quand le trousseau est absent : la fenêtre avant la coupure', async () => {
+  it('sert quand le trousseau est absent, et le DIT : c’est le contrôle d’avant-coupure', async () => {
+    // Le piège qu'évite cette alerte : un repli silencieux ferait passer
+    // l'essai des trois parcours, Thomas couperait les clés legacy, et la
+    // coupure casserait ce que l'essai venait de déclarer bon. La ligne doit
+    // nommer les DEUX variables — celle qui manque et celle qui a servi — et
+    // dire de ne pas couper.
     const vu = await lecteurs({ SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt' });
     expect(vu.cleSecrete()).toBe('eyJ.ancien.jwt');
-    // Trousseau absent tout court : rien à signaler, c'est l'état d'avant.
-    expect(vu.journal).toEqual([]);
+    expect(vu.journal).toEqual([]); // pas une panne : un état de transition
+    expect(vu.alertes).toHaveLength(1);
+    expect(vu.alertes[0]).toContain('SUPABASE_SECRET_KEYS');
+    expect(vu.alertes[0]).toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(vu.alertes[0]).toContain('Ne pas');
+  });
+
+  it('TOUT repli se dit, quelle qu’en soit la cause', async () => {
+    // Trousseau absent, illisible, sans « default », clé vide : quatre causes,
+    // une seule conclusion pour l'exploitant — le trousseau n'est pas lu.
+    const causes: EnvSimule[] = [
+      {},
+      { SUPABASE_SECRET_KEYS: '{pas du JSON' },
+      { SUPABASE_SECRET_KEYS: JSON.stringify({ prod: 'sb_secret_prod' }) },
+      { SUPABASE_SECRET_KEYS: JSON.stringify({ default: '' }) },
+    ];
+    for (const cause of causes) {
+      const vu = await lecteurs({ ...cause, SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt' });
+      expect(vu.cleSecrete(), JSON.stringify(cause)).toBe('eyJ.ancien.jwt');
+      expect(vu.alertes, JSON.stringify(cause)).toHaveLength(1);
+    }
   });
 
   it('sert aussi quand le trousseau existe sans clé « default » — en le DISANT', async () => {

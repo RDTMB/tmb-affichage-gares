@@ -84,7 +84,18 @@ function cleApi(nomTrousseau: string, nomLegacy: string): string {
     }
   }
   const ancienne = Deno.env.get(nomLegacy);
-  if (ancienne) return ancienne; // repli TEMPORAIRE, voir l'avertissement ci-dessus
+  if (ancienne) {
+    // REPLI TEMPORAIRE — et cette ligne EST le contrôle d'avant-coupure.
+    // Tant qu'elle apparaît dans les journaux de la fonction, le trousseau
+    // n'est pas lu : désactiver les clés legacy casserait tout. Sans elle, le
+    // repli réussirait en silence, un essai complet passerait, et la coupure
+    // casserait ensuite ce que l'essai venait de déclarer bon.
+    console.warn(
+      `[cles] ${nomTrousseau} indisponible : repli sur ${nomLegacy}. Ne pas ` +
+        `désactiver les clés legacy tant que cette ligne apparaît.`,
+    );
+    return ancienne;
+  }
   console.error(`[cles] Ni ${nomTrousseau} ni ${nomLegacy} ne fournissent de clé.`);
   throw new Error(`Configuration incomplète : aucune clé d’API utilisable (${nomTrousseau}).`);
 }
