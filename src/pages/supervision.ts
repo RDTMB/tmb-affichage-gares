@@ -81,6 +81,7 @@ import {
   type BrouillonMessages,
   type BrouillonTerminus,
 } from './brouillon';
+import { poseFavicon } from './favicon';
 import { echapper } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
@@ -3887,31 +3888,7 @@ function afficheEchecPublication(causes: string[], titre = 'Publication incompl�
     '</ul>';
 }
 
-/**
- * Publie la hauteur RÉELLE de la barre « Publier » dans `--barre-publier-h`.
- *
- * `body { padding-bottom }` était calé sur sa hauteur de bureau (92 px). Or
- * la barre n'a pas une hauteur : au téléphone (≤ 768 px) elle passe sur deux
- * rangs, et un échec de publication y ajoute encore sa cause. Mesuré à 390 px
- * avant correction : 124 px de barre pour 92 de réserve — la dernière ligne
- * du tableau restait cachée derrière elle. La feuille consomme la variable
- * (`calc(var(--barre-publier-h, 70px) + 22px)`) et garde sa valeur de bureau
- * si l'observateur manque.
- */
-function suitHauteurBarrePublier(): void {
-  if (typeof ResizeObserver === 'undefined') return;
-  const barre = $('barre-publier');
-  new ResizeObserver(() => {
-    // Barre masquée (avant connexion) : hauteur nulle, on garde le repli.
-    const hauteur = barre.getBoundingClientRect().height;
-    if (hauteur > 0) {
-      document.documentElement.style.setProperty('--barre-publier-h', `${Math.ceil(hauteur)}px`);
-    }
-  }).observe(barre);
-}
-
 function initPublication(): void {
-  suitHauteurBarrePublier();
   $('btn-apercu').addEventListener('click', () =>
     window.open(`ecran.html?gare=saint-gervais${suffixeDemo()}`, '_blank'),
   );
@@ -3947,7 +3924,13 @@ function initPublication(): void {
 // ---------------------------------------------------------------------------
 
 async function demarre(): Promise<void> {
+  poseFavicon();
   ($('logo') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+  // Logo sur la carte de connexion : c'est le seul écran vu avant d'être
+  // identifié, et le seul endroit où le logo COULEUR a sa place (fond blanc).
+  document
+    .querySelectorAll<HTMLImageElement>('.logo-connexion')
+    .forEach((img) => (img.src = __LOGO_ROND__));
   rendreBaseServie();
   initOnglets();
   initCirculations();

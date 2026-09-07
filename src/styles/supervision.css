@@ -35,12 +35,7 @@ body {
   font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
   font-size: 15px;
   min-height: 100vh;
-  /* Réserve sous la barre fixe « Publier ». 70 + 22 = les 92 px de bureau
-     d'origine, mais la hauteur RÉELLE arrive par `--barre-publier-h`
-     (suitHauteurBarrePublier(), supervision.ts) : au téléphone la barre passe
-     sur deux rangs — 124 px mesurés à 390 — et la dernière ligne du tableau
-     restait cachée derrière une réserve calée sur le bureau. */
-  padding-bottom: calc(var(--barre-publier-h, 70px) + 22px);
+  padding-bottom: 92px;
 }
 
 h1,
@@ -185,8 +180,7 @@ header .spacer {
   background: #fff;
   border-radius: 14px;
   padding: 28px;
-  /* 380 px sur un écran de 390 tenait à 5 px près ; à 320 elle débordait. */
-  width: min(380px, calc(100% - 20px));
+  width: 380px;
   display: grid;
   gap: 12px;
 }
@@ -1297,9 +1291,7 @@ tr.paire-fin td {
 
 .medias {
   display: grid;
-  /* `min(330px, 100%)` : sous 330 px de carte (téléphone étroit), une piste
-     de 330 px fixes déborderait de la page. */
-  grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: 12px;
   padding: 14px 18px;
 }
@@ -1373,7 +1365,7 @@ tr.paire-fin td {
 /* ------- Écrans ------- */
 .ecrans {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
   gap: 12px;
   padding: 14px 18px;
 }
@@ -1423,6 +1415,16 @@ tr.paire-fin td {
 /* La carte des utilisateurs prend toute la largeur : une ligne y porte le nom,
    l'adresse, plusieurs badges de rôle, quatre cases à cocher et trois
    commandes — en demi-largeur, les cases se scindaient sur deux rangs. */
+/* Logo de la carte de connexion : le seul écran vu avant identification.
+   Version COULEUR du logo rond — la carte est blanche, le logo blanc de
+   l'en-tête y serait invisible. */
+.logo-connexion {
+  display: block;
+  width: 84px;
+  height: auto;
+  margin: 0 auto 6px;
+}
+
 #carte-users,
 /* La grille rôles × onglets compte neuf colonnes : en demi-largeur, les
    dernières (Utilisateurs, Journal) n'étaient atteignables qu'en faisant
@@ -2121,8 +2123,7 @@ tr.paire-fin td {
 
 .toast {
   position: fixed;
-  /* Toujours AU-DESSUS de la barre Publier, quelle que soit sa hauteur. */
-  bottom: calc(var(--barre-publier-h, 70px) + 30px);
+  bottom: 100px;
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--marine);
@@ -2763,456 +2764,4 @@ td.cell-sens > .sens-groupe {
 .dot.neutre {
   background: #9fb0c0;
   box-shadow: none;
-}
-
-/* =========================================================================
-   TOUTES TAILLES — la supervision au téléphone, pour les gestes d'URGENCE.
-
-   Ce que ce bloc doit permettre AU DOIGT à 390 px (et 768) : se connecter,
-   publier un message de bandeau, changer le statut d'un train, recharger un
-   écran. Le reste (Paramètres, Utilisateurs, Journal, Médias, Horaires) doit
-   seulement rester lisible sans jamais faire déborder la page.
-
-   Méthode : chaque valeur ci-dessous a été MESURÉE dans le navigateur avant
-   et après (getBoundingClientRect / getComputedStyle), jamais supposée.
-   Ce bloc est en FIN de feuille à dessein : à spécificité égale, il gagne
-   sur tout ce qui précède, et les sélecteurs reprennent le contexte des
-   règles qu'ils corrigent (`nav.tabs button`, pas `button`).
-   ========================================================================= */
-
-/* Un tableau trop large pour sa carte défile dans son cadre. Sans cela, la
-   carte (`overflow: hidden`) rognait la colonne Motif des circulations entre
-   769 et ~1075 px, et quatre colonnes fixes des grilles (740 px) partout
-   sous 800. Ne fait rien quand le tableau tient. */
-.defilable {
-  overflow-x: auto;
-}
-
-@media (max-width: 768px) {
-  /* ---- Bloc du haut : seuls les ONGLETS restent collants. --------------
-     Mesuré à 390 : l'en-tête fait 221 px (quatre rangs : logo, titre,
-     pastilles sur deux lignes, identité) et le bloc collant 268 px, soit
-     32 % d'un écran de 844 — deux cartes de train visibles à la fois. Les
-     pastilles de sécurité restent les PREMIÈRES choses lues (haut de page,
-     ordre du DOM inchangé) ; elles ne sont plus épinglées au défilement.
-     `display: contents` sort l'en-tête et la barre d'onglets de leur
-     enveloppe : la barre devient collante à `top: 0` sans qu'AUCUNE hauteur
-     d'en-tête soit supposée — c'est précisément ce que le bloc unique
-     évitait, et l'en-tête n'a plus à être suivi. */
-  .barre-haute {
-    display: contents;
-  }
-
-  nav.tabs {
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    /* UNE SEULE RANGÉE reste la règle : les huit onglets défilent
-       horizontalement (736 px pour 390) plutôt que de passer sur deux rangs.
-       Le dernier onglet coupé au bord est l'indice du défilement. */
-    overflow-x: auto;
-    scrollbar-width: thin;
-    padding: 0 12px;
-  }
-
-  /* Sans `nowrap`, un bouton comprimé par le défilement scindait « Bandeau »
-     et son badge sur deux lignes (65 px de haut mesurés pour 47 aux
-     autres) ; `flex: none` l'empêche de se comprimer. */
-  nav.tabs button {
-    white-space: nowrap;
-    flex: none;
-    min-height: 44px;
-    padding: 13px 12px;
-  }
-
-  nav.tabs .groupe-administration button {
-    padding: 13px 10px;
-  }
-
-  .groupe-administration {
-    padding-left: 10px;
-    margin-left: 10px;
-  }
-
-  header {
-    padding: 8px 12px;
-    gap: 8px 10px;
-  }
-
-  header img.logo {
-    height: 36px;
-  }
-
-  /* Le titre cède, comme sur le bureau : plus petit et compressible. */
-  header h1 {
-    font-size: 16px;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  header h1 small {
-    font-size: 10px;
-    letter-spacing: 0.08em;
-  }
-
-  /* L'identité (336 px : avatar, nom, badges, Quitter) tient à 390 mais pas
-     à 320 : elle peut se replier sur deux lignes plutôt que déborder. Le
-     `flex: none` du bureau garde son sens là où la place existe. */
-  header .user {
-    flex: 0 1 auto;
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-
-  /* ---- Gouttières : 12 px au lieu de 18/22, +20 px de contenu utile. ---- */
-  main {
-    padding: 0 12px;
-    margin: 12px auto;
-  }
-
-  .carte > h2 {
-    padding: 12px 12px 8px;
-  }
-
-  .note {
-    padding: 10px 12px 12px;
-  }
-
-  .barre-jour {
-    padding: 10px 12px;
-  }
-
-  .msg,
-  .ajout,
-  .ecrans,
-  .medias,
-  .motifs {
-    padding: 12px;
-  }
-
-  .carte-section,
-  .carte-sup {
-    margin: 10px 12px;
-  }
-
-  .carte-repliee {
-    margin: 0 12px 12px;
-  }
-
-  .modele-row,
-  .machine-row,
-  .user-row {
-    padding: 9px 12px;
-  }
-
-  th,
-  td {
-    padding: 8px;
-  }
-
-  /* ---- Cibles tactiles : 44 px de haut ET de large. -------------------
-     Mesuré avant : segments de statut 59 × 24, boutons ± 26 × 20,
-     interrupteurs 36 × 20, boutons légers 27 de haut. */
-  button.leger,
-  .chip-btn {
-    min-height: 44px;
-  }
-
-  .barre-jour .nav-date button {
-    min-width: 44px;
-  }
-
-  .seg button,
-  .retard-ctrl button {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  /* L'étiquette entière commute l'interrupteur : c'est elle qui fait 44. */
-  .switch {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  .switch input {
-    width: 44px;
-    height: 24px;
-  }
-
-  .switch input::after {
-    width: 20px;
-    height: 20px;
-  }
-
-  .switch input:checked::after {
-    left: 22px;
-  }
-
-  .ajout input,
-  .ajout select,
-  .barre-jour select,
-  .ligne-declaration select,
-  .ligne-declaration input,
-  .connexion-carte input,
-  .connexion-carte button,
-  select[data-action='motif'] {
-    min-height: 44px;
-  }
-
-  /* ---- Barre Publier sur DEUX rangs. ------------------------------------
-     Mesuré à 390 sur un rang : l'état comprimé à 66 px de large, « Publier
-     sur les 6 gares » replié sur deux lignes (106 × 81), barre de 124 px.
-     Rang 1 : pastille + état ; rang 2 : les deux boutons, à pleine largeur.
-     Le `.spacer` devient le saut de ligne (base 100 %, hauteur nulle). */
-  .publier {
-    flex-wrap: wrap;
-    gap: 6px 12px;
-    padding: 10px 12px;
-  }
-
-  /* Repli tant que l'observateur n'a pas parlé (ou sans ResizeObserver) :
-     la barre MESURÉE à 390 sur deux rangs, 115 px, plutôt que ses 70 px de
-     bureau. La valeur réelle reprend la main dès la première image. */
-  body {
-    padding-bottom: calc(var(--barre-publier-h, 115px) + 22px);
-  }
-
-  .publier .bloc-etat-pub {
-    flex: 1 1 0;
-  }
-
-  .publier .spacer {
-    flex: 1 0 100%;
-    height: 0;
-  }
-
-  .publier button,
-  .publier button.primaire {
-    flex: 1 1 0;
-    min-height: 48px;
-    padding: 10px 12px;
-    font-size: 15px;
-  }
-
-  .resume-ecarts {
-    max-width: none;
-  }
-
-  /* ---- Circulations : une CARTE par train (§A.3). -----------------------
-     Deux formes mesurées à 390 px. Colonnes masquées (Train, Statut, Motif
-     seules) : 411 px de table pour 366 de carte — Motif rogné —, la ligne en
-     retard à 84 px parce que « ± min » passe sous les segments, et cinq
-     fonctions (sens, rame, terminus, facultatif, sans voyageurs) perdues.
-     Carte par train : 0 px de débordement, cartes de 242 à 262 px (314 pour
-     le train en retard), segments 60 × 44, boutons ± 44 × 44, motif à pleine
-     largeur, les HUIT fonctions conservées. La carte l'emporte : pour passer
-     un train en retard, l'heure (18 px, gras) est en tête de carte et le
-     segment « Retard » juste à sa droite — trois gestes, sur une carte
-     bordée qu'on ne confond pas avec la voisine. Le prix : 16 cartes font
-     ~4 000 px de haut au lieu de 1 040.
-
-     Le tableau ENTIER quitte la mise en page tabulaire (table, tbody, tr,
-     td) : aucune cellule ne « sort de son rang », il n'y a plus de rang.
-     Aucun `display: flex` sur un <td> — les cellules restent des blocs,
-     c'est `td.cell-sens > .sens-groupe` qui porte le flex.
-
-     Les en-têtes de colonnes disparaissent avec le <thead> : les cellules
-     dont la valeur seule ne se comprend pas reprennent EXACTEMENT le texte
-     de leur <th> (Rame, Terminus, Facultatif, Sans voyageurs, Motif) ;
-     l'heure, le sens et les trois statuts se lisent sans étiquette.
-
-     De 701 à 768 px : QUATRE colonnes (heure · sens · statut sur deux ;
-     rame · terminus · facultatif · sans voyageurs ; motif). Sous 700 :
-     DEUX colonnes, le statut en tête à droite de l'heure. */
-  #tab-circ thead {
-    display: none;
-  }
-
-  #tab-circ,
-  #tab-circ tbody {
-    display: block;
-  }
-
-  #tab-circ tbody tr {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px 10px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--bord);
-    align-items: start;
-  }
-
-  #tab-circ tbody td {
-    display: block;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    min-width: 0;
-  }
-
-  #tab-circ tbody td:nth-child(1) {
-    grid-area: 1 / 1 / 2 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(2) {
-    grid-area: 1 / 2 / 2 / 3;
-  }
-
-  #tab-circ tbody td:nth-child(7) {
-    grid-area: 1 / 3 / 2 / 5;
-  }
-
-  #tab-circ tbody td:nth-child(3) {
-    grid-area: 2 / 1 / 3 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(4) {
-    grid-area: 2 / 2 / 3 / 3;
-  }
-
-  #tab-circ tbody td:nth-child(5) {
-    grid-area: 2 / 3 / 3 / 4;
-  }
-
-  #tab-circ tbody td:nth-child(6) {
-    grid-area: 2 / 4 / 3 / 5;
-  }
-
-  #tab-circ tbody td:nth-child(8) {
-    grid-area: 3 / 1 / 4 / 3;
-  }
-
-  /* « Aucun service ne circule à cette date. » : une seule cellule, sur
-     toute la largeur de la carte plutôt que dans la première colonne. */
-  #tab-circ tbody td[colspan] {
-    grid-area: auto / 1 / auto / -1;
-  }
-
-  /* Étiquettes reprises des <th>, au style des <th>. */
-  #tab-circ tbody td::before {
-    display: block;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--sec);
-    font-weight: 700;
-    margin-bottom: 3px;
-  }
-
-  #tab-circ tbody td:nth-child(3)::before {
-    content: 'Rame';
-  }
-
-  #tab-circ tbody td:nth-child(4)::before {
-    content: 'Terminus';
-  }
-
-  #tab-circ tbody td:nth-child(5)::before {
-    content: 'Facultatif';
-  }
-
-  #tab-circ tbody td:nth-child(6)::before {
-    content: 'Sans voyageurs';
-  }
-
-  #tab-circ tbody td:nth-child(8)::before {
-    content: 'Motif';
-  }
-
-  /* Les états de ligne passent de la cellule à la carte : fond des lignes
-     inactives et à vide, filet épais de fin de rotation. */
-  #tab-circ tr.inactif {
-    background: #fafbfc;
-  }
-
-  #tab-circ tr.a-vide {
-    background: #fbf7ff;
-  }
-
-  #tab-circ tr.paire-fin {
-    border-bottom: 2px solid #c9d6e2;
-  }
-
-  /* Les trois statuts se partagent la largeur de leur cellule. */
-  #tab-circ .seg {
-    display: flex;
-    width: 100%;
-  }
-
-  #tab-circ .seg button {
-    flex: 1 1 0;
-    padding: 5px 4px;
-  }
-
-  /* « ± min » sous les segments, sur toute la largeur, jamais à côté. */
-  #tab-circ .retard-ctrl {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0 0;
-  }
-
-  #tab-circ .retard-ctrl .val {
-    flex: 1;
-  }
-
-  #tab-circ select {
-    width: 100%;
-    min-height: 44px;
-  }
-
-  /* Ce qui était `nowrap` dans une colonne dimensionnée pour lui peut se
-     replier dans une demi-carte : « Marguerite (rotation) », l'étiquette
-     EXPRESS et le picto vélo, les deux boutons « à traiter ». */
-  td.cell-sens > .sens-groupe {
-    flex-wrap: wrap;
-    white-space: normal;
-  }
-
-  #tab-circ .rame-fixe,
-  #tab-circ .a-traiter {
-    flex-wrap: wrap;
-  }
-}
-
-@media (max-width: 700px) {
-  #tab-circ tbody tr {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
-  }
-
-  #tab-circ tbody td:nth-child(1) {
-    grid-area: 1 / 1 / 2 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(7) {
-    grid-area: 1 / 2 / 2 / 3;
-  }
-
-  #tab-circ tbody td:nth-child(2) {
-    grid-area: 2 / 1 / 3 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(8) {
-    grid-area: 2 / 2 / 3 / 3;
-  }
-
-  #tab-circ tbody td:nth-child(3) {
-    grid-area: 3 / 1 / 4 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(4) {
-    grid-area: 3 / 2 / 4 / 3;
-  }
-
-  #tab-circ tbody td:nth-child(5) {
-    grid-area: 4 / 1 / 5 / 2;
-  }
-
-  #tab-circ tbody td:nth-child(6) {
-    grid-area: 4 / 2 / 5 / 3;
-  }
-
-  #tab-circ tbody td[colspan] {
-    grid-area: auto / 1 / auto / -1;
-  }
 }

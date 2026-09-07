@@ -62,6 +62,7 @@ import {
   messagesVisibles,
   meteoHtml,
 } from './affichage-commun';
+import { poseFavicon } from './favicon';
 import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
 import {
@@ -71,6 +72,8 @@ import {
   SEUIL_BADGE_MS,
   type Synchronisation,
 } from './resilience';
+
+poseFavicon();
 
 // Flèches obliques ↗ / ↙ de la maquette (inline, aucune ressource externe)
 const FLECHE_UP =
