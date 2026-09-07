@@ -493,6 +493,37 @@ service, passage de minuit, tri multi-sens.
   `actif=false`. Ajouter un rôle ne demande qu'une ligne dans le catalogue
   `roles` et une entrée dans `DROITS_PAR_ROLE` — les politiques, elles,
   ne changent que pour les tables réellement concernées.
+- **Suppression définitive d'un compte : TROIS temps, et l'ordre n'est pas
+  négociable** (`supabase/functions/supprimer-utilisateur`). 1. désactivation
+  avec le JETON de l'agent — elle traverse RLS, prouve le droit, libère le
+  quorum et rend un message lisible. 1 bis. **retrait des rôles, toujours avec
+  le jeton**, puis relecture des liaisons avec la clé secrète pour vérifier
+  qu'il n'en reste aucune. 2. `auth.admin.deleteUser()` avec la clé secrète,
+  la cascade emportant `profils`.
+
+  ⚠ **Ne pas « simplifier » en supprimant directement** : c'est le défaut
+  réparé le 07/09/2026, en production depuis le 05/09. `deleteUser` passe par
+  GoTrue SANS jeton ; la cascade `auth.users → profils → profils_roles`
+  réveille `trg_roles_proteger`, qui refuse toute écriture de rôle dont
+  `auth.uid()` est NULL sans contexte revendiqué. Résultat : « Database error
+  deleting user », et un compte désactivé mais pas supprimé. Deux garde-fous
+  corrects et incompatibles — l'un veut qu'aucune écriture de rôle ne soit sans
+  visage, l'autre supprime avec une clé qui, par construction, n'en a pas.
+
+  Retirer AVANT avec le jeton lève les deux, et RESSERRE le contrôle :
+  `peut_attribuer(role)` est réellement vérifié pour chaque rôle retiré, ce
+  qui n'avait jamais lieu. Ne PAS retirer avec la clé secrète (écriture sans
+  visage), ni ajouter un contexte `'suppression'` à `proteger_profils_roles`
+  (ce serait rendre la clé secrète capable de retirer n'importe quel rôle sans
+  visage), ni tenter de poser `tmb.attribution_systeme` depuis la fonction (le
+  réglage n'atteint pas la connexion propre de GoTrue).
+
+  Un rôle de `source = 'entra'` est FILTRÉ par la politique de retrait, sans
+  erreur : la fonction le détecte à la relecture et refuse en le nommant,
+  plutôt que d'enchaîner et de rendre l'erreur GoTrue. La fonction est
+  REJOUABLE sur un compte déjà désactivé. Verrouillé par
+  `src/data/suppression-compte.test.ts`, qui exécute le gestionnaire pour de
+  vrai contre un faux client imitant RLS et le déclencheur.
 - Cohérence des rotations : la rame est stockée sur la montée ; à la
   lecture, la descente n+1 affiche la rame de la montée n (jointure) ; un
   trigger SQL maintient `rame` de la descente synchronisée pour les exports.
