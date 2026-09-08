@@ -222,4 +222,15 @@ export interface DataProvider {
   saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void>;
   /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
   oublierEcran(id: string): Promise<void>;
+  /**
+   * Écart mesuré entre l'horloge du POSTE et celle du serveur, en
+   * millisecondes ; positif = le poste est en avance. `null` = aucune mesure
+   * depuis le chargement.
+   *
+   * Le Raspberry n'a pas de pile : à froid il repart sur une date
+   * fantaisiste, et un compte à rebours calculé sur une horloge fausse fait
+   * partir des voyageurs. La mesure ne coûte AUCUNE requête — elle lit
+   * l'en-tête `Date` des réponses que l'application demande déjà.
+   */
+  ecartHorlogeMs(): number | null;
 }

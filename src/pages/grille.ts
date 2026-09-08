@@ -36,7 +36,9 @@ import type {
   Sens,
   TrainJour,
 } from '../core/types';
+import { etatHorloge } from '../core/horloge';
 import { creeProviderDemo, creeProviderReel } from '../data';
+import type { DataProvider } from '../data/provider';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   anneauSur,
@@ -118,6 +120,13 @@ let jour: Jour | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
 let sync: Synchronisation | null = null;
+/**
+ * Fournisseur retenu, gardé au niveau du module : la boucle de rendu a besoin
+ * de lui interroger l'écart d'horloge à chaque seconde, et il est choisi dans
+ * la fonction de démarrage.
+ */
+let fournisseur: DataProvider | null = null;
+
 const majTicker = creeTicker($('ticker'));
 
 function machineDe(nomRame: string): Machine {
@@ -362,7 +371,13 @@ function rendre(): void {
   });
   document.body.classList.toggle('mode-degrade', badge.visible);
   if (badge.visible) $('badge-cache').textContent = badge.texte;
-  const neutre = age === null || age > dureeCacheMs();
+
+  // ÉCART D'HORLOGE (lot 5), même règle que l'écran de gare : la grille
+  // affiche les mêmes heures, et son lecteur en tire les mêmes conclusions.
+  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
+  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
+
+  const neutre = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
@@ -429,14 +444,21 @@ async function demarre(): Promise<void> {
   if (mode === 'demo') document.body.classList.add('mode-demo');
 
   const terminusParam = url.get('terminus');
-  const optionsDemo =
-    terminusParam !== null && Number(terminusParam) > 0
+  // `?ecart=N` (secondes) : écart d'horloge SIMULÉ, lu par le seul
+  // fournisseur de démonstration. Les deux seuils du lot 5 ne se provoquent
+  // pas autrement — il faudrait dérégler l'horloge d'un Raspberry.
+  const ecartParam = Number(url.get('ecart'));
+  const optionsDemo = {
+    ...(terminusParam !== null && Number(terminusParam) > 0
       ? { terminusAPartirDuTrain: Number(terminusParam) }
-      : {};
+      : {}),
+    ...(Number.isFinite(ecartParam) && ecartParam !== 0 ? { ecartHorlogeS: ecartParam } : {}),
+  };
   const provider =
     mode === 'demo'
       ? creeProviderDemo(optionsDemo)
       : creeProviderReel(window.TMB_CONFIG!.supabaseUrl!, window.TMB_CONFIG!.supabaseKey!);
+  fournisseur = provider;
 
   const charge = async (): Promise<DonneesGrille> => {
     const dateJour = heure.dateISO();

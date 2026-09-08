@@ -5,6 +5,7 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 
 import { datePrecedente, generationJour, sectionReportee, serviceActif } from '../core/horaires';
+import { ecartDepuisEntete } from '../core/horloge';
 import type {
   Circulation,
   EcranInfo,
@@ -126,8 +127,34 @@ export class SupabaseProvider implements DataProvider {
   private notifieId: number | null = null;
   private readonly abonnes = new Set<() => void>();
 
+  /**
+   * Dernier écart mesuré entre l'horloge du poste et celle du serveur.
+   * `null` tant qu'aucune réponse n'a porté d'en-tête `Date` lisible.
+   */
+  private ecartMs: number | null = null;
+
   constructor(url: string, clePubliable: string) {
-    this.client = createClient(url, clePubliable);
+    // `fetch` ENVELOPPÉ : chaque réponse porte un en-tête `Date`, donc une
+    // référence d'heure serveur GRATUITE — aucune requête n'est ajoutée, on
+    // lit ce qui passe déjà. C'est le seul point du code qui voit toutes les
+    // réponses, y compris les sondes de synchronisation.
+    this.client = createClient(url, clePubliable, {
+      global: {
+        fetch: async (entree, init) => {
+          const envoi = Date.now();
+          const reponse = await fetch(entree as RequestInfo, init);
+          const mesure = ecartDepuisEntete(reponse.headers.get('date'), envoi, Date.now());
+          // Une mesure illisible ne remplace pas la précédente : on préfère
+          // une référence un peu ancienne à pas de référence du tout.
+          if (mesure !== null) this.ecartMs = mesure;
+          return reponse;
+        },
+      },
+    });
+  }
+
+  ecartHorlogeMs(): number | null {
+    return this.ecartMs;
   }
 
   // ------------------------------------------------------------------ lecture
