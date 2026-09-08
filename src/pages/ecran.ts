@@ -52,6 +52,9 @@ import type {
 import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
+  anneauSur,
+  badgeFraicheur,
+  couleurSure,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -232,8 +235,11 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   const retard = p.statut === 'retard';
   const machine = machineDe(p.rame);
 
-  const pastille = `<span class="pastille" style="background:${machine.couleur};${
-    machine.cercle ? `box-shadow:0 0 0 .4vh ${machine.cercle};` : ''
+  // Couleurs VALIDÉES, pas seulement échappées : elles atterrissent dans un
+  // `style=""` construit par concaténation (voir couleurSure()).
+  const anneau = anneauSur(machine.cercle);
+  const pastille = `<span class="pastille" style="background:${couleurSure(machine.couleur)};${
+    anneau ? `box-shadow:0 0 0 .4vh ${anneau};` : ''
   }"></span>`;
 
   const sansArret = mentionSansArret(trains.get(p.numero));
@@ -351,9 +357,10 @@ function rendsArrivee(gare: GareId, maintenant_s: number): void {
     return;
   }
   const machine = machineDe(prochaine.rame);
-  const halo = machine.cercle ? `text-shadow:0 0 4px ${machine.cercle};` : '';
+  const anneauProchaine = anneauSur(machine.cercle);
+  const halo = anneauProchaine ? `text-shadow:0 0 4px ${anneauProchaine};` : '';
   $('arrivee').innerHTML = `${lbl}
-    <b>${formatHeure(prochaine.heure_s)}</b> — <span class="rame-col" style="color:${machine.couleur};${halo}">${echapper(prochaine.rame)}</span>
+    <b>${formatHeure(prochaine.heure_s)}</b> — <span class="rame-col" style="color:${couleurSure(machine.couleur)};${halo}">${echapper(prochaine.rame)}</span>
     <span>(TRAIN ${prochaine.numero}), en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
 }
 
@@ -389,15 +396,71 @@ function rendMedia(media: Media | null, suivant: Media | null): void {
     conteneur.innerHTML = '';
     return;
   }
+  // `crossorigin="anonymous"` : Supabase Storage renvoie
+  // `Access-Control-Allow-Origin: *` sur les objets publics. Sans cet
+  // attribut la réponse est OPAQUE — son statut est illisible, donc un 404 ou
+  // un 403 ne se distingue pas d'un succès. C'est aussi la moitié du
+  // correctif de M-06 (le service worker met en cache définitivement les
+  // réponses opaques, erreurs comprises), et elle n'attend rien de lui.
   conteneur.innerHTML =
     media.type === 'video'
-      ? `<video src="${echapper(media.url)}" muted playsinline autoplay></video>`
-      : `<img src="${echapper(media.url)}" alt="" />`;
-  document.body.classList.add('mode-media');
-  // Une vidéo plus courte que sa durée annoncée rend la main tout de suite.
-  conteneur.querySelector('video')?.addEventListener('ended', () => {
+      ? `<video src="${echapper(media.url)}" muted playsinline autoplay crossorigin="anonymous"></video>`
+      : `<img src="${echapper(media.url)}" alt="" crossorigin="anonymous" />`;
+
+  /** Rend la main aux horaires, comme le fait la fin normale d'une vidéo. */
+  const cloreVue = (): void => {
     if (etatCycle) etatCycle = { ...etatCycle, finMs: heure.maintenantMs() };
-  });
+  };
+
+  /**
+   * Le média ne s'affichera pas : on rend la main TOUT DE SUITE.
+   *
+   * Avant ce garde, `mode-media` était posé sans attendre et seul `ended`
+   * était écouté : un fichier supprimé du bucket sans désactiver la ligne
+   * `medias`, ou une 5G dégradée au Nid d'Aigle, peignait l'écran en NOIR
+   * plein écran pendant toute la durée annoncée (3 à 120 s, 8 par défaut),
+   * puis recommençait à chaque tour. Vu d'un voyageur ou d'un agent, l'écran
+   * paraissait en panne — ça déclenchait des interventions inutiles en gare.
+   */
+  const abandonne = (raison: string): void => {
+    // Dit franchement dans la console du poste : une panne muette se répète,
+    // et c'est cette ligne qui dira à l'exploitant de désactiver le média.
+    console.warn(`[media] « ${media.nom} » injoignable (${raison}) : retour aux horaires`);
+    document.body.classList.remove('mode-media');
+    conteneur.innerHTML = '';
+    cloreVue();
+  };
+
+  /** Le média est DÉCODÉ : c'est seulement là qu'il peut couvrir l'écran. */
+  const montre = (): void => {
+    document.body.classList.add('mode-media');
+  };
+
+  if (media.type === 'video') {
+    const video = conteneur.querySelector('video');
+    if (!video) return abandonne('élément vidéo absent');
+    // `loadeddata` : la première image est décodée, donc il y a quelque chose
+    // à montrer. `canplay` arriverait plus tôt mais sans garantie d'image.
+    video.addEventListener('loadeddata', montre);
+    video.addEventListener('error', () => abandonne('erreur de chargement'));
+    // Une vidéo plus courte que sa durée annoncée rend la main tout de suite.
+    video.addEventListener('ended', cloreVue);
+    // Déjà décodée (média rejoué, cache du service worker) : l'événement a pu
+    // partir avant la pose de l'écouteur. HAVE_CURRENT_DATA = 2.
+    if (video.readyState >= 2) montre();
+  } else {
+    const image = conteneur.querySelector('img');
+    if (!image) return abandonne('élément image absent');
+    image.addEventListener('load', montre);
+    image.addEventListener('error', () => abandonne('erreur de chargement'));
+    // `complete` vaut aussi VRAI après un échec : c'est `naturalWidth` qui
+    // distingue une image décodée d'une image manquante.
+    if (image.complete) {
+      if (image.naturalWidth > 0) montre();
+      else abandonne('erreur de chargement');
+    }
+  }
+
   // Préchargement du suivant (les vidéos sont mises en cache par le SW)
   if (suivant?.type === 'image') new Image().src = suivant.url;
 }
@@ -504,18 +567,24 @@ function rendre(gare: GareId): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
-  // Badge d'âge des données calculé AVANT toute sortie : sinon il resterait
-  // peint par-dessus l'écran neutre ou la veille nuit (z-index supérieur).
+  // Badge calculé AVANT toute sortie : sinon il resterait peint par-dessus
+  // l'écran neutre ou la veille nuit (z-index supérieur). Il porte DEUX faits
+  // — l'âge des données et la nature de la journée (F-16) — et la décision
+  // vit dans badgeFraicheur(), PURE et testée, partagée avec la grille.
   const age = sync?.ageMs() ?? null;
-  const degrade = age !== null && age > SEUIL_BADGE_MS && age <= dureeCacheMs();
-  document.body.classList.toggle('mode-degrade', degrade);
-  if (degrade) {
-    const quand = sync?.heureSync() ?? '--:--';
-    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
-  }
+  const veille = estEnVeille(maintenant);
+  const badge = badgeFraicheur({
+    ageMs: age,
+    seuilBadgeMs: SEUIL_BADGE_MS,
+    dureeCacheMs: dureeCacheMs(),
+    heureSync: sync?.heureSync() ?? null,
+    jour,
+    veille,
+  });
+  document.body.classList.toggle('mode-degrade', badge.visible);
+  if (badge.visible) $('badge-cache').textContent = badge.texte;
 
   // 1. Veille nuit (écran noir + horloge discrète)
-  const veille = estEnVeille(maintenant);
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);

@@ -234,6 +234,102 @@ describe('Résilience du cache de grilles (audit du 26/08/2026)', () => {
     expect(jour.circulations.find((c) => c.numero === 21)?.terminus).toBe('bellevue');
   });
 
+  // --- M-21 : la libération effaçait des limitations posées à la main ------
+  //
+  // LE SCÉNARIO, un matin de montagne ordinaire. Mauvais temps au sommet :
+  // « Terminus Bellevue à partir du TRAIN 1 », publié. Le temps se lève : on
+  // ramène la plage au TRAIN 15, mais on laisse VOLONTAIREMENT le TRAIN 11
+  // limité — geste que l'interface propose explicitement (colonne Terminus,
+  // docs/01 §2.3). À la publication, la libération globale remettait TOUT au
+  // Nid d'Aigle, TRAIN 11 compris, puis re-posait Bellevue sur les numéros
+  // ≥ 15. Le TRAIN 11 était annoncé « Nid d'Aigle » sur les six écrans alors
+  // qu'il s'arrête à Bellevue : des voyageurs restaient à bord pour un
+  // tronçon qui ne circule pas ce jour-là.
+  async function limiteALaMain(provider: InstanceType<typeof MockProvider>, numero: number) {
+    const jour = await provider.getJour('2026-08-28');
+    const c = jour.circulations.find((x) => x.numero === numero);
+    if (!c) throw new Error(`TRAIN ${numero} absent`);
+    await provider.saveCirculation({ ...c, terminus: 'bellevue' });
+  }
+
+  async function terminusDesMontees(provider: InstanceType<typeof MockProvider>) {
+    const jour = await provider.getJour('2026-08-28');
+    return new Map(
+      jour.circulations.filter((c) => c.sens === 'montee').map((c) => [c.numero, c.terminus]),
+    );
+  }
+
+  it('le matin de montagne : la plage rétrécit, le TRAIN 11 reste limité', async () => {
+    // La PUBLICATION applique la bascule puis les circulations (l'ordre est
+    // le correctif : la colonne reste prioritaire sur le pré-remplissage).
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+
+    // Mauvais temps au sommet : journée entière limitée, publié.
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 1 });
+    expect((await terminusDesMontees(provider)).get(11)).toBe('bellevue');
+
+    // Le temps se lève. Dans UNE publication : plage ramenée au TRAIN 15, et
+    // le TRAIN 11 laissé limité à la main.
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    await limiteALaMain(provider, 11);
+
+    const apres = await terminusDesMontees(provider);
+    expect(apres.get(11), 'TRAIN 11 limité à la main, hors plage').toBe('bellevue');
+    expect(apres.get(15), 'TRAIN 15 dans la plage').toBe('bellevue');
+    expect(apres.get(13), 'TRAIN 13 jamais limité').toBe('nid-daigle');
+  });
+
+  it('réappliquer la MÊME plage n’écrit rien et n’efface aucun geste', async () => {
+    // Le second verrou. Sans la différence avec la plage précédente, une
+    // bascule rejouée — l'agent recoche la même valeur — recalculait la
+    // colonne entière et effaçait le TRAIN 11.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    await limiteALaMain(provider, 11);
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    expect((await terminusDesMontees(provider)).get(11)).toBe('bellevue');
+  });
+
+  it('DÉCOCHER libère tout, y compris ce qui a été posé à la main', async () => {
+    // Décocher est une décision explicite — « plus aucune limitation
+    // aujourd'hui » — et doit tout emporter, sinon un train resterait limité
+    // sans que la bascule l'indique.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    await limiteALaMain(provider, 11);
+    await provider.setTerminusBellevue('2026-08-28', false);
+    for (const [numero, terminus] of await terminusDesMontees(provider)) {
+      expect(terminus, `TRAIN ${numero}`).toBe('nid-daigle');
+    }
+  });
+
+  it('élargir la plage n’a rien à libérer', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 21 });
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 11 });
+    for (const [numero, terminus] of await terminusDesMontees(provider)) {
+      expect(terminus, `TRAIN ${numero}`).toBe(numero >= 11 ? 'bellevue' : 'nid-daigle');
+    }
+  });
+
+  it('appliquer DEUX FOIS la même plage ne change rien : l’opération converge', async () => {
+    // Réponse au §5.D. Les trois écritures ne sont pas transactionnelles, mais
+    // elles sont IDEMPOTENTES : rejouer depuis n'importe quel état partiel
+    // ramène à l'état correct. C'est ce qui fait que le bouton « Réessayer »
+    // de la barre de publication RATTRAPE un échec au lieu d'empiler un
+    // second défaut.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    const premier = [...(await terminusDesMontees(provider))];
+    await provider.setTerminusBellevue('2026-08-28', { a_partir_du_train: 15 });
+    expect([...(await terminusDesMontees(provider))]).toEqual(premier);
+  });
+
   it('un média désactivé reste visible en supervision (listMedias) mais disparaît des écrans', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.signIn('admin@demo', 'x');

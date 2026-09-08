@@ -1043,13 +1043,12 @@ export class MockProvider implements DataProvider {
     etat.jours[date] ??= { terminus: null, circulations: {} };
     const etatJour = etat.jours[date];
     if (!etatJour || !grille) return;
-    const seuil =
-      v === false
-        ? Number.POSITIVE_INFINITY
-        : Math.max(
-            1,
-            v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
-          );
+    /** Numéro de MONTÉE : un pair vise la montée de sa rotation (N − 1). */
+    const normalise = (n: number): number => Math.max(1, n % 2 === 0 ? n - 1 : n);
+    // `null` = pas de plage.
+    const seuil = v === false ? null : normalise(v.a_partir_du_train);
+    // Plage PRÉCÉDENTE : c'est elle qui dit ce qui entre et ce qui sort.
+    const ancien = typeof etatJour.terminus === 'number' ? normalise(etatJour.terminus) : null;
     trace(
       etat,
       'jours',
@@ -1059,15 +1058,25 @@ export class MockProvider implements DataProvider {
       ['terminus_bellevue_a_partir_du_train'],
       date,
     );
-    etatJour.terminus = v === false ? null : seuil;
+    etatJour.terminus = seuil;
     // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable
-    // ensuite ; les montées hors plage sont LIBÉRÉES (décocher ou rétrécir
-    // rétablit le service jusqu'au Nid d'Aigle).
+    // ensuite. Seules les montées qui ENTRENT ou SORTENT de la plage sont
+    // touchées — voir SupabaseProvider.setTerminusBellevue() pour le
+    // raisonnement complet (M-21). Même défaut ici : la boucle recalculait la
+    // colonne de TOUTES les montées, effaçant les limitations posées à la main.
+    const libereTout = v === false;
     for (const montee of grille.montees) {
       const cle = String(montee.numero);
+      const n = montee.numero;
+      const limitee = etatJour.circulations[cle]?.terminus === 'bellevue';
+      const entre = seuil !== null && n >= seuil && (ancien === null || n < ancien);
+      const sort = libereTout
+        ? limitee
+        : limitee && ancien !== null && seuil !== null && n >= ancien && n < seuil;
+      if (!entre && !sort) continue;
       etatJour.circulations[cle] = {
         ...etatJour.circulations[cle],
-        terminus: montee.numero >= seuil ? 'bellevue' : 'nid-daigle',
+        terminus: entre ? 'bellevue' : 'nid-daigle',
       };
     }
     ecritEtat(etat);
