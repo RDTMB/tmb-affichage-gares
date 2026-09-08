@@ -13,6 +13,16 @@ function logoDataUri(nom: string): string {
   return fichierDataUri(nom, 'image/svg+xml');
 }
 
+// Version du cache du service worker. Elle ne peut PAS être substituée dans
+// `public/sw.js`, que Vite recopie sans le traiter : elle voyage donc par la
+// query string de l'enregistrement (src/pages/resilience.ts), que le service
+// worker relit dans sa propre URL. Un horodatage de build plutôt qu'une
+// empreinte du contenu livré : l'empreinte n'existe pas encore au moment où
+// cette configuration est évaluée, et réécrire `dist/sw.js` après le build
+// ajouterait une étape qui, oubliée, laisserait passer un gabarit littéral —
+// c'est-à-dire le défaut qu'on corrige, en silence.
+const VERSION_CACHE = `tmb-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`;
+
 // Multi-pages : quatre entrées HTML indépendantes (portail de test, écran de
 // gare, grille du jour, supervision). Les écrans tournent sur Raspberry Pi en
 // kiosque : tout est auto-hébergé, aucune ressource externe.
@@ -29,6 +39,7 @@ export default defineConfig(({ mode }) => ({
   // (découverte tardive de la dépendance). Sans effet sur le build.
   optimizeDeps: { include: ['fflate'] },
   define: {
+    __VERSION_CACHE__: JSON.stringify(VERSION_CACHE),
     __LOGO_ROND__: logoDataUri('logo-rond.svg'),
     __LOGO_ROND_BLANC__: logoDataUri('logo-rond-blanc.svg'),
     __LOGO_LONG__: logoDataUri('logo-long.svg'),
