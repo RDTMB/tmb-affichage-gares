@@ -1446,8 +1446,18 @@ export class MockProvider implements DataProvider {
     return liste.find((u) => u.email === profil.email)?.user_id ?? profil.user_id;
   }
 
-  async resetMotDePasse(): Promise<void> {
-    // rien à faire en mode mock
+  /**
+   * Adresses pour lesquelles un lien a été DEMANDÉ pendant cette session de
+   * démonstration. Aucun courriel ne part, mais la demande laisse une trace :
+   * sans elle, un test ne peut pas distinguer « la carte a appelé le
+   * fournisseur » de « la carte a affiché le message sans rien appeler » —
+   * or c'est exactement la confusion qu'on veut interdire.
+   */
+  readonly reinitialisationsDemandees: string[] = [];
+
+  async resetMotDePasse(email: string): Promise<void> {
+    // Aucun envoi en mode mock ; on garde seulement la trace de la demande.
+    this.reinitialisationsDemandees.push(email);
   }
 
   async definirMotDePasse(): Promise<void> {

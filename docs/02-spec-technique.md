@@ -493,6 +493,21 @@ service, passage de minuit, tri multi-sens.
   `actif=false`. Ajouter un rôle ne demande qu'une ligne dans le catalogue
   `roles` et une entrée dans `DROITS_PAR_ROLE` — les politiques, elles,
   ne changent que pour les tables réellement concernées.
+- **« Mot de passe oublié » en libre-service** : sous « Se connecter », un
+  lien ouvre une troisième carte (`form-oubli`) qui demande le même envoi
+  qu'un administrateur, sans en déranger un. Le bouton de l'onglet
+  Utilisateurs reste : les deux chemins coexistent.
+  La réponse est **toujours la même**, succès, adresse inconnue ou panne
+  confondus — ce formulaire est ouvert à tout Internet, et un message qui
+  distinguerait « compte connu » de « compte inconnu » en ferait un annuaire
+  des adresses de la Régie. GoTrue est déjà muet là-dessus (`POST /recover`
+  rend 200 `{}` pour une adresse inconnue, mesuré le 09/09/2026 sur la base
+  de test) : la fuite ne viendrait que du front. SEULE exception, parce qu'un
+  échec muet est pire qu'un échec dit : la limite de débit, globale au projet
+  donc sans rapport avec le compte. Décision et messages dans
+  `src/pages/mot-de-passe-oublie.ts`, PUR ; verrouillé par
+  `src/pages/mot-de-passe-oublie.test.ts`, dont le premier `describe` est
+  écrit pour échouer si quelqu'un remonte un jour l'erreur du fournisseur.
 - **Suppression définitive d'un compte : TROIS temps, et l'ordre n'est pas
   négociable** (`supabase/functions/supprimer-utilisateur`). 1. désactivation
   avec le JETON de l'agent — elle traverse RLS, prouve le droit, libère le

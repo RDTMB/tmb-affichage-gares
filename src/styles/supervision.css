@@ -213,6 +213,36 @@ header .spacer {
   min-height: 18px;
 }
 
+/* « Si un compte existe pour cette adresse… » n'est pas un refus : c'est la
+   réponse NORMALE de la carte « mot de passe oublié ». En rouge d'alerte, elle
+   ferait croire à un échec. Même zone, même place, couleur neutre — le
+   précédent de l'écran de gare, qui annonce en neutre une heure confirmée. */
+.connexion .erreur.dit {
+  color: var(--marine);
+  font-weight: 400;
+}
+
+/* Lien d'action à l'intérieur d'une carte de connexion : « Mot de passe
+   oublié ? », « Revenir à la connexion ». Un <button> pour le clavier et pour
+   éviter une fausse navigation, dessiné comme un lien pour ne pas concurrencer
+   du regard le bouton principal juste au-dessus. */
+.connexion-carte .lien-discret {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--bleu-gris);
+  text-decoration: underline;
+  cursor: pointer;
+  justify-self: center;
+}
+
+.connexion-carte .lien-discret:hover,
+.connexion-carte .lien-discret:focus-visible {
+  color: var(--marine);
+}
+
 /* ------- Onglets ------- */
 /* UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation garde sa taille à
    gauche, l'administration passe à droite, plus discrète, derrière un filet.
