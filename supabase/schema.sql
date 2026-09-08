@@ -1120,6 +1120,53 @@ drop trigger if exists trg_roles_ecrans_identite on ecrans;
 create trigger trg_roles_ecrans_identite before update of gare, type on ecrans
   for each row execute function private.proteger_identite_ecran();
 
+-- (e) Colonnes `maj` HONNÊTES. `params.maj` et `circulations.maj` sont
+--     déclarées `default now()`, or un défaut ne s'applique qu'à l'INSERT :
+--     elles restaient donc FIGÉES à la date de création de la ligne, alors que
+--     leur nom promet la dernière écriture. `saveParams` fait un upsert sans
+--     jamais toucher `maj`, et aucun déclencheur ne la remontait.
+--
+--     Ce n'est pas cosmétique. Mesuré en production le 07/09/2026 :
+--     `params.maj` de la clé `meteo_sommet` valait le 24/08 alors que la météo
+--     avait été saisie le matin même — et la conclusion tirée de cette lecture
+--     (« météo de quatorze jours ») a été annoncée à tort en gare. Une colonne
+--     nommée « maj » qui ne bouge pas invite à croire périmée une donnée
+--     fraîche : c'est un piège actif, et le prochain à la lire, humain ou
+--     agent, y tombera pareil.
+--
+--     UN DÉCLENCHEUR PLUTÔT QUE LA SUPPRESSION, pour trois raisons. Le geste
+--     est ADDITIF et réversible, là où `drop column` ne l'est pas en
+--     production. `params` a UNE ligne par clé, donc `params.maj` de la ligne
+--     `meteo_sommet` date réellement la météo — ce que `heure_releve`, saisi à
+--     la main sans date, ne dira jamais seul, et c'est de quoi permettre un
+--     jour aux écrans de savoir si la météo affichée est du jour. Enfin le
+--     journal d'exploitation ne rend PAS ces colonnes redondantes : il ne
+--     consigne que les valeurs CHANGÉES, donc une ligne réécrite à l'identique
+--     n'y laisse aucune trace, là où `maj` la datera.
+--
+--     Ni `security definer` ni GRANT : la fonction ne touche que NEW, et
+--     EXECUTE d'une fonction de déclencheur est vérifié à la création du
+--     déclencheur, pas à chaque appel. `now()` reste résolu avec un
+--     `search_path` vide, il vit dans `pg_catalog`.
+--
+--     Aucun bruit au journal : les deux déclencheurs de trace passent une
+--     LISTE explicite de colonnes surveillées, dont `maj` ne fait pas partie.
+create or replace function private.remonte_maj()
+returns trigger language plpgsql set search_path = '' as $fn$
+begin
+  new.maj := now();
+  return new;
+end $fn$;
+revoke all on function private.remonte_maj() from public;
+
+drop trigger if exists trg_maj_params on params;
+create trigger trg_maj_params before update on params
+  for each row execute function private.remonte_maj();
+
+drop trigger if exists trg_maj_circulations on circulations;
+create trigger trg_maj_circulations before update on circulations
+  for each row execute function private.remonte_maj();
+
 -- ------------------------------------------- journal d'exploitation
 -- Trace permanente de chaque ÉCRITURE, alimentée par DÉCLENCHEURS (rien
 -- n'y échappe, pas même une correction faite directement en SQL). Distinct

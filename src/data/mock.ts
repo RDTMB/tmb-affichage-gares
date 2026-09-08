@@ -613,7 +613,7 @@ export class MockProvider implements DataProvider {
       .sort();
   }
 
-  async getJour(date: string): Promise<Jour> {
+  async getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour> {
     const grilles = await this.getGrilles();
     const grille = serviceActif(grilles, date);
     if (!grille) {
@@ -648,7 +648,12 @@ export class MockProvider implements DataProvider {
     // PASSÉE sans données reste un aperçu théorique (pas d'historique inventé).
     let etatJour = litEtat().jours[date];
     const aujourdhui = this.options.aujourdhui ?? dateAujourdhuiParis();
-    if (!etatJour && date >= aujourdhui && sessionStorage.getItem(CLE_SESSION) !== null) {
+    if (
+      options?.creerSiAbsent === true &&
+      !etatJour &&
+      date >= aujourdhui &&
+      sessionStorage.getItem(CLE_SESSION) !== null
+    ) {
       const etat = litEtat();
       // REPORT DE LA VEILLE : un chantier dure des semaines, et une journée
       // créée sur la ligne complète afficherait des trains qui ne circulent

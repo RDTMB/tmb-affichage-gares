@@ -124,7 +124,10 @@ describe('Ouverture d’une date en supervision (amélioration exploitant du 25/
   it('date à venir en grand service : 26 trains créés d’emblée, modification immédiate', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.signIn('admin@demo', 'x'); // session supervision
-    const jour = await provider.getJour('2026-08-28');
+    // L'option est ce que passe la SUPERVISION : la création est réservée aux
+    // surfaces qui ont le droit d'écrire (§C). Une surface d'affichage ne la
+    // passe pas et n'écrit donc rien, même avec une session.
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
     expect(jour.enregistre).toBe(true); // créé à l'ouverture, sans action manuelle
     expect(jour.hors_saison).toBeUndefined();
     expect(jour.circulations).toHaveLength(26);
@@ -140,7 +143,7 @@ describe('Ouverture d’une date en supervision (amélioration exploitant du 25/
   it('date à venir en petit service : 16 trains créés', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.signIn('supervision@demo', 'x');
-    const jour = await provider.getJour('2026-09-05');
+    const jour = await provider.getJour('2026-09-05', { creerSiAbsent: true });
     expect(jour.enregistre).toBe(true);
     expect(jour.circulations).toHaveLength(16);
   });
@@ -168,6 +171,70 @@ describe('Ouverture d’une date en supervision (amélioration exploitant du 25/
     const jour = await provider.getJour('2026-08-28');
     expect(jour.enregistre).toBe(false);
     expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-08-28');
+  });
+
+  // --- §C : une surface d'AFFICHAGE n'écrit jamais ------------------------
+  //
+  // Le défaut, vérifié le 08/09/2026. Le bouton « Aperçu » ouvre `ecran.html`
+  // dans le MÊME navigateur, donc avec la session du superviseur. `?apercu=1`
+  // ne coupe que le signal de vie ; il n'empêchait pas `getJour` de créer la
+  // journée. Cliquer « Aperçu » sur une journée non ouverte la CRÉAIT donc, et
+  // le bandeau « journée non confirmée » livré la veille n'était jamais
+  // visible depuis l'aperçu — pire, le geste d'aller le chercher effaçait le
+  // signal pour les vrais écrans en gare. Une alerte détruite en la regardant.
+  //
+  // La création est passée derrière une option dont le défaut est NON. Les
+  // Raspberry n'étaient pas touchés (aucune session) : c'est la personne qui
+  // pouvait agir sur l'alerte qui ne la voyait jamais.
+  it('SESSION PRÉSENTE mais sans l’option : aucune création, aucune écriture', async () => {
+    // Le cas de l'aperçu, et le seul qui prouve le correctif : c'est l'absence
+    // d'option qui doit retenir l'écriture, pas l'absence de session.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-08-28');
+    expect(jour.enregistre, 'journée déclarée non confirmée').toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '', 'rien écrit en base').not.toContain('2026-08-28');
+    // L'aperçu théorique reste COMPLET : ne pas écrire n'est pas ne rien
+    // afficher, l'écran montre la grille comme il le fera en gare.
+    expect(jour.circulations).toHaveLength(26);
+  });
+
+  it('avec l’option, la supervision crée toujours la journée', async () => {
+    // L'amélioration exploitant du 25/08 ne doit pas être perdue : ouvrir une
+    // date à venir en supervision la crée d'emblée, sans action manuelle.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    expect(jour.enregistre).toBe(true);
+    expect(stockage.get('tmb-mock-etat') ?? '').toContain('2026-08-28');
+  });
+
+  it('l’option ne donne AUCUN droit : sans session, rien n’est créé', async () => {
+    // Elle autorise, elle n'habilite pas. Un écran qui la passerait par erreur
+    // n'écrirait pas davantage — la session et RLS restent la frontière.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    expect(jour.enregistre).toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-08-28');
+  });
+
+  it('`creerSiAbsent: false` explicite vaut le défaut', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: false });
+    expect(jour.enregistre).toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '').not.toContain('2026-08-28');
+  });
+
+  it('une journée DÉJÀ créée est lue pareil, avec ou sans l’option', async () => {
+    // Ne pas créer n'est pas ne pas lire : une journée existante doit
+    // continuer à arriver complète et confirmée sur les écrans.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    const sansOption = await provider.getJour('2026-08-28');
+    expect(sansOption.enregistre).toBe(true);
+    expect(sansOption.circulations).toHaveLength(26);
   });
 
   it('réinitialisation : retour à l’horaire théorique de la grille en vigueur', async () => {

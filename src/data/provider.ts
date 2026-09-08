@@ -63,8 +63,22 @@ export interface DataProvider {
   updateGrilleMetadonnees(version: string, meta: MetadonneesGrille): Promise<void>;
   /** Dates (« YYYY-MM-DD », bornes incluses) dont la journée existe déjà en base. */
   listJoursGeneres(du: string, au: string): Promise<string[]>;
-  /** Circulations + drapeaux du jour (terminus…). */
-  getJour(date: string): Promise<Jour>;
+  /**
+   * Circulations + drapeaux du jour (terminus…).
+   *
+   * `creerSiAbsent` autorise la CRÉATION de la journée quand elle n'existe pas
+   * encore en base. Le défaut est de NE PAS créer, et ce sens compte : une
+   * surface d'AFFICHAGE ne doit jamais écrire. L'aperçu de la supervision
+   * ouvre `ecran.html` dans le même navigateur, donc avec la session du
+   * superviseur : avec le défaut inverse, cliquer « Aperçu » sur une journée
+   * non ouverte la créait, ce qui effaçait le bandeau « journée non
+   * confirmée » pour les vrais écrans en gare — une alerte détruite en la
+   * regardant. Un futur appelant qui oublie l'option ne pourra pas écrire par
+   * inadvertance ; c'est l'inverse qui a produit ce défaut.
+   *
+   * Seule la supervision passe `{ creerSiAbsent: true }`.
+   */
+  getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour>;
   getMessages(gare: GareId): Promise<Message[]>;
   /** URLs + durées des médias ACTIFS ciblant la gare (écrans). */
   getMedias(gare: GareId): Promise<Media[]>;

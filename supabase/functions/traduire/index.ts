@@ -30,84 +30,71 @@ function entetesCors(req: Request): Record<string, string> {
 // fonction en collant UN fichier, et un module partagé `_shared/` ne s'y colle
 // pas. Elle est vérifiée plutôt que promise — `src/data/cles-edge-functions.test.ts`
 // compare les trois copies caractère par caractère, puis exécute celle-ci.
-// C'est justement une divergence entre les trois qui a produit l'état d'avant :
-// deux fonctions avaient un repli de clé publiable, la troisième non.
-// `traduire` n'utilise pas `clePubliable()` et garde pourtant le bloc entier,
-// pour que les trois copies restent comparables d'un simple égal.
+// C'est justement une divergence entre les trois qui avait produit l'état de
+// septembre : deux fonctions portaient un repli de clé publiable, la troisième
+// non. `traduire` n'utilise pas `clePubliable()` et garde pourtant le bloc
+// entier, pour que les trois copies restent comparables d'un simple égal.
 //
-// Supabase injecte les nouvelles clés dans deux variables au PLURIEL, qui
-// contiennent un objet JSON indexé par NOM de clé :
+// Supabase injecte les clés dans deux variables au PLURIEL, qui contiennent un
+// objet JSON indexé par NOM de clé :
 //   SUPABASE_SECRET_KEYS       → {"default":"sb_secret_…"}
 //   SUPABASE_PUBLISHABLE_KEYS  → {"default":"sb_publishable_…"}
-// L'ancien repli `SUPABASE_ANON_KEY ?? SUPABASE_PUBLISHABLE_KEY` visait un nom
-// au SINGULIER qui n'existe pas : il n'a jamais pu servir, et personne ne l'a
-// vu parce que la branche de gauche a toujours répondu.
 //
-// ⚠ REPLI TEMPORAIRE. Après la désactivation des clés « legacy », les anciennes
-// variables ne disparaissent pas : elles gardent leur JWT périmé, que Supabase
-// refuse (« Legacy API keys are disabled »). Le repli ne protège donc de RIEN
-// après la coupure — il ne couvre que la fenêtre entre le déploiement de ce
-// code et la coupure elle-même. À RETIRER une fois la coupure faite en
-// production (docs/mise-en-service.md §E, étape 6).
+// PLUS AUCUN REPLI sur SUPABASE_SERVICE_ROLE_KEY ni SUPABASE_ANON_KEY. Les clés
+// « legacy » ont été désactivées en production le 07/09/2026, et la recette a
+// confirmé que les trois fonctions lisent bien le trousseau — aucune ligne
+// `[cles]` dans leurs journaux. Ces deux variables existent toujours dans
+// l'environnement, mais elles gardent un JWT périmé que Supabase refuse
+// (« Legacy API keys are disabled ») : un repli sur elles ne protégerait plus
+// rien et MASQUERAIT une régression. Si le trousseau cessait d'être lu, la
+// fonction replierait en silence sur une clé morte, et l'échec surviendrait au
+// premier appel au lieu du démarrage — la panne muette qu'on refuse partout
+// ailleurs. Refuser franchement vaut mieux.
 
 /** Nom de la clé lue dans le trousseau : renommer la clé côté Supabase casse tout. */
 const NOM_CLE = 'default';
 
 /**
- * Clé d'API : le trousseau JSON d'abord, l'ancienne variable ensuite.
+ * Clé d'API lue dans le trousseau JSON, ou refus EXPLICITE.
  *
- * Refuse franchement au lieu de renvoyer `undefined`, qui produirait trois
- * appels plus loin une erreur d'authentification que personne ne sait relier à
- * un réglage manquant. Journalise TOUJOURS avant de lever : l'appelant a le
- * droit de transformer l'échec en réponse neutre, la trace doit rester dans les
- * journaux de la fonction. Rien vaut mieux que faux, et une panne muette se
- * répète.
+ * Refuse au lieu de renvoyer `undefined`, qui produirait trois appels plus loin
+ * une erreur d'authentification que personne ne sait relier à un réglage
+ * manquant. Journalise TOUJOURS avant de lever : l'appelant a le droit de
+ * transformer l'échec en réponse neutre — c'est le cas de `traduire` — et la
+ * trace doit rester dans les journaux de la fonction. Rien vaut mieux que faux,
+ * et une panne muette se répète.
  */
-function cleApi(nomTrousseau: string, nomLegacy: string): string {
+function cleApi(nomTrousseau: string): string {
   const trousseau = Deno.env.get(nomTrousseau);
-  if (trousseau) {
-    let clefs: Record<string, unknown> | null = null;
-    try {
-      clefs = JSON.parse(trousseau) as Record<string, unknown> | null;
-    } catch {
-      console.error(`[cles] ${nomTrousseau} n’est pas du JSON valide.`);
-    }
-    const cle = clefs?.[NOM_CLE];
-    if (typeof cle === 'string' && cle !== '') return cle;
-    if (clefs) {
-      // Trousseau lisible mais sans clé « default » : la seule information qui
-      // permette de corriger le réglage est la liste des noms réellement là.
-      console.error(
-        `[cles] ${nomTrousseau} n’a pas de clé « ${NOM_CLE} » ; noms présents : ` +
-          `${Object.keys(clefs).join(', ') || '(aucun)'}.`,
-      );
-    }
+  if (!trousseau) {
+    console.error(`[cles] ${nomTrousseau} est absent de l’environnement de la fonction.`);
+    throw new Error(`Configuration incomplète : ${nomTrousseau} absent.`);
   }
-  const ancienne = Deno.env.get(nomLegacy);
-  if (ancienne) {
-    // REPLI TEMPORAIRE — et cette ligne EST le contrôle d'avant-coupure.
-    // Tant qu'elle apparaît dans les journaux de la fonction, le trousseau
-    // n'est pas lu : désactiver les clés legacy casserait tout. Sans elle, le
-    // repli réussirait en silence, un essai complet passerait, et la coupure
-    // casserait ensuite ce que l'essai venait de déclarer bon.
-    console.warn(
-      `[cles] ${nomTrousseau} indisponible : repli sur ${nomLegacy}. Ne pas ` +
-        `désactiver les clés legacy tant que cette ligne apparaît.`,
-    );
-    return ancienne;
+  let clefs: Record<string, unknown> | null = null;
+  try {
+    clefs = JSON.parse(trousseau) as Record<string, unknown> | null;
+  } catch {
+    console.error(`[cles] ${nomTrousseau} n’est pas du JSON valide.`);
+    throw new Error(`Configuration incomplète : ${nomTrousseau} illisible.`);
   }
-  console.error(`[cles] Ni ${nomTrousseau} ni ${nomLegacy} ne fournissent de clé.`);
-  throw new Error(`Configuration incomplète : aucune clé d’API utilisable (${nomTrousseau}).`);
+  const cle = clefs?.[NOM_CLE];
+  if (typeof cle === 'string' && cle !== '') return cle;
+  // Dire les noms réellement présents est la seule information qui permette de
+  // corriger le réglage. `Object.keys(null)` lève : d'où le garde.
+  const noms =
+    clefs && typeof clefs === 'object' ? Object.keys(clefs).join(', ') || '(aucun)' : '(pas un objet)';
+  console.error(`[cles] ${nomTrousseau} n’a pas de clé « ${NOM_CLE} » ; noms présents : ${noms}.`);
+  throw new Error(`Configuration incomplète : clé « ${NOM_CLE} » absente de ${nomTrousseau}.`);
 }
 
 /** Clé SECRÈTE (ex-`service_role`) : contourne RLS, ne sort jamais de la fonction. */
 function cleSecrete(): string {
-  return cleApi('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY');
+  return cleApi('SUPABASE_SECRET_KEYS');
 }
 
 /** Clé PUBLIABLE (ex-`anon`) : le client qui agit AU NOM de l'agent, sous RLS. */
 function clePubliable(): string {
-  return cleApi('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY');
+  return cleApi('SUPABASE_PUBLISHABLE_KEYS');
 }
 // ─── Clés d'API — BLOC IDENTIQUE dans les trois fonctions (fin) ──────────────
 

@@ -252,7 +252,7 @@ export class SupabaseProvider implements DataProvider {
     return ((data ?? []) as { date: string }[]).map((l) => l.date);
   }
 
-  async getJour(date: string): Promise<Jour> {
+  async getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour> {
     const [grilles, jourRes, circRes] = await Promise.all([
       this.getGrilles(),
       this.client.from('jours').select('*').eq('date', date).maybeSingle(),
@@ -290,7 +290,14 @@ export class SupabaseProvider implements DataProvider {
       // DROIT d'écrire l'exploitation : la journée est créée immédiatement
       // (idempotent). Un compte « caisse » ou un écran anonyme ne déclenche
       // aucune écriture (elle serait refusée par RLS).
-      if (date >= dateAujourdhuiParis() && (await this.peutEcrireExploitation())) {
+      // `creerSiAbsent` d'abord : sans lui, aucune écriture, quels que soient
+      // la date et les droits de la session. Un écran de gare et l'aperçu de
+      // la supervision passent donc tout droit vers l'aperçu théorique.
+      if (
+        options?.creerSiAbsent === true &&
+        date >= dateAujourdhuiParis() &&
+        (await this.peutEcrireExploitation())
+      ) {
         await this.genererJour(date);
         this.joursAssures.add(date);
         const cree = generationJour(grille, date);

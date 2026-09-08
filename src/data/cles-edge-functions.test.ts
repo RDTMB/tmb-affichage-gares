@@ -1,5 +1,13 @@
-// Lecture des clés d'API par les trois Edge Functions (constat S9 : sortir des
-// clés « legacy » sans casser l'invitation, la suppression et la traduction).
+// Lecture des clés d'API par les trois Edge Functions.
+//
+// Historique en deux temps. Le constat S9 demandait de sortir des clés
+// « legacy » sans casser l'invitation, la suppression et la traduction : les
+// fonctions ont d'abord lu le trousseau JSON avec un REPLI temporaire sur les
+// anciennes variables, le temps de la fenêtre entre le déploiement et la
+// coupure. Les clés legacy ont été désactivées en production le 07/09/2026 et
+// la recette a confirmé que les trois fonctions lisent bien le trousseau —
+// aucune ligne `[cles]` dans leurs journaux. Le repli est donc retiré : il ne
+// protégeait plus rien et MASQUAIT une régression.
 //
 // POURQUOI CE TEST EXISTE SOUS CETTE FORME. `tsconfig.include` s'arrête à
 // `src` : les Edge Functions ne sont ni compilées ni testées par la chaîne
@@ -9,8 +17,8 @@
 // quelque chose :
 //   1. on découpe le bloc de lecture des clés dans les TROIS fichiers et on
 //      compare les copies caractère par caractère. C'est une divergence entre
-//      les trois qui a produit l'état d'avant : deux fonctions avaient un repli
-//      de clé publiable, la troisième non ;
+//      les trois qui a produit l'état de septembre : deux fonctions portaient
+//      un repli de clé publiable, la troisième non ;
 //   2. on COMPILE ce bloc (Vite retire les types par esbuild) et on l'EXÉCUTE
 //      avec un faux `Deno.env`. Ce n'est pas une copie du code déployé qui est
 //      éprouvée, c'est lui.
@@ -47,33 +55,38 @@ function blocDe(fonction: string): string {
   return src.slice(debut, src.indexOf('\n', repereFin) + 1);
 }
 
+/** Le fichier sans ses commentaires : le CODE, pas ce qui l'explique. */
+function codeDe(fonction: string): string {
+  return source(fonction)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+
 interface EnvSimule {
   [nom: string]: string | undefined;
 }
 
 interface Lecteurs {
-  cleApi(nomTrousseau: string, nomLegacy: string): string;
+  cleApi(nomTrousseau: string): string;
   cleSecrete(): string;
   clePubliable(): string;
-  /** Ce qui est parti dans `console.error` : les vraies pannes. */
+  /** Ce qui est parti dans `console.error` : les pannes, toujours dites. */
   journal: string[];
-  /** Ce qui est parti dans `console.warn` : le repli sur l'ancienne variable. */
+  /**
+   * Ce qui est parti dans `console.warn`. Doit rester VIDE : c'est par là que
+   * l'ancien repli s'annonçait, et un repli réintroduit se verrait ici.
+   */
   alertes: string[];
 }
 
 /**
  * Compile le bloc et l'exécute avec l'environnement donné.
  *
- * `console.error` ET `console.warn` sont remplacés par des collectes, parce
- * que les deux portent une garantie :
- *   - `error` : `cleApi()` journalise TOUJOURS avant de lever, sans quoi la
- *     panne serait muette chez un appelant qui répond neutre — c'est le cas de
- *     `traduire` ;
- *   - `warn` : le repli sur l'ancienne variable se DIT. C'est le contrôle
- *     d'avant-coupure : un repli silencieux ferait passer l'essai, puis la
- *     coupure casserait ce que l'essai venait de déclarer bon.
- * Un test qui ne regarderait que la valeur de retour laisserait passer
- * précisément les deux défauts qu'on veut interdire.
+ * `console.error` est remplacé par une collecte : le contrat de `cleApi()` est
+ * de TOUJOURS journaliser avant de lever, sans quoi la panne serait muette chez
+ * un appelant qui transforme l'échec en réponse neutre — c'est le cas de
+ * `traduire`. Un test qui ne regarderait que la valeur de retour laisserait
+ * passer précisément le défaut qu'on veut interdire.
  */
 async function lecteurs(env: EnvSimule): Promise<Lecteurs> {
   const { code: js } = await transformWithEsbuild(blocDe('inviter-utilisateur'), 'bloc-cles.ts', {
@@ -101,34 +114,23 @@ async function lecteurs(env: EnvSimule): Promise<Lecteurs> {
 }
 
 describe('les trois copies du bloc sont identiques', () => {
-  it('le bloc est présent et délimité dans les trois fonctions', async () => {
+  it('le bloc est présent et délimité dans les trois fonctions', () => {
     for (const fonction of FONCTIONS) {
       expect(() => blocDe(fonction), fonction).not.toThrow();
     }
   });
 
-  it('caractère par caractère, les trois copies sont le même texte', async () => {
+  it('caractère par caractère, les trois copies sont le même texte', () => {
     // Aucun module partagé : le tableau de bord déploie une fonction en collant
     // UN fichier. La duplication est donc voulue — et vérifiée ici plutôt que
-    // promise en commentaire.
+    // promise en commentaire. C'est cet invariant qui la rend acceptable.
     const [reference, ...autres] = FONCTIONS.map(blocDe);
     for (const [i, copie] of autres.entries()) {
       expect(copie, `${FONCTIONS[i + 1]} diverge de ${FONCTIONS[0]}`).toBe(reference);
     }
   });
 
-  it('plus aucune fonction ne lit une ancienne variable en dehors du bloc', async () => {
-    // C'est le cœur de S9 : une lecture directe oubliée quelque part casserait
-    // à la coupure, et ne se verrait qu'en gare.
-    for (const fonction of FONCTIONS) {
-      const horsBloc = source(fonction).replace(blocDe(fonction), '');
-      expect(horsBloc, fonction).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
-      expect(horsBloc, fonction).not.toContain('SUPABASE_ANON_KEY');
-      expect(horsBloc, fonction).not.toContain('SUPABASE_PUBLISHABLE_KEY');
-    }
-  });
-
-  it('les deux clients sont bien branchés sur les lecteurs', async () => {
+  it('les deux clients sont bien branchés sur les lecteurs', () => {
     for (const fonction of ['inviter-utilisateur', 'supprimer-utilisateur']) {
       const src = source(fonction);
       expect(src, fonction).toContain('createClient(url, cleSecrete())');
@@ -144,18 +146,49 @@ describe('les trois copies du bloc sont identiques', () => {
     );
     expect(traduire).toContain('status: 500');
   });
+});
 
-  it('le repli sur les anciens noms est marqué comme temporaire, à retirer', async () => {
-    // Après la coupure, ces variables gardent leur JWT périmé au lieu de
-    // disparaître : le repli ne protège de rien et n'a plus qu'à partir. Sans
-    // cette marque, il resterait là pour toujours.
-    const bloc = blocDe('traduire');
-    expect(bloc).toContain('À RETIRER');
-    expect(bloc).toContain('TEMPORAIRE');
+describe('le repli sur les anciennes clés a été RETIRÉ', () => {
+  it('aucune fonction ne LIT plus une ancienne variable, nulle part', () => {
+    // Contrôle sur le CODE et non sur le fichier : le commentaire du bloc
+    // nomme ces variables pour expliquer pourquoi on ne les lit plus, et un
+    // contrôle naïf le prendrait pour une lecture.
+    for (const fonction of FONCTIONS) {
+      const code = codeDe(fonction);
+      expect(code, fonction).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+      expect(code, fonction).not.toContain('SUPABASE_ANON_KEY');
+      // Le nom au SINGULIER n'a jamais existé côté Supabase ; il ne doit pas
+      // réapparaître sous couvert de repli.
+      expect(code, fonction).not.toMatch(/SUPABASE_PUBLISHABLE_KEY\b(?!S)/);
+    }
+  });
+
+  it('`cleApi()` ne prend plus qu’UN paramètre : il n’y a plus de second nom', () => {
+    // La signature est la preuve la plus courte que le repli est parti.
+    expect(blocDe('traduire')).toContain('function cleApi(nomTrousseau: string): string {');
+    expect(blocDe('traduire')).toContain("return cleApi('SUPABASE_SECRET_KEYS');");
+    expect(blocDe('traduire')).toContain("return cleApi('SUPABASE_PUBLISHABLE_KEYS');");
+  });
+
+  it('la mention « À RETIRER » a disparu avec ce qu’elle désignait', () => {
+    // Elle exigeait sa propre suppression : la garder après la coupure
+    // laisserait croire qu'il reste quelque chose à faire.
+    for (const fonction of FONCTIONS) {
+      expect(blocDe(fonction), fonction).not.toContain('À RETIRER');
+      expect(blocDe(fonction), fonction).not.toContain('TEMPORAIRE');
+    }
+  });
+
+  it('le bloc dit POURQUOI le repli est parti, pour qu’on ne le remette pas', () => {
+    // Un repli réintroduit de bonne foi masquerait de nouveau une régression :
+    // la raison doit rester lisible à l'endroit de la décision.
+    const bloc = blocDe('inviter-utilisateur');
+    expect(bloc).toContain('PLUS AUCUN REPLI');
+    expect(bloc).toMatch(/07\/09\/2026/);
   });
 });
 
-describe('cleApi() — le trousseau JSON d’abord', () => {
+describe('cleApi() — le trousseau JSON, ou rien', () => {
   let vu: Lecteurs;
 
   beforeEach(async () => {
@@ -165,21 +198,21 @@ describe('cleApi() — le trousseau JSON d’abord', () => {
     });
   });
 
-  it('lit la clé « default » du trousseau, sans rien dire du tout', async () => {
-    // État CIBLE : aucune trace. C'est cette absence de trace qui autorise la
-    // coupure des clés legacy.
+  it('lit la clé « default » du trousseau, sans rien dire du tout', () => {
+    // État NORMAL : aucune trace, ni erreur ni avertissement.
     expect(vu.cleSecrete()).toBe('sb_secret_abc');
     expect(vu.clePubliable()).toBe('sb_publishable_xyz');
     expect(vu.journal).toEqual([]);
     expect(vu.alertes).toEqual([]);
   });
 
-  it('le trousseau L’EMPORTE sur l’ancienne variable, même si les deux sont là', async () => {
-    // Pendant la fenêtre de transition les deux répondent. Prendre la nouvelle
-    // est ce qui fait que la coupure ne change rien.
+  it('les anciennes variables sont IGNORÉES même quand elles répondent', async () => {
+    // Elles existent toujours dans l'environnement de la fonction, avec un JWT
+    // périmé. Les lire serait replier sur une clé morte.
     const deux = await lecteurs({
       SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_neuve' }),
       SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt',
+      SUPABASE_ANON_KEY: 'eyJ.ancien.anon',
     });
     expect(deux.cleSecrete()).toBe('sb_secret_neuve');
     expect(deux.journal).toEqual([]);
@@ -187,114 +220,74 @@ describe('cleApi() — le trousseau JSON d’abord', () => {
   });
 });
 
-describe('cleApi() — le repli temporaire sur les anciens noms', () => {
-  it('sert quand le trousseau est absent, et le DIT : c’est le contrôle d’avant-coupure', async () => {
-    // Le piège qu'évite cette alerte : un repli silencieux ferait passer
-    // l'essai des trois parcours, Thomas couperait les clés legacy, et la
-    // coupure casserait ce que l'essai venait de déclarer bon. La ligne doit
-    // nommer les DEUX variables — celle qui manque et celle qui a servi — et
-    // dire de ne pas couper.
-    const vu = await lecteurs({ SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt' });
-    expect(vu.cleSecrete()).toBe('eyJ.ancien.jwt');
-    expect(vu.journal).toEqual([]); // pas une panne : un état de transition
-    expect(vu.alertes).toHaveLength(1);
-    expect(vu.alertes[0]).toContain('SUPABASE_SECRET_KEYS');
-    expect(vu.alertes[0]).toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(vu.alertes[0]).toContain('Ne pas');
-  });
+describe('cleApi() — refuse franchement, et le dit', () => {
+  /** Toutes les façons dont le trousseau peut être inutilisable. */
+  const inutilisables: { cas: string; env: EnvSimule; trace: RegExp }[] = [
+    { cas: 'trousseau absent', env: {}, trace: /absent de l’environnement/ },
+    {
+      cas: 'trousseau illisible',
+      env: { SUPABASE_SECRET_KEYS: '{ceci n’est pas du JSON' },
+      trace: /JSON/,
+    },
+    {
+      cas: 'trousseau sans clé « default »',
+      env: { SUPABASE_SECRET_KEYS: JSON.stringify({ prod: 'sb_secret_prod', vieille: 'x' }) },
+      trace: /prod, vieille/,
+    },
+    {
+      cas: 'clé « default » vide',
+      env: { SUPABASE_SECRET_KEYS: JSON.stringify({ default: '' }) },
+      trace: /pas de clé/,
+    },
+    { cas: 'JSON valide mais nul', env: { SUPABASE_SECRET_KEYS: 'null' }, trace: /pas un objet/ },
+    {
+      cas: 'JSON valide mais une chaîne',
+      env: { SUPABASE_SECRET_KEYS: '"sb_secret_seule"' },
+      trace: /pas un objet/,
+    },
+    {
+      cas: 'JSON valide mais un nombre',
+      env: { SUPABASE_SECRET_KEYS: '42' },
+      trace: /pas un objet/,
+    },
+  ];
 
-  it('TOUT repli se dit, quelle qu’en soit la cause', async () => {
-    // Trousseau absent, illisible, sans « default », clé vide : quatre causes,
-    // une seule conclusion pour l'exploitant — le trousseau n'est pas lu.
-    const causes: EnvSimule[] = [
-      {},
-      { SUPABASE_SECRET_KEYS: '{pas du JSON' },
-      { SUPABASE_SECRET_KEYS: JSON.stringify({ prod: 'sb_secret_prod' }) },
-      { SUPABASE_SECRET_KEYS: JSON.stringify({ default: '' }) },
-    ];
-    for (const cause of causes) {
-      const vu = await lecteurs({ ...cause, SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt' });
-      expect(vu.cleSecrete(), JSON.stringify(cause)).toBe('eyJ.ancien.jwt');
-      expect(vu.alertes, JSON.stringify(cause)).toHaveLength(1);
-    }
-  });
-
-  it('sert aussi quand le trousseau existe sans clé « default » — en le DISANT', async () => {
-    // Une clé nommée autrement (« prod », « ecrans »…) est un réglage à
-    // corriger : la liste des noms réellement présents est la seule
-    // information qui permette de le faire.
-    const vu = await lecteurs({
-      SUPABASE_SECRET_KEYS: JSON.stringify({ prod: 'sb_secret_prod', vieille: 'x' }),
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt',
+  for (const { cas, env, trace } of inutilisables) {
+    it(`${cas} : lève, avec la variable nommée`, async () => {
+      // Jamais `undefined` vers createClient : l'erreur d'authentification
+      // arriverait trois appels plus loin, illisible. Et le repli d'avant
+      // aurait ici renvoyé une clé morte, donc reporté la panne au premier
+      // appel réseau — c'est exactement ce qu'on refuse.
+      const vu = await lecteurs(env);
+      expect(() => vu.cleSecrete()).toThrow(/Configuration incomplète/);
+      expect(() => vu.cleSecrete()).toThrow(/SUPABASE_SECRET_KEYS/);
     });
-    expect(vu.cleSecrete()).toBe('eyJ.ancien.jwt');
-    expect(vu.journal).toHaveLength(1);
-    expect(vu.journal[0]).toContain('SUPABASE_SECRET_KEYS');
-    expect(vu.journal[0]).toContain('prod, vieille');
-  });
 
-  it('sert aussi quand le trousseau est illisible — en le DISANT', async () => {
-    const vu = await lecteurs({
-      SUPABASE_SECRET_KEYS: '{ceci n’est pas du JSON',
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt',
+    it(`${cas} : journalise AVANT de lever, en disant la cause`, async () => {
+      // `traduire` attrape et répond neutre : sans cette trace la panne serait
+      // muette, et une panne muette se répète.
+      const vu = await lecteurs(env);
+      expect(() => vu.cleSecrete()).toThrow();
+      expect(vu.journal).toHaveLength(1);
+      expect(vu.journal[0]).toContain('SUPABASE_SECRET_KEYS');
+      expect(vu.journal[0]).toMatch(trace);
+      // Rien dans `warn` : plus aucun repli à annoncer.
+      expect(vu.alertes).toEqual([]);
     });
-    expect(vu.cleSecrete()).toBe('eyJ.ancien.jwt');
-    expect(vu.journal).toHaveLength(1);
-    expect(vu.journal[0]).toContain('JSON');
-  });
+  }
 
-  it('une clé vide dans le trousseau ne compte pas pour une clé', async () => {
-    // `''` est présent au sens de JavaScript et inutilisable au sens de
-    // Supabase : le traiter comme une clé ferait passer la panne à l'appel.
-    const vu = await lecteurs({
-      SUPABASE_SECRET_KEYS: JSON.stringify({ default: '' }),
-      SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt',
-    });
-    expect(vu.cleSecrete()).toBe('eyJ.ancien.jwt');
-    expect(vu.journal).toHaveLength(1);
-  });
-
-  it('un trousseau JSON valide mais qui n’est pas un objet ne fait pas planter', async () => {
-    // `JSON.parse('null')` et `JSON.parse('"x"')` réussissent tous les deux.
-    for (const brut of ['null', '"sb_secret_seule"', '[]', '42']) {
-      const vu = await lecteurs({
-        SUPABASE_SECRET_KEYS: brut,
-        SUPABASE_SERVICE_ROLE_KEY: 'eyJ.ancien.jwt',
-      });
-      expect(vu.cleSecrete(), brut).toBe('eyJ.ancien.jwt');
-    }
-  });
-});
-
-describe('cleApi() — aucune source utilisable', () => {
-  it('refuse franchement, en nommant la variable attendue', async () => {
-    // Jamais `undefined` vers createClient : l'erreur d'authentification
-    // arriverait trois appels plus loin, illisible.
-    const vu = await lecteurs({});
+  it('un JSON valide mais un TABLEAU vide n’a pas de clé « default »', async () => {
+    // `Object.keys([])` vaut `[]` : le cas passe par « noms présents »,
+    // pas par « pas un objet ». Il lève quand même.
+    const vu = await lecteurs({ SUPABASE_SECRET_KEYS: '[]' });
     expect(() => vu.cleSecrete()).toThrow(/Configuration incomplète/);
-    expect(() => vu.cleSecrete()).toThrow(/SUPABASE_SECRET_KEYS/);
+    expect(vu.journal[0]).toContain('(aucun)');
   });
 
-  it('journalise AVANT de lever, en nommant les deux sources essayées', async () => {
-    // `traduire` attrape et répond neutre : sans cette trace la panne serait
-    // muette, et une panne muette se répète.
-    const vu = await lecteurs({});
-    expect(() => vu.clePubliable()).toThrow();
+  it('la clé publiable refuse de la même façon, en nommant SA variable', async () => {
+    const vu = await lecteurs({ SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_a' }) });
+    expect(() => vu.clePubliable()).toThrow(/SUPABASE_PUBLISHABLE_KEYS/);
     expect(vu.journal).toHaveLength(1);
     expect(vu.journal[0]).toContain('SUPABASE_PUBLISHABLE_KEYS');
-    expect(vu.journal[0]).toContain('SUPABASE_ANON_KEY');
-  });
-
-  it('un trousseau sans « default » et sans ancienne variable lève, avec DEUX traces', async () => {
-    const vu = await lecteurs({ SUPABASE_SECRET_KEYS: JSON.stringify({ prod: 'sb_secret_prod' }) });
-    expect(() => vu.cleSecrete()).toThrow(/Configuration incomplète/);
-    expect(vu.journal).toHaveLength(2);
-    expect(vu.journal[0]).toContain('prod');
-    expect(vu.journal[1]).toContain('SUPABASE_SERVICE_ROLE_KEY');
-  });
-
-  it('une ancienne variable VIDE ne compte pas pour une source', async () => {
-    const vu = await lecteurs({ SUPABASE_SECRET_KEYS: '{}', SUPABASE_SERVICE_ROLE_KEY: '' });
-    expect(() => vu.cleSecrete()).toThrow(/Configuration incomplète/);
   });
 });
