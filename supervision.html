@@ -132,6 +132,10 @@
           required
         />
         <button class="primaire" type="submit">Se connecter</button>
+        <!-- type="button" : dans un <form>, un bouton sans type ENVOIE le
+             formulaire. Un <button> plutôt qu'un <a href="#"> : pas de fausse
+             navigation, et le clavier le trouve tout seul. -->
+        <button class="lien-discret" type="button" id="lien-oubli">Mot de passe oublié ?</button>
         <div class="erreur" id="login-erreur"></div>
       </form>
 
@@ -159,6 +163,25 @@
         />
         <button class="primaire" type="submit" id="mdp-valider">Enregistrer et entrer</button>
         <div class="erreur" id="mdp-erreur"></div>
+      </form>
+
+      <!-- « Mot de passe oublié » en libre-service. L'agent demande son propre
+           lien, sans passer par un administrateur ; le bouton de la liste des
+           utilisateurs reste, les deux chemins coexistent.
+           La réponse est TOUJOURS la même (src/pages/mot-de-passe-oublie.ts) :
+           un message qui varierait selon que le compte existe ou non ferait de
+           cette carte un annuaire des adresses de la Régie. -->
+      <form class="connexion-carte" id="form-oubli" hidden>
+        <img class="logo-connexion" alt="Tramway du Mont-Blanc" />
+        <h2>Mot de passe oublié</h2>
+        <p class="note" style="padding: 0">
+          Indiquez votre adresse professionnelle : vous recevrez un lien pour choisir un nouveau mot
+          de passe.
+        </p>
+        <input type="email" id="oubli-email" placeholder="adresse@tramwaydumontblanc.fr" required />
+        <button class="primaire" type="submit" id="oubli-envoyer">Envoyer le lien</button>
+        <button class="lien-discret" type="button" id="oubli-retour">Revenir à la connexion</button>
+        <div class="erreur" id="oubli-erreur"></div>
       </form>
     </div>
 

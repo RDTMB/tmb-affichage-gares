@@ -85,6 +85,7 @@ import { poseFavicon } from './favicon';
 import { anneauSur, couleurSure, echapper } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
+import { brancheMotDePasseOublie, messageRefusConnexion } from './mot-de-passe-oublie';
 import type { ModeMedias } from '../core/cycle-medias';
 import type { EtatBandeauApplication } from './supervision-logique';
 import type { Ecart, EntreesPubliables, Instantane, JourPubliable } from './etat-publiable';
@@ -4044,10 +4045,38 @@ async function demarre(): Promise<void> {
       .signIn(email, mdp)
       .then(entreAvecSession)
       .catch((erreur: unknown) => {
-        $('login-erreur').textContent = String(
-          erreur instanceof Error ? erreur.message : 'Connexion refusée',
-        );
+        // Un compte désactivé refusait sans dire quoi faire (§5) : le refus ne
+        // change pas, seul son libellé devient actionnable.
+        $('login-erreur').textContent = messageRefusConnexion(erreur);
       });
+  });
+
+  // « Mot de passe oublié » : l'agent demande son propre lien. Aucun appel
+  // réseau ici, seulement des écouteurs — la page de connexion ne charge rien
+  // de plus qu'avant.
+  brancheMotDePasseOublie({
+    dom: {
+      formConnexion: $('form-connexion'),
+      formOubli: $('form-oubli'),
+      lienOubli: $('lien-oubli'),
+      lienRetour: $('oubli-retour'),
+      formulaireOubli: $('form-oubli'),
+      champLogin: $('login-email') as HTMLInputElement,
+      champOubli: $('oubli-email') as HTMLInputElement,
+      bouton: $('oubli-envoyer') as HTMLButtonElement,
+      zone: $('oubli-erreur'),
+    },
+    reset: (email) => provider.resetMotDePasse(email),
+    // Le MÊME discriminant que le reste de la page : présence de la
+    // configuration Supabase. Pas de second mécanisme à tenir à jour.
+    modeDemo: !configSupabasePresente(),
+    horlogerie: {
+      maintenantMs: () => Date.now(),
+      chaqueSeconde: (fn) => {
+        const battement = window.setInterval(fn, 1000);
+        return () => window.clearInterval(battement);
+      },
+    },
   });
 
   // Lien reçu par e-mail refusé par Supabase (expiré, déjà utilisé…) : on le
