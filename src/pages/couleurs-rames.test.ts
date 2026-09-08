@@ -135,7 +135,7 @@ describe('les onze sites de construction passent par les validateurs', () => {
     // gare la reçoive.
     const src = source('src/pages/supervision.ts');
     expect(src).toContain('value="${couleurSure(m.couleur)}"');
-    expect(src).toContain("value=\"${anneauSur(m.cercle) ?? '#ffffff'}\"");
+    expect(src).toContain('value="${anneauSur(m.cercle) ?? \'#ffffff\'}"');
   });
 
   it('le repli de la charte est le même partout : une seule valeur à connaître', () => {
