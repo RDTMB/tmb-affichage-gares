@@ -824,6 +824,15 @@ export class MockProvider implements DataProvider {
   }
 
   /**
+   * Déconnexion (E-01). La session de démonstration vit dans
+   * `sessionStorage` : la retirer est tout ce qu'il y a à faire, et c'est le
+   * seul état que ce fournisseur garde d'un compte.
+   */
+  async signOut(): Promise<void> {
+    sessionStorage.removeItem(CLE_SESSION);
+  }
+
+  /**
    * Rôles d'une adresse en démonstration. L'ANNUAIRE fait foi quand l'adresse
    * y figure : ses rôles ont pu être modifiés dans l'onglet Utilisateurs, et
    * deux sources de vérité divergentes donneraient une démo incohérente.

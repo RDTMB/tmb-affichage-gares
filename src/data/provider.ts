@@ -103,6 +103,19 @@ export interface DataProvider {
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
   /**
+   * DÉCONNEXION (E-01). Elle n'existait pas : le bouton « Quitter » vidait
+   * `sessionStorage` et rechargeait la page, mais aucun `signOut` n'était
+   * appelé nulle part dans `src/`. Le jeton de rafraîchissement de Supabase
+   * vit dans `localStorage`, pas dans `sessionStorage` : la session
+   * survivait donc à la sortie, sur un poste de gare éventuellement partagé,
+   * et il suffisait de recharger la supervision pour y rentrer.
+   *
+   * Le fournisseur doit AUSSI oublier ce qu'il garde en mémoire du compte —
+   * profil et rôles. C'était déjà le défaut I-10, corrigé pour `signIn` et
+   * jamais pour la sortie.
+   */
+  signOut(): Promise<void>;
+  /**
    * Rôles CUMULABLES de l'agent connecté (src/core/roles.ts). Un droit est
    * accordé si au moins l'un d'eux le donne ; le tableau peut être vide.
    */

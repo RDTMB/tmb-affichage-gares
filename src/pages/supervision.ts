@@ -3998,8 +3998,24 @@ async function demarre(): Promise<void> {
     ) {
       return;
     }
-    sessionStorage.clear();
-    window.location.reload();
+    // DÉCONNEXION RÉELLE (E-01). Avant, ce bouton vidait `sessionStorage` et
+    // rechargeait : or le jeton de rafraîchissement de Supabase vit dans
+    // `localStorage`. La session survivait donc à la sortie, sur un poste de
+    // gare éventuellement partagé, et un simple rechargement y rentrait.
+    //
+    // L'ordre compte. On ferme la session D'ABORD, on nettoie ensuite, et on
+    // ne recharge qu'à la fin : un rechargement anticipé interromprait
+    // l'appel réseau et laisserait la session ouverte. Un échec — réseau
+    // coupé — ne doit pas retenir l'agent devant un écran connecté : on
+    // nettoie et on recharge quand même, et le fournisseur a de son côté
+    // déjà oublié le profil qu'il gardait en mémoire.
+    void provider
+      .signOut()
+      .catch(() => undefined)
+      .finally(() => {
+        sessionStorage.clear();
+        window.location.reload();
+      });
   });
 
   // Même risque en cas de fermeture d'onglet ou de rechargement accidentel.

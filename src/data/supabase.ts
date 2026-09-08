@@ -133,12 +133,40 @@ export class SupabaseProvider implements DataProvider {
    */
   private ecartMs: number | null = null;
 
-  constructor(url: string, clePubliable: string) {
+  /**
+   * `sansSession` : le client n'ouvre AUCUNE session depuis le fragment
+   * d'URL (E-02). Réservé aux pages d'AFFICHAGE.
+   *
+   * Le défaut est l'ancien comportement, et c'est voulu ici — l'inverse de
+   * `creerSiAbsent`. `detectSessionInUrl` est ce qui consomme le fragment des
+   * liens d'invitation et de réinitialisation, et qui donne à
+   * `definirMotDePasse` la session sur laquelle il travaille : le désactiver
+   * par défaut casserait le parcours « choisir son mot de passe », corrigé le
+   * 04/09 et JAMAIS éprouvé en réel. On ne met donc pas ce parcours-là à la
+   * merci d'un appelant qui oublierait une option ; c'est la page d'affichage,
+   * qui n'a aucune session à ouvrir, qui le demande explicitement.
+   */
+  constructor(url: string, clePubliable: string, sansSession = false) {
     // `fetch` ENVELOPPÉ : chaque réponse porte un en-tête `Date`, donc une
     // référence d'heure serveur GRATUITE — aucune requête n'est ajoutée, on
     // lit ce qui passe déjà. C'est le seul point du code qui voit toutes les
     // réponses, y compris les sondes de synchronisation.
     this.client = createClient(url, clePubliable, {
+      ...(sansSession
+        ? {
+            // Un lien d'invitation ouvert par erreur sur un écran de gare y
+            // ouvrirait une session : le poste est en kiosque, sans clavier,
+            // et personne ne s'en apercevrait. `persistSession` est coupé avec
+            // `detectSessionInUrl` — sans lui, une session déjà écrite dans
+            // `localStorage` par une version antérieure resterait relue à
+            // chaque démarrage. `autoRefreshToken` n'a plus d'objet.
+            auth: {
+              detectSessionInUrl: false,
+              persistSession: false,
+              autoRefreshToken: false,
+            },
+          }
+        : {}),
       global: {
         fetch: async (entree, init) => {
           const envoi = Date.now();
@@ -561,6 +589,23 @@ export class SupabaseProvider implements DataProvider {
     if (error || !data.user) throw new Error(error?.message ?? 'Connexion refusée');
     this.profilCache = null; // le profil du compte précédent ne vaut plus rien
     return { user_id: data.user.id, email: data.user.email ?? email };
+  }
+
+  /**
+   * Ferme la session (E-01) et oublie le profil mémorisé.
+   *
+   * `scope: 'local'` : on ferme la session de CE poste, pas celles des autres.
+   * Un agent qui quitte la supervision d'une gare ne doit pas déconnecter son
+   * collègue d'une autre — et le poste de gare peut être partagé.
+   *
+   * L'oubli du cache est fait AVANT l'appel réseau : même si `signOut`
+   * échoue, faute de réseau par exemple, le profil du compte précédent ne
+   * traîne plus en mémoire. C'est la moitié qui ne dépend de personne.
+   */
+  async signOut(): Promise<void> {
+    this.profilCache = null;
+    const { error } = await this.client.auth.signOut({ scope: 'local' });
+    verifie(error);
   }
 
   async getProfil(): Promise<Profil> {

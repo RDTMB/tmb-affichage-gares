@@ -21,11 +21,18 @@ export function creeProvider(optionsMock: OptionsMock = {}): DataProvider {
 }
 
 /**
- * Fournisseur RÉEL. Appelé par les pages d'affichage uniquement quand
+ * Fournisseur RÉEL des pages d'AFFICHAGE. Appelé uniquement quand
  * `modeDonnees()` a répondu « reel » : les deux valeurs sont donc présentes.
+ *
+ * `sansSession` (E-02) : ces pages n'ouvrent aucune session depuis le
+ * fragment d'URL. Un lien d'invitation ouvert par erreur sur un écran de gare
+ * y ouvrirait sinon une session — poste en kiosque, sans clavier, et personne
+ * ne s'en apercevrait. La supervision, elle, passe par `creeProvider()` et
+ * garde le comportement : c'est `detectSessionInUrl` qui consomme le fragment
+ * des liens d'invitation et de réinitialisation.
  */
 export function creeProviderReel(url: string, cle: string): DataProvider {
-  return new SupabaseProvider(url, cle);
+  return new SupabaseProvider(url, cle, true);
 }
 
 /** Fournisseur de DÉMONSTRATION, explicitement demandé (`?demo=1`). */
