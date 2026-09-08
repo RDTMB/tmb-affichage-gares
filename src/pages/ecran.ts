@@ -53,6 +53,7 @@ import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   anneauSur,
+  badgeFraicheur,
   couleurSure,
   creeJournalHeartbeat,
   creeTicker,
@@ -566,18 +567,24 @@ function rendre(gare: GareId): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
-  // Badge d'âge des données calculé AVANT toute sortie : sinon il resterait
-  // peint par-dessus l'écran neutre ou la veille nuit (z-index supérieur).
+  // Badge calculé AVANT toute sortie : sinon il resterait peint par-dessus
+  // l'écran neutre ou la veille nuit (z-index supérieur). Il porte DEUX faits
+  // — l'âge des données et la nature de la journée (F-16) — et la décision
+  // vit dans badgeFraicheur(), PURE et testée, partagée avec la grille.
   const age = sync?.ageMs() ?? null;
-  const degrade = age !== null && age > SEUIL_BADGE_MS && age <= dureeCacheMs();
-  document.body.classList.toggle('mode-degrade', degrade);
-  if (degrade) {
-    const quand = sync?.heureSync() ?? '--:--';
-    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
-  }
+  const veille = estEnVeille(maintenant);
+  const badge = badgeFraicheur({
+    ageMs: age,
+    seuilBadgeMs: SEUIL_BADGE_MS,
+    dureeCacheMs: dureeCacheMs(),
+    heureSync: sync?.heureSync() ?? null,
+    jour,
+    veille,
+  });
+  document.body.classList.toggle('mode-degrade', badge.visible);
+  if (badge.visible) $('badge-cache').textContent = badge.texte;
 
   // 1. Veille nuit (écran noir + horloge discrète)
-  const veille = estEnVeille(maintenant);
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);

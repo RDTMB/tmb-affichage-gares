@@ -40,6 +40,7 @@ import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   anneauSur,
+  badgeFraicheur,
   couleurSure,
   creeJournalHeartbeat,
   creeTicker,
@@ -346,14 +347,21 @@ function rendre(): void {
   majHorloge(maintenant);
 
   // Badge calculé AVANT toute sortie (sinon il resterait peint par-dessus
-  // l'écran neutre), puis écran neutre au-delà de duree_cache_min.
+  // l'écran neutre), puis écran neutre au-delà de duree_cache_min. Il porte
+  // DEUX faits — l'âge des données et la nature de la journée (F-16) — et la
+  // décision vit dans badgeFraicheur(), PURE et partagée avec l'écran de gare.
+  // La grille n'a pas de veille de nuit : `veille: false`.
   const age = sync?.ageMs() ?? null;
-  const degrade = age !== null && age > SEUIL_BADGE_MS && age <= dureeCacheMs();
-  document.body.classList.toggle('mode-degrade', degrade);
-  if (degrade) {
-    const quand = sync?.heureSync() ?? '--:--';
-    $('badge-cache').textContent = `Données de ${quand} / Data from ${quand}`;
-  }
+  const badge = badgeFraicheur({
+    ageMs: age,
+    seuilBadgeMs: SEUIL_BADGE_MS,
+    dureeCacheMs: dureeCacheMs(),
+    heureSync: sync?.heureSync() ?? null,
+    jour,
+    veille: false,
+  });
+  document.body.classList.toggle('mode-degrade', badge.visible);
+  if (badge.visible) $('badge-cache').textContent = badge.texte;
   const neutre = age === null || age > dureeCacheMs();
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {

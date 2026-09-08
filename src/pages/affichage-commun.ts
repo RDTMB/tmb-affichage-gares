@@ -165,6 +165,76 @@ export function meteoHtml(params: Params, grille: Grille): string {
     <div>${echapper(lieu)}<small>${echapper(`${meteo.ciel_fr} / ${meteo.ciel_en}`)}</small></div>`;
 }
 
+// ---------------------------------------------------------------------------
+// Badge de fraîcheur — âge des données ET nature de la journée (F-16)
+// ---------------------------------------------------------------------------
+
+export interface EtatBadgeFraicheur {
+  visible: boolean;
+  /** Texte bilingue, une seule ligne. Vide quand le badge est masqué. */
+  texte: string;
+}
+
+/**
+ * Ce que dit le badge du coin, quand il dit quelque chose.
+ *
+ * Deux faits peuvent le réclamer, et ils peuvent COEXISTER :
+ *
+ *  - l'ÂGE des données. Le badge le disait déjà : « Données de HH:MM ». Il
+ *    répond à « ce que je lis était-il vrai il y a longtemps ? ».
+ *  - la NATURE de la journée (F-16). `Jour.enregistre` existe, le provider le
+ *    renseigne, et aucun écran ne le lisait. À faux, les écrans servent la
+ *    grille THÉORIQUE : journée jamais ouverte en supervision (début de
+ *    saison, week-end) ou génération interrompue entre les deux requêtes. Ce
+ *    ne sont pas des horaires inventés — c'est l'absence de signal quand
+ *    l'application SAIT qu'elle ne sert pas la journée d'exploitation. Aucun
+ *    retard, aucune suppression, aucun terminus exceptionnel n'y a été saisi,
+ *    parce que personne n'a ouvert la journée.
+ *
+ * §5.C — QUI GAGNE. La nature passe devant l'âge : « Données de 07:12 » laisse
+ * conclure que l'information est vraie et vieille de trois minutes, ce qui est
+ * plus trompeur qu'utile si la journée n'a jamais été confirmée. Mais l'âge
+ * n'est pas écrasé en SILENCE — c'est le défaut qu'on corrige ici : quand les
+ * deux s'appliquent, UN seul badge porte les DEUX faits, la nature d'abord.
+ * Un écran de gare ne doit pas devenir un mur de bandeaux, donc jamais deux.
+ *
+ * Trois cas où le badge se TAIT, et chacun pour sa raison :
+ *  - veille de nuit ou écran neutre : il n'y a aucun horaire à l'écran, donc
+ *    rien à qualifier. Le badge y peindrait par-dessus (z-index 60 contre 50
+ *    pour la veille) — un défaut qui existait déjà pour l'âge seul ;
+ *  - hors saison : `enregistre` est faux pour une raison LÉGITIME (aucune
+ *    journée n'est créée quand rien ne circule) et l'écran porte déjà son
+ *    état « aucun service aujourd'hui » ;
+ *  - données fraîches sur une journée confirmée : rien à signaler.
+ *
+ * Les écrans n'affichent QUE la date courante (`heure.dateISO()`, aucun
+ * paramètre `?date=`), donc le cas « date future consultée volontairement »
+ * n'existe pas ici — vérifié, pas supposé.
+ */
+export function badgeFraicheur(e: {
+  ageMs: number | null;
+  seuilBadgeMs: number;
+  dureeCacheMs: number;
+  heureSync: string | null;
+  jour: { enregistre?: boolean; hors_saison?: boolean } | null;
+  veille: boolean;
+}): EtatBadgeFraicheur {
+  const masque = { visible: false, texte: '' };
+  const neutre = e.ageMs === null || e.ageMs > e.dureeCacheMs;
+  if (e.veille || neutre) return masque;
+
+  const donneesAgees = e.ageMs !== null && e.ageMs > e.seuilBadgeMs;
+  const nonConfirmee = e.jour?.enregistre === false && e.jour?.hors_saison !== true;
+  if (!donneesAgees && !nonConfirmee) return masque;
+
+  const quand = e.heureSync ?? '--:--';
+  const age = `Données de ${quand} / Data from ${quand}`;
+  if (!nonConfirmee) return { visible: true, texte: age };
+  const nature =
+    'Horaires théoriques — journée non confirmée / Theoretical timetable — day not confirmed';
+  return { visible: true, texte: donneesAgees ? `${nature} · ${age}` : nature };
+}
+
 /**
  * Cadence du signal de vie. Le seuil « hors ligne » de la supervision
  * (SEUIL_HORS_LIGNE_MS) en dérive : il vaut deux cycles et demi, de quoi
