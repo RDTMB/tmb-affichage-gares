@@ -533,7 +533,7 @@ async function chargeTout(): Promise<void> {
     provider.getMessages('le-fayet'),
     provider.listMedias(), // TOUS les médias : un média désactivé doit rester gérable
     provider.getModelesMessages().catch(() => [] as ModeleMessage[]),
-    provider.getJour(demande),
+    provider.getJour(demande, { creerSiAbsent: true }),
   ]);
   grilles = g;
   paramsBase = p;
@@ -561,7 +561,7 @@ async function chargeTout(): Promise<void> {
 
 async function rechargeJour(): Promise<void> {
   const demande = dateSel;
-  const j = await provider.getJour(demande);
+  const j = await provider.getJour(demande, { creerSiAbsent: true });
   if (demande !== dateSel) return; // une navigation plus récente a pris le relais
   jour = j;
   rafraichitJourEffectif();
@@ -2048,7 +2048,7 @@ async function allerDate(date: string): Promise<void> {
   const precedente = dateSel;
   try {
     dateSel = date; // les chargements concurrents comparent à cette valeur
-    const nouveau = await provider.getJour(date);
+    const nouveau = await provider.getJour(date, { creerSiAbsent: true });
     if (dateSel !== date) return; // une navigation plus récente a pris le relais
     joursPublies.set(date, copieJour(nouveau)); // état EN BASE de la nouvelle date
     jour = nouveau;
