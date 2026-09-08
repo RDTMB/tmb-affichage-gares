@@ -330,6 +330,50 @@ function tronqueABellevue(train: TrainJour): TrainJour {
 }
 
 /**
+ * Numéro de MONTÉE visé par « à partir du TRAIN N » : un pair désigne la
+ * montée de sa rotation (N − 1), et 1 est le plancher (journée entière).
+ */
+export function seuilMontee(n: number): number {
+  return Math.max(1, n % 2 === 0 ? n - 1 : n);
+}
+
+/**
+ * Effet d'un CHANGEMENT de plage « Terminus Bellevue » sur la colonne Terminus.
+ *
+ * Ne touche que les montées qui ENTRENT ou qui SORTENT de la plage, par
+ * différence entre l'ancienne borne et la nouvelle (`null` = pas de plage) :
+ * la bascule PRÉ-REMPLIT la colonne, et « la colonne reste prioritaire et
+ * ajustable » (docs/01 §2.3). Recalculer la colonne entière effacerait les
+ * limitations posées à la main — c'est le défaut M-21, corrigé le 08/09/2026.
+ *
+ * DÉCOCHER (`nouveau === null`) libère TOUT : c'est une décision explicite,
+ * et laisser une montée limitée que la bascule n'indique plus serait pire
+ * qu'effacer un réglage manuel.
+ *
+ * Cette fonction est la SEULE description de la règle. L'aperçu de la
+ * supervision (`appliqueBrouillonJour`) et les fournisseurs doivent en dire la
+ * même chose, sans quoi ce que l'agent relit avant de publier ne serait pas ce
+ * que la base reçoit — c'est exactement le désaccord constaté le 09/09/2026.
+ * Fonction pure : la liste fournie n'est pas modifiée.
+ */
+export function deltaTerminusBellevue(
+  circulations: Circulation[],
+  ancien: number | null,
+  nouveau: number | null,
+): Circulation[] {
+  if (ancien === nouveau) return circulations;
+  return circulations.map((c) => {
+    if (c.sens !== 'montee') return c;
+    const entre = nouveau !== null && c.numero >= nouveau && (ancien === null || c.numero < ancien);
+    if (entre) return c.terminus === 'bellevue' ? c : { ...c, terminus: 'bellevue' as const };
+    const sort =
+      c.terminus === 'bellevue' &&
+      (nouveau === null || (ancien !== null && c.numero >= ancien && c.numero < nouveau));
+    return sort ? { ...c, terminus: 'nid-daigle' as const } : c;
+  });
+}
+
+/**
  * Bascule « Terminus Bellevue à partir du TRAIN N » (correctif exploitant du
  * 24/08/2026) : PRÉ-REMPLIT la colonne Terminus des rotations dont la montée
  * porte un numéro ≥ N — la colonne reste prioritaire et ajustable ensuite.

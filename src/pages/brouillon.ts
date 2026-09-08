@@ -12,6 +12,7 @@
 // l'écran de supervision doit afficher pendant que rien n'est encore publié.
 // Les écritures elles-mêmes restent dans supervision.ts (provider) : ce
 // fichier ne fait que de la fusion pure, testable sans DOM ni réseau.
+import { deltaTerminusBellevue, seuilMontee } from '../core/horaires';
 import type { Circulation, Jour, Message, Params, SectionJour, TerminusFlag } from '../core/types';
 
 /** Une circulation en attente, par date puis par numéro de train. */
@@ -119,7 +120,22 @@ export function appliqueBrouillonJour(
     (c) => c.supplementaire && !existants.has(c.numero),
   );
 
-  const circulations = [...jour.circulations.map((c) => parNumero?.get(c.numero) ?? c), ...ajouts]
+  // La bascule Terminus AVANT les modifications de circulations, dans cet
+  // ORDRE et pour la même raison qu'à la publication : elle PRÉ-REMPLIT la
+  // colonne, et la colonne reste prioritaire. Sans ce passage, l'aperçu
+  // superposait le drapeau sans toucher aux colonnes — donc il montrait un
+  // train encore limité là où la publication allait le libérer, et ce que
+  // l'agent relisait n'était pas ce que la base recevait.
+  const borne = (f: TerminusFlag): number | null =>
+    f === false ? null : seuilMontee(f.a_partir_du_train);
+  const ancienneBorne = borne(jour.terminus_bellevue);
+  const avantModifs = deltaTerminusBellevue(
+    jour.circulations,
+    ancienneBorne,
+    terminusEnAttente === undefined ? ancienneBorne : borne(terminusEnAttente),
+  );
+
+  const circulations = [...avantModifs.map((c) => parNumero?.get(c.numero) ?? c), ...ajouts]
     .filter((c) => {
       if (!retires?.size) return true;
       // La suppression vise une rotation : montée impaire et descente n+1.
