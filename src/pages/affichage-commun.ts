@@ -12,6 +12,44 @@ export function echapper(texte: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// ---------------------------------------------------------------------------
+// Couleurs de rame — validées, jamais seulement échappées
+// ---------------------------------------------------------------------------
+// Les couleurs de pastille (`machines.couleur`, `machines.cercle`) sont
+// PARAMÉTRABLES en supervision, et elles finissent dans un attribut `style=""`
+// construit par concaténation. `echapper()` n'y suffirait PAS : il empêche de
+// sortir de l'attribut, mais laisse passer une injection CSS. Une valeur comme
+// `red;position:fixed;inset:0;z-index:9999` transforme une pastille d'un
+// centimètre en rectangle plein écran qui masque le tableau des départs — sur
+// les six écrans à la fois, sans que personne en gare puisse rien y faire.
+// C'est la FORME hexadécimale qui ferme le trou, pas l'échappement.
+//
+// Périmètre : l'écriture sur `machines` est réservée au rôle admin par RLS, le
+// scénario suppose donc un compte admin détourné ou resté actif. Ça reste à
+// corriger — c'est trois lignes — mais ce n'est pas une urgence.
+
+/** Hexadécimal strict à six chiffres : la seule forme que la charte utilise. */
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Couleur de rame sûre : hexadécimal strict, sinon le bleu-gris de la charte. */
+export function couleurSure(v: string | null | undefined, repli = '#708DA4'): string {
+  return v && HEX.test(v) ? v : repli;
+}
+
+/**
+ * Couleur d'ANNEAU sûre — `null` quand il n'y a pas d'anneau à dessiner.
+ *
+ * `cercle` est facultatif et son ABSENCE veut dire quelque chose : seule
+ * Marguerite porte un anneau (charte 2026), les trois autres rames n'en ont
+ * pas. Lui donner un repli comme à `couleur` dessinerait donc un anneau
+ * bleu-gris autour de Marie, Anne et Jeanne — un faux, là où l'on corrige
+ * justement les faux. Une valeur mal formée est traitée comme une absence :
+ * pas d'anneau vaut mieux qu'un anneau inventé.
+ */
+export function anneauSur(v: string | null | undefined): string | null {
+  return v && HEX.test(v) ? v : null;
+}
+
 /**
  * Messages visibles pour une gare (cible toutes / gares / train encore
  * desservi, non expirés à l'heure simulable). `gare` null (grille sans

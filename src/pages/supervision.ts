@@ -82,7 +82,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { poseFavicon } from './favicon';
-import { echapper } from './affichage-commun';
+import { anneauSur, couleurSure, echapper } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
 import type { ModeMedias } from '../core/cycle-medias';
@@ -967,8 +967,8 @@ function ligneCirculation(
           (m) => `<option ${m.nom === rameEffective ? 'selected' : ''}>${echapper(m.nom)}</option>`,
         )
         .join('')}</select>`
-    : `<span class="rame-fixe"><span class="p" style="background:${machine.couleur};${
-        machine.cercle ? `box-shadow:0 0 0 2px ${machine.cercle};` : ''
+    : `<span class="rame-fixe"><span class="p" style="background:${couleurSure(machine.couleur)};${
+        anneauSur(machine.cercle) ? `box-shadow:0 0 0 2px ${anneauSur(machine.cercle)};` : ''
       }"></span>${echapper(rameEffective)}<small>(rotation)</small></span>`;
 
   // Cellule Terminus : décidée par `celluleTerminus()`, PURE et testée. Un
@@ -3101,8 +3101,8 @@ function rendreParametres(): void {
     .map(
       (m) => `
     <div class="machine-row" data-nom="${echapper(m.nom)}">
-      <input type="color" value="${m.couleur}" data-champ="couleur" title="Couleur de pastille" />
-      <input type="color" value="${m.cercle ?? '#ffffff'}" data-champ="cercle" title="Couleur d'anneau (blanc = aucun)" />
+      <input type="color" value="${couleurSure(m.couleur)}" data-champ="couleur" title="Couleur de pastille" />
+      <input type="color" value="${anneauSur(m.cercle) ?? '#ffffff'}" data-champ="cercle" title="Couleur d'anneau (blanc = aucun)" />
       <input type="text" value="${echapper(m.nom)}" data-champ="nom" />
       <label class="switch" style="margin-left:auto"><input type="checkbox" ${m.en_service ? 'checked' : ''} data-champ="en_service" />En service</label>
       <button class="leger" data-champ="retirer">Retirer</button>

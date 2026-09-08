@@ -52,6 +52,8 @@ import type {
 import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
+  anneauSur,
+  couleurSure,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -232,8 +234,11 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   const retard = p.statut === 'retard';
   const machine = machineDe(p.rame);
 
-  const pastille = `<span class="pastille" style="background:${machine.couleur};${
-    machine.cercle ? `box-shadow:0 0 0 .4vh ${machine.cercle};` : ''
+  // Couleurs VALIDÉES, pas seulement échappées : elles atterrissent dans un
+  // `style=""` construit par concaténation (voir couleurSure()).
+  const anneau = anneauSur(machine.cercle);
+  const pastille = `<span class="pastille" style="background:${couleurSure(machine.couleur)};${
+    anneau ? `box-shadow:0 0 0 .4vh ${anneau};` : ''
   }"></span>`;
 
   const sansArret = mentionSansArret(trains.get(p.numero));
@@ -351,9 +356,10 @@ function rendsArrivee(gare: GareId, maintenant_s: number): void {
     return;
   }
   const machine = machineDe(prochaine.rame);
-  const halo = machine.cercle ? `text-shadow:0 0 4px ${machine.cercle};` : '';
+  const anneauProchaine = anneauSur(machine.cercle);
+  const halo = anneauProchaine ? `text-shadow:0 0 4px ${anneauProchaine};` : '';
   $('arrivee').innerHTML = `${lbl}
-    <b>${formatHeure(prochaine.heure_s)}</b> — <span class="rame-col" style="color:${machine.couleur};${halo}">${echapper(prochaine.rame)}</span>
+    <b>${formatHeure(prochaine.heure_s)}</b> — <span class="rame-col" style="color:${couleurSure(machine.couleur)};${halo}">${echapper(prochaine.rame)}</span>
     <span>(TRAIN ${prochaine.numero}), en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
 }
 

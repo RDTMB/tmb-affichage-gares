@@ -39,6 +39,8 @@ import type {
 import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
+  anneauSur,
+  couleurSure,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -237,7 +239,7 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
       const heureCellule = (passage.depart_s ?? passage.arrivee_s ?? 0) + c.decalage;
       const point =
         positions.get(c.train.numero) === g.id
-          ? `<span class="train-pos" style="background:${machineDe(c.train.rame).couleur}"></span>`
+          ? `<span class="train-pos" style="background:${couleurSure(machineDe(c.train.rame).couleur)}"></span>`
           : '';
       html += `<td class="${cls}">${formatHeure(heureCellule)}${point}</td>`;
     });
@@ -256,8 +258,8 @@ function rendsLegende(): void {
     .filter((m) => m.en_service)
     .map(
       (m) =>
-        `<span class="item"><span class="rame-dot" style="background:${m.couleur};${
-          m.cercle ? `box-shadow:0 0 0 2px ${m.cercle};` : ''
+        `<span class="item"><span class="rame-dot" style="background:${couleurSure(m.couleur)};${
+          anneauSur(m.cercle) ? `box-shadow:0 0 0 2px ${anneauSur(m.cercle)};` : ''
         }"></span><b>${echapper(m.nom)}</b></span>`,
     )
     .join('');
