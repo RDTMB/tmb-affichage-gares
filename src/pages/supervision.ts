@@ -3776,6 +3776,34 @@ async function publieLeBrouillon(): Promise<boolean> {
     if (numeros.size === 0) brouillonSupSupprimes.delete(date);
   }
 
+  // La SECTION avant la bascule Terminus : la section est la borne
+  // extérieure, l'écrire d'abord évite un état intermédiaire où la colonne
+  // Terminus désignerait une gare déjà hors service.
+  for (const [date, section] of [...brouillonSection.entries()]) {
+    try {
+      await provider.setSectionJour(date, section);
+      brouillonSection.delete(date);
+    } catch (erreur) {
+      echoue(`ligne exploitée du ${date}`, erreur);
+    }
+  }
+
+  // La bascule Terminus AVANT les circulations (M-21). Elle PRÉ-REMPLIT la
+  // colonne Terminus, et « la colonne reste prioritaire et ajustable »
+  // (docs/01 §2.3) : la publier en dernier écrasait le geste de l'agent, de
+  // sorte que la journée publiée ne ressemblait pas à celle qu'il venait de
+  // relire. Un train supplémentaire créé plus bas porte son propre terminus
+  // (`creerTrainSup` insère la ligne complète), il n'attend rien du
+  // pré-remplissage.
+  for (const [date, flag] of [...brouillonTerminus.entries()]) {
+    try {
+      await provider.setTerminusBellevue(date, flag);
+      brouillonTerminus.delete(date);
+    } catch (erreur) {
+      echoue(`terminus Bellevue du ${date}`, erreur);
+    }
+  }
+
   for (const [date, parNumero] of [...brouillonCirc.entries()]) {
     // Rotations sup NEUVES → creerTrainSup (insert des deux lignes) ; tout le
     // reste, modification d'un renfort déjà en base comprise → écriture
@@ -3817,27 +3845,6 @@ async function publieLeBrouillon(): Promise<boolean> {
 
     if (parNumero.size === 0) brouillonCirc.delete(date);
     if (brouillonSupNeufs.get(date)?.size === 0) brouillonSupNeufs.delete(date);
-  }
-
-  // La SECTION avant la bascule Terminus : la section est la borne
-  // extérieure, l'écrire d'abord évite un état intermédiaire où la colonne
-  // Terminus désignerait une gare déjà hors service.
-  for (const [date, section] of [...brouillonSection.entries()]) {
-    try {
-      await provider.setSectionJour(date, section);
-      brouillonSection.delete(date);
-    } catch (erreur) {
-      echoue(`ligne exploitée du ${date}`, erreur);
-    }
-  }
-
-  for (const [date, flag] of [...brouillonTerminus.entries()]) {
-    try {
-      await provider.setTerminusBellevue(date, flag);
-      brouillonTerminus.delete(date);
-    } catch (erreur) {
-      echoue(`terminus Bellevue du ${date}`, erreur);
-    }
   }
 
   rafraichitMessagesEffectifs();

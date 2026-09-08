@@ -744,45 +744,93 @@ export class SupabaseProvider implements DataProvider {
     exigeLignes(resultat, 'journée absente en base');
   }
 
+  /**
+   * Bascule « Terminus Bellevue à partir du TRAIN N » (M-21).
+   *
+   * La bascule est un PRÉ-REMPLISSAGE de la colonne Terminus, pas une source
+   * de vérité : « la colonne reste prioritaire et ajustable » (docs/01 §2.3,
+   * CLAUDE.md). Elle ne touche donc QUE les montées qui ENTRENT ou SORTENT de
+   * la plage, calculées par différence avec la plage PRÉCÉDENTE.
+   *
+   * Avant, elle recalculait la colonne entière : libération de toutes les
+   * montées limitées, puis re-pose de Bellevue sur les numéros ≥ seuil. Le
+   * scénario, un matin de montagne ordinaire — mauvais temps au sommet,
+   * « Terminus Bellevue à partir du TRAIN 1 », publié ; le temps se lève, on
+   * ramène la plage au TRAIN 15 mais on laisse VOLONTAIREMENT le TRAIN 11
+   * limité, geste que l'interface propose explicitement. Le recalcul remettait
+   * le TRAIN 11 au Nid d'Aigle : il était annoncé « Nid d'Aigle » sur les six
+   * écrans alors qu'il s'arrête à Bellevue, et des voyageurs restaient à bord
+   * pour un tronçon qui ne circule pas ce jour-là.
+   *
+   * Conséquence utile de la différence : réappliquer la MÊME plage n'écrit
+   * plus rien du tout, donc ne peut plus effacer un geste de l'agent.
+   */
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     await this.assureJour(date);
+
+    /** Numéro de MONTÉE : un pair vise la montée de sa rotation (N − 1). */
+    const normalise = (n: number): number => Math.max(1, n % 2 === 0 ? n - 1 : n);
+    // `null` = pas de plage.
+    const seuil = v === false ? null : normalise(v.a_partir_du_train);
+
+    // Plage PRÉCÉDENTE, lue avant de l'écraser : c'est elle qui dit ce qui
+    // entre et ce qui sort. Sans elle, on ne sait pas distinguer une montée
+    // limitée par l'ancienne plage d'une montée limitée à la main.
+    const avant = await this.client
+      .from('jours')
+      .select('terminus_bellevue_a_partir_du_train')
+      .eq('date', date)
+      .maybeSingle();
+    verifie(avant.error);
+    const brut = (avant.data as { terminus_bellevue_a_partir_du_train: number | null } | null)
+      ?.terminus_bellevue_a_partir_du_train;
+    const ancien = typeof brut === 'number' ? normalise(brut) : null;
+
     const resultat = await this.client
       .from('jours')
-      .update({
-        terminus_bellevue_a_partir_du_train: v === false ? null : v.a_partir_du_train,
-      })
+      .update({ terminus_bellevue_a_partir_du_train: seuil })
       .eq('date', date)
       .select();
     exigeLignes(resultat, 'journée absente en base');
 
-    const seuil =
-      v === false
-        ? Number.POSITIVE_INFINITY // tout est libéré
-        : Math.max(
-            1,
-            v.a_partir_du_train % 2 === 0 ? v.a_partir_du_train - 1 : v.a_partir_du_train,
-          );
+    // RESTREINDRE d'abord, LIBÉRER ensuite. Les deux ensembles sont disjoints,
+    // donc l'ordre ne change pas l'état final — seulement l'état INTERMÉDIAIRE
+    // si la seconde écriture échoue. Restreindre en premier fait que cet
+    // intermédiaire limite TROP (un train annoncé Bellevue qui monte en réalité
+    // au Nid d'Aigle) au lieu de limiter TROP PEU (un train annoncé Nid d'Aigle
+    // qui s'arrête à Bellevue, avec des voyageurs qui restent à bord pour un
+    // tronçon fermé). Même principe que la section écrite avant la bascule.
 
-    // Libération des montées hors plage (retour au Nid d'Aigle)
-    const liberation = await this.client
-      .from('circulations')
-      .update({ terminus: 'nid-daigle' })
-      .eq('date', date)
-      .eq('sens', 'montee')
-      .eq('terminus', 'bellevue');
-    verifie(liberation.error); // 0 ligne est normal ici : rien n'était limité
-
-    if (v !== false) {
-      // Pré-remplissage de la colonne Terminus des rotations concernées
-      // (docs/01 §2.3) — la colonne reste ajustable ensuite.
-      const maj = await this.client
+    // ENTRENT dans la plage : [seuil, ancien) — élargissement.
+    if (seuil !== null && (ancien === null || seuil < ancien)) {
+      let entrent = this.client
         .from('circulations')
         .update({ terminus: 'bellevue' })
         .eq('date', date)
         .eq('sens', 'montee')
-        .gte('numero', seuil)
-        .select();
-      exigeLignes(maj, 'journée absente en base');
+        .gte('numero', seuil);
+      if (ancien !== null) entrent = entrent.lt('numero', ancien);
+      // 0 ligne est normal : la plage peut ne couvrir aucun train de la grille.
+      verifie((await entrent).error);
+    }
+
+    // SORTENT de la plage : [ancien, seuil) — rétrécissement. Décocher, lui,
+    // libère TOUT : c'est une décision explicite (« plus aucune limitation
+    // aujourd'hui »), et laisser une montée limitée que la bascule n'indique
+    // plus serait pire que d'effacer un réglage manuel.
+    const libere = v === false || (ancien !== null && seuil !== null && seuil > ancien);
+    if (libere) {
+      let sortent = this.client
+        .from('circulations')
+        .update({ terminus: 'nid-daigle' })
+        .eq('date', date)
+        .eq('sens', 'montee')
+        .eq('terminus', 'bellevue');
+      if (v !== false) {
+        if (ancien !== null) sortent = sortent.gte('numero', ancien);
+        if (seuil !== null) sortent = sortent.lt('numero', seuil);
+      }
+      verifie((await sortent).error); // 0 ligne est normal : rien n'était limité
     }
   }
 
