@@ -209,6 +209,24 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
    bouton « Réinitialiser le mot de passe » de l'onglet Utilisateurs suit le
    même chemin.
 
+   L'agent peut aussi **se dépanner seul** : sous « Se connecter », le lien
+   « Mot de passe oublié ? » demande le même envoi sans passer par un
+   administrateur. Le bouton de l'onglet Utilisateurs reste : les deux
+   chemins coexistent, aucun ne remplace l'autre.
+
+   > La carte répond **toujours la même chose**, que l'adresse ait un compte
+   > ou non (« Si un compte existe pour cette adresse… »). Ce n'est pas une
+   > imprécision : un message qui distinguerait les deux cas ferait de ce
+   > formulaire, ouvert à tout Internet, un annuaire des adresses valides de
+   > la Régie. Un « je n'ai rien reçu » se vérifie donc dans
+   > Authentication → Users, pas sur la carte. Seule exception, dite
+   > franchement : « Trop de demandes ont été envoyées récemment » — la
+   > limite d'envoi de Supabase (2 e-mails par heure sans SMTP
+   > personnalisé), qui est globale au projet et ne dit rien du compte.
+   > Un compte **désactivé** reçoit bien le lien, puis se voit refuser
+   > l'entrée avec « Ce compte est désactivé. Demandez sa réactivation à un
+   > administrateur. »
+
    > Lien « expiré ou déjà utilisé » alors que la personne vient de le
    > recevoir : sa messagerie (Outlook / Microsoft 365 « Liens fiables »,
    > antivirus) a probablement pré-ouvert le lien à sa place, ce qui
