@@ -103,6 +103,19 @@ export interface DataProvider {
   // — supervision (session requise) —
   signIn(email: string, mdp: string): Promise<Session>;
   /**
+   * DÉCONNEXION (E-01). Elle n'existait pas : le bouton « Quitter » vidait
+   * `sessionStorage` et rechargeait la page, mais aucun `signOut` n'était
+   * appelé nulle part dans `src/`. Le jeton de rafraîchissement de Supabase
+   * vit dans `localStorage`, pas dans `sessionStorage` : la session
+   * survivait donc à la sortie, sur un poste de gare éventuellement partagé,
+   * et il suffisait de recharger la supervision pour y rentrer.
+   *
+   * Le fournisseur doit AUSSI oublier ce qu'il garde en mémoire du compte —
+   * profil et rôles. C'était déjà le défaut I-10, corrigé pour `signIn` et
+   * jamais pour la sortie.
+   */
+  signOut(): Promise<void>;
+  /**
    * Rôles CUMULABLES de l'agent connecté (src/core/roles.ts). Un droit est
    * accordé si au moins l'un d'eux le donne ; le tableau peut être vide.
    */
@@ -222,4 +235,15 @@ export interface DataProvider {
   saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void>;
   /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
   oublierEcran(id: string): Promise<void>;
+  /**
+   * Écart mesuré entre l'horloge du POSTE et celle du serveur, en
+   * millisecondes ; positif = le poste est en avance. `null` = aucune mesure
+   * depuis le chargement.
+   *
+   * Le Raspberry n'a pas de pile : à froid il repart sur une date
+   * fantaisiste, et un compte à rebours calculé sur une horloge fausse fait
+   * partir des voyageurs. La mesure ne coûte AUCUNE requête — elle lit
+   * l'en-tête `Date` des réponses que l'application demande déjà.
+   */
+  ecartHorlogeMs(): number | null;
 }

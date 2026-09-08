@@ -657,6 +657,63 @@ body.mode-simule.mode-demo .badge-cache {
   top: 25.5vh;
 }
 
+/* ---- Horloge du poste déréglée (lot 5) ------------------------------------
+   Le Raspberry n'a pas de pile : à froid il repart sur une date fantaisiste.
+   Sous 5 s d'écart rien de visible ne change ; à partir de 5 s l'écran le DIT,
+   et au-delà de 30 s — la fenêtre des états de quai — il passe en neutre et
+   n'affiche plus d'horaires (src/core/horloge.ts).
+
+   Rouge de la charte, pas le marine des bandeaux de TEST : celui-ci ne dit pas
+   « ceci est un essai », il dit « ce qui est affiché peut être faux ».
+
+   LIMITE ASSUMÉE. Ce bandeau est à `top: 0` avec un z-index supérieur : cumulé
+   avec ceux de démonstration ou d'heure simulée, il les RECOUVRE au lieu de
+   s'empiler. En production la question ne se pose pas — `?demo=1` et
+   `?simule=` sont des drapeaux de test, et aucun n'est présent en gare. Couvrir
+   les huit combinaisons aurait doublé ce bloc et son pendant responsive pour un
+   défaut cosmétique sur une URL d'essai ; c'est le message le plus grave qui
+   reste visible, et c'est le bon arbitrage. */
+.bandeau-horloge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5vh;
+  z-index: 72;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2vw;
+  background: var(--rouge);
+  color: #fff;
+  border-bottom: 0.4vh solid var(--rouge-fonce);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.bandeau-horloge b {
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  font-size: 2.6vh;
+}
+.bandeau-horloge span {
+  font-family: 'Lato', sans-serif;
+  font-weight: 700;
+  font-size: 1.9vh;
+  opacity: 0.95;
+}
+body.mode-horloge .bandeau-horloge {
+  display: flex;
+}
+/* Comme les autres bandeaux : la place se prend DANS l'en-tête, jamais en
+   padding sur `body` (transform de l'anti-burn-in). */
+body.mode-horloge header {
+  flex-basis: 19vh;
+  padding-top: 5vh;
+}
+body.mode-horloge .badge-cache {
+  top: 20.5vh;
+}
+
 /* ============ AUTRES FORMATS DE MONITEUR (mesurés, pas supposés) ============
    La feuille est écrite en vh pour un moniteur PAYSAGE 16:9, où la hauteur
    est la dimension rare. Relevé au navigateur le 06/09/2026 en valeurs
@@ -880,6 +937,31 @@ body.mode-simule.mode-demo .badge-cache {
   /* Bandeaux de test : leurs deux langues s'empilent (une ligne de 1080 px
      ne les tient pas côte à côte), d'où 6 u de haut au lieu de 5, repris
      dans la place que l'en-tête leur fait — jamais en padding sur body. */
+  .bandeau-horloge {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--rouge-fonce);
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.1;
+  }
+
+  .bandeau-horloge b {
+    font-size: calc(2.6 * var(--u));
+  }
+
+  .bandeau-horloge span {
+    font-size: calc(1.9 * var(--u));
+  }
+
+  body.mode-horloge header {
+    flex-basis: calc(18 * var(--u));
+    padding-top: calc(6 * var(--u));
+  }
+
+  body.mode-horloge .badge-cache {
+    top: calc(19.5 * var(--u));
+  }
+
   .bandeau-demo,
   .bandeau-simule {
     height: calc(6 * var(--u));

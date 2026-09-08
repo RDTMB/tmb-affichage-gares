@@ -1470,6 +1470,19 @@ begin
     raise exception 'La purge du journal est réservée au rôle technique.'
       using errcode = 'insufficient_privilege';
   end if;
+  -- PARAMÈTRE BORNÉ (F-01, seconde moitié). `make_interval(months => 0)` donne
+  -- un intervalle NUL : `quand < now()` efface alors le journal ENTIER, c'est-
+  -- à-dire la trace de toutes les écritures depuis l'installation, sans retour
+  -- possible. Une valeur négative fait pire, elle emporte aussi les lignes
+  -- postdatées. Un zéro se tape d'un doigt qui glisse, et `-12` au lieu de
+  -- `12` est l'erreur de frappe la plus banale du monde : on refuse, on
+  -- n'interprète pas. `null` est refusé aussi — il ne supprimait rien, mais en
+  -- silence, et un appel qui ne fait rien sans le dire se rejoue.
+  if mois is null or mois < 1 then
+    raise exception 'Purge refusée : le nombre de mois doit valoir au moins 1 (reçu : %).', mois
+      using errcode = 'invalid_parameter_value',
+            hint = 'Rétention normale : select private.purge_journal_exploitation(12);';
+  end if;
   delete from public.journal_exploitation
     where quand < now() - make_interval(months => mois);
   get diagnostics supprimees = row_count;

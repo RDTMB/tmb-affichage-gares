@@ -49,7 +49,9 @@ import type {
   PassageGare,
   TrainJour,
 } from '../core/types';
+import { etatHorloge } from '../core/horloge';
 import { creeProviderDemo, creeProviderReel } from '../data';
+import type { DataProvider } from '../data/provider';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   anneauSur,
@@ -147,6 +149,13 @@ let messages: Message[] = [];
 let medias: Media[] = [];
 let dernierEtatSpecial = '';
 let sync: Synchronisation | null = null;
+/**
+ * Fournisseur retenu, gardé au niveau du module : la boucle de rendu a besoin
+ * de lui interroger l'écart d'horloge à chaque seconde, et il est choisi dans
+ * la fonction de démarrage.
+ */
+let fournisseur: DataProvider | null = null;
+
 const majTicker = creeTicker($('ticker'));
 
 // Cycle médias : la décision vit dans src/core/cycle-medias.ts (PURE et
@@ -584,6 +593,15 @@ function rendre(gare: GareId): void {
   document.body.classList.toggle('mode-degrade', badge.visible);
   if (badge.visible) $('badge-cache').textContent = badge.texte;
 
+  // ÉCART D'HORLOGE (lot 5). Le Raspberry n'a pas de pile : à froid il repart
+  // sur une date fantaisiste. La mesure ne coûte aucune requête, elle lit
+  // l'en-tête `Date` des réponses déjà demandées (src/core/horloge.ts).
+  //   - écart modéré : l'écran continue d'afficher, et il le DIT ;
+  //   - écart important : plus aucun horaire, la fenêtre des états de quai ne
+  //     dure que 30 s et « PARTI » ferait s'en aller un voyageur.
+  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
+  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
+
   // 1. Veille nuit (écran noir + horloge discrète)
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
@@ -592,8 +610,10 @@ function rendre(gare: GareId): void {
     return;
   }
 
-  // 2. Écran neutre au-delà de duree_cache_min — JAMAIS d'horaires périmés.
-  const neutre = age === null || age > dureeCacheMs();
+  // 2. Écran neutre : données périmées, ou horloge trop fausse pour que les
+  //    états de quai veuillent encore dire quelque chose. JAMAIS d'horaires
+  //    dont on sait qu'ils trompent.
+  const neutre = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
@@ -683,14 +703,21 @@ async function demarre(): Promise<void> {
   if (mode === 'demo') document.body.classList.add('mode-demo');
 
   const terminusParam = url.get('terminus');
-  const optionsDemo =
-    terminusParam !== null && Number(terminusParam) > 0
+  // `?ecart=N` (secondes) : écart d'horloge SIMULÉ, lu par le seul
+  // fournisseur de démonstration. Les deux seuils du lot 5 ne se provoquent
+  // pas autrement — il faudrait dérégler l'horloge d'un Raspberry.
+  const ecartParam = Number(url.get('ecart'));
+  const optionsDemo = {
+    ...(terminusParam !== null && Number(terminusParam) > 0
       ? { terminusAPartirDuTrain: Number(terminusParam) }
-      : {};
+      : {}),
+    ...(Number.isFinite(ecartParam) && ecartParam !== 0 ? { ecartHorlogeS: ecartParam } : {}),
+  };
   const provider =
     mode === 'demo'
       ? creeProviderDemo(optionsDemo)
       : creeProviderReel(window.TMB_CONFIG!.supabaseUrl!, window.TMB_CONFIG!.supabaseKey!);
+  fournisseur = provider;
 
   const charge = async (): Promise<DonneesEcran> => {
     const dateJour = heure.dateISO();

@@ -453,6 +453,20 @@ function ecritEcrans(ecrans: EcransMock): void {
 export interface OptionsMock {
   /** Bascule Terminus Bellevue « à partir du TRAIN N » appliquée à l'affichage (démo écrans). */
   terminusAPartirDuTrain?: number;
+  /**
+   * ÉCART D'HORLOGE SIMULÉ, en secondes (`?demo=1&ecart=45`). Comme
+   * `echecSimule`, ce drapeau n'est lu que par le fournisseur de
+   * DÉMONSTRATION : `creeProvider()` rend `SupabaseProvider` dès qu'une
+   * configuration réelle est présente, et cet objet-là ignore complètement
+   * `OptionsMock`. Une URL forgée sur la production ne trouve donc personne
+   * pour l'écouter.
+   *
+   * Il existe parce que les deux seuils du lot 5 — écran qui le DIT, puis
+   * écran neutre — ne se provoquent pas autrement : il faudrait dérégler
+   * l'horloge d'un Raspberry pour les voir, et ils seraient donc découverts
+   * un matin, en gare, par un agent seul.
+   */
+  ecartHorlogeS?: number;
   /** Date « du jour » figée (« YYYY-MM-DD ») — tests uniquement. */
   aujourdhui?: string;
   /**
@@ -807,6 +821,15 @@ export class MockProvider implements DataProvider {
     const roles = this.rolesDeDemonstration(email);
     sessionStorage.setItem(CLE_SESSION, JSON.stringify({ email, roles }));
     return { user_id: `mock-${roles.join('+')}`, email };
+  }
+
+  /**
+   * Déconnexion (E-01). La session de démonstration vit dans
+   * `sessionStorage` : la retirer est tout ce qu'il y a à faire, et c'est le
+   * seul état que ce fournisseur garde d'un compte.
+   */
+  async signOut(): Promise<void> {
+    sessionStorage.removeItem(CLE_SESSION);
   }
 
   /**
@@ -1507,5 +1530,15 @@ export class MockProvider implements DataProvider {
     ecritEtat(etat);
     delete ecrans[id];
     ecritEcrans(ecrans);
+  }
+
+  /**
+   * Écart d'horloge simulé (`?demo=1&ecart=45`), en millisecondes. Zéro par
+   * défaut : le mock tourne sur l'horloge du poste, elle est sa propre
+   * référence, et il n'y a donc aucun écart à inventer.
+   */
+  ecartHorlogeMs(): number | null {
+    const secondes = this.options.ecartHorlogeS;
+    return typeof secondes === 'number' && Number.isFinite(secondes) ? secondes * 1000 : 0;
   }
 }

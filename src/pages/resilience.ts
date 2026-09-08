@@ -130,10 +130,24 @@ export function creeSynchronisation<T>(options: {
   };
 }
 
-/** Enregistre le service worker (build uniquement : le dev reste sans cache). */
+/**
+ * Enregistre le service worker (build uniquement : le dev reste sans cache).
+ *
+ * La version du cache voyage par la QUERY STRING. `public/sw.js` n'est pas
+ * traité par Vite — il est recopié tel quel, aucun `define` ne l'atteint —
+ * alors que CE fichier l'est : la query string est le seul canal qui traverse
+ * la frontière, et le service worker la relit dans `self.location`.
+ *
+ * Effet de bord voulu : une URL de script différente fait installer un
+ * service worker NEUF, donc purge l'ancien cache à chaque déploiement. Si le
+ * précache échoue faute de réseau, `install` est rejeté et l'ANCIEN service
+ * worker reste en place avec son cache : le démarrage hors ligne n'est jamais
+ * sacrifié à une mise à jour.
+ */
 export function enregistreServiceWorker(): void {
   if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+    const url = `${import.meta.env.BASE_URL}sw.js?v=${encodeURIComponent(__VERSION_CACHE__)}`;
+    void navigator.serviceWorker.register(url).catch(() => {});
   }
 }
 

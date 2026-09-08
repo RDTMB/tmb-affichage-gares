@@ -102,6 +102,13 @@
       <b>Heure simulée — affichage de test</b>
       <span>Simulated time — test display</span>
     </div>
+    <!-- Horloge du poste déréglée (lot 5) : permanent et non masquable, comme
+         le bandeau d'heure simulée. Au-delà de 30 s d'écart, ce n'est plus un
+         bandeau mais l'écran neutre — les états de quai se jouent sur 30 s. -->
+    <div class="bandeau-horloge" id="bandeau-horloge">
+      <b>Horloge du poste déréglée</b>
+      <span>Station clock out of sync — countdowns may be wrong</span>
+    </div>
     <div class="veille"><div class="horloge-veille" id="horloge-veille">--:--</div></div>
 
     <script src="./config.js"></script>
