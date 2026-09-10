@@ -199,14 +199,30 @@ describe('la collision pastille × picto express, en 16/9', () => {
     expect(dest, 'règle `.r-dest .dest` absente').not.toBe('');
     expect(dest).toContain('display: flex');
     expect(dest).toContain('align-items: center');
-    for (const regle of ['.badge-train', '.pill-affluence', 'img.motrice-dest']) {
-      const corps =
-        new RegExp(`^\\.r-dest \\.dest ${regle.replace(/\./g, '\\.')} \\{([^}]*)\\}`, 'm').exec(
-          base,
-        )?.[1] ?? '';
-      expect(corps + dest, `${regle} : un vertical-align est revenu`).not.toContain(
-        'vertical-align',
+    // Les sélecteurs sont écrits TELS QU'ILS FIGURENT dans la feuille. Une
+    // première version cherchait « .r-dest .dest .badge-train », qui n'existe
+    // pas : la boucle ne lisait que des chaînes vides et ne contrôlait rien.
+    // Remettre `vertical-align: baseline` sur le badge passait la suite.
+    const SELECTEURS = [
+      '.r-dest .dest',
+      '.badge-train',
+      '.pill-affluence',
+      '.pill-affluence.limite',
+      '.r-dest .dest img.motrice-dest',
+      '.r-dest .dest .nom-dest',
+    ];
+    for (const selecteur of SELECTEURS) {
+      const motif = new RegExp(
+        `^${selecteur.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`,
+        'gm',
       );
+      const corps = [...base.matchAll(motif)].map((m) => m[1]);
+      expect(corps.length, `« ${selecteur} » introuvable dans la feuille`).toBeGreaterThan(0);
+      for (const c of corps) {
+        expect(c, `« ${selecteur} » : un vertical-align est revenu`).not.toContain(
+          'vertical-align',
+        );
+      }
     }
     // Les trois repères ne se compriment pas ; seul le nom peut céder.
     expect(base).toMatch(
