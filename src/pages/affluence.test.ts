@@ -375,6 +375,21 @@ describe('la lecture de l’affluence ne demande que ce qui est accordé', () =>
     expect(ecran).toContain('provider.getAffluence(dateJour)');
     expect(ecran).not.toMatch(/getAffluence\([^)]*avecSignature/);
   });
+
+  it('la supervision, elle, la demande — sinon « qui et quand » disparaît', () => {
+    // Trou trouvé en mutant : retirer l'option passait toute la suite. Sans
+    // elle `maj_par` est simplement absent, la signature ne s'affiche plus,
+    // et RIEN ne le dit — ni erreur, ni ligne vide, juste une information
+    // qui cesse d'être là. Deux rôles écrivent au même endroit : c'est
+    // précisément ce qu'on ne peut pas perdre en silence.
+    const sup = source('src/pages/supervision.ts');
+    expect(sup).toContain('.getAffluence(date, { avecSignature: true })');
+    // …et l'onglet affiche bien ce qu'il est allé chercher.
+    const rendu = /function rendreAffluence\(\)[\s\S]*?\n}/.exec(sup)?.[0] ?? '';
+    expect(rendu, 'rendreAffluence introuvable').not.toBe('');
+    expect(rendu).toContain('maj_par');
+    expect(rendu).toContain('maj_le');
+  });
 });
 
 describe('la recette RLS éprouve l’instruction que le front envoie VRAIMENT', () => {
