@@ -105,7 +105,7 @@ describe('le DÉFAUT de l’option est de ne pas créer', () => {
 
     for (const [chemin, marqueurDroits] of [
       ['src/data/supabase.ts', 'peutEcrireExploitation()'],
-      ['src/data/mock.ts', 'sessionStorage.getItem(CLE_SESSION)'],
+      ['src/data/mock.ts', 'peutOuvrirUneJournee()'],
     ] as const) {
       const corps = corpsGetJour(chemin);
       const option = corps.indexOf('options?.creerSiAbsent === true');

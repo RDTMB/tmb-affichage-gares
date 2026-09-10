@@ -212,6 +212,46 @@ describe('Ouverture d’une date en supervision (amélioration exploitant du 25/
     expect(stockage.get('tmb-mock-etat') ?? '').toContain('2026-08-28');
   });
 
+  it('la CAISSE ne crée pas la journée, même avec l’option', async () => {
+    // RLS ne laisse écrire dans `jours` que « supervision » (tout) et
+    // « technique » (réinitialisation) : la caisse qui ouvre une date à venir
+    // depuis l'onglet Places la voit en APERÇU, jamais créée. Le mock a
+    // longtemps créé pour toute session ouverte ; la démonstration enseignait
+    // donc un comportement que la production refuse (corrigé le 10/09/2026).
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('caisse@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    expect(jour.enregistre, 'la caisse a ouvert la journée').toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '', 'rien écrit en base').not.toContain('2026-08-28');
+    // Refuser d'écrire n'est pas refuser d'afficher : la caisse doit voir les
+    // trains de cette date pour comprendre qu'elle ne peut pas encore agir.
+    expect(jour.circulations).toHaveLength(26);
+  });
+
+  it('l’ANNUAIRE fait foi : rôles retirés, la journée ne s’ouvre plus', async () => {
+    // Le contrôle lit les rôles là où `getProfil()` les lit — une seule
+    // source. S'il se contentait du préfixe de l'adresse, un compte dépouillé
+    // dans l'onglet Utilisateurs continuerait d'ouvrir des journées.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setRolesUser('demo-sup', ['caisse']); // « supervision@demo » n'est plus superviseur
+    await provider.signOut();
+
+    await provider.signIn('supervision@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    expect(jour.enregistre, 'un compte dépouillé a ouvert la journée').toBe(false);
+    expect(stockage.get('tmb-mock-etat') ?? '', 'journée écrite').not.toContain('2026-08-28');
+  });
+
+  it('le TECHNIQUE ouvre la journée : il a `journee.reinitialiser`', async () => {
+    // Le miroir est celui de `peutEcrireExploitation()`, qui accepte les DEUX
+    // droits. Ne garder que `circulations` passerait tous les autres tests.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('technique@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    expect(jour.enregistre).toBe(true);
+  });
+
   it('l’option ne donne AUCUN droit : sans session, rien n’est créé', async () => {
     // Elle autorise, elle n'habilite pas. Un écran qui la passerait par erreur
     // n'écrirait pas davantage — la session et RLS restent la frontière.

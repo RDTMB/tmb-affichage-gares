@@ -21,6 +21,7 @@ import {
   LIBELLE_ROLE,
   ROLES,
   estDernierDetenteur,
+  aLeDroit,
   motifCompteVerrouille,
   motifOngletVerrouille,
   peutAttribuer,
@@ -688,13 +689,23 @@ export class MockProvider implements DataProvider {
     // Ouverture en supervision d'une date non passée : la journée est créée
     // d'emblée (idempotent) — plus aucune action manuelle requise. Une date
     // PASSÉE sans données reste un aperçu théorique (pas d'historique inventé).
+    //
+    // …et SEULEMENT par qui écrit l'exploitation. `SupabaseProvider` exige
+    // `circulations` ou `journee.reinitialiser` (`peutEcrireExploitation`),
+    // parce que RLS le lui impose : « roles: jours ecriture » est réservée à
+    // la supervision. Le mock se contentait d'une session ouverte, quelle
+    // qu'elle soit — la démonstration ouvrait donc les journées pour la
+    // caisse, ce que la production refuse. Une démo qui ment sur ce point
+    // enseigne un comportement qui n'existe pas ; corrigé le 10/09/2026, en
+    // ajoutant la navigation par date à l'onglet Places, où l'écart devenait
+    // visible.
     let etatJour = litEtat().jours[date];
     const aujourdhui = this.options.aujourdhui ?? dateAujourdhuiParis();
     if (
       options?.creerSiAbsent === true &&
       !etatJour &&
       date >= aujourdhui &&
-      sessionStorage.getItem(CLE_SESSION) !== null
+      this.peutOuvrirUneJournee()
     ) {
       const etat = litEtat();
       // REPORT DE LA VEILLE : un chantier dure des semaines, et une journée
@@ -914,16 +925,40 @@ export class MockProvider implements DataProvider {
     return (await this.getProfil()).roles;
   }
 
+  /**
+   * Rôles de la session ouverte, ou `[]` si personne n'est connecté.
+   * SYNCHRONE : `getJour` doit décider s'il ouvre la journée avant tout
+   * `await`, et la session du mock vit en `sessionStorage`. Source unique —
+   * `getProfil()` s'en sert aussi, pour qu'aucune des deux ne puisse dériver
+   * de l'autre (l'annuaire fait foi, un compte désactivé n'a plus de rôle,
+   * et `role` au singulier = session d'avant les rôles multiples).
+   */
+  private rolesDeLaSession(): Role[] {
+    const brut = sessionStorage.getItem(CLE_SESSION);
+    if (!brut) return [];
+    const session = JSON.parse(brut) as { email: string; roles?: Role[]; role?: Role };
+    const annuaire = this.rolesDeDemonstration(session.email);
+    if (annuaire.length) return annuaire;
+    return session.roles ?? (session.role ? [session.role] : []);
+  }
+
+  /**
+   * L'agent connecté peut-il OUVRIR une journée ? Miroir exact de
+   * `SupabaseProvider.peutEcrireExploitation()` : les deux seuls droits qui
+   * écrivent dans `jours`, parce que RLS ne connaît que ceux-là.
+   */
+  private peutOuvrirUneJournee(): boolean {
+    const roles = this.rolesDeLaSession();
+    return aLeDroit(roles, 'circulations') || aLeDroit(roles, 'journee.reinitialiser');
+  }
+
   async getProfil(): Promise<Profil> {
     const brut = sessionStorage.getItem(CLE_SESSION);
     if (!brut) throw new Error('Non connecté');
-    const session = JSON.parse(brut) as { email: string; roles?: Role[]; role?: Role };
+    const session = JSON.parse(brut) as { email: string };
     // L'annuaire fait foi : les rôles de l'agent connecté ont pu changer depuis
-    // l'ouverture de sa session. `role` au singulier = session ouverte avant le
-    // passage aux rôles multiples et restée dans sessionStorage.
-    const roles = this.rolesDeDemonstration(session.email).length
-      ? this.rolesDeDemonstration(session.email)
-      : (session.roles ?? (session.role ? [session.role] : []));
+    // l'ouverture de sa session. Même lecture que `peutOuvrirUneJournee()`.
+    const roles = this.rolesDeLaSession();
     // Quand l'adresse correspond à un compte de l'annuaire de démonstration, on
     // reprend SON identifiant : sans cela, l'interface ne reconnaîtrait pas sa
     // propre ligne dans la liste des utilisateurs et laisserait l'agent croire
