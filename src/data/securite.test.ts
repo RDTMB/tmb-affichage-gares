@@ -1444,11 +1444,21 @@ describe('affluence — la table du guichet', () => {
       expect(bloc).not.toContain('technique');
     });
 
-    it(`${fichier} : les écrans lisent sans compte`, () => {
+    it(`${fichier} : les écrans lisent sans compte, mais TROIS colonnes`, () => {
       expect(code).toMatch(
         /create policy "lecture publique" on affluence for select using \(true\)/,
       );
-      expect(code).toMatch(/grant select on affluence to anon, authenticated/);
+      // `anon`, c'est la clé publiable : tout Internet. Elle ne doit pas
+      // pouvoir lire `maj_par`, qui porte l'ADRESSE de l'agent — le reste du
+      // projet ne l'admet nulle part (`profils` révoquée à `anon`,
+      // `journal_exploitation` accordée au seul `authenticated`).
+      // Un `grant select on affluence to anon` sans liste de colonnes les
+      // donnerait TOUTES : c'était le cas jusqu'au 10/09/2026, relevé sur la
+      // base après exécution et non en relisant le script.
+      expect(code).toMatch(/grant select \(date, numero, niveau\) on affluence to anon;/);
+      expect(code).not.toMatch(/grant select on affluence to [^;]*anon/);
+      // Les comptes connectés, eux, lisent tout : c'est la traçabilité.
+      expect(code).toMatch(/grant select on affluence to authenticated;/);
     });
 
     it(`${fichier} : RLS est ACTIVÉE — une politique sans elle ne filtre rien`, () => {
@@ -1462,6 +1472,20 @@ describe('affluence — la table du guichet', () => {
       expect(code).toMatch(/grant update \(niveau\) on affluence/);
       expect(code).not.toMatch(/grant (insert|update)[^;]*maj_par/);
       expect(code).toMatch(/new\.maj_par := private\.email_appelant\(\)/);
+    });
+
+    it(`${fichier} : la lecture anonyme ne rend PAS l’adresse de l’agent`, () => {
+      // Contrôle séparé, parce que c'est un axe différent : au-dessus, on
+      // vérifie que personne ne peut ÉCRIRE la signature ; ici, que le public
+      // ne peut pas la LIRE. La première version de la recette confondait les
+      // deux et ne voyait pas la fuite.
+      const versAnon = [...code.matchAll(/grant select([^;]*) on affluence to ([^;]*);/g)].filter(
+        (m) => (m[2] ?? '').includes('anon'),
+      );
+      expect(versAnon.length, 'aucun grant de lecture pour anon').toBe(1);
+      for (const colonne of ['maj_par', 'maj_le']) {
+        expect(versAnon[0]?.[1], `anon peut lire ${colonne}`).not.toContain(colonne);
+      }
     });
 
     it(`${fichier} : chaque écriture passe au journal d’exploitation`, () => {

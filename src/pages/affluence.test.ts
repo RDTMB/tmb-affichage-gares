@@ -333,3 +333,31 @@ describe('un train SUPPRIMÉ reste barré', () => {
     expect(groupe).toContain('opacity: 0.42');
   });
 });
+
+describe('la lecture de l’affluence ne demande que ce qui est accordé', () => {
+  // L'écran de gare interroge en ANONYME. Depuis le 10/09/2026, `anon` n'a la
+  // lecture que sur (date, numero, niveau) : `maj_par` porte l'adresse de
+  // l'agent et n'est accordée qu'aux comptes connectés.
+  //
+  // Conséquence peu intuitive : rajouter une colonne à ce `select` ne
+  // « lirait pas un peu plus », ça ferait ÉCHOUER la requête pour anon, donc
+  // le chargement de l'écran entier — et seulement en production, jamais en
+  // démonstration ni dans cette suite. D'où ce verrou.
+  const ts = source('src/data/supabase.ts');
+  const corps = /async getAffluence\([\s\S]*?\n  \}/.exec(ts)?.[0] ?? '';
+
+  it('`getAffluence` existe et ne sélectionne que les trois colonnes publiques', () => {
+    expect(corps, 'getAffluence introuvable').not.toBe('');
+    expect(corps).toContain(".select('date, numero, niveau')");
+  });
+
+  it('elle ne demande NI `maj_par` NI `maj_le`', () => {
+    const select = /\.select\('([^']*)'\)/.exec(corps)?.[1] ?? '';
+    expect(select, 'aucun select trouvé').not.toBe('');
+    for (const colonne of ['maj_par', 'maj_le']) {
+      expect(select, `${colonne} est demandée : la requête échouera pour anon`).not.toContain(
+        colonne,
+      );
+    }
+  });
+});
