@@ -196,6 +196,13 @@ export function aLeDroit(roles: readonly Role[], droit: Droit): boolean {
 /** Onglets, dans l'ordre de la barre de navigation (supervision.html). */
 export const ONGLETS = [
   'circulations',
+  // « Places » — le remplissage, et lui seul. Placé juste après Circulations :
+  // c'est de l'exploitation du jour, pas du bandeau. Il existe parce que le
+  // droit `affluence` existait sans onglet, et que deux rôles très différents
+  // — la supervision et le guichet — déclarent la même chose : le mettre dans
+  // Circulations aurait obligé à conditionner chaque AUTRE commande de cet
+  // onglet à un droit, une par une, pour toujours.
+  'affluence',
   'horaires',
   'bandeau',
   'medias',
@@ -210,6 +217,10 @@ export type Onglet = (typeof ONGLETS)[number];
 /** Un onglet est visible dès qu'un droit qui l'habite est accordé. */
 const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   circulations: ['circulations'],
+  // UN ONGLET = UN DROIT, appliqué à la lettre : `affluence` et rien d'autre.
+  // Il s'ouvre donc à admin, supervision et caisse — exactement la politique
+  // RLS « roles: affluence » — et reste fermé au technique.
+  affluence: ['affluence'],
   // La caisse voit les horaires en LECTURE SEULE (« Voir » uniquement) : la
   // grille du jour lui sert au guichet.
   horaires: ['grilles', 'circulations', 'bandeau'],

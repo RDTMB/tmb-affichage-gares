@@ -296,14 +296,31 @@ supplémentaire (§2.7) : on constate au guichet qu'on ne vend plus, avec des
 voyageurs déjà sur le quai. En contrepartie l'échec est dit franchement,
 par un message persistant, et l'écran de saisie garde son état précédent.
 
-La supervision déclare depuis la colonne **Remplissage** de l'onglet
-Circulations ; le guichet, qui ne voit pas cet onglet, depuis la carte
-**Trains complets** de l'onglet Bandeau, qui liste les prochains départs
-d'une gare au choix.
+**UN SEUL ENDROIT, l'onglet « Places »**, pour la supervision comme pour le
+guichet. Il liste les départs restants de la journée en cours — montées et
+descentes, dans l'ordre de l'heure — avec, par ligne : l'heure, le libellé
+canonique (« TRAIN 9 »), le sens, la rame, la destination, la mention
+EXPRESS s'il y a lieu, le sélecteur à trois positions, et **qui a déclaré et
+quand**. Un sélecteur de gare filtre la liste et fait afficher l'heure de
+départ **de cette gare** ; il est retenu par poste, « toutes les gares » par
+défaut. Sont exclus les trains supprimés, les courses à vide, les facultatifs
+non activés et les départs déjà passés — un train parti n'a plus de places à
+déclarer.
 
-_(Décisions de l'exploitant du 09/09/2026, sur maquettes. La jauge de
-remplissage graduée est réservée à la version alimentée par l'API de
-réservation : elle n'est pas dans ce lot.)_
+Le remplissage se déclarait auparavant à deux endroits (une colonne dans
+Circulations, une carte dans Bandeau). Pourquoi pas Circulations : cet onglet
+vit autour du brouillon et de « Publier », et n'y montrer qu'une commande à la
+caisse obligerait à conditionner chaque autre commande à un droit, une par
+une, pour toujours. Pourquoi pas Bandeau : ce n'est pas son sujet. La règle du
+lieu est **un onglet = un droit**, et le droit `affluence` existait sans
+onglet. Circulations garde en revanche le **filet de rangée** rouge ou ambre :
+c'est une information, pas une commande.
+
+_(Décisions de l'exploitant du 09/09/2026 pour l'affichage, du 10/09/2026 pour
+l'onglet dédié. La jauge de remplissage graduée est réservée à la version
+alimentée par l'API de réservation : elle n'est pas dans ce lot. L'onglet ne
+montre que la JOURNÉE EN COURS — déclarer pour demain suppose que la journée
+existe en base, ce qu'elle ne fait qu'une fois ouverte en supervision.)_
 
 ## 3. Écran de gare (`ecran.html`)
 
@@ -662,6 +679,11 @@ code, et revient sur sa décision en trois clics.
 > nouvelle ne devient possible, la base refuse exactement ce qu'elle refusait.
 > Une ligne écrite à la main qui accorderait « Circulations » à la caisse ne
 > produit rien du tout.
+
+_(10/09/2026)_ Un NEUVIÈME onglet, **Places**, s'insère après Circulations :
+il porte le droit `affluence` et lui seul, et s'ouvre donc à `admin`,
+`supervision` et `caisse` — pas au technique. Il remplace la colonne
+Remplissage de Circulations et la carte du guichet dans Bandeau : voir §2.8.
 
 Première valeur livrée : **la caisse ne voit plus l'onglet Horaires**. Le
 choix est passé par la table plutôt que par le code, précisément pour qu'il

@@ -740,7 +740,7 @@ export class MockProvider implements DataProvider {
     return litEtat().messages ?? MESSAGES_DEMO;
   }
 
-  async getAffluence(date: string): Promise<Affluence[]> {
+  async getAffluence(date: string, _options?: { avecSignature?: boolean }): Promise<Affluence[]> {
     const declare = litEtat().affluence?.[date];
     const niveaux = declare ?? AFFLUENCE_DEMO;
     return Object.entries(niveaux).map(([numero, niveau]) => ({

@@ -334,6 +334,12 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   `regle_par` vient du jeton, jamais du client (elle n'est pas dans le GRANT
   d'INSERT). Ajout sur base existante :
   `supabase/migrations/2026-09-onglets-par-role.sql`.
+  La liste des onglets admis est ÉNUMÉRÉE par une contrainte `check` : ajouter
+  un onglet demande donc une migration, en plus de `ONGLETS` dans
+  `src/core/roles.ts` — c'est voulu, la base refuse une valeur que le code ne
+  connaît pas. Neuvième entrée, `affluence` (onglet « Places »), le
+  10/09/2026 : `supabase/migrations/2026-09-onglet-affluence.sql`, qui élargit
+  la contrainte et accorde l'onglet à `admin`, `supervision` et `caisse`.
 
   **⚠ Cette table ne peut que RETRANCHER.** La matrice droit × rôle
   (`src/core/roles.ts`) et les politiques RLS restent le PLAFOND :

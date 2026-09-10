@@ -132,6 +132,10 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   dans TOUTES les gares qu'il doit encore desservir.
   L'ABSENCE de ligne vaut « places disponibles » — pas de troisième niveau,
   remettre un train à la normale est une SUPPRESSION.
+  Le remplissage se déclare dans l'onglet **Places** UNIQUEMENT (droit
+  `affluence`, ouvert à admin, supervision et caisse) : un seul endroit pour
+  les deux rôles. Circulations n'en garde que le filet de rangée, qui est une
+  information et non une commande.
   EXCEPTION ASSUMÉE, à ne pas « corriger » : l'écriture est IMMÉDIATE, hors
   brouillon et hors « Publier », pour la même raison que `depart_reel` — on
   constate au guichet qu'on ne vend plus, avec des voyageurs sur le quai. En

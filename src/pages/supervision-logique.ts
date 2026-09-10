@@ -1074,6 +1074,10 @@ export function estOngletAdministration(onglet: Onglet): boolean {
 /** Libellés de la barre de navigation, dans son ordre. */
 const LIBELLE_ONGLET: Record<Onglet, string> = {
   circulations: 'Circulations',
+  // UN MOT, comme Bandeau, Médias, Écrans. « Remplissage » ou « Trains
+  // complets » tiendraient dans la barre, mais pas au téléphone, où les neuf
+  // onglets défilent horizontalement.
+  affluence: 'Places',
   horaires: 'Horaires',
   bandeau: 'Bandeau',
   medias: 'Médias',
