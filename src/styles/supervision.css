@@ -675,13 +675,17 @@ input[type='color'] {
   }
 }
 
-.barre-jour .nav-date {
+/* Portée VOLONTAIREMENT large : la barre de date existe deux fois, dans
+   Circulations et dans Places, et les deux doivent se ressembler au pixel —
+   c'est la même commande. Scopée à .barre-jour, la seconde perdait sa mise
+   en page et, sur téléphone, ses cibles de 44 px. */
+.nav-date {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.barre-jour .chips {
+.chips {
   display: flex;
   gap: 6px;
 }
@@ -1062,10 +1066,38 @@ tr.paire-fin td {
   margin-bottom: 6px;
 }
 
+/* Rang de date de l'onglet Places. Pas la double rangée de Circulations :
+   il n'y a ici ni service, ni section, ni facultatifs à annoncer — juste
+   quelle journée on déclare. */
+.nav-date-places {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .jour-affluence {
   font-weight: 900;
   font-size: 15px;
-  text-transform: capitalize;
+  /* capitalize mettait une majuscule à CHAQUE mot : acceptable sur « mardi
+     15 septembre », illisible sur « — tous les trains ». La majuscule
+     initiale est posée par enTeteAffluence(), qui sait où elle va. */
+}
+
+/* Journée passée, ou pas encore ouverte par l'exploitation : la raison est
+   ÉCRITE, pas seulement suggérée par des boutons éteints. La caisse doit
+   savoir quoi faire (demander l'ouverture), pas seulement constater. */
+.bandeau-affluence {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--marine);
+  background: var(--bleu-bg);
+  color: var(--marine);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .note-affluence {
@@ -3095,7 +3127,7 @@ td.cell-sens > .sens-groupe {
     min-height: 44px;
   }
 
-  .barre-jour .nav-date button {
+  .nav-date button {
     min-width: 44px;
   }
 

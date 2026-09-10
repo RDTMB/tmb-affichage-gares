@@ -17,6 +17,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { appliqueAffluence } from './affichage-commun';
+import {
+  BANDEAU_JOURNEE_A_OUVRIR,
+  BANDEAU_JOURNEE_NON_OUVERTE,
+  BANDEAU_JOURNEE_PASSEE,
+  enTeteAffluence,
+  messageAucunDepart,
+  saisieAffluence,
+} from './supervision-logique';
 import type { Affluence, PassageGare } from '../core/types';
 
 /** Fins de ligne normalisées : poste en CRLF, coureur d'intégration en LF. */
@@ -509,5 +517,216 @@ describe('le remplissage se déclare dans « Places », et nulle part ailleurs',
     expect(ts).toContain("const TOUTES_LES_GARES = '*'");
     const corps = /function gareCaisse\(\)[\s\S]*?\n}/.exec(ts)?.[0] ?? '';
     expect(corps).toContain('return null;');
+  });
+});
+
+// ============================================================================
+// Naviguer dans les jours depuis « Places » (10/09/2026)
+//
+// CE QUE CES TESTS PROTÈGENT. La caisse n'a PAS l'onglet Circulations : sans
+// barre de date dans Places, elle ne peut déclarer que le jour même et ne peut
+// pas préparer le lendemain. En ouvrant cette navigation, on expose trois
+// situations que l'ancien onglet ne rencontrait jamais — une journée pas
+// encore ouverte par l'exploitation, une date passée, et une date sans heure
+// courante à laquelle se comparer. Chacune doit se dire, pas se deviner.
+// ============================================================================
+
+describe('Places : naviguer dans les jours', () => {
+  const html = source('supervision.html');
+  const ts = source('src/pages/supervision.ts');
+  const css = source('src/styles/supervision.css');
+
+  it('la barre de date existe dans Places, avec les MÊMES commandes', () => {
+    const panneau =
+      /<section class="onglet" id="t-affluence">([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+    expect(panneau, 'panneau Places introuvable').not.toBe('');
+    for (const organe of [
+      'btn-jour-prec-pl',
+      'date-picker-pl',
+      'btn-jour-suiv-pl',
+      'chip-auj-pl',
+      'chip-dem-pl',
+    ]) {
+      expect(panneau, `commande ${organe} absente de Places`).toContain(`id="${organe}"`);
+    }
+  });
+
+  it('UN SEUL câblage pour les deux barres, et une seule date', () => {
+    // Deux copies du câblage finiraient par diverger — c'est la raison d'être
+    // du suffixe. Ce test meurt si quelqu'un recopie les cinq écouteurs.
+    const corps = /function brancheBarreDate\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(corps, 'brancheBarreDate introuvable').not.toBe('');
+    expect(corps).toContain('changeDate(-1)');
+    expect(corps).toContain('changeDate(1)');
+    expect(corps).toContain('allerDate(dateISO(0))');
+    expect(corps).toContain('allerDate(dateISO(1))');
+    // Une définition, deux appels — pas davantage.
+    expect([...ts.matchAll(/brancheBarreDate\(/g)]).toHaveLength(3);
+    expect(ts).toContain("brancheBarreDate('')");
+    expect(ts).toContain("brancheBarreDate('-pl')");
+    // La date affichée reste unique : aucune variable parallèle.
+    expect(ts).not.toMatch(/let dateSelPlaces|let dateAffluence\b/);
+  });
+
+  it('les deux barres montrent la MÊME date, à chaque navigation', () => {
+    const corps = /function majBarresDate\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(corps, 'majBarresDate introuvable').not.toBe('');
+    expect(corps).toContain('SUFFIXES_BARRE_DATE');
+    expect(corps).toContain('dateSel');
+    expect(ts).toContain("const SUFFIXES_BARRE_DATE = ['', '-pl'] as const");
+    // Plus aucune écriture directe sur un seul sélecteur de date : c'est
+    // exactement ce qui laisserait l'autre barre sur la date précédente.
+    expect(ts).not.toContain("($('date-picker') as HTMLInputElement).value =");
+  });
+
+  it('changer de date rafraîchit la liste de Places, pas seulement Circulations', () => {
+    const corps = /async function allerDate\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(corps, 'allerDate introuvable').not.toBe('');
+    expect(corps, 'Places ne suit pas la date').toContain('rendreAffluence()');
+    // La garde de course protège aussi la liste de Places : sans elle, deux
+    // navigations rapprochées croiseraient les remplissages de deux dates.
+    expect(corps).toContain('if (dateSel !== date) return;');
+    expect(corps.indexOf('if (dateSel !== date) return;')).toBeLessThan(
+      corps.indexOf('rendreAffluence()'),
+    );
+  });
+
+  it('« départs restants » le jour même, TOUS les trains les autres jours', () => {
+    // Sur une date à venir il n'existe pas d'heure courante à laquelle se
+    // comparer : filtrer sur `maintenantS()` viderait la liste dès le milieu
+    // de l'après-midi et la caisse ne pourrait rien préparer.
+    expect(enTeteAffluence('2026-09-10', '2026-09-10')).toEqual({
+      portee: 'departs-restants',
+      titre: "Aujourd'hui — départs restants",
+      aujourdhui: true,
+    });
+    expect(enTeteAffluence('2026-09-12', '2026-09-10')).toEqual({
+      portee: 'tous-les-trains',
+      titre: 'Samedi 12 septembre 2026 — tous les trains',
+      aujourdhui: false,
+    });
+    // Une date PASSÉE liste aussi tout : on consulte ce qui a été déclaré.
+    expect(enTeteAffluence('2026-09-01', '2026-09-10').portee).toBe('tous-les-trains');
+    // Et le rendu s'en sert vraiment pour borner l'heure.
+    const corps = /function rendreAffluence\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(corps).toContain('const maintenant = enTete.aujourdhui ? maintenantS() : 0;');
+  });
+
+  it('la liste vide se dit dans les termes de la date affichée', () => {
+    expect(messageAucunDepart('2026-09-10', '2026-09-10', null)).toBe(
+      'Plus aucun départ aujourd’hui.',
+    );
+    expect(messageAucunDepart('2026-09-10', '2026-09-10', 'Le Fayet')).toContain('Le Fayet');
+    // « Plus aucun départ aujourd'hui » sur une journée à venir serait faux.
+    expect(messageAucunDepart('2026-09-12', '2026-09-10', null)).toBe('Aucun train ce jour.');
+    expect(messageAucunDepart('2026-09-12', '2026-09-10', 'Bellevue')).toBe(
+      'Aucun train au départ de Bellevue ce jour.',
+    );
+  });
+
+  it('journée pas encore ouverte : la CAISSE consulte, et sait qui l’ouvre', () => {
+    const etat = saisieAffluence({
+      date: '2026-09-12',
+      aujourdhui: '2026-09-10',
+      enregistre: false,
+      peutOuvrirLaJournee: false,
+    });
+    expect(etat.saisie, 'la caisse a pu déclarer sur une journée non ouverte').toBe(false);
+    expect(etat.bandeau).toBe(BANDEAU_JOURNEE_NON_OUVERTE);
+    // Le texte doit DIRE quoi faire : la caisse ne peut pas ouvrir la journée
+    // elle-même (RLS réserve `jours` à la supervision).
+    expect(BANDEAU_JOURNEE_NON_OUVERTE).toContain('supervision');
+  });
+
+  it('même journée, vue par quelqu’un qui PEUT l’ouvrir : autre consigne', () => {
+    const etat = saisieAffluence({
+      date: '2026-09-12',
+      aujourdhui: '2026-09-10',
+      enregistre: false,
+      peutOuvrirLaJournee: true,
+    });
+    expect(etat.saisie).toBe(false);
+    expect(etat.bandeau).toBe(BANDEAU_JOURNEE_A_OUVRIR);
+    expect(BANDEAU_JOURNEE_A_OUVRIR).toContain('Circulations');
+  });
+
+  it('date PASSÉE : lecture seule pour tout le monde, supervision comprise', () => {
+    for (const peutOuvrirLaJournee of [true, false]) {
+      const etat = saisieAffluence({
+        date: '2026-09-09',
+        aujourdhui: '2026-09-10',
+        enregistre: true,
+        peutOuvrirLaJournee,
+      });
+      expect(etat.saisie, `passé modifiable (peutOuvrir=${peutOuvrirLaJournee})`).toBe(false);
+      expect(etat.bandeau).toBe(BANDEAU_JOURNEE_PASSEE);
+    }
+  });
+
+  it('journée ouverte, aujourd’hui ou à venir : la saisie est ouverte', () => {
+    for (const date of ['2026-09-10', '2026-09-11']) {
+      expect(
+        saisieAffluence({
+          date,
+          aujourdhui: '2026-09-10',
+          enregistre: true,
+          peutOuvrirLaJournee: false,
+        }),
+      ).toEqual({ saisie: true, bandeau: null });
+    }
+  });
+
+  it('le refus est CALCULÉ une fois et sert au rendu ET à l’écriture', () => {
+    // Deux calculs séparés divergeraient, et c'est l'écriture qui décide.
+    expect(ts).toContain('function saisieAffluenceCourante()');
+    const rendu = /function rendreAffluence\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(rendu).toContain('saisieAffluenceCourante()');
+    expect(rendu, 'les boutons ne suivent pas l’état de saisie').toContain(
+      "const verrou = etatSaisie.saisie ? '' : ' disabled';",
+    );
+    expect(
+      [...rendu.matchAll(/\$\{verrou\}/g)],
+      'les trois boutons ne sont pas verrouillés',
+    ).toHaveLength(3);
+  });
+
+  it('un bouton dégrisé dans l’inspecteur n’écrit RIEN', () => {
+    // `disabled` est une politesse ; le refus, lui, vit dans l'écriture — et
+    // il doit précéder l'appel au fournisseur, sinon la caisse récolte un
+    // « permission denied » brut là où une phrase disait quoi faire.
+    const corps = /async function changeAffluence\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(corps, 'changeAffluence introuvable').not.toBe('');
+    expect(corps, 'aucun refus avant écriture').toContain('if (!etatSaisie.saisie) {');
+    expect(corps.indexOf('if (!etatSaisie.saisie) {')).toBeLessThan(
+      corps.indexOf('provider.setAffluence('),
+    );
+  });
+
+  it('hors saison : état vide honnête, sans bandeau de reproche', () => {
+    // Personne n'a oublié d'ouvrir quoi que ce soit : la ligne ne circule pas.
+    const corps = /function rendreAffluence\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    const debut = corps.indexOf('if (jour?.hors_saison)');
+    expect(debut, 'branche hors saison introuvable').toBeGreaterThan(0);
+    const horsSaison = corps.slice(debut, debut + 300);
+    expect(horsSaison).toContain('bandeau.hidden = true;');
+    expect(horsSaison).toContain('aucun train ne circule ce jour');
+  });
+
+  it('la journée non ouverte n’est plus un cul-de-sac : la liste reste visible', () => {
+    // Refuser d'écrire n'est pas refuser de montrer. La caisse doit voir les
+    // trains de la date qu'elle prépare.
+    const corps = /function rendreAffluence\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(corps).not.toContain('ouvrez-la dans Circulations avant de déclarer');
+    expect(corps).not.toMatch(/if \(jour\.enregistre === false\) \{\s*pose\(/);
+  });
+
+  it('la barre de date de Places est la même AU PIXEL que celle de Circulations', () => {
+    // Scopées à `.barre-jour`, ces règles laissaient la seconde barre sans
+    // mise en page — et sans ses cibles de 44 px sur téléphone.
+    expect(css).toContain('\n.nav-date {');
+    expect(css).toContain('\n.chips {');
+    expect(css).not.toContain('.barre-jour .nav-date {');
+    expect(css).not.toContain('.barre-jour .chips {');
+    expect(css).toContain('  .nav-date button {\n    min-width: 44px;\n  }');
   });
 });

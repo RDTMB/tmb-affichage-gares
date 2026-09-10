@@ -365,6 +365,125 @@ export function dateEnToutesLettres(dateISO: string): string {
   });
 }
 
+// ============================================================================
+// Onglet « Places » : quelle journée, et peut-on encore la déclarer
+// (docs/01 §2.8)
+// ============================================================================
+
+/**
+ * Ce que la liste des places montre pour la date affichée.
+ *
+ * AUJOURD'HUI, elle ne montre que ce sur quoi on peut encore agir : un train
+ * parti n'a plus de places à vendre. Sur TOUTE AUTRE date, il n'existe pas
+ * d'heure courante à laquelle se comparer — la caisse qui prépare le
+ * lendemain doit voir la journée entière, sans quoi elle ne verrait rien à
+ * partir du milieu de l'après-midi.
+ */
+export type PorteeAffluence = 'departs-restants' | 'tous-les-trains';
+
+export interface EnTeteAffluence {
+  portee: PorteeAffluence;
+  /** « Aujourd'hui — départs restants », « mardi 15 septembre 2026 — tous les trains ». */
+  titre: string;
+  /** Vrai le jour même : la liste se périme toute seule, minute par minute. */
+  aujourdhui: boolean;
+}
+
+/** Titre de la carte « Places » et portée de sa liste, pour la date affichée. */
+export function enTeteAffluence(date: string, aujourdhui: string): EnTeteAffluence {
+  const cEstAujourdhui = date === aujourdhui;
+  const portee: PorteeAffluence = cEstAujourdhui ? 'departs-restants' : 'tous-les-trains';
+  // « Aujourd'hui » plutôt que la date : c'est le mot que l'agent cherche
+  // pour vérifier d'un coup d'œil qu'il n'est pas resté sur la veille.
+  //
+  // Majuscule initiale posée ICI, et pas par `text-transform: capitalize` :
+  // la règle CSS en mettait une à chaque mot, ce qui donnait « Tous Les
+  // Trains » dès que le titre a cessé d'être une date seule.
+  const enLettres = dateEnToutesLettres(date);
+  const jour = cEstAujourdhui
+    ? "Aujourd'hui"
+    : enLettres.charAt(0).toLocaleUpperCase('fr') + enLettres.slice(1);
+  return {
+    portee,
+    titre: `${jour} — ${cEstAujourdhui ? 'départs restants' : 'tous les trains'}`,
+    aujourdhui: cEstAujourdhui,
+  };
+}
+
+/**
+ * Bandeau affiché quand la caisse ne peut PAS déclarer : la journée n'est pas
+ * ouverte. Le texte dit qui l'ouvre, parce que la caisse n'en a pas le droit
+ * (RLS : « roles: jours ecriture » est réservée à la supervision).
+ */
+export const BANDEAU_JOURNEE_NON_OUVERTE =
+  "Journée pas encore ouverte par l'exploitation — les places ne peuvent pas " +
+  "encore être déclarées pour cette date. Demandez à la supervision d'ouvrir la journée.";
+
+/** Même journée non ouverte, mais vue par quelqu'un qui PEUT l'ouvrir. */
+export const BANDEAU_JOURNEE_A_OUVRIR =
+  'Journée pas encore ouverte — ouvrez-la dans l’onglet Circulations pour ' +
+  'pouvoir déclarer le remplissage.';
+
+/** Date passée : on consulte ce qui a été déclaré, on ne le réécrit pas. */
+export const BANDEAU_JOURNEE_PASSEE = 'Journée passée — consultation seulement.';
+
+export interface SaisieAffluence {
+  /** Les trois boutons sont-ils actifs ? */
+  saisie: boolean;
+  /** Pourquoi pas, en une phrase — `null` quand la saisie est ouverte. */
+  bandeau: string | null;
+}
+
+/**
+ * La saisie du remplissage est-elle ouverte pour la date affichée ?
+ *
+ * Trois refus, dans cet ordre :
+ *  1. une date PASSÉE ne se réécrit pas — pour personne, pas même la
+ *     supervision : ce serait réécrire ce qui s'est passé ;
+ *  2. une journée pas encore OUVERTE n'a pas de ligne dans `jours`, et
+ *     `affluence` ne s'y raccroche pas ;
+ *  3. HORS SAISON, il n'y a aucun train — l'appelant affiche alors son état
+ *     vide, ce cas ne passe pas par ici.
+ *
+ * PURE, et c'est ce qui compte : le refus se calcule ici, l'interface ne fait
+ * que le poser. Le vrai verrou reste RLS — la caisse ne peut de toute façon
+ * pas écrire dans `jours`, et un bouton resté cliquable n'écrirait rien.
+ */
+export function saisieAffluence(e: {
+  date: string;
+  aujourdhui: string;
+  enregistre: boolean;
+  /** L'agent a-t-il `circulations` ou `journee.reinitialiser` ? */
+  peutOuvrirLaJournee: boolean;
+}): SaisieAffluence {
+  if (e.date < e.aujourdhui) return { saisie: false, bandeau: BANDEAU_JOURNEE_PASSEE };
+  if (!e.enregistre) {
+    return {
+      saisie: false,
+      bandeau: e.peutOuvrirLaJournee ? BANDEAU_JOURNEE_A_OUVRIR : BANDEAU_JOURNEE_NON_OUVERTE,
+    };
+  }
+  return { saisie: true, bandeau: null };
+}
+
+/**
+ * Liste vide : le dire dans les termes de la date affichée. « Plus aucun
+ * départ aujourd'hui » sur une journée à venir serait faux — il n'y a pas
+ * d'heure de référence, et la journée entière est devant.
+ */
+export function messageAucunDepart(
+  date: string,
+  aujourdhui: string,
+  nomGare: string | null,
+): string {
+  if (date === aujourdhui) {
+    return nomGare === null
+      ? 'Plus aucun départ aujourd’hui.'
+      : `Plus aucun départ de ${nomGare} aujourd’hui.`;
+  }
+  return nomGare === null ? 'Aucun train ce jour.' : `Aucun train au départ de ${nomGare} ce jour.`;
+}
+
 export interface ActionGroupeeFacultatifs {
   /** true = le clic ACTIVE, false = il désactive. */
   activer: boolean;

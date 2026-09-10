@@ -137,7 +137,11 @@ import {
   messageDepuisFormulaire,
   traductionLocale,
   valeursFormulaireMessage,
+  enTeteAffluence,
+  messageAucunDepart,
+  saisieAffluence,
   type FormulaireMessage,
+  type SaisieAffluence,
 } from './supervision-logique';
 
 /**
@@ -602,6 +606,21 @@ function affluenceDe(numero: number): NiveauAffluence | null {
   return affluenceJour.find((a) => a.numero === numero)?.niveau ?? null;
 }
 
+/**
+ * L'état de saisie de la date AFFICHÉE. Une seule fonction pour le rendu
+ * (qui éteint les boutons) et pour l'écriture (qui refuse) : deux calculs
+ * séparés auraient fini par diverger, et c'est l'écriture qui décide.
+ */
+function saisieAffluenceCourante(): SaisieAffluence {
+  return saisieAffluence({
+    date: dateSel,
+    aujourdhui: dateISO(0),
+    enregistre: jour?.enregistre !== false,
+    peutOuvrirLaJournee:
+      aLeDroit(roles, 'circulations') || aLeDroit(roles, 'journee.reinitialiser'),
+  });
+}
+
 const LIBELLE_AFFLUENCE: Record<NiveauAffluence, string> = {
   limite: 'dernières places',
   complet: 'complet',
@@ -625,6 +644,14 @@ const LIBELLE_AFFLUENCE: Record<NiveauAffluence, string> = {
  */
 async function changeAffluence(numero: number, niveau: NiveauAffluence | null): Promise<void> {
   const date = dateSel;
+  // Journée passée, ou pas encore ouverte : refus AVANT l'appel. `disabled`
+  // se retire dans l'inspecteur, et la caisse recevrait sinon un « permission
+  // denied » brut de PostgREST là où la phrase du bandeau dit quoi faire.
+  const etatSaisie = saisieAffluenceCourante();
+  if (!etatSaisie.saisie) {
+    toast(etatSaisie.bandeau ?? 'Remplissage non modifiable pour cette date');
+    return;
+  }
   if (affluenceDe(numero) === niveau) return; // rien à écrire
   const libelle = libelleTrain(
     { numero, supplementaire: circulationDe(numero)?.supplementaire === true },
@@ -1245,15 +1272,13 @@ const rendBlocSection = (): void => {
 function rendreCirculations(): void {
   const grille = grilleDuJour();
   if (!grille || !jour) return;
-  ($('date-picker') as HTMLInputElement).value = dateSel;
+  majBarresDate();
   const dateAffichee = new Date(`${dateSel}T12:00:00`).toLocaleDateString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
   $('sous-titre-jour').textContent = `du ${dateAffichee}`;
-  $('chip-auj').classList.toggle('on', dateSel === dateISO(0));
-  $('chip-dem').classList.toggle('on', dateSel === dateISO(1));
   // Hors saison : aucun train, contrôles désactivés. Date passée jamais
   // exploitée : aperçu théorique en LECTURE SEULE (pas d'historique inventé).
   // Les dates à venir sont créées automatiquement à l'ouverture (provider).
@@ -1385,13 +1410,7 @@ function stageCirculationEtRafraichit(c: Circulation, detail: string): void {
 }
 
 function initCirculations(): void {
-  $('btn-jour-prec').addEventListener('click', () => void changeDate(-1));
-  $('btn-jour-suiv').addEventListener('click', () => void changeDate(1));
-  $('chip-auj').addEventListener('click', () => void allerDate(dateISO(0)));
-  $('chip-dem').addEventListener('click', () => void allerDate(dateISO(1)));
-  $('date-picker').addEventListener('change', (e) => {
-    void allerDate((e.target as HTMLInputElement).value);
-  });
+  brancheBarreDate('');
   // Action groupée sur les trains facultatifs de la journée affichée.
   // Même chemin d'écriture que les modifications unitaires : la journée est
   // créée si besoin et le nombre de lignes réellement écrites est contrôlé.
@@ -2133,6 +2152,40 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
   });
 }
 
+/**
+ * Les DEUX barres de date : celle de Circulations (sans suffixe) et celle de
+ * Places (« -pl »). Une seule date affichée (`dateSel`), un seul chemin de
+ * navigation (`allerDate`) — les barres ne sont que deux fenêtres dessus.
+ *
+ * Places a la sienne parce que la CAISSE n'a pas l'onglet Circulations : sans
+ * elle, le guichet ne pourrait déclarer que le jour même, et pas préparer le
+ * lendemain.
+ */
+const SUFFIXES_BARRE_DATE = ['', '-pl'] as const;
+
+function brancheBarreDate(suffixe: string): void {
+  $(`btn-jour-prec${suffixe}`).addEventListener('click', () => void changeDate(-1));
+  $(`btn-jour-suiv${suffixe}`).addEventListener('click', () => void changeDate(1));
+  $(`chip-auj${suffixe}`).addEventListener('click', () => void allerDate(dateISO(0)));
+  $(`chip-dem${suffixe}`).addEventListener('click', () => void allerDate(dateISO(1)));
+  $(`date-picker${suffixe}`).addEventListener('change', (e) => {
+    void allerDate((e.target as HTMLInputElement).value);
+  });
+}
+
+/**
+ * Remet les deux barres sur `dateSel`. Appelée à chaque navigation ET dans
+ * les deux rendus : un rendu qui sort tôt (pas de grille, pas de droit) ne
+ * doit pas laisser une barre afficher une date qui n'est plus la bonne.
+ */
+function majBarresDate(): void {
+  for (const suffixe of SUFFIXES_BARRE_DATE) {
+    ($(`date-picker${suffixe}`) as HTMLInputElement).value = dateSel;
+    $(`chip-auj${suffixe}`).classList.toggle('on', dateSel === dateISO(0));
+    $(`chip-dem${suffixe}`).classList.toggle('on', dateSel === dateISO(1));
+  }
+}
+
 async function changeDate(decalage: number): Promise<void> {
   // Arithmétique en UTC pur (midi) : insensible au fuseau et aux
   // changements d'heure d'été, contrairement à new Date('...T12:00:00').
@@ -2149,7 +2202,7 @@ async function changeDate(decalage: number): Promise<void> {
 async function allerDate(date: string): Promise<void> {
   if (!date) {
     // Champ vidé : on ne bouge pas, mais on le dit et on remet la date réelle
-    ($('date-picker') as HTMLInputElement).value = dateSel;
+    majBarresDate();
     toast('Date invalide — la journée affichée est inchangée');
     return;
   }
@@ -2165,15 +2218,20 @@ async function allerDate(date: string): Promise<void> {
     // afficherait un instant le remplissage de la précédente.
     affluenceJour = [];
     await chargeAffluence(date);
+    majBarresDate();
     rendreCirculations();
+    // La caisse n'a QUE cet onglet : sans ce rendu, sa liste resterait sur la
+    // date précédente pendant que sa barre affiche la nouvelle.
+    rendreAffluence();
     // Sans ce recalcul, la barre gardait le compte de la date précédente et
     // ne se réveillait qu'à la première écriture — d'où le saut brutal.
     if (referenceFixee) recalculeEcarts();
   } catch (erreur) {
     if (dateSel === date) {
       dateSel = precedente;
-      ($('date-picker') as HTMLInputElement).value = precedente;
+      majBarresDate();
       rendreCirculations(); // remet en-tête, service et bascule sur la date réelle
+      rendreAffluence(); // idem pour la liste des places
       if (referenceFixee) recalculeEcarts();
     }
     erreurVersToast(erreur);
@@ -2402,11 +2460,18 @@ function rendreAffluence(): void {
   const grille = grilleDuJour();
   const gare = gareCaisse();
 
-  $('affluence-jour').textContent = new Date(`${dateSel}T12:00:00`).toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  // La barre de date d'abord : elle doit rester juste même quand tout ce qui
+  // suit sort par un état vide.
+  majBarresDate();
+  const enTete = enTeteAffluence(dateSel, dateISO(0));
+  $('affluence-jour').textContent = enTete.titre;
+
+  // Qui peut encore déclarer, et sinon pourquoi. Le vrai verrou est RLS : ce
+  // calcul ne fait que l'annoncer AVANT le clic, plutôt qu'après l'erreur.
+  const etatSaisie = saisieAffluenceCourante();
+  const bandeau = $('affluence-bandeau');
+  bandeau.textContent = etatSaisie.bandeau ?? '';
+  bandeau.hidden = etatSaisie.bandeau === null;
 
   // « Toutes les gares » en tête : c'est le défaut, et c'est la vue de
   // l'exploitation. Un poste de caisse se règle une fois sur sa gare.
@@ -2430,27 +2495,28 @@ function rendreAffluence(): void {
   };
 
   if (jour?.hors_saison) {
+    // État vide HONNÊTE : la ligne ne circule pas ce jour-là, il n'y a rien à
+    // déclarer et personne n'a rien oublié d'ouvrir.
+    bandeau.hidden = true;
     pose('<div class="vide">Hors saison : aucun train ne circule ce jour.</div>');
     return;
   }
   if (!grille || !jour) {
+    bandeau.hidden = true;
     pose('<div class="vide">Aucun service ce jour.</div>');
     return;
   }
-  if (jour.enregistre === false) {
-    pose(
-      '<div class="vide">Journée non enregistrée — ouvrez-la dans Circulations avant de déclarer un remplissage.</div>',
-    );
-    return;
-  }
 
-  const maintenant = dateSel === dateISO(0) ? maintenantS() : 0;
+  // Journée non ouverte : la liste reste AFFICHÉE, en lecture seule. La
+  // caisse doit voir les trains de la date qu'elle prépare — refuser
+  // d'écrire n'est pas refuser de montrer — et le bandeau dit qui l'ouvre.
+  const maintenant = enTete.aujourdhui ? maintenantS() : 0;
   const lignes = lignesAffluence(gare, maintenant);
   if (lignes.length === 0) {
     pose(
-      gare === null
-        ? '<div class="vide">Plus aucun départ aujourd’hui.</div>'
-        : `<div class="vide">Plus aucun départ de ${echapper(nomDeGare(gare))} aujourd’hui.</div>`,
+      `<div class="vide">${echapper(
+        messageAucunDepart(dateSel, dateISO(0), gare === null ? null : nomDeGare(gare)),
+      )}</div>`,
     );
     return;
   }
@@ -2459,6 +2525,10 @@ function rendreAffluence(): void {
     numero: c.numero,
     supplementaire: c.supplementaire,
   }));
+  // `disabled` sur chaque bouton : un sélecteur qui a l'air cliquable et ne
+  // fait rien est pire qu'un sélecteur éteint. Le gestionnaire refuse aussi
+  // (un attribut se retire dans l'inspecteur, pas le contrôle).
+  const verrou = etatSaisie.saisie ? '' : ' disabled';
 
   pose(
     lignes
@@ -2492,9 +2562,9 @@ function rendreAffluence(): void {
         <span class="spacer"></span>
         ${signature}
         <span class="seg seg-affluence">
-          <button class="${niveau === null ? 'on-places' : ''}" data-affluence="aucune" data-numero="${l.numero}">Places</button>
-          <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-affluence="limite" data-numero="${l.numero}">Dernières places</button>
-          <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-affluence="complet" data-numero="${l.numero}">Complet</button>
+          <button class="${niveau === null ? 'on-places' : ''}" data-affluence="aucune" data-numero="${l.numero}"${verrou}>Places</button>
+          <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-affluence="limite" data-numero="${l.numero}"${verrou}>Dernières places</button>
+          <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-affluence="complet" data-numero="${l.numero}"${verrou}>Complet</button>
         </span>
       </div>`;
       })
@@ -2503,6 +2573,9 @@ function rendreAffluence(): void {
 }
 
 function brancheAffluence(): void {
+  // Même câblage que Circulations, même `allerDate` : la caisse navigue dans
+  // les jours sans avoir l'onglet Circulations.
+  brancheBarreDate('-pl');
   $('affluence-gare').addEventListener('change', (e) => {
     const choix = (e.target as HTMLSelectElement).value;
     retientGareCaisse(choix === TOUTES_LES_GARES ? null : (choix as GareId));
