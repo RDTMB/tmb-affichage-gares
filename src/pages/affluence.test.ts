@@ -582,12 +582,20 @@ describe('Places : naviguer dans les jours', () => {
   it('changer de date rafraîchit la liste de Places, pas seulement Circulations', () => {
     const corps = /async function allerDate\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
     expect(corps, 'allerDate introuvable').not.toBe('');
-    expect(corps, 'Places ne suit pas la date').toContain('rendreAffluence()');
+    // Dans le chemin de SUCCÈS, et pas seulement dans le rattrapage d'erreur :
+    // chercher `rendreAffluence()` dans toute la fonction laissait passer sa
+    // disparition du seul endroit qui compte (mutation survivante).
+    const succes = corps.slice(0, corps.indexOf('} catch (erreur) {'));
+    expect(succes, 'découpage du chemin de succès raté').not.toBe('');
+    expect(succes, 'Places ne suit pas la date').toContain('rendreAffluence()');
+    // Et le rattrapage le rappelle aussi : une date refusée doit remettre la
+    // liste sur la date réellement affichée.
+    expect(corps.slice(corps.indexOf('} catch (erreur) {'))).toContain('rendreAffluence()');
     // La garde de course protège aussi la liste de Places : sans elle, deux
     // navigations rapprochées croiseraient les remplissages de deux dates.
-    expect(corps).toContain('if (dateSel !== date) return;');
-    expect(corps.indexOf('if (dateSel !== date) return;')).toBeLessThan(
-      corps.indexOf('rendreAffluence()'),
+    expect(succes).toContain('if (dateSel !== date) return;');
+    expect(succes.indexOf('if (dateSel !== date) return;')).toBeLessThan(
+      succes.indexOf('rendreAffluence()'),
     );
   });
 
