@@ -38,6 +38,7 @@ import { vitesseTickerEffective } from '../core/ticker';
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
+  Affluence,
   FinDeService,
   GareId,
   Grille,
@@ -55,6 +56,7 @@ import type { DataProvider } from '../data/provider';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
   anneauSur,
+  appliqueAffluence,
   badgeFraicheur,
   couleurSure,
   creeJournalHeartbeat,
@@ -139,6 +141,13 @@ interface DonneesEcran {
   params: Params;
   messages: Message[];
   medias: Media[];
+  /**
+   * Remplissage déclaré du jour. Dans l'INSTANTANÉ, donc : un écran qui
+   * redémarre sans réseau doit réafficher la pastille qu'il avait, pas
+   * l'oublier. Absent d'un instantané écrit avant ce déploiement — d'où le
+   * repli à [] côté application (leçon C-01).
+   */
+  affluence: Affluence[];
 }
 
 let grille: Grille | null = null;
@@ -147,6 +156,7 @@ let grilleDemain: Grille | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
 let medias: Media[] = [];
+let affluence: Affluence[] = [];
 let dernierEtatSpecial = '';
 let sync: Synchronisation | null = null;
 /**
@@ -287,6 +297,18 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     ? `<img class="motrice-dest" src="${__MOTRICE_BLANC__}" alt="Express" />`
     : '';
 
+  // REMPLISSAGE. Après le nom de la gare et AVANT le picto express : le picto
+  // termine la ligne, la pastille se lit avec le nom. Rien sur un train
+  // SUPPRIMÉ — il n'existe plus pour le voyageur, et « complet » sur un train
+  // barré n'a aucun sens. Le FR passe en majuscules par CSS, l'anglais reste
+  // en minuscules et plus petit (maquette validée le 09/09/2026).
+  const affluenceHtml =
+    supprime || !p.affluence
+      ? ''
+      : p.affluence === 'complet'
+        ? '<span class="pill-affluence complet">Complet <small>Full</small></span>'
+        : '<span class="pill-affluence limite">Dernières places <small>Few seats</small></span>';
+
   // Badge du numéro DEVANT le nom de la gare de destination : c'est là que
   // l'œil du voyageur va déjà. « TRAIN 11 » reste le libellé canonique en
   // supervision et dans la grille du jour ; ici on écrit « T11 ».
@@ -298,7 +320,7 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
-      <div class="txt"><div class="dest">${badge}${echapper(nomGare(p.destination))}${motrice}</div><div class="note${
+      <div class="txt"><div class="dest">${badge}<span class="nom-dest">${echapper(nomGare(p.destination))}</span>${affluenceHtml}${motrice}</div><div class="note${
         p.express || sansArret !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
@@ -636,7 +658,9 @@ function rendre(gare: GareId): void {
     return;
   }
 
-  const passages = passagesPourGare(grille, jour, gare, maintenant);
+  // Le moteur horaires ignore le remplissage : la jointure (date, numéro) se
+  // fait ici, sur ce qu'il vient de calculer.
+  const passages = appliqueAffluence(passagesPourGare(grille, jour, gare, maintenant), affluence);
   const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
 
   // Gare fermée AVANT fin de service : une gare fermée pour travaux ne doit
@@ -721,14 +745,15 @@ async function demarre(): Promise<void> {
 
   const charge = async (): Promise<DonneesEcran> => {
     const dateJour = heure.dateISO();
-    const [grilles, p, m, j, med] = await Promise.all([
+    const [grilles, p, m, j, med, aff] = await Promise.all([
       provider.getGrilles(),
       provider.getParams(),
       provider.getMessages(gare),
       provider.getJour(dateJour),
       provider.getMedias(gare),
+      provider.getAffluence(dateJour),
     ]);
-    return { grilles, params: p, messages: m, jour: j, medias: med };
+    return { grilles, params: p, messages: m, jour: j, medias: med, affluence: aff };
   };
 
   const applique = (d: DonneesEcran): void => {
@@ -736,6 +761,10 @@ async function demarre(): Promise<void> {
     params = d.params;
     messages = d.messages;
     medias = d.medias;
+    // Un instantané écrit AVANT ce déploiement n'a pas le champ : sans ce
+    // repli, la première image après une mise à jour hors ligne planterait
+    // sur un `undefined`. C'est exactement la leçon C-01.
+    affluence = d.affluence ?? [];
     grille = grillePourJour(d.grilles, d.jour);
     grilleDemain = serviceActif(d.grilles, dateSuivante(d.jour.date));
     if (!grille) return;

@@ -35,6 +35,29 @@ export interface SectionJour {
 
 export type Statut = 'ok' | 'retard' | 'supprime';
 
+/**
+ * REMPLISSAGE constaté d'un train (table `affluence`). Deux niveaux, pas
+ * trois : l'ABSENCE de déclaration vaut « places disponibles ». C'est un axe
+ * INDÉPENDANT de `Statut` — un train à l'heure peut être complet, un train en
+ * retard peut être vide — et c'est pourquoi la pastille voyageurs ne vit pas
+ * dans la colonne Statut de l'écran de gare.
+ */
+export type NiveauAffluence = 'limite' | 'complet';
+
+/**
+ * Affluence d'UN train d'UNE journée. La clé métier est (date, numéro) : un
+ * TRAIN 9 complet l'est dans toutes les gares qu'il doit encore desservir,
+ * jamais dans une seule.
+ */
+export interface Affluence {
+  date: string;
+  numero: number;
+  niveau: NiveauAffluence;
+  /** Adresse de qui a déclaré — posée par déclencheur, jamais par le client. */
+  maj_par?: string | null;
+  maj_le?: string;
+}
+
 /** Terminus possible d'une montée (les descentes partent du terminus atteint). */
 export type Terminus = 'nid-daigle' | 'bellevue';
 
@@ -288,6 +311,15 @@ export interface PassageGare {
   /** Heures théoriques (« théorique HH:MM » affiché en cas de retard). */
   arrivee_theorique_s: number | null;
   depart_theorique_s: number | null;
+  /**
+   * Remplissage constaté (pastille « Complet » / « Dernières places »).
+   * Posé sur la LIGNE D'AFFICHAGE et non sur `Circulation` : la circulation
+   * reste ce que l'exploitation ferroviaire sait du train. Le moteur horaires
+   * l'ignore entièrement — la jointure se fait dans la page, après
+   * `passagesPourGare()`, par `appliqueAffluence()`.
+   * Absent ou null = places disponibles.
+   */
+  affluence?: NiveauAffluence | null;
 }
 
 export interface ProchaineArrivee {

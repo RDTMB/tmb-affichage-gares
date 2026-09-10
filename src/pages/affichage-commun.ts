@@ -1,7 +1,44 @@
 // Éléments d'affichage partagés entre l'écran de gare et la grille du jour :
 // échappement HTML, pied de page (messages défilants + météo sommet).
-import type { GareId, Grille, Message, Params, PassageGare } from '../core/types';
+import type { Affluence, GareId, Grille, Message, Params, PassageGare } from '../core/types';
 import { dureeDefilementS, vitesseTickerValide } from '../core/ticker';
+
+// ---------------------------------------------------------------------------
+// Affluence — la jointure (date, numéro), hors du moteur horaires
+// ---------------------------------------------------------------------------
+// `src/core/horaires.ts` reste PUR et IGNORANT du remplissage : il calcule ce
+// que la grille et la journée disent des trains, rien d'autre. Le
+// rapprochement se fait ici, APRÈS `passagesPourGare()`, sur la seule clé qui
+// vaille — le NUMÉRO de train. Un TRAIN 9 complet l'est dans toutes les gares
+// qu'il doit encore desservir, jamais dans une seule : c'est pourquoi la
+// jointure ne regarde pas la gare.
+//
+// La date n'est pas comparée : les deux jeux viennent de la MÊME journée
+// (`getAffluence(dateJour)` à côté de `getJour(dateJour)`). La comparer
+// donnerait l'illusion d'un contrôle sans en être un — il faudrait pour cela
+// que la page mélange deux dates, ce qu'elle ne fait nulle part.
+
+/** Niveaux acceptés. Toute autre valeur venue de la base est IGNORÉE. */
+const NIVEAUX_AFFLUENCE = new Set(['limite', 'complet']);
+
+/**
+ * Recopie le remplissage déclaré sur les lignes d'affichage. Rend un NOUVEAU
+ * tableau : les passages viennent du moteur, on ne les mute pas.
+ *
+ * Un niveau inconnu (base plus récente que ce déploiement) est ignoré plutôt
+ * que recopié : mieux vaut une pastille absente qu'une classe CSS inventée.
+ */
+export function appliqueAffluence(
+  passages: PassageGare[],
+  affluence: readonly Affluence[],
+): PassageGare[] {
+  const parNumero = new Map<number, PassageGare['affluence']>();
+  for (const a of affluence) {
+    if (NIVEAUX_AFFLUENCE.has(a.niveau)) parNumero.set(a.numero, a.niveau);
+  }
+  if (parNumero.size === 0) return passages.map((p) => ({ ...p, affluence: null }));
+  return passages.map((p) => ({ ...p, affluence: parNumero.get(p.numero) ?? null }));
+}
 
 export function echapper(texte: string): string {
   return texte

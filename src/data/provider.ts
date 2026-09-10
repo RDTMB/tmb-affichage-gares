@@ -2,6 +2,7 @@
 // hors de src/data/. Implémentations : MockProvider (démo/tests), puis
 // SupabaseProvider (phase 1, étape 5) et ApiProvider (phase 2, étape 10).
 import type {
+  Affluence,
   Circulation,
   EcranInfo,
   EntreeJournal,
@@ -15,6 +16,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  NiveauAffluence,
   Ciel,
   MetadonneesGrille,
   Onglet,
@@ -80,6 +82,23 @@ export interface DataProvider {
    */
   getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour>;
   getMessages(gare: GareId): Promise<Message[]>;
+  /**
+   * AFFLUENCE du jour (table `affluence`) : toutes les déclarations de la
+   * date, écrans comme supervision. Seuls les trains DÉCLARÉS y figurent —
+   * l'absence de ligne vaut « places disponibles ».
+   */
+  getAffluence(date: string): Promise<Affluence[]>;
+  /**
+   * Déclare (ou lève) le remplissage d'un train. `null` SUPPRIME la ligne :
+   * remettre un train à la normale n'est pas un troisième niveau.
+   *
+   * Écriture IMMÉDIATE, hors brouillon et hors « Publier » — même exception
+   * assumée, et même raison, que `confirmerDepartSup` : on constate au
+   * guichet qu'on ne vend plus, avec des voyageurs déjà sur le quai. En
+   * contrepartie l'échec est dit franchement, et l'écran de saisie conserve
+   * l'état précédent.
+   */
+  setAffluence(date: string, numero: number, niveau: NiveauAffluence | null): Promise<void>;
   /** URLs + durées des médias ACTIFS ciblant la gare (écrans). */
   getMedias(gare: GareId): Promise<Media[]>;
   /** TOUS les médias, y compris désactivés (supervision). */

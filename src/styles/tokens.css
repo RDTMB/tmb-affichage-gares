@@ -14,6 +14,15 @@
   --rame-marguerite: #ffffff;
   --rame-marguerite-cercle: #e52a23;
 
+  /* AFFLUENCE — « Dernières places ». Couleur d'ÉTAT, pas d'identité : elle
+     ne figure pas dans la charte 2026, au même titre que le jaune de la
+     mention EXPRESS ou l'ambre du retard. « Complet » n'a pas son jeton, lui :
+     c'est le rouge de la charte (--tmb-rouge), et il doit le rester.
+     Ici plutôt que dans ecran.css parce que DEUX surfaces s'en servent —
+     l'écran de gare et le repère de la supervision. Le texte posé dessus est
+     sombre (#2b1d00) : sur cet ambre, du blanc ne passe pas le contraste. */
+  --affluence-limite: #f0b429;
+
   /* Amaranth : titres, noms de gares — Lato : textes, heures. Auto-hébergées, jamais de CDN. */
   --police-titres: 'Amaranth', 'Trebuchet MS', sans-serif;
   --police-textes: 'Lato', 'Segoe UI', sans-serif;

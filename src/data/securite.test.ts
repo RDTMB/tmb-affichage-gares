@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ATTRIBUABLE_PAR,
+  aLeDroit,
   LIBELLE_ROLE,
   ONGLETS,
   ONGLET_DE_SECOURS,
@@ -1398,5 +1399,116 @@ describe(`${MIGRATION_ONGLETS} : refuse de s’exécuter sur une base inconnue`,
   it('ne touche à AUCUNE autre table', () => {
     expect(code).not.toMatch(/create policy[^\n]*on (?!onglets_par_role)/);
     expect(code).not.toMatch(/alter table (?!onglets_par_role)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AFFLUENCE (10/09/2026) — le remplissage constaté au guichet.
+//
+// Ce qui se joue ici : la table existe PARCE QUE la caisse doit pouvoir y
+// écrire sans toucher à `circulations`. Si sa politique se resserrait, la
+// carte du guichet montrerait des boutons que la base refuse ; si elle
+// s’élargissait au technique, on aurait déplacé la frontière sans le dire.
+// Les deux copies — schema.sql pour une base neuve, la migration pour une
+// base existante — doivent rester identiques.
+// ---------------------------------------------------------------------------
+
+const MIGRATION_AFFLUENCE = 'migrations/2026-09-affluence.sql';
+const PORTEURS_AFFLUENCE = ['schema.sql', MIGRATION_AFFLUENCE];
+
+describe('affluence — la table du guichet', () => {
+  for (const fichier of PORTEURS_AFFLUENCE) {
+    const code = instructions(sql(fichier));
+
+    it(`${fichier} : l’écriture est ouverte à admin, supervision et caisse`, () => {
+      const bloc = code.match(/create policy "roles: affluence"[\s\S]*?;/)?.[0];
+      expect(bloc, 'politique « roles: affluence » absente').toBeDefined();
+      // Les DEUX clauses, contrôlées SÉPARÉMENT. Elles ne font pas le même
+      // travail : `with check` garde les INSERT, `using` garde ce qu'on peut
+      // voir, modifier et supprimer. Une politique dont elles divergent
+      // laisserait déclarer un train complet sans pouvoir le rouvrir à la
+      // vente. Un simple `toContain` sur le bloc entier ne le voyait PAS —
+      // la seconde clause suffisait à le satisfaire (trou trouvé en mutant
+      // ce test le 10/09/2026).
+      const using = /using \(\(select private\.a_un_des_roles\(([^)]*)\)/.exec(bloc ?? '')?.[1];
+      const check = /with check \(\(select private\.a_un_des_roles\(([^)]*)\)/.exec(
+        bloc ?? '',
+      )?.[1];
+      expect(using, 'clause `using` absente ou resserrée').toBe(
+        "array['admin','supervision','caisse']",
+      );
+      expect(check, 'clause `with check` absente ou resserrée').toBe(
+        "array['admin','supervision','caisse']",
+      );
+      // Le technique protège la base, il ne constate pas les ventes.
+      expect(bloc).not.toContain('technique');
+    });
+
+    it(`${fichier} : les écrans lisent sans compte`, () => {
+      expect(code).toMatch(
+        /create policy "lecture publique" on affluence for select using \(true\)/,
+      );
+      expect(code).toMatch(/grant select on affluence to anon, authenticated/);
+    });
+
+    it(`${fichier} : RLS est ACTIVÉE — une politique sans elle ne filtre rien`, () => {
+      expect(code).toMatch(/alter table affluence enable row level security/);
+    });
+
+    it(`${fichier} : la signature n’est accordée à personne`, () => {
+      // `maj_par` est posée par déclencheur depuis le JETON. Accordée au
+      // client, elle deviendrait une signature qu’on peut forger.
+      expect(code).toMatch(/grant insert \(date, numero, niveau\) on affluence/);
+      expect(code).toMatch(/grant update \(niveau\) on affluence/);
+      expect(code).not.toMatch(/grant (insert|update)[^;]*maj_par/);
+      expect(code).toMatch(/new\.maj_par := private\.email_appelant\(\)/);
+    });
+
+    it(`${fichier} : chaque écriture passe au journal d’exploitation`, () => {
+      expect(code).toMatch(
+        /create trigger trg_journal_affluence[\s\S]*?tracer_ecriture\('date,numero', 'date', 'niveau'\)/,
+      );
+    });
+
+    it(`${fichier} : le niveau est BORNÉ en base, pas seulement dans le front`, () => {
+      // Le front ignore un niveau inconnu ; la base, elle, le refuse.
+      expect(code).toMatch(/check \(niveau in \('limite', 'complet'\)\)/);
+    });
+
+    it(`${fichier} : réinitialiser une journée efface son affluence`, () => {
+      // Sans la cascade, un « complet » survivrait à la régénération et
+      // affirmerait un fait que personne n’a constaté depuis.
+      expect(code).toMatch(
+        /foreign key \(date, numero\) references circulations \(date, numero\) on delete cascade/,
+      );
+    });
+
+    it(`${fichier} : les écrans voient le changement en temps réel`, () => {
+      expect(code).toMatch(/supabase_realtime add table[\s\S]{0,200}?affluence/);
+    });
+  }
+
+  it('le miroir du front accorde exactement les mêmes rôles', () => {
+    // Élargir `roles.ts` sans élargir le SQL donne le pire résultat
+    // possible : l’interface affiche le bouton, la base refuse l’écriture.
+    const bloc =
+      instructions(sql('schema.sql')).match(/create policy "roles: affluence"[\s\S]*?;/)?.[0] ?? '';
+    for (const role of ROLES) {
+      const enBase = bloc.includes(`'${role}'`);
+      expect(aLeDroit([role], 'affluence'), `${role} : front et base divergent`).toBe(enBase);
+    }
+  });
+
+  it('la migration se dit rejouable et vise la base de TEST', () => {
+    const brut = sql(MIGRATION_AFFLUENCE);
+    expect(brut).toMatch(/[Rr]ejouable/);
+    expect(brut).toMatch(/base de TEST/);
+  });
+
+  it('la migration ne touche à AUCUNE autre table', () => {
+    const code = instructions(sql(MIGRATION_AFFLUENCE));
+    expect(code).not.toMatch(/create policy[^\n]*on (?!affluence)/);
+    expect(code).not.toMatch(/alter table (?!affluence)/);
+    expect(code).not.toMatch(/create table[^\n]*(?!affluence)\bcirculations\b/);
   });
 });

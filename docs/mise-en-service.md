@@ -114,6 +114,15 @@ Guide pas à pas pour non-développeur. Durée totale : ~45 minutes.
     supprime elle-même avant de rendre la main. Elle ne compte PAS sur un
     `rollback` final, qui ne servirait à rien dans cet éditeur.
 
+    **Trains complets** (base ANCIENNE uniquement) : nouvelle requête →
+    coller `supabase/migrations/2026-09-affluence.sql` → **Run**. Elle crée
+    la table `affluence`, sa politique (admin, supervision **et caisse** —
+    c'est le guichet qui constate qu'il ne vend plus), le déclencheur qui
+    signe l'écriture depuis le jeton, la ligne de journal et le temps réel.
+    Rejouable. Enchaîner avec son bloc VÉRIFICATION : « Success. No rows
+    returned » ne prouve rien à lui seul. Sur une base NEUVE, `schema.sql`
+    l'a déjà fait.
+
     Les deux autres scripts du dossier `supabase/migrations/`
     (`2026-08-signal-de-vie-serveur.sql`, `2026-08-train-supplementaire.sql`)
     sont déjà intégrés à `schema.sql` : inutiles sur une base neuve,

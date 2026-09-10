@@ -198,9 +198,25 @@ main {
   opacity: 0.42;
 }
 
-/* Le badge suit l'opacité du bloc (héritée) mais JAMAIS le barré : une
-   étiquette barrée se lit comme un défaut d'affichage, pas comme une
-   suppression. Le nom de gare, lui, reste barré. */
+/* LE BARRÉ SE POSE SUR LE NOM, PAS SUR LA LIGNE. Depuis que le nom vit dans
+   son propre `<span class="nom-dest">`, il ne peut plus hériter du barré de
+   `.dest` : `text-decoration` se propage par la boîte, et une boîte à part
+   (inline-block hier, item flex aujourd'hui) coupe la propagation. Résultat
+   mesuré le 10/09/2026 : `textDecorationLine` valait `none` sur le nom d'un
+   train supprimé — le train n'était plus barré du tout. On le pose donc
+   explicitement sur `.nom-dest`, et on le retire de `.dest`, qui n'a plus
+   qu'à porter l'opacité.
+
+   Le badge, lui, n'est JAMAIS barré : une étiquette barrée se lit comme un
+   défaut d'affichage, pas comme une suppression. */
+.rangee.supprime .r-dest .dest {
+  text-decoration: none;
+}
+
+.rangee.supprime .r-dest .dest .nom-dest {
+  text-decoration: line-through;
+}
+
 .rangee.supprime .badge-train {
   text-decoration: none;
 }
@@ -253,18 +269,42 @@ main {
   min-width: 0;
 }
 
+/* La ligne Destination est une RANGÉE : badge, nom de gare, pastille
+   d'affluence et picto express centrés sur le même axe (décision de
+   l'exploitant du 10/09/2026).
+
+   Avant, chacun se calait par `vertical-align` sur la ligne de base du texte,
+   et comme les quatre n'ont ni la même police ni la même hauteur, aucun ne
+   tombait au même endroit : centre du badge 5,2 px sous celui du nom, pastille
+   empilée 19,5 px sous, picto 0,8 px au-dessus. Des retouches de
+   `vertical-align` auraient chassé le symptôme valeur par valeur ; `flex` +
+   `align-items: center` supprime la question.
+
+   L'ELLIPSE DÉMÉNAGE : `text-overflow` ne s'applique pas à un conteneur flex.
+   C'est `.nom-dest` qui la porte maintenant ; `overflow: hidden` reste ici
+   pour que rien ne déborde de la colonne. */
 .r-dest .dest {
+  display: flex;
+  align-items: center;
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
   font-size: 4.3vh;
   line-height: 1.08;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+/* Seul élément de la rangée qui a le droit de se comprimer : les trois autres
+   sont des repères de taille fixe. */
+.r-dest .dest .badge-train,
+.r-dest .dest .pill-affluence,
+.r-dest .dest img.motrice-dest {
+  flex: none;
 }
 
 /* Numéro de train : étiquette, donc Lato (Amaranth est réservé aux noms
-   propres — gares, titres). Aligné sur la ligne de base du nom de gare. */
+   propres — gares, titres). Son calage vertical vient de la rangée flex
+   ci-dessus, plus d'un `vertical-align` qui lui serait propre. */
 .badge-train {
   display: inline-flex;
   align-items: center;
@@ -277,16 +317,147 @@ main {
   border-radius: 0.9vh;
   padding: 0.2vh 1.2vh;
   margin-right: 1.5vh;
-  /* `baseline` (défaut de l'inline-flex) : la ligne de base du « T11 » tombe
-     EXACTEMENT sur celle du nom de gare — mesuré, écart 0 px. */
-  vertical-align: baseline;
   font-variant-numeric: tabular-nums;
+  /* LARGEUR PLANCHER. « T9 » mesurait 61,6 px et « T11 » 79,1 px : le nom de
+     gare démarrait donc 17,5 px plus loin une rangée sur deux, et tout ce qui
+     suit avec. `min-width` et non `width` : un « SUP 12 » plus large pousse
+     normalement — ces rangées-là n'ont jamais de picto express, donc de la
+     place. 2.62em = 79,1 px à 1920×1080, mesuré sur « T11 ». */
+  min-width: 2.62em;
+  justify-content: center;
+}
+
+/* Le nom de la gare de destination occupe une LARGEUR PLANCHER, pour que la
+   pastille d'affluence commence toujours au même endroit.
+
+   Mesuré avant : la pastille démarrait entre 256,8 px et 343,3 px selon la
+   rangée — 86,5 px de balancement sur cinq lignes, dont 55,7 px dus au nom
+   (« Le Fayet » contre « Nid d'Aigle ») et 17,5 px au badge. Sur un tableau
+   de départs, l'œil descend une colonne : ce qui bouge d'une ligne à l'autre
+   se relit à chaque fois.
+
+   Dimensionné sur « Nid d'Aigle », le plus long des trois terminus réels
+   (Le Fayet, Bellevue, Nid d'Aigle) — 4.78em = 222 px à 1920×1080, au plus
+   juste. En `em`, donc solidaire de la police : le bloc ≤ 4/3 n'a rien à
+   transcrire. `min-width` et non `width` : si l'exploitation renomme une gare
+   plus long, le nom pousse au lieu d'être coupé. */
+.r-dest .dest .nom-dest {
+  min-width: 4.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* AFFLUENCE — pastille « COMPLET / Full » ou « DERNIÈRES PLACES / Few seats ».
+   Même famille visuelle que le badge « T9 » ci-dessus (variante retenue par
+   l'exploitant le 09/09/2026 parmi cinq ; la jauge de remplissage est réservée
+   à la version définitive alimentée par l'API de réservation).
+   Valeurs mesurées sur la maquette validée à 1920×1080 et 1280×720.
+   Aucun `vertical-align` ici : la ligne Destination est une rangée flex, et
+   c'est son `align-items: center` qui pose la pastille sur l'axe commun. */
+.pill-affluence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vh;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-weight: 900;
+  font-size: 2.1vh;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 0.9vh;
+  padding: 0.55vh 1.2vh;
+  /* MARGE COMMUNE aux deux niveaux, et c'est elle qui aligne leurs bords
+     gauches d'une rangée à l'autre : tant que « COMPLET » gardait 1,4vw et
+     « DERNIÈRES PLACES » 0,7vw, les deux pastilles démarraient 13,4 px
+     l'une de l'autre. Ramenée de 1,4vw à 0,7vw — la valeur que le picto
+     express impose sur les lignes les plus chargées. */
+  margin-left: 0.7vw;
+  white-space: nowrap;
+}
+
+.pill-affluence small {
+  font-weight: 700;
+  font-size: 1.5vh;
+  opacity: 0.85;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pill-affluence.complet {
+  background: var(--rouge);
+  color: #fff;
+}
+
+.pill-affluence.limite {
+  background: var(--affluence-limite);
+  color: #2b1d00;
+}
+
+/* COLLISION MESURÉE le 10/09/2026, que la maquette ne pouvait pas montrer :
+   elle porte la pastille COURTE sur l'express (T9) et la pastille LONGUE sur
+   un train ordinaire (T6). La longue AVEC le picto n'y figure nulle part, et
+   sur une seule ligne les deux ne tiennent pas dans la colonne Destination —
+   « Nid d'Aigle » + « DERNIÈRES PLACES / Few seats » + picto débordait de
+   62 px (T9) et 80 px (T17) à 1920×1080, de 42 et 54 px à 1280×720. Avec
+   « COMPLET / Full », 0 px.
+
+   PREMIÈRE RÉPONSE, ÉCARTÉE PAR L'EXPLOITANT le 10/09/2026 : masquer le
+   picto derrière la pastille longue. Elle réglait la géométrie, mais elle
+   retirait de la ligne un repère que l'exploitant veut voir sur TOUS les
+   express — la mention écrite en dessous ne le remplace pas à distance, et
+   c'est de loin qu'un voyageur cherche son train.
+
+   RÉPONSE RETENUE : la pastille longue passe sur DEUX LIGNES (français au-
+   dessus, anglais en dessous) au lieu de s'étirer. Rien n'est retiré, ni le
+   picto, ni l'anglais — c'est la FORME de la pastille qui cède, là où elle
+   est la seule à pouvoir le faire sans perte. La pastille courte, elle, ne
+   change pas : elle tient déjà, et c'est le cas validé sur maquette.
+
+   Le `padding` est resserré pour que la pastille à deux lignes reste dans la
+   hauteur de rangée existante ; la marge de 0,7vw, elle, est portée par
+   `.pill-affluence` (commune aux deux niveaux, c'est ce qui les aligne) et
+   par le picto voisin.
+
+   CE QU'IL FAUT SURVEILLER SI ON Y RETOUCHE. `.txt` est `flex: 0 1 auto` :
+   il se dimensionne sur sa ligne la plus large, et tant que `.r-dest` a de
+   la place, rien n'est tronqué. Dès que cette réserve est épuisée, flex
+   comprime `.txt` et l'ellipse de `.dest` emporte le picto ENTIER — il est
+   le dernier élément de la ligne. La réserve n'est donc pas un détail
+   esthétique, c'est la marge avant disparition.
+   Mesurée sur le pire cas (T17, badge le plus large, « Nid d'Aigle ») :
+   30,1 px à 1920×1080 et 20,2 px à 1280×720. Sans le resserrement des
+   marges elle tombait à 14,4 et 9,6 px — trop peu. */
+/* Les tailles internes sont en `em` et non en vh : elles suivent alors la
+   police de la pastille, qui est déjà redéclarée dans le bloc ≤ 4/3. Le
+   bloc étroit n'a donc RIEN à transcrire — c'est ce qui permet de le laisser
+   tel quel (il masque de toute façon le picto et l'anglais à cette largeur).
+   Équivalences à 1920×1080, où 1em vaut 22,68 px : 0.12em = 0,25vh,
+   0.214em = 0,45vh, 0.429em = 0,9vh. */
+.pill-affluence.limite {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12em;
+  line-height: 1;
+  padding: 0.214em 0.429em;
+}
+
+.pill-affluence.limite small {
+  line-height: 1;
+}
+
+/* `.r-dest` en tête n'est PAS décoratif : sans lui, ce sélecteur pèse
+   exactement autant que `.r-dest .dest img.motrice-dest` déclaré plus bas,
+   et c'est l'ordre du fichier qui tranche — la marge du picto restait à
+   1,4vw et la réserve avant troncature perdait 13,4 px sans rien dire.
+   Constaté en mesurant `getComputedStyle(picto).marginLeft` le 10/09/2026. */
+.r-dest .dest .pill-affluence + img.motrice-dest {
+  margin-left: 0.7vw;
 }
 
 .r-dest .dest img.motrice-dest {
   height: 7vh;
   width: auto;
-  vertical-align: -1.9vh;
   margin-left: 1.4vw;
 }
 
@@ -1049,7 +1220,62 @@ body.mode-horloge .badge-cache {
   }
   .r-dest .dest img.motrice-dest {
     height: calc(7 * var(--u));
-    vertical-align: calc(-1.9 * var(--u));
+  }
+  .pill-affluence {
+    font-size: calc(2.1 * var(--u));
+    gap: calc(0.6 * var(--u));
+    border-radius: calc(0.9 * var(--u));
+    padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
+  }
+  .pill-affluence small {
+    font-size: calc(1.5 * var(--u));
+  }
+  /* §4.3 — DÉTERMINÉ AU RENDU, 1024×768 et 1080×1920, le 10/09/2026.
+     Ici la colonne Destination est bien plus étroite qu'en 16/9 et la
+     pastille n'y tient plus avec le picto : mesuré sur une ligne express
+     « Nid d'Aigle », 68 px de débordement (T9) et 80 px (T17) avec
+     « COMPLET », 69 et 82 px avec « DERNIÈRES PLACES ».
+
+     Ce qui a été essayé, et ce que ça donne (débordement dest / note) :
+       actuel . . . . . . . . . . . . . . . . 68–82 / 0
+       (a) pastille en tête de note,
+           mention express raccourcie . . . . 0 / 4    (complet)
+                                              0 / 114  (limite)
+       (b) idem, sans l'anglais . . . . . . . 0 / 0    (complet)
+                                              0 / 59   (limite)
+       (c) FR seul après le nom, picto gardé  44–57 / 0 (complet)
+                                              14–27 / 0 (limite)
+       (d) picto masqué, pastille inchangée   0 / 0    (complet)
+                                              69–82 / 0 (limite)
+
+     RETENU : (d) pour « COMPLET » — zéro troncature, et c'est déjà la règle
+     du 16/9, simplement étendue au niveau court ; l'information du picto
+     reste écrite en toutes lettres et dans les deux langues juste dessous.
+     Les options (a) et (b) déplacent la pastille dans la note et y font
+     tenir moins bien, pour le même résultat sur « COMPLET ».
+
+     « DERNIÈRES PLACES » NE TIENT PAS, quoi qu'on fasse : le meilleur essai
+     laisse 14 px (T9) et 27 px (T17) de coupe, et déplacer la pastille dans
+     la note est PIRE (59 px). On retient donc le moins mauvais — FR seul,
+     picto masqué — qui préserve le libellé français entier et ne coupe que
+     sa fin de boîte, au lieu d'entamer le mot « PLACES ». Ce format n'est
+     posé dans aucune gare aujourd'hui ; le lot « adaptation des écrans à
+     toutes les tailles » doit reprendre ce cas, colonne comprise. */
+  .dest .pill-affluence + img.motrice-dest {
+    display: none;
+  }
+  .dest .pill-affluence.limite small {
+    display: none;
+  }
+  /* L'ALIGNEMENT DE COLONNE EST ABANDONNÉ ICI. Il réserve la largeur du plus
+     long terminus sur toutes les rangées ; en 16/9 la colonne Destination le
+     permet, à 1024×768 elle ne le permet pas — « DERNIÈRES PLACES » y coupe
+     déjà. Aligner ajouterait la différence à ce manque, et un alignement qui
+     tronque le nom de la gare serait un mauvais échange : le nom, lui, n'est
+     pas facultatif. */
+  .badge-train,
+  .r-dest .dest .nom-dest {
+    min-width: 0;
   }
   .r-dest .note {
     font-size: calc(1.95 * var(--u));

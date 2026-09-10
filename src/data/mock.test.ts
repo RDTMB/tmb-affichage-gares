@@ -80,6 +80,9 @@ vi.stubGlobal(
 const { MockProvider } = await import('./mock');
 const { exigeLignes } = await import('./supabase');
 
+/** Journée d'essai de l'affluence : le grand service, express en circulation. */
+const DATE_AFFLUENCE = '2026-07-15';
+
 describe('MockProvider — écritures sur une date non générée', () => {
   beforeEach(() => stockage.clear());
 
@@ -1208,5 +1211,76 @@ describe('Rôles multiples (mock)', () => {
     ]);
     expect(journal.every((e) => e.cle === 'caisse@demo')).toBe(true);
     expect(journal.every((e) => e.qui === 'admin@demo')).toBe(true);
+  });
+});
+
+describe('MockProvider — affluence : écrire, remplacer, supprimer', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+  });
+
+  it('la démonstration porte les deux pastilles d’emblée', async () => {
+    // Le jeu d'exemples des maquettes validées : sans lui, la démo ne
+    // montrerait la fonctionnalité qu’après une déclaration manuelle.
+    const liste = await new MockProvider().getAffluence(DATE_AFFLUENCE);
+    expect(liste.map((a) => [a.numero, a.niveau]).sort()).toEqual([
+      [11, 'limite'],
+      [5, 'complet'],
+    ]);
+  });
+
+  it('déclarer, puis remplacer le niveau du même train', async () => {
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'limite');
+    expect((await provider.getAffluence(DATE_AFFLUENCE)).find((a) => a.numero === 7)?.niveau).toBe(
+      'limite',
+    );
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'complet');
+    const liste = await provider.getAffluence(DATE_AFFLUENCE);
+    expect(liste.filter((a) => a.numero === 7)).toHaveLength(1);
+    expect(liste.find((a) => a.numero === 7)?.niveau).toBe('complet');
+  });
+
+  it('`null` SUPPRIME la ligne — il n’y a pas de troisième niveau', async () => {
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 5, null);
+    expect((await provider.getAffluence(DATE_AFFLUENCE)).some((a) => a.numero === 5)).toBe(false);
+  });
+
+  it('tout remettre à la normale ne fait PAS revenir le jeu de démonstration', async () => {
+    // Distinction absence / vide, la même qu’en base : une journée dont on a
+    // tout levé reste vide. Sans elle, un train rouvert à la vente
+    // redeviendrait « complet » tout seul au rechargement suivant.
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 5, null);
+    await provider.setAffluence(DATE_AFFLUENCE, 11, null);
+    expect(await provider.getAffluence(DATE_AFFLUENCE)).toEqual([]);
+  });
+
+  it('chaque journée a son propre remplissage', async () => {
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'complet');
+    expect((await provider.getAffluence('2026-07-16')).some((a) => a.numero === 7)).toBe(false);
+  });
+
+  it('l’écriture laisse une ligne de journal, comme le déclencheur en base', async () => {
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'complet');
+    const ligne = (await provider.listJournal({})).find((j) => j.table_cible === 'affluence');
+    expect(ligne, 'aucune ligne de journal pour l’affluence').toBeDefined();
+    expect(ligne?.champ).toBe('niveau');
+    expect(ligne?.apres).toBe('complet');
+    expect(ligne?.date_service).toBe(DATE_AFFLUENCE);
+    expect(ligne?.cle).toBe(`${DATE_AFFLUENCE} 7`);
+  });
+
+  it('reposer le même niveau n’écrit rien : pas de bruit dans le journal', async () => {
+    const provider = new MockProvider();
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'complet');
+    await provider.setAffluence(DATE_AFFLUENCE, 7, 'complet');
+    expect(
+      (await provider.listJournal({})).filter((j) => j.table_cible === 'affluence'),
+    ).toHaveLength(1);
   });
 });
