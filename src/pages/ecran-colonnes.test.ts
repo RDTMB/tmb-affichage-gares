@@ -90,11 +90,16 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
 
   it('le numéro est un badge en TÊTE de .dest, avant le nom de gare', () => {
     // L'ordre compte : le badge doit précéder le nom, pas le suivre.
-    expect(ts).toMatch(/<div class="dest">\$\{badge\}\$\{echapper\(nomGare/);
+    // Le nom vit dans un `<span class="nom-dest">` : il porte une largeur
+    // FIXE pour que la pastille d'affluence commence toujours au même
+    // endroit d'une rangée à l'autre (86,5 px de balancement sans lui).
+    expect(ts).toMatch(/<div class="dest">\$\{badge\}<span class="nom-dest">\$\{echapper\(nomGare/);
     // …et le picto motrice de l'express reste le DERNIER élément de la ligne.
     // Entre les deux vient désormais la pastille d'affluence : elle se lit
     // avec le nom, le picto termine (décision de l'exploitant du 09/09/2026).
-    expect(ts).toMatch(/nomGare\(p\.destination\)\)\}\$\{affluenceHtml\}\$\{motrice\}<\/div>/);
+    expect(ts).toMatch(
+      /nomGare\(p\.destination\)\)\}<\/span>\$\{affluenceHtml\}\$\{motrice\}<\/div>/,
+    );
   });
 
   it('la pastille d’affluence ne s’affiche PAS sur un train supprimé', () => {

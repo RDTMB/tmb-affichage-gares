@@ -320,7 +320,7 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
-      <div class="txt"><div class="dest">${badge}${echapper(nomGare(p.destination))}${affluenceHtml}${motrice}</div><div class="note${
+      <div class="txt"><div class="dest">${badge}<span class="nom-dest">${echapper(nomGare(p.destination))}</span>${affluenceHtml}${motrice}</div><div class="note${
         p.express || sansArret !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>

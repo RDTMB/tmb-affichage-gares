@@ -144,14 +144,43 @@ describe('la collision pastille × picto express, en 16/9', () => {
   });
 
   it('les deux marges resserrées à 0.7vw restent en place', () => {
-    // Sans elles, la réserve avant troncature tombait de 30,2 à 14,4 px à
+    // Sans elles, la réserve avant troncature tombait de 30,1 à 14,4 px à
     // 1920×1080, et de 20,2 à 9,6 px à 1280×720 (pire cas T17, le badge le
     // plus large). `.txt` est `flex: 0 1 auto` : quand cette réserve est
     // épuisée, l'ellipse de `.dest` emporte le picto ENTIER.
-    expect(corpsLimite).toContain('margin-left: 0.7vw');
-    const voisin =
-      /\.dest \.pill-affluence\.limite \+ img\.motrice-dest \{([^}]*)\}/.exec(base)?.[1] ?? '';
+    const corpsPastille = /^\.pill-affluence \{([^}]*)\}/m.exec(base)?.[1] ?? '';
+    expect(corpsPastille, 'règle `.pill-affluence` absente').not.toBe('');
+    expect(corpsPastille).toContain('margin-left: 0.7vw');
+    const voisin = /\.dest \.pill-affluence \+ img\.motrice-dest \{([^}]*)\}/.exec(base)?.[1] ?? '';
     expect(voisin, 'la marge du picto voisin a disparu').toContain('margin-left: 0.7vw');
+    // `.r-dest` EN TÊTE, et ce n'est pas décoratif : sans lui, le sélecteur
+    // pèse autant que `.r-dest .dest img.motrice-dest` déclaré plus bas, et
+    // c'est l'ordre du fichier qui gagne — la marge repasse à 1,4vw et la
+    // réserve perd 13,4 px sans que rien ne le dise. Constaté le 10/09/2026.
+    expect(base, 'le préfixe `.r-dest` qui donne la priorité a disparu').toContain(
+      '.r-dest .dest .pill-affluence + img.motrice-dest',
+    );
+  });
+
+  it('la marge est COMMUNE aux deux niveaux : c’est ce qui les aligne', () => {
+    // Tant que « COMPLET » gardait 1,4vw et « DERNIÈRES PLACES » 0,7vw, les
+    // deux pastilles démarraient 13,4 px l'une de l'autre — visible dès
+    // qu'on descend la colonne. Une marge propre à `.limite` la rétablirait.
+    expect(corpsLimite).not.toContain('margin-left');
+  });
+
+  it('le badge et le nom de gare ont une largeur PLANCHER, en `em`', () => {
+    // Les deux autres sources du balancement mesuré (86,5 px au total) : le
+    // badge « T9 » contre « T11 » (17,5 px) et « Le Fayet » contre « Nid
+    // d'Aigle » (55,7 px). En `em`, le bloc ≤ 4/3 n'a rien à transcrire —
+    // il les neutralise, faute de place à cette largeur.
+    const badge = /^\.badge-train \{([^}]*)\}/m.exec(base)?.[1] ?? '';
+    expect(badge, 'règle `.badge-train` absente').not.toBe('');
+    expect(badge).toMatch(/min-width: [\d.]+em/);
+    const nom = /\.r-dest \.dest \.nom-dest \{([^}]*)\}/.exec(base)?.[1] ?? '';
+    expect(nom, 'règle `.nom-dest` absente').not.toBe('');
+    expect(nom).toMatch(/min-width: [\d.]+em/);
+    expect(nom).toContain('display: inline-block');
   });
 
   it('les tailles internes sont en `em`, pour que le bloc ≤ 4/3 n’ait rien à transcrire', () => {
@@ -161,7 +190,7 @@ describe('la collision pastille × picto express, en 16/9', () => {
     expect(corpsLimite).not.toMatch(/-?\d*\.?\d+vh\b/);
   });
 
-  it('la pastille COURTE n’est pas touchée : c’est le cas validé sur maquette', () => {
+  it('la pastille COURTE reste sur une seule ligne', () => {
     // « T9 Nid d'Aigle [COMPLET Full] [picto] » tient déjà (0 px mesuré).
     // Une règle qui viserait `.pill-affluence` sans `.limite` la changerait.
     expect(base).not.toMatch(/^\.pill-affluence \{[^}]*flex-direction/m);

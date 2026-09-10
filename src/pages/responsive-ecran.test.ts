@@ -76,6 +76,11 @@ const CALQUES_CENTRES = ['.veille', '.neutre', '.horloge-neutre', '.plein-ecran'
 const CHOIX_DAFFICHAGE_ETROIT = new Map<string, string[]>([
   ['.dest .pill-affluence + img.motrice-dest', ['display: none']],
   ['.dest .pill-affluence.limite small', ['display: none']],
+  // L'alignement de colonne du 16/9 (badge et nom de gare à largeur fixe,
+  // pour que la pastille commence toujours au même endroit) est ABANDONNÉ
+  // ici : il réserve la largeur du plus long terminus sur chaque rangée, et
+  // à 1024×768 la colonne ne l'a pas — « DERNIÈRES PLACES » y coupe déjà.
+  ['.badge-train, .r-dest .dest .nom-dest', ['min-width: 0']],
 ]);
 
 describe('ecran.css — le 16:9 de Saint-Gervais ne bouge pas', () => {

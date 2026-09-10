@@ -281,6 +281,32 @@ main {
      EXACTEMENT sur celle du nom de gare — mesuré, écart 0 px. */
   vertical-align: baseline;
   font-variant-numeric: tabular-nums;
+  /* LARGEUR PLANCHER. « T9 » mesurait 61,6 px et « T11 » 79,1 px : le nom de
+     gare démarrait donc 17,5 px plus loin une rangée sur deux, et tout ce qui
+     suit avec. `min-width` et non `width` : un « SUP 12 » plus large pousse
+     normalement — ces rangées-là n'ont jamais de picto express, donc de la
+     place. 2.62em = 79,1 px à 1920×1080, mesuré sur « T11 ». */
+  min-width: 2.62em;
+  justify-content: center;
+}
+
+/* Le nom de la gare de destination occupe une LARGEUR PLANCHER, pour que la
+   pastille d'affluence commence toujours au même endroit.
+
+   Mesuré avant : la pastille démarrait entre 256,8 px et 343,3 px selon la
+   rangée — 86,5 px de balancement sur cinq lignes, dont 55,7 px dus au nom
+   (« Le Fayet » contre « Nid d'Aigle ») et 17,5 px au badge. Sur un tableau
+   de départs, l'œil descend une colonne : ce qui bouge d'une ligne à l'autre
+   se relit à chaque fois.
+
+   Dimensionné sur « Nid d'Aigle », le plus long des trois terminus réels
+   (Le Fayet, Bellevue, Nid d'Aigle) — 4.78em = 222 px à 1920×1080, au plus
+   juste. En `em`, donc solidaire de la police : le bloc ≤ 4/3 n'a rien à
+   transcrire. `min-width` et non `width` : si l'exploitation renomme une gare
+   plus long, le nom pousse au lieu d'être coupé. */
+.r-dest .dest .nom-dest {
+  display: inline-block;
+  min-width: 4.78em;
 }
 
 /* AFFLUENCE — pastille « COMPLET / Full » ou « DERNIÈRES PLACES / Few seats ».
@@ -304,7 +330,12 @@ main {
   text-transform: uppercase;
   border-radius: 0.9vh;
   padding: 0.55vh 1.2vh;
-  margin-left: 1.4vw;
+  /* MARGE COMMUNE aux deux niveaux, et c'est elle qui aligne leurs bords
+     gauches d'une rangée à l'autre : tant que « COMPLET » gardait 1,4vw et
+     « DERNIÈRES PLACES » 0,7vw, les deux pastilles démarraient 13,4 px
+     l'une de l'autre. Ramenée de 1,4vw à 0,7vw — la valeur que le picto
+     express impose sur les lignes les plus chargées. */
+  margin-left: 0.7vw;
   vertical-align: 0.9vh;
   white-space: nowrap;
 }
@@ -348,8 +379,9 @@ main {
    change pas : elle tient déjà, et c'est le cas validé sur maquette.
 
    `vertical-align` et `padding` sont resserrés pour que la pastille à deux
-   lignes reste dans la hauteur de rangée existante ; les deux marges passent
-   de 1,4vw à 0,7vw pour rendre au picto la place qu'il réclame.
+   lignes reste dans la hauteur de rangée existante ; la marge de 0,7vw, elle,
+   est portée par `.pill-affluence` (commune aux deux niveaux, c'est ce qui
+   les aligne) et par le picto voisin.
 
    CE QU'IL FAUT SURVEILLER SI ON Y RETOUCHE. `.txt` est `flex: 0 1 auto` :
    il se dimensionne sur sa ligne la plus large, et tant que `.r-dest` a de
@@ -373,14 +405,18 @@ main {
   line-height: 1;
   vertical-align: -0.095em;
   padding: 0.214em 0.429em;
-  margin-left: 0.7vw;
 }
 
 .pill-affluence.limite small {
   line-height: 1;
 }
 
-.dest .pill-affluence.limite + img.motrice-dest {
+/* `.r-dest` en tête n'est PAS décoratif : sans lui, ce sélecteur pèse
+   exactement autant que `.r-dest .dest img.motrice-dest` déclaré plus bas,
+   et c'est l'ordre du fichier qui tranche — la marge du picto restait à
+   1,4vw et la réserve avant troncature perdait 13,4 px sans rien dire.
+   Constaté en mesurant `getComputedStyle(picto).marginLeft` le 10/09/2026. */
+.r-dest .dest .pill-affluence + img.motrice-dest {
   margin-left: 0.7vw;
 }
 
@@ -1198,6 +1234,16 @@ body.mode-horloge .badge-cache {
   }
   .dest .pill-affluence.limite small {
     display: none;
+  }
+  /* L'ALIGNEMENT DE COLONNE EST ABANDONNÉ ICI. Il réserve la largeur du plus
+     long terminus sur toutes les rangées ; en 16/9 la colonne Destination le
+     permet, à 1024×768 elle ne le permet pas — « DERNIÈRES PLACES » y coupe
+     déjà. Aligner ajouterait la différence à ce manque, et un alignement qui
+     tronque le nom de la gare serait un mauvais échange : le nom, lui, n'est
+     pas facultatif. */
+  .badge-train,
+  .r-dest .dest .nom-dest {
+    min-width: 0;
   }
   .r-dest .note {
     font-size: calc(1.95 * var(--u));
