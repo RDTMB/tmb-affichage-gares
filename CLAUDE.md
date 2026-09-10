@@ -132,6 +132,17 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   dans TOUTES les gares qu'il doit encore desservir.
   L'ABSENCE de ligne vaut « places disponibles » — pas de troisième niveau,
   remettre un train à la normale est une SUPPRESSION.
+  Tout se déclare dans l'onglet « Places », qui porte la MÊME barre de date
+  que Circulations (même `allerDate`, même `dateSel`) : la caisse n'a pas
+  l'onglet Circulations et doit pouvoir préparer le lendemain. Le jour même
+  la liste ne garde que les DÉPARTS RESTANTS ; les autres dates listent TOUS
+  les trains — il n'y a pas d'heure courante à laquelle se comparer. Une date
+  PASSÉE est en lecture seule pour tout le monde, supervision comprise, et
+  une journée pas encore OUVERTE l'est pour la caisse (RLS réserve `jours` à
+  la supervision) : la liste reste affichée, les sélecteurs sont éteints, un
+  bandeau dit qui l'ouvre, et le signal temps réel rend la main dès que c'est
+  fait. Le refus est calculé UNE fois (`saisieAffluence`) et sert au rendu
+  comme à l'écriture — `disabled` se retire dans l'inspecteur.
   Le remplissage se déclare dans l'onglet **Places** UNIQUEMENT (droit
   `affluence`, ouvert à admin, supervision et caisse) : un seul endroit pour
   les deux rôles. Circulations n'en garde que le filet de rangée, qui est une

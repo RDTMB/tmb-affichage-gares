@@ -307,6 +307,45 @@ défaut. Sont exclus les trains supprimés, les courses à vide, les facultatifs
 non activés et les départs déjà passés — un train parti n'a plus de places à
 déclarer.
 
+**NAVIGUER DANS LES JOURS.** L'onglet porte la **même barre de date que
+Circulations** (◀ · date · ▶ · Aujourd'hui · Demain), pour une raison
+précise : la caisse n'a **pas** l'onglet Circulations, et sans cette barre
+elle ne pourrait déclarer que le jour même — jamais préparer le lendemain.
+La date affichée est **la même pour les deux onglets** : changer de jour
+dans Places change aussi Circulations, et réciproquement.
+
+Ce que la liste montre dépend de la date :
+
+| Date        | Liste                    | Saisie                              |
+| ----------- | ------------------------ | ----------------------------------- |
+| aujourd'hui | les **départs restants** | ouverte (journée ouverte)           |
+| à venir     | **tous les trains**      | ouverte si la journée est ouverte   |
+| passée      | **tous les trains**      | **fermée** — consultation seulement |
+| hors saison | aucun train              | sans objet, et sans reproche        |
+
+Le jour même, un train parti n'a plus de places à vendre : la liste ne garde
+que ce sur quoi on peut encore agir. Les **autres dates n'ont pas d'heure
+courante** à laquelle se comparer — filtrer y viderait la liste dès le
+milieu de l'après-midi, et la caisse qui prépare le lendemain ne verrait
+rien. Une date **passée** se consulte : on lit ce qui a été déclaré, avec
+sa signature, on ne réécrit pas ce qui s'est passé — pour tout le monde,
+supervision comprise.
+
+**Journée pas encore ouverte.** Une journée à venir n'existe en base qu'une
+fois **ouverte par l'exploitation** : RLS réserve la table `jours` à la
+supervision (et au technique pour la réinitialisation), la caisse ne peut pas
+l'ouvrir. Dans ce cas la liste reste **affichée** — refuser d'écrire n'est
+pas refuser de montrer, et la caisse doit voir les trains de la date qu'elle
+prépare — mais les sélecteurs sont **éteints** et un bandeau dit quoi faire :
+« Journée pas encore ouverte par l'exploitation — les places ne peuvent pas
+encore être déclarées pour cette date. Demandez à la supervision d'ouvrir la
+journée. » Dès que la supervision ouvre la journée, le **signal temps réel**
+rend la main au guichet, sans rechargement.
+
+Le refus est **calculé une seule fois** et sert au rendu comme à l'écriture :
+un bouton dégrisé dans l'inspecteur n'écrit rien. Le vrai verrou reste RLS —
+ce calcul ne fait que l'annoncer avant le clic, plutôt qu'après l'erreur.
+
 Le remplissage se déclarait auparavant à deux endroits (une colonne dans
 Circulations, une carte dans Bandeau). Pourquoi pas Circulations : cet onglet
 vit autour du brouillon et de « Publier », et n'y montrer qu'une commande à la
@@ -317,10 +356,9 @@ onglet. Circulations garde en revanche le **filet de rangée** rouge ou ambre :
 c'est une information, pas une commande.
 
 _(Décisions de l'exploitant du 09/09/2026 pour l'affichage, du 10/09/2026 pour
-l'onglet dédié. La jauge de remplissage graduée est réservée à la version
-alimentée par l'API de réservation : elle n'est pas dans ce lot. L'onglet ne
-montre que la JOURNÉE EN COURS — déclarer pour demain suppose que la journée
-existe en base, ce qu'elle ne fait qu'une fois ouverte en supervision.)_
+l'onglet dédié et pour la navigation dans les jours. La jauge de remplissage
+graduée est réservée à la version alimentée par l'API de réservation : elle
+n'est pas dans ce lot.)_
 
 ## 3. Écran de gare (`ecran.html`)
 

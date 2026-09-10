@@ -1044,6 +1044,15 @@ tr.paire-fin td {
   font-weight: 900;
 }
 
+/* Journée passée ou pas encore ouverte. Mesuré avant : le seul écart avec
+   l'état actif était `cursor: not-allowed` — invisible sur l'écran tactile
+   du guichet, qui est justement là où ce cas se rencontre. Le niveau DÉJÀ
+   déclaré reste lisible sous le voile : on consulte, on ne réécrit pas. */
+.seg-affluence button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Repère de RANGÉE dans Circulations. La COMMANDE a quitté ce tableau pour
    l'onglet « Places » (10/09/2026) ; l'INFORMATION reste, pour que la
    supervision voie d'un balayage qu'un train est plein sans changer
@@ -3129,6 +3138,14 @@ td.cell-sens > .sens-groupe {
 
   .nav-date button {
     min-width: 44px;
+  }
+
+  /* Le champ de date restait à 34 px de haut, dans les DEUX barres : les
+     flèches et les puces avaient été relevées, pas lui. Mesuré à 375 px,
+     c'est la seule cible du rang sous les 44 px — et au guichet, c'est
+     celle qu'on vise pour sauter à une date lointaine. */
+  .nav-date input[type='date'] {
+    min-height: 44px;
   }
 
   .seg button,

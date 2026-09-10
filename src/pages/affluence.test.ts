@@ -736,5 +736,18 @@ describe('Places : naviguer dans les jours', () => {
     expect(css).not.toContain('.barre-jour .nav-date {');
     expect(css).not.toContain('.barre-jour .chips {');
     expect(css).toContain('  .nav-date button {\n    min-width: 44px;\n  }');
+    // Mesuré à 375 px : le champ de date était la seule cible du rang sous
+    // les 44 px, dans les DEUX barres — les flèches et les puces avaient été
+    // relevées, pas lui.
+    expect(css).toContain("  .nav-date input[type='date'] {\n    min-height: 44px;\n  }");
+  });
+
+  it('un sélecteur éteint SE VOIT, pas seulement au curseur', () => {
+    // Mesuré avant : le seul écart avec l'état actif était
+    // `cursor: not-allowed`, invisible sur l’écran tactile du guichet — qui
+    // est justement là où la journée non ouverte se rencontre.
+    expect(css).toContain('.seg-affluence button:disabled {');
+    const regle = /\.seg-affluence button:disabled \{([\s\S]*?)\}/.exec(css)?.[1] ?? '';
+    expect(regle, 'aucun voile sur le sélecteur éteint').toContain('opacity');
   });
 });
