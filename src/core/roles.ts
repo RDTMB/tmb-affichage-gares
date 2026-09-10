@@ -32,7 +32,7 @@ export const DESCRIPTION_ROLE: Record<Role, string> = {
     'Chef d’exploitation : comptes supervision et caisse, modèles de messages, médias, paramètres d’exploitation.',
   supervision: 'Exploitation courante : circulations, bandeau voyageurs, publication.',
   caisse:
-    'Guichet : bandeau voyageurs, médias, commande des écrans (rechargement, veille), journal.',
+    'Guichet : bandeau voyageurs, trains complets, médias, commande des écrans (rechargement, veille), journal.',
 };
 
 /**
@@ -75,6 +75,13 @@ export const DROITS = [
   'publier',
   /** Messages voyageurs, météo du sommet, vitesse du bandeau. */
   'bandeau',
+  /**
+   * Déclarer un train complet ou aux dernières places (table `affluence`).
+   * Droit DISTINCT de `circulations` : c'est un fait commercial, constaté au
+   * guichet, et la caisse doit pouvoir le poser sans toucher aux horaires.
+   * Aligné sur la politique RLS « roles: affluence » — ni plus, ni moins.
+   */
+  'affluence',
   /** Bibliothèque de modèles de messages (administration). */
   'modeles',
   /** Médias, mode et durée du cycle d'affichage. */
@@ -116,6 +123,13 @@ export type Droit = (typeof DROITS)[number];
  * l'exploitation. Il ne gagne AUCUN droit sur les circulations, les réglages
  * d'exploitation ni les comptes.
  *
+ * Ajout du 10/09/2026 : `affluence` — déclarer un train complet. Droit NEUF,
+ * et c'est délibéré : le remplissage est constaté au guichet, pas décidé par
+ * l'exploitation. Le passer sous `circulations` aurait obligé à ouvrir à la
+ * caisse la table d'où sortent tous les horaires affichés en gare. Il est
+ * accordé à `admin`, `supervision` et `caisse`, exactement comme la
+ * politique RLS « roles: affluence » — le technique n'y touche pas.
+ *
  * ⚠ Ce fichier n'est qu'un MIROIR. Les barrières réelles sont les politiques
  * RLS, qui raisonnent par RÔLE et non par droit : élargir ici sans élargir
  * `supabase/schema.sql` (et les trois scripts rejouables qui recréent les
@@ -138,6 +152,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   ],
   admin: [
     'bandeau',
+    'affluence',
     'modeles',
     'medias',
     'parametres.exploitation',
@@ -150,6 +165,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   ],
   supervision: [
     'circulations',
+    'affluence',
     'journee.reinitialiser',
     'grilles',
     'bandeau',
@@ -158,7 +174,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
     'journal',
     'publier',
   ],
-  caisse: ['bandeau', 'journal', 'publier', 'medias', 'ecrans.commander'],
+  caisse: ['bandeau', 'affluence', 'journal', 'publier', 'medias', 'ecrans.commander'],
 };
 
 /** Union des droits portés par un ensemble de rôles. */

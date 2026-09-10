@@ -362,6 +362,7 @@
                   <th style="width: 150px">Terminus</th>
                   <th style="width: 140px">Facultatif</th>
                   <th style="width: 132px">Sans voyageurs</th>
+                  <th style="width: 232px">Remplissage</th>
                   <th>Statut</th>
                   <th style="width: 160px">Motif</th>
                 </tr>
@@ -379,7 +380,11 @@
             <b>supprimer</b> ou à <b>maintenir</b> jusqu'au Nid d'Aigle. La journée est créée
             automatiquement à l'ouverture d'une date à venir. Un train coché
             <b>Sans voyageurs</b> circule à vide : il garde sa rame, sa rotation et son terminus en
-            supervision, mais n'apparaît sur <b>aucun</b> écran voyageurs.
+            supervision, mais n'apparaît sur <b>aucun</b> écran voyageurs. La colonne
+            <b>Remplissage</b> est la seule de ce tableau, avec l'heure de départ réelle d'un train
+            supplémentaire, qui s'applique <b>immédiatement</b> : elle ne passe pas par « Publier »
+            — on la renseigne quand on cesse de vendre, avec des voyageurs déjà sur le quai. Le
+            guichet la renseigne de son côté depuis l'onglet Bandeau.
             <button class="leger" id="btn-reinitialiser" style="margin-left: 8px">
               Réinitialiser la journée depuis la grille…
             </button>
@@ -470,6 +475,31 @@
 
       <!-- ================= MESSAGES ================= -->
       <section class="onglet" id="t-bandeau">
+        <!-- TRAINS COMPLETS — la carte du GUICHET. Elle vit ici et non dans
+             l'onglet Circulations, que la caisse ne voit pas et qu'il n'est
+             pas question de lui ouvrir : les horaires de la ligne entière ne
+             la regardent pas, le remplissage de ses prochains départs si.
+             Placée AVANT les messages : c'est le geste le plus fréquent au
+             comptoir, et il se fait sous pression.
+             Masquée par le script pour qui n'a pas le droit `affluence`. -->
+        <div class="carte" id="carte-affluence" style="display: none">
+          <h2>
+            Trains complets
+            <span class="sous">
+              visible immédiatement sur les écrans — sans passer par « Publier »
+            </span>
+          </h2>
+          <div class="ligne">
+            <label
+              >Gare :
+              <select id="affluence-gare"></select>
+            </label>
+            <span style="font-size: 12px; color: var(--sec)">
+              Prochains départs du jour. Le poste retient la gare choisie.
+            </span>
+          </div>
+          <div id="liste-affluence"></div>
+        </div>
         <div class="carte">
           <h2>
             Messages voyageurs

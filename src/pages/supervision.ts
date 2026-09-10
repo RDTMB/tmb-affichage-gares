@@ -24,15 +24,18 @@ import {
   terminusPossiblesSup,
   trainsDuJour,
   monteesSansRetour,
+  passagesPourGare,
   serviceActif,
 } from '../core/horaires';
 import { construitRotationSup, prepareDepartSup, prochainNumeroSup } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from '../core/types';
 import type {
+  Affluence,
   Circulation,
   EcranInfo,
   GareId,
+  NiveauAffluence,
   Grille,
   Jour,
   Machine,
@@ -218,6 +221,13 @@ let params: Params | null = null;
 let messages: Message[] = [];
 let medias: Media[] = [];
 let utilisateurs: User[] = [];
+/**
+ * AFFLUENCE de la journée affichée. Hors brouillon, volontairement : elle
+ * s'écrit immédiatement (voir `changeAffluence`), donc ce tableau reflète
+ * toujours la BASE et jamais un état en attente. `brouillon.ts` ne la connaît
+ * pas et n'a pas à la connaître.
+ */
+let affluenceJour: Affluence[] = [];
 let modeles: ModeleMessage[] = [];
 let editionModeleId: string | null = null;
 let traductionModeleManuelle = false;
@@ -549,6 +559,7 @@ async function chargeTout(): Promise<void> {
     joursPublies.set(demande, copieJour(j)); // état EN BASE, avant brouillon
     jour = j;
     rafraichitJourEffectif(); // réapplique les circulations/terminus en attente pour cette date
+    await chargeAffluence(demande);
   }
 
   // Une publication faite depuis un AUTRE poste remet la référence à zéro :
@@ -566,7 +577,86 @@ async function rechargeJour(): Promise<void> {
   if (demande !== dateSel) return; // une navigation plus récente a pris le relais
   jour = j;
   rafraichitJourEffectif();
+  await chargeAffluence(demande);
   rendreCirculations();
+}
+
+/**
+ * AFFLUENCE de la date affichée. Un échec ne bloque RIEN : les circulations
+ * restent pilotables, seuls les sélecteurs retombent sur « Places ». Cette
+ * lecture est un CONFORT — elle dit ce que le guichet a déjà déclaré — et la
+ * perdre ne doit pas emporter l'onglet un matin de service.
+ */
+async function chargeAffluence(date: string): Promise<void> {
+  const liste = await provider.getAffluence(date).catch(() => [] as Affluence[]);
+  if (date === dateSel) affluenceJour = liste;
+}
+
+/** Niveau déclaré pour ce train, `null` = places disponibles. */
+function affluenceDe(numero: number): NiveauAffluence | null {
+  return affluenceJour.find((a) => a.numero === numero)?.niveau ?? null;
+}
+
+const LIBELLE_AFFLUENCE: Record<NiveauAffluence, string> = {
+  limite: 'dernières places',
+  complet: 'complet',
+};
+
+/**
+ * Déclare le remplissage d'un train. ÉCRITURE IMMÉDIATE, hors brouillon et
+ * hors « Publier ».
+ *
+ * EXCEPTION ASSUMÉE, à ne pas « corriger » : tout le reste de l'onglet
+ * Circulations passe par le brouillon. Ici non, pour la même raison que
+ * `confirmerDepartSup` — on constate au guichet qu'on ne vend plus, avec des
+ * voyageurs déjà sur le quai, et un clic de publication supplémentaire
+ * laisserait l'écran annoncer des places libres pendant ce temps. La caisse,
+ * de surcroît, n'a aucune raison de publier les circulations de quelqu'un
+ * d'autre pour signaler que son train est plein.
+ *
+ * En contrepartie l'échec est dit FRANCHEMENT : message persistant, et rien
+ * ne bouge à l'écran de saisie. Aucun rendu optimiste — on n'affiche que ce
+ * qui est réellement en base.
+ */
+async function changeAffluence(numero: number, niveau: NiveauAffluence | null): Promise<void> {
+  const date = dateSel;
+  if (affluenceDe(numero) === niveau) return; // rien à écrire
+  const libelle = libelleTrain(
+    { numero, supplementaire: circulationDe(numero)?.supplementaire === true },
+    (jour?.circulations ?? []).map((x) => ({
+      numero: x.numero,
+      supplementaire: x.supplementaire,
+    })),
+  );
+  try {
+    await provider.setAffluence(date, numero, niveau);
+    if (date !== dateSel) return; // l'agent a changé de date entre-temps
+    await chargeAffluence(date);
+    afficheEchecPublication([]); // un succès efface l'échec précédent
+    // Le journal d'exploitation trace l'écriture côté base ; ici on ne
+    // touche PAS au compteur de « Publier » : rien n'est en attente.
+    rendreCirculations();
+    rendreAffluenceCaisse();
+    toast(
+      niveau === null
+        ? `${libelle} rouvert à la vente — les écrans sont à jour`
+        : `${libelle} signalé ${LIBELLE_AFFLUENCE[niveau]} — visible sur les écrans`,
+    );
+  } catch (erreur) {
+    // Message PERSISTANT : un toast fugace a déjà coûté trois fois à ce
+    // projet une écriture qu'on croyait passée. L'affichage de saisie garde
+    // sa valeur précédente, puisqu'on ne l'a jamais avancée.
+    afficheEchecPublication(
+      [
+        `${libelle} : ${
+          erreur instanceof Error ? erreur.message : String(erreur)
+        } — le remplissage précédent reste affiché en gare.`,
+      ],
+      'Remplissage non enregistré',
+    );
+    rendreCirculations();
+    rendreAffluenceCaisse();
+  }
 }
 
 function rendreTout(): void {
@@ -577,6 +667,7 @@ function rendreTout(): void {
   rendreSelecteurModeles();
   rendreBibliotheque();
   rendreMessages();
+  rendreAffluenceCaisse();
   rendreMedias();
   rendreParametres();
   void rechargeJournal();
@@ -857,6 +948,9 @@ async function apresConnexion(): Promise<void> {
   // Écouteur DÉLÉGUÉ sur le conteneur, posé une seule fois : la grille est
   // réécrite à chaque réglage, des écouteurs par case ne survivraient pas.
   brancheOngletsParRole();
+  // Même raison : la liste des départs du guichet est réécrite à chaque
+  // déclaration, l'écouteur vit donc sur son conteneur.
+  brancheAffluenceCaisse();
   appliqueRoles();
   try {
     await chargeTout();
@@ -1007,6 +1101,38 @@ function ligneCirculation(
     aVide ? 'checked' : ''
   }${verrou} />${aVide ? 'Sans voyageurs' : ''}</label>`;
 
+  // AFFLUENCE — trois positions exclusives, donc le composant `.seg` (celui
+  // du statut), pas un `<select>` natif ni un interrupteur : ce n'est ni un
+  // oui/non, ni une liste longue.
+  //
+  // Écriture IMMÉDIATE, hors brouillon : mêmes raisons que « Le train est
+  // reparti » — on constate qu'on ne vend plus, avec des voyageurs sur le
+  // quai. D'où l'absence de `verrou` sur ces boutons : ils ne dépendent pas
+  // du droit `circulations` mais du droit `affluence`, que la caisse a aussi.
+  const niveau = affluenceDe(n);
+  // Un train qui ne prend personne n'a pas de remplissage : la commande est
+  // retirée, et le titre dit LEQUEL des trois cas c'est. Un contrôle grisé
+  // sans explication est une devinette.
+  const sansRemplissage =
+    c.statut === 'supprime'
+      ? 'Ce train est supprimé : il n’a plus de remplissage.'
+      : aVide
+        ? 'Ce train circule sans voyageurs : il n’a pas de remplissage.'
+        : inactif
+          ? 'Ce train facultatif n’est pas activé : il n’apparaît sur aucun écran.'
+          : jour?.enregistre === false
+            ? 'Journée non enregistrée : le remplissage se déclare sur une journée réelle.'
+            : null;
+  const verrouAffluence = aLeDroit(roles, 'affluence') ? '' : ' disabled';
+  const affluenceCellule =
+    sansRemplissage !== null
+      ? `<span class="hors-service" title="${echapper(sansRemplissage)}">—</span>`
+      : `<span class="seg seg-affluence">
+        <button class="${niveau === null ? 'on-places' : ''}" data-action="affluence-aucune" data-numero="${n}"${verrouAffluence}>Places</button>
+        <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-action="affluence-limite" data-numero="${n}"${verrouAffluence}>Dernières places</button>
+        <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-action="affluence-complet" data-numero="${n}"${verrouAffluence}>Complet</button>
+      </span>`;
+
   const statut = inactif
     ? // #B4C4D4 sur blanc : illisible. L'atténuation est juste dans son
       // principe — la ligne ne circule pas — mais un texte qu'on ne peut pas
@@ -1022,9 +1148,14 @@ function ligneCirculation(
           : ''
       }`;
 
+  // Marqueur de RANGÉE : un train complet doit se repérer en parcourant le
+  // tableau, sans lire la colonne. Un filet à gauche, pas un fond — le fond
+  // est déjà pris par « sans voyageurs » et les deux peuvent coexister.
+  const marqueurAffluence = sansRemplissage === null && niveau !== null ? ` aff-${niveau}` : '';
+
   return `<tr class="${heurePassee(depart) ? 'passe' : ''} ${inactif ? 'inactif' : ''} ${
     aVide ? 'a-vide' : ''
-  } ${montee ? '' : 'paire-fin'}">
+  }${marqueurAffluence} ${montee ? '' : 'paire-fin'}">
     <td class="h-dep">${heure}<small>${echapper(
       libelleTrain(
         { numero: n, supplementaire: c.supplementaire },
@@ -1055,6 +1186,7 @@ function ligneCirculation(
         ? '<small class="a-vide-note">ne circule pas pour les voyageurs — absent des écrans</small>'
         : ''
     }</td>
+    <td>${affluenceCellule}</td>
     <td>${statut}</td>
     <td><select data-action="motif" data-numero="${n}" ${inactif || lectureSeule ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
   </tr>`;
@@ -1950,6 +2082,11 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
           ? `TRAIN ${numero} sans voyageurs en attente de publication`
           : `TRAIN ${numero} rouvert aux voyageurs, en attente de publication`,
       );
+    } else if (action.startsWith('affluence-')) {
+      // SEULE écriture de ce tableau qui ne passe pas par « Publier », avec
+      // le départ réel : elle part tout de suite. Voir `changeAffluence`.
+      const demande = action.replace('affluence-', '');
+      void changeAffluence(numero, demande === 'aucune' ? null : (demande as NiveauAffluence));
     } else if (action.startsWith('statut-')) {
       const statut = action.replace('statut-', '') as Circulation['statut'];
       if (statut === 'supprime') {
@@ -2054,6 +2191,10 @@ async function allerDate(date: string): Promise<void> {
     joursPublies.set(date, copieJour(nouveau)); // état EN BASE de la nouvelle date
     jour = nouveau;
     rafraichitJourEffectif(); // les modifications en attente pour CETTE date réapparaissent
+    // Vidée AVANT la lecture : sans cela, le tableau de la nouvelle date
+    // afficherait un instant le remplissage de la précédente.
+    affluenceJour = [];
+    await chargeAffluence(date);
     rendreCirculations();
     // Sans ce recalcul, la barre gardait le compte de la date précédente et
     // ne se réveillait qu'à la première écriture — d'où le saut brutal.
@@ -2163,6 +2304,134 @@ function libelleCible(m: Message): string {
 
 function nomDeGare(id: string): string {
   return grilles[0]?.gares.find((g) => g.id === id)?.nom ?? id;
+}
+
+// ---------------------------------------------------------------------------
+// §6 — TRAINS COMPLETS, la carte du guichet (onglet Bandeau)
+// ---------------------------------------------------------------------------
+// Elle ne vit pas dans l'onglet Circulations : la caisse ne le voit pas
+// (`onglets_par_role`, décision du 06/09/2026) et il n'est pas question de le
+// lui ouvrir. Ce dont le guichet a besoin, ce n'est pas la ligne entière —
+// c'est la liste de SES prochains départs.
+
+/**
+ * Gare du poste de caisse, retenue LOCALEMENT. `profils` n'a aucune notion de
+ * gare et on n'en invente pas une dans ce lot : le poste de caisse est fixe,
+ * son navigateur est donc le bon endroit pour s'en souvenir.
+ */
+const CLE_GARE_CAISSE = 'tmb-gare-caisse';
+const GARE_CAISSE_DEFAUT: GareId = 'saint-gervais';
+
+function gareCaisse(): GareId {
+  try {
+    const memorisee = localStorage.getItem(CLE_GARE_CAISSE);
+    if (memorisee && ORDRE_GARES.includes(memorisee as GareId)) return memorisee as GareId;
+  } catch {
+    // stockage indisponible (navigation privée, quota) : la valeur par défaut
+    // suffit, la carte reste utilisable.
+  }
+  return GARE_CAISSE_DEFAUT;
+}
+
+function retientGareCaisse(gare: GareId): void {
+  try {
+    localStorage.setItem(CLE_GARE_CAISSE, gare);
+  } catch {
+    // idem : ne rien retenir vaut mieux que refuser le changement de gare.
+  }
+}
+
+/**
+ * Liste des prochains départs de la gare choisie, avec le même sélecteur à
+ * trois positions que l'onglet Circulations. Rendue à chaque changement
+ * d'affluence pour que les deux surfaces restent d'accord.
+ */
+function rendreAffluenceCaisse(): void {
+  const carte = document.getElementById('carte-affluence');
+  if (!carte) return;
+  // Le droit vient de la matrice, alignée sur RLS : sans lui, la carte
+  // n'existe pas — plutôt que d'afficher des boutons que la base refusera.
+  if (!aLeDroit(roles, 'affluence')) {
+    carte.style.display = 'none';
+    return;
+  }
+  carte.style.display = '';
+
+  const grille = grilleDuJour();
+  const gare = gareCaisse();
+
+  const selecteur = $('affluence-gare') as HTMLSelectElement;
+  const gares = grille?.gares ?? [];
+  const optionsAttendues = gares.map((g) => `${g.id}|${g.nom}`).join(',');
+  if (selecteur.dataset.gares !== optionsAttendues) {
+    selecteur.dataset.gares = optionsAttendues;
+    selecteur.innerHTML = gares
+      .map((g) => `<option value="${echapper(g.id)}">${echapper(g.nom)}</option>`)
+      .join('');
+  }
+  selecteur.value = gare;
+
+  const liste = $('liste-affluence');
+  if (!grille || !jour) {
+    liste.innerHTML = '<div class="vide">Aucun service ce jour.</div>';
+    return;
+  }
+  // Journée AFFICHÉE et non « aujourd'hui » : le guichet travaille sur la
+  // date sélectionnée comme le reste de la page, et c'est presque toujours
+  // aujourd'hui. Une heure de référence à minuit sur une autre date montre
+  // bien tous les départs, ce qui est le comportement attendu.
+  const maintenant = dateSel === dateISO(0) ? maintenantS() : 0;
+  const departs = passagesPourGare(grille, jour, gare, maintenant).filter(
+    (p) => p.depart_s !== null && p.statut !== 'supprime',
+  );
+
+  if (departs.length === 0) {
+    liste.innerHTML = '<div class="vide">Plus aucun départ de cette gare aujourd’hui.</div>';
+    return;
+  }
+
+  const tousLesTrains = (jour.circulations ?? []).map((c) => ({
+    numero: c.numero,
+    supplementaire: c.supplementaire,
+  }));
+
+  liste.innerHTML = departs
+    .map((p) => {
+      const niveau = affluenceDe(p.numero);
+      // « TRAIN 9 » : le libellé CANONIQUE. « T9 » n'existe que sur l'écran
+      // de gare, où la place manque — jamais en supervision.
+      const nom = libelleTrain(
+        { numero: p.numero, supplementaire: p.supplementaire },
+        tousLesTrains,
+      );
+      return `<div class="ligne-affluence${niveau ? ` aff-${niveau}` : ''}">
+        <span class="h">${formatHeure(p.depart_s)}</span>
+        <b>${echapper(nom)}</b>
+        <span class="dest">${echapper(nomDeGare(p.destination))}</span>
+        <span class="spacer"></span>
+        <span class="seg seg-affluence">
+          <button class="${niveau === null ? 'on-places' : ''}" data-affluence="aucune" data-numero="${p.numero}">Places</button>
+          <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-affluence="limite" data-numero="${p.numero}">Dernières places</button>
+          <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-affluence="complet" data-numero="${p.numero}">Complet</button>
+        </span>
+      </div>`;
+    })
+    .join('');
+}
+
+function brancheAffluenceCaisse(): void {
+  $('affluence-gare').addEventListener('change', (e) => {
+    retientGareCaisse((e.target as HTMLSelectElement).value as GareId);
+    rendreAffluenceCaisse();
+  });
+  $('liste-affluence').addEventListener('click', (e) => {
+    const bouton = (e.target as HTMLElement).closest('button[data-affluence]');
+    if (!bouton) return;
+    const numero = Number((bouton as HTMLElement).dataset.numero);
+    const demande = (bouton as HTMLElement).dataset.affluence;
+    if (!numero || !demande) return;
+    void changeAffluence(numero, demande === 'aucune' ? null : (demande as NiveauAffluence));
+  });
 }
 
 function rendreMessages(): void {
