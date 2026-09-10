@@ -2,7 +2,7 @@
    l'exploitant) + écran de connexion. */
 
 :root {
-  --rouge: var(--rouge);
+  --rouge: var(--tmb-rouge);
   --rouge-fonce: var(--tmb-rouge-fonce);
   --bleu-clair: var(--tmb-bleu-clair);
   --bleu-gris: var(--tmb-bleu-gris);

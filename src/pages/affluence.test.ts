@@ -110,29 +110,66 @@ describe('appliqueAffluence — la jointure par numéro de train', () => {
   });
 });
 
-describe('la collision pastille × picto express reste fermée', () => {
+describe('la collision pastille × picto express, en 16/9', () => {
   // MESURÉE le 10/09/2026 : « Nid d'Aigle » + « DERNIÈRES PLACES / Few seats »
-  // + picto débordait de 62 à 82 px de la colonne Destination en 16/9. Rien
-  // dans la suite ne verrouillait la règle qui l'a fermée — un « nettoyage »
-  // de CSS la retirerait sans qu'aucun test ne bronche, et la troncature
-  // reviendrait sur les six écrans à la fois.
+  // + picto débordait de 62 à 82 px de la colonne Destination.
+  //
+  // La première réponse masquait le picto ; l'exploitant l'a ÉCARTÉE le même
+  // jour — il veut ce repère sur tous les express, la mention écrite en
+  // dessous ne le remplace pas à distance. La réponse retenue met la pastille
+  // longue sur DEUX LIGNES : rien n'est retiré, c'est sa forme qui cède.
+  //
+  // Ce qui est verrouillé ici, c'est donc l'inverse de ce qui l'était : que
+  // le picto NE disparaisse PAS, et que le mécanisme qui lui rend la place
+  // reste en vigueur.
   const css = source('src/styles/ecran.css');
   const base = css.slice(0, css.indexOf('@media'));
 
-  it('le picto s’efface derrière la pastille LONGUE, en 16/9', () => {
-    expect(base).toMatch(
-      /\.dest \.pill-affluence\.limite \+ img\.motrice-dest \{\s*display: none;/,
-    );
+  it('le picto n’est JAMAIS masqué en 16/9, quel que soit le niveau', () => {
+    // Décision de l'exploitant du 10/09/2026 : un express se reconnaît de
+    // loin à son picto, sur toute ligne où il circule.
+    expect(base).not.toMatch(/img\.motrice-dest \{[^}]*display: none/);
   });
 
-  it('…mais PAS derrière la pastille courte : c’est le cas de la maquette', () => {
-    // « T9 Nid d'Aigle [COMPLET Full] [picto] » tient (0 px mesuré) et a été
-    // validé par l'exploitant. Une règle sans `.limite` le casserait.
-    expect(base).not.toMatch(/\.dest \.pill-affluence \+ img\.motrice-dest/);
+  // `.pill-affluence.limite` apparaît DEUX fois dans la feuille — la couleur
+  // d'abord, la mise en forme ensuite. On réunit les deux corps plutôt que de
+  // se fier à la première occurrence, qui ne porte que le fond.
+  const corpsLimite = [...base.matchAll(/\.pill-affluence\.limite \{([^}]*)\}/g)]
+    .map((m) => m[1])
+    .join('\n');
+
+  it('la pastille LONGUE passe sur deux lignes : c’est ce qui rend la place', () => {
+    expect(corpsLimite, 'règle `.pill-affluence.limite` absente').not.toBe('');
+    expect(corpsLimite).toContain('flex-direction: column');
   });
 
-  it('sous 4/3 le picto s’efface derrière les DEUX niveaux', () => {
-    // Là, même « COMPLET » ne tient pas (68 à 80 px de débordement).
+  it('les deux marges resserrées à 0.7vw restent en place', () => {
+    // Sans elles, la réserve avant troncature tombait de 30,2 à 14,4 px à
+    // 1920×1080, et de 20,2 à 9,6 px à 1280×720 (pire cas T17, le badge le
+    // plus large). `.txt` est `flex: 0 1 auto` : quand cette réserve est
+    // épuisée, l'ellipse de `.dest` emporte le picto ENTIER.
+    expect(corpsLimite).toContain('margin-left: 0.7vw');
+    const voisin =
+      /\.dest \.pill-affluence\.limite \+ img\.motrice-dest \{([^}]*)\}/.exec(base)?.[1] ?? '';
+    expect(voisin, 'la marge du picto voisin a disparu').toContain('margin-left: 0.7vw');
+  });
+
+  it('les tailles internes sont en `em`, pour que le bloc ≤ 4/3 n’ait rien à transcrire', () => {
+    // Invariant de responsive-ecran.test.ts : toute règle de base en `vh`
+    // doit être reprise dans le bloc étroit. En `em`, la pastille suit la
+    // police — déjà redéclarée là-bas — et le bloc reste inchangé.
+    expect(corpsLimite).not.toMatch(/-?\d*\.?\d+vh\b/);
+  });
+
+  it('la pastille COURTE n’est pas touchée : c’est le cas validé sur maquette', () => {
+    // « T9 Nid d'Aigle [COMPLET Full] [picto] » tient déjà (0 px mesuré).
+    // Une règle qui viserait `.pill-affluence` sans `.limite` la changerait.
+    expect(base).not.toMatch(/^\.pill-affluence \{[^}]*flex-direction/m);
+  });
+
+  it('sous 4/3, le picto s’efface toujours derrière les DEUX niveaux', () => {
+    // Bloc INCHANGÉ par ce correctif : là, la colonne est bien plus étroite
+    // et même « COMPLET » ne tient pas (68 à 80 px de débordement).
     const media = css.slice(css.indexOf('@media'));
     expect(media).toMatch(/\.dest \.pill-affluence \+ img\.motrice-dest \{\s*display: none;/);
   });

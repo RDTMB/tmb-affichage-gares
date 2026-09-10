@@ -330,27 +330,58 @@ main {
 /* COLLISION MESURÉE le 10/09/2026, que la maquette ne pouvait pas montrer :
    elle porte la pastille COURTE sur l'express (T9) et la pastille LONGUE sur
    un train ordinaire (T6). La longue AVEC le picto n'y figure nulle part, et
-   les deux ne tiennent pas ensemble dans la colonne Destination.
-   Mesuré sur le rendu réel, « Nid d'Aigle » + « DERNIÈRES PLACES / Few
-   seats » + picto : 62 px de débordement (T9) et 80 px (T17) à 1920×1080,
-   42 et 54 px à 1280×720. Avec « COMPLET / Full », 0 px — d'où la règle
-   limitée à `.limite` : le cas validé par l'exploitant garde son picto,
-   exactement comme sur la maquette.
+   sur une seule ligne les deux ne tiennent pas dans la colonne Destination —
+   « Nid d'Aigle » + « DERNIÈRES PLACES / Few seats » + picto débordait de
+   62 px (T9) et 80 px (T17) à 1920×1080, de 42 et 54 px à 1280×720. Avec
+   « COMPLET / Full », 0 px.
 
-   C'EST LE PICTO QUI CÈDE, et lui seul. C'est le seul élément de cette ligne
-   dont l'information est déjà écrite EN TOUTES LETTRES, et dans les deux
-   langues, sur la ligne de note juste en dessous (« EXPRESS — sans arrêt /
-   non-stop : Col de Voza & Bellevue »). Masquer l'anglais de la pastille
-   aurait rapporté moins (77 px, insuffisant pour T17 : il restait 3 px de
-   débordement) et surtout retiré une information que rien d'autre ne porte,
-   sur les trains qui transportent le plus de visiteurs étrangers. Ici, aucun
-   voyageur ne perd quoi que ce soit.
+   PREMIÈRE RÉPONSE, ÉCARTÉE PAR L'EXPLOITANT le 10/09/2026 : masquer le
+   picto derrière la pastille longue. Elle réglait la géométrie, mais elle
+   retirait de la ligne un repère que l'exploitant veut voir sur TOUS les
+   express — la mention écrite en dessous ne le remplace pas à distance, et
+   c'est de loin qu'un voyageur cherche son train.
 
-   Sélecteur de VOISINAGE : le picto suit immédiatement la pastille dans
-   `ligneHtml()`. Pas de `:has()` — les Raspberry en gare ne tournent pas
-   forcément sur un Chromium récent, et cette règle doit tenir chez eux. */
+   RÉPONSE RETENUE : la pastille longue passe sur DEUX LIGNES (français au-
+   dessus, anglais en dessous) au lieu de s'étirer. Rien n'est retiré, ni le
+   picto, ni l'anglais — c'est la FORME de la pastille qui cède, là où elle
+   est la seule à pouvoir le faire sans perte. La pastille courte, elle, ne
+   change pas : elle tient déjà, et c'est le cas validé sur maquette.
+
+   `vertical-align` et `padding` sont resserrés pour que la pastille à deux
+   lignes reste dans la hauteur de rangée existante ; les deux marges passent
+   de 1,4vw à 0,7vw pour rendre au picto la place qu'il réclame.
+
+   CE QU'IL FAUT SURVEILLER SI ON Y RETOUCHE. `.txt` est `flex: 0 1 auto` :
+   il se dimensionne sur sa ligne la plus large, et tant que `.r-dest` a de
+   la place, rien n'est tronqué. Dès que cette réserve est épuisée, flex
+   comprime `.txt` et l'ellipse de `.dest` emporte le picto ENTIER — il est
+   le dernier élément de la ligne. La réserve n'est donc pas un détail
+   esthétique, c'est la marge avant disparition.
+   Mesurée sur le pire cas (T17, badge le plus large, « Nid d'Aigle ») :
+   30,1 px à 1920×1080 et 20,2 px à 1280×720. Sans le resserrement des
+   marges elle tombait à 14,4 et 9,6 px — trop peu. */
+/* Les tailles internes sont en `em` et non en vh : elles suivent alors la
+   police de la pastille, qui est déjà redéclarée dans le bloc ≤ 4/3. Le
+   bloc étroit n'a donc RIEN à transcrire — c'est ce qui permet de le laisser
+   tel quel (il masque de toute façon le picto et l'anglais à cette largeur).
+   Équivalences à 1920×1080, où 1em vaut 22,68 px : 0.12em = 0,25vh,
+   -0.095em = -0,2vh, 0.214em = 0,45vh, 0.429em = 0,9vh. */
+.pill-affluence.limite {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12em;
+  line-height: 1;
+  vertical-align: -0.095em;
+  padding: 0.214em 0.429em;
+  margin-left: 0.7vw;
+}
+
+.pill-affluence.limite small {
+  line-height: 1;
+}
+
 .dest .pill-affluence.limite + img.motrice-dest {
-  display: none;
+  margin-left: 0.7vw;
 }
 
 .r-dest .dest img.motrice-dest {
