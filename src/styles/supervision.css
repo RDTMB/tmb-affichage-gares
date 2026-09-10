@@ -675,13 +675,17 @@ input[type='color'] {
   }
 }
 
-.barre-jour .nav-date {
+/* Portée VOLONTAIREMENT large : la barre de date existe deux fois, dans
+   Circulations et dans Places, et les deux doivent se ressembler au pixel —
+   c'est la même commande. Scopée à .barre-jour, la seconde perdait sa mise
+   en page et, sur téléphone, ses cibles de 44 px. */
+.nav-date {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.barre-jour .chips {
+.chips {
   display: flex;
   gap: 6px;
 }
@@ -1040,6 +1044,15 @@ tr.paire-fin td {
   font-weight: 900;
 }
 
+/* Journée passée ou pas encore ouverte. Mesuré avant : le seul écart avec
+   l'état actif était `cursor: not-allowed` — invisible sur l'écran tactile
+   du guichet, qui est justement là où ce cas se rencontre. Le niveau DÉJÀ
+   déclaré reste lisible sous le voile : on consulte, on ne réécrit pas. */
+.seg-affluence button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Repère de RANGÉE dans Circulations. La COMMANDE a quitté ce tableau pour
    l'onglet « Places » (10/09/2026) ; l'INFORMATION reste, pour que la
    supervision voie d'un balayage qu'un train est plein sans changer
@@ -1062,10 +1075,38 @@ tr.paire-fin td {
   margin-bottom: 6px;
 }
 
+/* Rang de date de l'onglet Places. Pas la double rangée de Circulations :
+   il n'y a ici ni service, ni section, ni facultatifs à annoncer — juste
+   quelle journée on déclare. */
+.nav-date-places {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .jour-affluence {
   font-weight: 900;
   font-size: 15px;
-  text-transform: capitalize;
+  /* capitalize mettait une majuscule à CHAQUE mot : acceptable sur « mardi
+     15 septembre », illisible sur « — tous les trains ». La majuscule
+     initiale est posée par enTeteAffluence(), qui sait où elle va. */
+}
+
+/* Journée passée, ou pas encore ouverte par l'exploitation : la raison est
+   ÉCRITE, pas seulement suggérée par des boutons éteints. La caisse doit
+   savoir quoi faire (demander l'ouverture), pas seulement constater. */
+.bandeau-affluence {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--bord);
+  border-left: 4px solid var(--marine);
+  background: var(--bleu-bg);
+  color: var(--marine);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .note-affluence {
@@ -3095,8 +3136,16 @@ td.cell-sens > .sens-groupe {
     min-height: 44px;
   }
 
-  .barre-jour .nav-date button {
+  .nav-date button {
     min-width: 44px;
+  }
+
+  /* Le champ de date restait à 34 px de haut, dans les DEUX barres : les
+     flèches et les puces avaient été relevées, pas lui. Mesuré à 375 px,
+     c'est la seule cible du rang sous les 44 px — et au guichet, c'est
+     celle qu'on vise pour sauter à une date lointaine. */
+  .nav-date input[type='date'] {
+    min-height: 44px;
   }
 
   .seg button,

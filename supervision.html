@@ -438,15 +438,30 @@
               visible immédiatement sur les écrans — sans passer par « Publier »
             </span>
           </h2>
-          <div class="ligne barre-affluence">
+          <!-- MÊME barre de date que Circulations, et le même code la câble
+               (brancheBarreDate / majBarresDate) : la caisse n'a pas l'onglet
+               Circulations, elle serait sinon enfermée sur aujourd'hui. Les
+               identifiants portent le suffixe « -pl » ; la date affichée
+               reste unique (dateSel), les deux barres ne font que la montrer. -->
+          <div class="nav-date-places">
+            <div class="nav-date">
+              <button class="leger" id="btn-jour-prec-pl" title="Jour précédent">◀</button>
+              <input type="date" id="date-picker-pl" />
+              <button class="leger" id="btn-jour-suiv-pl" title="Jour suivant">▶</button>
+            </div>
+            <div class="chips">
+              <button class="chip-btn" id="chip-auj-pl">Aujourd'hui</button>
+              <button class="chip-btn" id="chip-dem-pl">Demain</button>
+            </div>
             <span class="jour-affluence" id="affluence-jour">—</span>
+          </div>
+          <div class="bandeau-affluence" id="affluence-bandeau" hidden></div>
+          <div class="ligne barre-affluence">
             <label
               >Gare :
               <select id="affluence-gare"></select>
             </label>
-            <span class="note-affluence">
-              Départs restants du jour. Le poste retient la gare choisie.
-            </span>
+            <span class="note-affluence"> Le poste retient la gare choisie. </span>
           </div>
           <div id="liste-affluence"></div>
         </div>
