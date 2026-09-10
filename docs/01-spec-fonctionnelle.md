@@ -254,6 +254,57 @@ Col de Voza n'est pas concerné, n'ayant aucun passage au-dessus.
 
 _(Fonctionnalité validée par l'exploitant le 30/08/2026.)_
 
+### 2.8 Affluence — trains complets (table `affluence`)
+
+Le voyageur doit voir, sur l'écran de gare, qu'un train est **complet** ou
+n'a plus que **quelques places**. Deux niveaux, pas trois :
+
+| Niveau    | Écran de gare                          | Couleur                  |
+| --------- | -------------------------------------- | ------------------------ |
+| `complet` | « COMPLET / Full »                     | rouge charte `#E52A23`   |
+| `limite`  | « DERNIÈRES PLACES / Few seats »       | ambre `--affluence-limite` |
+
+**L'absence de déclaration vaut « places disponibles ».** Il n'existe pas de
+troisième niveau : remettre un train à la normale SUPPRIME la ligne. C'est
+aussi ce qui fait qu'une journée sans affluence est une table vide, et non
+une table pleine de lignes qui ne disent rien.
+
+**PAR TRAIN, PAS PAR GARE.** La donnée est (date, numéro) : un TRAIN 9
+complet l'est dans **toutes** les gares qu'il doit encore desservir. Une
+descente se déclare comme une montée — une descente peut être pleine.
+
+**L'affluence n'est PAS un statut.** Ponctualité et remplissage sont deux
+axes indépendants : un train à l'heure peut être complet, un train en retard
+peut être vide. C'est pourquoi la pastille ne vit pas dans la colonne Statut,
+et pourquoi la donnée ne vit pas dans `circulations`.
+
+Règles d'affichage (écran de gare) :
+
+- la pastille se place **après le nom de la gare de destination et avant le
+  picto express** : le picto termine la ligne, la pastille se lit avec le nom ;
+- **rien sur un train supprimé** — il n'existe plus pour le voyageur ;
+- sur une ligne express, la pastille longue et le picto ne tiennent pas
+  ensemble dans la colonne (mesuré) : c'est le **picto** qui s'efface, son
+  information étant déjà écrite en toutes lettres et dans les deux langues
+  sur la ligne de note juste en dessous.
+
+**Qui déclare, et quand ça part.** La caisse **et** la supervision, la
+dernière écriture gagnant ; le journal d'exploitation trace qui. L'écriture
+est **immédiate**, hors brouillon et hors « Publier » — même exception
+assumée, et même raison, que l'heure de départ réelle d'un train
+supplémentaire (§2.7) : on constate au guichet qu'on ne vend plus, avec des
+voyageurs déjà sur le quai. En contrepartie l'échec est dit franchement,
+par un message persistant, et l'écran de saisie garde son état précédent.
+
+La supervision déclare depuis la colonne **Remplissage** de l'onglet
+Circulations ; le guichet, qui ne voit pas cet onglet, depuis la carte
+**Trains complets** de l'onglet Bandeau, qui liste les prochains départs
+d'une gare au choix.
+
+_(Décisions de l'exploitant du 09/09/2026, sur maquettes. La jauge de
+remplissage graduée est réservée à la version alimentée par l'API de
+réservation : elle n'est pas dans ce lot.)_
+
 ## 3. Écran de gare (`ecran.html`)
 
 Reproduit `maquettes/ecran-gare.html`, à une exception documentée : la

@@ -12,10 +12,20 @@
 //
 // Non prouvé ici : le rendu (mesuré au navigateur, chiffres dans la PR) et le
 // refus de la base (recette supabase/tests/roles-rls.sql).
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { appliqueAffluence } from './affichage-commun';
 import type { Affluence, PassageGare } from '../core/types';
+
+/** Fins de ligne normalisées : poste en CRLF, coureur d'intégration en LF. */
+function source(chemin: string): string {
+  return readFileSync(fileURLToPath(new URL(`../../${chemin}`, import.meta.url)), 'utf-8').replace(
+    /\r\n/g,
+    '\n',
+  );
+}
 
 function passage(numero: number, reste: Partial<PassageGare> = {}): PassageGare {
   return {
@@ -97,5 +107,75 @@ describe('appliqueAffluence — la jointure par numéro de train', () => {
       [AFF(9, 'complet')],
     );
     expect(rendu.map((p) => p.affluence)).toEqual(['complet', 'complet']);
+  });
+});
+
+describe('la collision pastille × picto express reste fermée', () => {
+  // MESURÉE le 10/09/2026 : « Nid d'Aigle » + « DERNIÈRES PLACES / Few seats »
+  // + picto débordait de 62 à 82 px de la colonne Destination en 16/9. Rien
+  // dans la suite ne verrouillait la règle qui l'a fermée — un « nettoyage »
+  // de CSS la retirerait sans qu'aucun test ne bronche, et la troncature
+  // reviendrait sur les six écrans à la fois.
+  const css = source('src/styles/ecran.css');
+  const base = css.slice(0, css.indexOf('@media'));
+
+  it('le picto s’efface derrière la pastille LONGUE, en 16/9', () => {
+    expect(base).toMatch(
+      /\.dest \.pill-affluence\.limite \+ img\.motrice-dest \{\s*display: none;/,
+    );
+  });
+
+  it('…mais PAS derrière la pastille courte : c’est le cas de la maquette', () => {
+    // « T9 Nid d'Aigle [COMPLET Full] [picto] » tient (0 px mesuré) et a été
+    // validé par l'exploitant. Une règle sans `.limite` le casserait.
+    expect(base).not.toMatch(/\.dest \.pill-affluence \+ img\.motrice-dest/);
+  });
+
+  it('sous 4/3 le picto s’efface derrière les DEUX niveaux', () => {
+    // Là, même « COMPLET » ne tient pas (68 à 80 px de débordement).
+    const media = css.slice(css.indexOf('@media'));
+    expect(media).toMatch(/\.dest \.pill-affluence \+ img\.motrice-dest \{\s*display: none;/);
+  });
+});
+
+describe('l’écriture du remplissage ne passe PAS par « Publier »', () => {
+  // Exception assumée (CLAUDE.md, docs/01 §2.8). Le risque n'est pas qu'elle
+  // disparaisse, c'est qu'on la « range » avec le reste de l'onglet : le
+  // remplissage tomberait alors dans le brouillon, et l'écran de gare
+  // annoncerait des places libres jusqu'au prochain clic sur Publier.
+  const ts = source('src/pages/supervision.ts');
+  const corps = /async function changeAffluence\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+
+  it('la fonction existe et appelle directement le fournisseur', () => {
+    expect(corps, 'changeAffluence introuvable').not.toBe('');
+    expect(corps).toContain('await provider.setAffluence(date, numero, niveau)');
+  });
+
+  it('elle ne met RIEN en attente de publication', () => {
+    for (const interdit of [
+      'stageCirculationEtRafraichit',
+      'bumpEnAttente',
+      'brouillonCirc',
+      'bump(',
+    ]) {
+      expect(corps, `changeAffluence ne doit pas appeler ${interdit}`).not.toContain(interdit);
+    }
+  });
+
+  it('un échec est dit de façon PERSISTANTE, pas par un toast fugace', () => {
+    expect(corps).toContain('afficheEchecPublication(');
+    expect(corps).toContain('Remplissage non enregistré');
+  });
+
+  it('aucun rendu optimiste : la relecture précède l’affichage', () => {
+    // On n'affiche que ce qui est réellement en base. Si le rafraîchissement
+    // passait avant l'écriture, un refus laisserait à l'écran une valeur que
+    // la base n'a pas.
+    const ecriture = corps.indexOf('await provider.setAffluence');
+    const relecture = corps.indexOf('await chargeAffluence(date)');
+    const rendu = corps.indexOf('rendreCirculations()');
+    expect(ecriture).toBeGreaterThan(-1);
+    expect(relecture).toBeGreaterThan(ecriture);
+    expect(rendu).toBeGreaterThan(relecture);
   });
 });

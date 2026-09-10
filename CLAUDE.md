@@ -123,6 +123,20 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   franchement — message PERSISTANT, anciennes heures conservées. L'écran de
   gare l'annonce en couleur NEUTRE (« Horaire confirmé / Departure
   confirmed ») : ce train n'est pas en retard, son heure n'était pas ferme.
+- **Affluence ≠ statut** : « Complet » / « Dernières places » (table
+  `affluence`, docs/01 §2.8) est un axe INDÉPENDANT de la ponctualité — un
+  train à l'heure peut être complet, un train en retard peut être vide. D'où
+  une table à part, et non une colonne de `circulations` : ce n'est pas la
+  même donnée, et surtout pas la même main (la caisse écrit ici, jamais dans
+  `circulations`). La donnée est (date, numéro) : un TRAIN 9 complet l'est
+  dans TOUTES les gares qu'il doit encore desservir.
+  L'ABSENCE de ligne vaut « places disponibles » — pas de troisième niveau,
+  remettre un train à la normale est une SUPPRESSION.
+  EXCEPTION ASSUMÉE, à ne pas « corriger » : l'écriture est IMMÉDIATE, hors
+  brouillon et hors « Publier », pour la même raison que `depart_reel` — on
+  constate au guichet qu'on ne vend plus, avec des voyageurs sur le quai. En
+  contrepartie l'échec est dit franchement (message persistant) et l'écran de
+  saisie garde son état précédent.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir

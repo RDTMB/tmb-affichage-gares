@@ -99,6 +99,33 @@ describe('Périmètre validé par l’exploitant le 05/09/2026', () => {
     expect(aLeDroit(['caisse'], 'bandeau')).toBe(true);
     expect(aLeDroit(['technique'], 'bandeau')).toBe(false);
   });
+
+  it('l’affluence est ouverte au guichet et à l’exploitation, pas au technique', () => {
+    // Elle existe comme droit DISTINCT de `circulations` précisément pour ça :
+    // la caisse constate le remplissage au comptoir sans qu'on lui ouvre la
+    // table d'où sortent tous les horaires affichés en gare.
+    expect(aLeDroit(['caisse'], 'affluence')).toBe(true);
+    expect(aLeDroit(['supervision'], 'affluence')).toBe(true);
+    expect(aLeDroit(['admin'], 'affluence')).toBe(true);
+    expect(aLeDroit(['technique'], 'affluence')).toBe(false);
+  });
+
+  it('déclarer un train complet ne donne AUCUN droit sur les circulations', () => {
+    // Le piège serait d'accorder `circulations` « puisque c'est le même
+    // tableau » : la caisse pourrait alors changer un terminus ou un retard.
+    expect(aLeDroit(['caisse'], 'circulations')).toBe(false);
+    // …et réciproquement, `affluence` ne se déduit pas de `circulations` :
+    // le technique ne l'a pas, alors qu'il réinitialise des journées.
+    expect(aLeDroit(['technique'], 'journee.reinitialiser')).toBe(true);
+    expect(aLeDroit(['technique'], 'affluence')).toBe(false);
+  });
+
+  it('l’affluence n’ouvre AUCUN onglet à elle seule', () => {
+    // Elle vit dans des onglets déjà ouverts (Circulations, Bandeau) : si
+    // elle en ouvrait un, un rôle gagnerait un écran sans qu'on l'ait voulu.
+    expect(ongletsVisibles(['caisse'])).not.toContain('circulations');
+    expect(plafondOnglets('caisse')).not.toContain('circulations');
+  });
 });
 
 describe('Onglets visibles', () => {

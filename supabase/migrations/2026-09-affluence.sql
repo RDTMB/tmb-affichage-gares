@@ -1,9 +1,14 @@
 -- =============================================================================
 -- AFFLUENCE — « Complet » et « Dernières places » par train et par jour
 --
--- À EXÉCUTER À LA MAIN par l'exploitant, dans l'éditeur SQL Supabase, sur le
--- projet de TEST d'abord. Rejouable. Déjà recopié dans supabase/schema.sql
--- pour les nouvelles installations.
+-- À EXÉCUTER À LA MAIN par l'exploitant, dans l'éditeur SQL Supabase, sur la
+-- base de TEST d'abord. Rejouable. Déjà recopié dans supabase/schema.sql pour
+-- les nouvelles installations ; src/data/securite.test.ts compare les deux
+-- copies.
+--
+-- ⚠ L'éditeur SQL de Supabase n'affiche pas les `notice` : « Success. No rows
+-- returned » est le résultat NORMAL d'une migration réussie, et ne prouve
+-- rien à lui seul. Le bloc VÉRIFICATION en fin de script, lui, prouve.
 --
 -- POURQUOI UNE TABLE À PART, ET NON UNE COLONNE SUR `circulations`.
 -- Deux raisons, et la seconde est la vraie.
@@ -70,8 +75,8 @@ create policy "lecture publique" on affluence for select using (true);
 -- du guichet. Forme identique à « roles: messages » et « roles: medias ».
 drop policy if exists "roles: affluence" on affluence;
 create policy "roles: affluence" on affluence for all to authenticated
-  using ((select private.a_un_des_roles(array['admin', 'supervision', 'caisse'])))
-  with check ((select private.a_un_des_roles(array['admin', 'supervision', 'caisse'])));
+  using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
 -- Supabase accorde par défaut TOUS les droits de table à anon et
 -- authenticated : on retire tout, puis on ne rend que le nécessaire. Les deux
@@ -121,3 +126,52 @@ begin
     alter publication supabase_realtime add table affluence;
   end if;
 end $$;
+
+-- -----------------------------------------------------------------------------
+-- VÉRIFICATION APRÈS — lecture seule. « Success. No rows returned » plus haut
+-- ne prouve rien ; ces trois requêtes, si.
+--
+-- 1. La table, ses politiques et ses déclencheurs. SIX lignes attendues :
+--    la table, les deux politiques, les deux déclencheurs, la publication.
+-- -----------------------------------------------------------------------------
+select 'table' as objet, c.relname as nom, c.relrowsecurity::text as detail
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname = 'public' and c.relname = 'affluence'
+union all
+select 'politique', p.policyname, p.qual
+  from pg_policies p
+ where p.schemaname = 'public' and p.tablename = 'affluence'
+union all
+select 'declencheur', t.tgname, ''
+  from pg_trigger t
+  join pg_class c on c.oid = t.tgrelid
+ where c.relname = 'affluence' and not t.tgisinternal
+union all
+select 'temps reel', tablename, 'publie'
+  from pg_publication_tables
+ where pubname = 'supabase_realtime' and tablename = 'affluence';
+
+-- -----------------------------------------------------------------------------
+-- 2. Les droits de colonne : `maj_par` et `maj_le` ne doivent apparaître dans
+--    AUCUNE ligne. Si elles y sont, un client peut signer à la place d'un
+--    collègue.
+-- -----------------------------------------------------------------------------
+select grantee, privilege_type, column_name
+  from information_schema.column_privileges
+ where table_schema = 'public' and table_name = 'affluence'
+   and grantee in ('anon', 'authenticated')
+ order by grantee, privilege_type, column_name;
+
+-- -----------------------------------------------------------------------------
+-- 3. ESSAI — sur la base de TEST uniquement, lignes à décommenter. Remplacer
+--    la date et le numéro par un train qui existe réellement ce jour-là.
+--
+--    Le résultat attendu : `maj_par` porte l'adresse de l'appelant sans qu'on
+--    l'ait écrite, et le journal d'exploitation gagne une ligne.
+-- -----------------------------------------------------------------------------
+-- insert into affluence (date, numero, niveau) values ('2026-07-15', 9, 'complet');
+-- select date, numero, niveau, maj_par, maj_le from affluence where numero = 9;
+-- select quand, qui, cle, champ, avant, apres from journal_exploitation
+--  where table_cible = 'affluence' order by quand desc limit 5;
+-- delete from affluence where date = '2026-07-15' and numero = 9;

@@ -115,6 +115,27 @@ create table circulations (
 );
 -- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
 
+-- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
+-- non colonne de `circulations` — ce n'est ni la même nature de donnée (un
+-- fait commercial, indépendant de la ponctualité), ni la même main : la caisse
+-- écrit ici, jamais dans `circulations`. L'API de réservation, à terme,
+-- remplira cette table telle quelle.
+create table affluence (
+  date date not null,
+  numero smallint not null,
+  niveau text not null check (niveau in ('limite','complet')),
+  maj_par text,                                  -- posée par déclencheur, depuis le JETON
+  maj_le timestamptz not null default now(),
+  primary key (date, numero),
+  -- Réinitialiser une journée efface AUSSI son affluence : les trains
+  -- régénérés sont de nouvelles lignes, et reconduire un « complet » sur un
+  -- train qu'on vient de recréer affirmerait un fait non constaté.
+  foreign key (date, numero) references circulations (date, numero) on delete cascade
+);
+-- ABSENCE DE LIGNE = places disponibles. Pas de niveau 'ok' : remettre un
+-- train à la normale est un `delete`.
+-- Ajout sur base existante : supabase/migrations/2026-09-affluence.sql
+
 create table messages (
   id uuid primary key default gen_random_uuid(),
   texte_fr text not null,
@@ -259,8 +280,8 @@ faite directement en SQL depuis le tableau de bord Supabase. Les arguments du
 déclencheur portent la clé métier, la colonne de date de service, puis les
 colonnes à surveiller.
 
-Tables suivies : `circulations`, `jours` (terminus), `messages`,
-`medias`, `params`, `machines`, `motifs`, `modeles_messages`, et
+Tables suivies : `circulations`, `affluence`, `jours` (terminus),
+`messages`, `medias`, `params`, `machines`, `motifs`, `modeles_messages`, et
 `ecrans` **uniquement** pour `veille_debut`, `veille_fin`, `gare`,
 `type` et `recharger_demande_at` — surtout PAS `derniere_vue`,
 `donnees_maj`, `version_app` ni `reseau` : 6 écrans × un signal toutes
@@ -281,8 +302,13 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
 
 ### RLS (résumé — livrer le SQL complet dans `supabase/schema.sql`)
 
-- SELECT public (anon) sur : grilles, jours, circulations, messages, medias,
-  machines, motifs, ciels, params, ecrans (les écrans lisent sans compte).
+- SELECT public (anon) sur : grilles, jours, circulations, affluence,
+  messages, medias, machines, motifs, ciels, params, ecrans (les écrans
+  lisent sans compte).
+- `affluence` : écriture ouverte à `admin`, `supervision` et `caisse`
+  (« roles: affluence »), pas au technique. Les colonnes `maj_par` et
+  `maj_le` ne sont accordées à PERSONNE : un déclencheur les pose depuis le
+  jeton de l'appelant, une signature écrite par le navigateur se forgerait.
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
   ses RÔLES, multiples et cumulables (matrice complète : docs/01 §5.5 et
   docs/securite.md §2). Implémentation par `private.a_le_role(text)` et
@@ -434,9 +460,11 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   ouverte à tous — SELECT/INSERT/DELETE réservés à l'exploitation
   authentifiée (la lecture RLS reste nécessaire à la suppression de
   fichier). Taille max 20 Mo.
-- Realtime activé sur jours, circulations, messages, medias, params,
-  machines, motifs, ecrans ; côté client : un canal + rafraîchissement
-  complet, repli polling 30 s.
+- Realtime activé sur jours, circulations, affluence, messages, medias,
+  params, machines, motifs, ecrans ; côté client : un canal + rafraîchissement
+  complet, repli polling 30 s. `affluence` en fait partie parce que le
+  guichet déclare complet le train qui part dans trois minutes : les trente
+  secondes du repli de sondage seraient trente secondes de trop.
 
 ## 3. Moteur horaires (`src/core/horaires.ts`) — pur, testé
 
