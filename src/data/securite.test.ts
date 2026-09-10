@@ -1469,7 +1469,11 @@ describe('affluence — la table du guichet', () => {
       // `maj_par` est posée par déclencheur depuis le JETON. Accordée au
       // client, elle deviendrait une signature qu’on peut forger.
       expect(code).toMatch(/grant insert \(date, numero, niveau\) on affluence/);
-      expect(code).toMatch(/grant update \(niveau\) on affluence/);
+      // TROIS colonnes, clé comprise : le front fait un UPSERT, que PostgREST
+      // traduit en `on conflict … do update set date = …, numero = …,
+      // niveau = …`. Limiter l'UPDATE à `niveau` a cassé l'écriture en
+      // production le 10/09/2026 (« permission denied for table affluence »).
+      expect(code).toMatch(/grant update \(date, numero, niveau\) on affluence/);
       expect(code).not.toMatch(/grant (insert|update)[^;]*maj_par/);
       expect(code).toMatch(/new\.maj_par := private\.email_appelant\(\)/);
     });

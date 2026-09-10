@@ -80,10 +80,18 @@ create policy "roles: affluence" on affluence for all to authenticated
 
 -- Supabase accorde par défaut TOUS les droits de table à anon et
 -- authenticated : on retire tout, puis on ne rend que le nécessaire. Les deux
--- colonnes de signature sont posées par le déclencheur ci-dessous et ne sont
--- accordées à personne — même stance que `profils_roles.attribue_par`.
--- Pas d'UPDATE sur (date, numero) non plus : changer l'un des deux désignerait
--- un AUTRE train, ce qui est une suppression suivie d'une déclaration.
+-- colonnes de signature ne sont accordées EN ÉCRITURE à personne — c'est le
+-- déclencheur qui les pose, même stance que `profils_roles.attribue_par`.
+--
+-- L'UPDATE porte sur les TROIS colonnes, y compris la clé. Une première
+-- version le limitait à `niveau`, en se disant que changer (date, numero)
+-- désignerait un autre train : ça a cassé l'écriture en production le
+-- 10/09/2026 avec « permission denied for table affluence ». Le front fait
+-- un UPSERT, et PostgREST le traduit en
+-- `insert … on conflict (date, numero) do update set date = …, numero = …,
+-- niveau = …` : les colonnes de clé sont donc RÉÉCRITES, avec leur propre
+-- valeur. La restriction n'achetait d'ailleurs rien — qui peut insérer et
+-- supprimer peut déjà atteindre n'importe quel état.
 revoke all on affluence from anon, authenticated;
 -- LECTURE ANONYME LIMITÉE À TROIS COLONNES. Les écrans de gare lisent sans
 -- compte, et n'ont besoin que de (date, numéro, niveau) pour poser la
@@ -98,7 +106,7 @@ grant select (date, numero, niveau) on affluence to anon;
 grant select on affluence to authenticated;
 grant delete on affluence to authenticated;
 grant insert (date, numero, niveau) on affluence to authenticated;
-grant update (niveau) on affluence to authenticated;
+grant update (date, numero, niveau) on affluence to authenticated;
 
 -- « Qui » et « quand », posés côté SERVEUR. `private.email_appelant()` lit
 -- l'adresse dans le JETON de l'appelant, jamais dans `profils` : personne ne
