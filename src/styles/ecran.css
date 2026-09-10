@@ -198,9 +198,25 @@ main {
   opacity: 0.42;
 }
 
-/* Le badge suit l'opacité du bloc (héritée) mais JAMAIS le barré : une
-   étiquette barrée se lit comme un défaut d'affichage, pas comme une
-   suppression. Le nom de gare, lui, reste barré. */
+/* LE BARRÉ SE POSE SUR LE NOM, PAS SUR LA LIGNE. Depuis que le nom vit dans
+   son propre `<span class="nom-dest">`, il ne peut plus hériter du barré de
+   `.dest` : `text-decoration` se propage par la boîte, et une boîte à part
+   (inline-block hier, item flex aujourd'hui) coupe la propagation. Résultat
+   mesuré le 10/09/2026 : `textDecorationLine` valait `none` sur le nom d'un
+   train supprimé — le train n'était plus barré du tout. On le pose donc
+   explicitement sur `.nom-dest`, et on le retire de `.dest`, qui n'a plus
+   qu'à porter l'opacité.
+
+   Le badge, lui, n'est JAMAIS barré : une étiquette barrée se lit comme un
+   défaut d'affichage, pas comme une suppression. */
+.rangee.supprime .r-dest .dest {
+  text-decoration: none;
+}
+
+.rangee.supprime .r-dest .dest .nom-dest {
+  text-decoration: line-through;
+}
+
 .rangee.supprime .badge-train {
   text-decoration: none;
 }
@@ -253,18 +269,42 @@ main {
   min-width: 0;
 }
 
+/* La ligne Destination est une RANGÉE : badge, nom de gare, pastille
+   d'affluence et picto express centrés sur le même axe (décision de
+   l'exploitant du 10/09/2026).
+
+   Avant, chacun se calait par `vertical-align` sur la ligne de base du texte,
+   et comme les quatre n'ont ni la même police ni la même hauteur, aucun ne
+   tombait au même endroit : centre du badge 5,2 px sous celui du nom, pastille
+   empilée 19,5 px sous, picto 0,8 px au-dessus. Des retouches de
+   `vertical-align` auraient chassé le symptôme valeur par valeur ; `flex` +
+   `align-items: center` supprime la question.
+
+   L'ELLIPSE DÉMÉNAGE : `text-overflow` ne s'applique pas à un conteneur flex.
+   C'est `.nom-dest` qui la porte maintenant ; `overflow: hidden` reste ici
+   pour que rien ne déborde de la colonne. */
 .r-dest .dest {
+  display: flex;
+  align-items: center;
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
   font-size: 4.3vh;
   line-height: 1.08;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+/* Seul élément de la rangée qui a le droit de se comprimer : les trois autres
+   sont des repères de taille fixe. */
+.r-dest .dest .badge-train,
+.r-dest .dest .pill-affluence,
+.r-dest .dest img.motrice-dest {
+  flex: none;
 }
 
 /* Numéro de train : étiquette, donc Lato (Amaranth est réservé aux noms
-   propres — gares, titres). Aligné sur la ligne de base du nom de gare. */
+   propres — gares, titres). Son calage vertical vient de la rangée flex
+   ci-dessus, plus d'un `vertical-align` qui lui serait propre. */
 .badge-train {
   display: inline-flex;
   align-items: center;
@@ -277,9 +317,6 @@ main {
   border-radius: 0.9vh;
   padding: 0.2vh 1.2vh;
   margin-right: 1.5vh;
-  /* `baseline` (défaut de l'inline-flex) : la ligne de base du « T11 » tombe
-     EXACTEMENT sur celle du nom de gare — mesuré, écart 0 px. */
-  vertical-align: baseline;
   font-variant-numeric: tabular-nums;
   /* LARGEUR PLANCHER. « T9 » mesurait 61,6 px et « T11 » 79,1 px : le nom de
      gare démarrait donc 17,5 px plus loin une rangée sur deux, et tout ce qui
@@ -305,8 +342,10 @@ main {
    transcrire. `min-width` et non `width` : si l'exploitation renomme une gare
    plus long, le nom pousse au lieu d'être coupé. */
 .r-dest .dest .nom-dest {
-  display: inline-block;
   min-width: 4.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* AFFLUENCE — pastille « COMPLET / Full » ou « DERNIÈRES PLACES / Few seats ».
@@ -314,10 +353,8 @@ main {
    l'exploitant le 09/09/2026 parmi cinq ; la jauge de remplissage est réservée
    à la version définitive alimentée par l'API de réservation).
    Valeurs mesurées sur la maquette validée à 1920×1080 et 1280×720.
-   `vertical-align: .9vh` : le badge « T9 » se cale, lui, sur `baseline`, mais
-   il n'a pas de second texte à l'intérieur — la pastille porte l'anglais en
-   plus petit, ce qui déplace sa propre ligne de base. Ces .9vh la ramènent
-   sur celle du nom de gare (mesuré, écart 0 px). */
+   Aucun `vertical-align` ici : la ligne Destination est une rangée flex, et
+   c'est son `align-items: center` qui pose la pastille sur l'axe commun. */
 .pill-affluence {
   display: inline-flex;
   align-items: center;
@@ -336,7 +373,6 @@ main {
      l'une de l'autre. Ramenée de 1,4vw à 0,7vw — la valeur que le picto
      express impose sur les lignes les plus chargées. */
   margin-left: 0.7vw;
-  vertical-align: 0.9vh;
   white-space: nowrap;
 }
 
@@ -378,10 +414,10 @@ main {
    est la seule à pouvoir le faire sans perte. La pastille courte, elle, ne
    change pas : elle tient déjà, et c'est le cas validé sur maquette.
 
-   `vertical-align` et `padding` sont resserrés pour que la pastille à deux
-   lignes reste dans la hauteur de rangée existante ; la marge de 0,7vw, elle,
-   est portée par `.pill-affluence` (commune aux deux niveaux, c'est ce qui
-   les aligne) et par le picto voisin.
+   Le `padding` est resserré pour que la pastille à deux lignes reste dans la
+   hauteur de rangée existante ; la marge de 0,7vw, elle, est portée par
+   `.pill-affluence` (commune aux deux niveaux, c'est ce qui les aligne) et
+   par le picto voisin.
 
    CE QU'IL FAUT SURVEILLER SI ON Y RETOUCHE. `.txt` est `flex: 0 1 auto` :
    il se dimensionne sur sa ligne la plus large, et tant que `.r-dest` a de
@@ -397,13 +433,12 @@ main {
    bloc étroit n'a donc RIEN à transcrire — c'est ce qui permet de le laisser
    tel quel (il masque de toute façon le picto et l'anglais à cette largeur).
    Équivalences à 1920×1080, où 1em vaut 22,68 px : 0.12em = 0,25vh,
-   -0.095em = -0,2vh, 0.214em = 0,45vh, 0.429em = 0,9vh. */
+   0.214em = 0,45vh, 0.429em = 0,9vh. */
 .pill-affluence.limite {
   flex-direction: column;
   align-items: center;
   gap: 0.12em;
   line-height: 1;
-  vertical-align: -0.095em;
   padding: 0.214em 0.429em;
 }
 
@@ -423,7 +458,6 @@ main {
 .r-dest .dest img.motrice-dest {
   height: 7vh;
   width: auto;
-  vertical-align: -1.9vh;
   margin-left: 1.4vw;
 }
 
@@ -1186,14 +1220,12 @@ body.mode-horloge .badge-cache {
   }
   .r-dest .dest img.motrice-dest {
     height: calc(7 * var(--u));
-    vertical-align: calc(-1.9 * var(--u));
   }
   .pill-affluence {
     font-size: calc(2.1 * var(--u));
     gap: calc(0.6 * var(--u));
     border-radius: calc(0.9 * var(--u));
     padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
-    vertical-align: calc(0.9 * var(--u));
   }
   .pill-affluence small {
     font-size: calc(1.5 * var(--u));

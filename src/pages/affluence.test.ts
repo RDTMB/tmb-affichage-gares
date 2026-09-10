@@ -177,10 +177,41 @@ describe('la collision pastille × picto express, en 16/9', () => {
     const badge = /^\.badge-train \{([^}]*)\}/m.exec(base)?.[1] ?? '';
     expect(badge, 'règle `.badge-train` absente').not.toBe('');
     expect(badge).toMatch(/min-width: [\d.]+em/);
-    const nom = /\.r-dest \.dest \.nom-dest \{([^}]*)\}/.exec(base)?.[1] ?? '';
+    // Ancré en début de ligne : `.rangee.supprime .r-dest .dest .nom-dest`
+    // (le barré) figure plus haut dans la feuille et serait pris à sa place.
+    const nom = /^\.r-dest \.dest \.nom-dest \{([^}]*)\}/m.exec(base)?.[1] ?? '';
     expect(nom, 'règle `.nom-dest` absente').not.toBe('');
     expect(nom).toMatch(/min-width: [\d.]+em/);
-    expect(nom).toContain('display: inline-block');
+    // Plus de `display: inline-block` : le nom est un ITEM FLEX depuis que la
+    // ligne Destination est une rangée. Il porte en revanche sa propre
+    // ellipse, `text-overflow` ne s'appliquant pas à un conteneur flex.
+    expect(nom).not.toContain('display: inline-block');
+    expect(nom).toContain('text-overflow: ellipsis');
+  });
+
+  it('la ligne Destination est une RANGÉE centrée, pas une suite de `vertical-align`', () => {
+    // Décision de l'exploitant du 10/09/2026 : badge, nom, pastille et picto
+    // sur le même axe. Mesuré avant : badge 5,2 px sous le centre du nom,
+    // pastille empilée 19,5 px sous, picto 0,8 px au-dessus. Ces trois écarts
+    // venaient de calages `vertical-align` indépendants ; les remettre
+    // rouvrirait le sujet valeur par valeur.
+    const dest = /^\.r-dest \.dest \{([^}]*)\}/m.exec(base)?.[1] ?? '';
+    expect(dest, 'règle `.r-dest .dest` absente').not.toBe('');
+    expect(dest).toContain('display: flex');
+    expect(dest).toContain('align-items: center');
+    for (const regle of ['.badge-train', '.pill-affluence', 'img.motrice-dest']) {
+      const corps =
+        new RegExp(`^\\.r-dest \\.dest ${regle.replace(/\./g, '\\.')} \\{([^}]*)\\}`, 'm').exec(
+          base,
+        )?.[1] ?? '';
+      expect(corps + dest, `${regle} : un vertical-align est revenu`).not.toContain(
+        'vertical-align',
+      );
+    }
+    // Les trois repères ne se compriment pas ; seul le nom peut céder.
+    expect(base).toMatch(
+      /\.r-dest \.dest \.badge-train,\s*\.r-dest \.dest \.pill-affluence,\s*\.r-dest \.dest img\.motrice-dest \{\s*flex: none;/,
+    );
   });
 
   it('les tailles internes sont en `em`, pour que le bloc ≤ 4/3 n’ait rien à transcrire', () => {
@@ -243,5 +274,46 @@ describe('l’écriture du remplissage ne passe PAS par « Publier »', () => {
     expect(ecriture).toBeGreaterThan(-1);
     expect(relecture).toBeGreaterThan(ecriture);
     expect(rendu).toBeGreaterThan(relecture);
+  });
+});
+
+describe('un train SUPPRIMÉ reste barré', () => {
+  // RÉGRESSION du 10/09/2026, et AUCUN test ne l'a vue : en mettant le nom
+  // de gare dans son propre `<span class="nom-dest">`, il a cessé d'hériter
+  // du barré de `.dest`. `text-decoration` se propage par la boîte, et une
+  // boîte à part — inline-block hier, item flex aujourd'hui — coupe la
+  // propagation. Mesuré : `textDecorationLine` valait `none` sur le nom d'un
+  // train supprimé, qui n'était donc plus barré du tout.
+  //
+  // Le barré est la SEULE marque qui distingue un train supprimé encore
+  // affiché (docs/01 : il reste à l'écran, barré, jusqu'à son heure
+  // théorique). Le perdre, c'est annoncer un train qui ne circule pas.
+  const css = source('src/styles/ecran.css');
+  const base = css.slice(0, css.indexOf('@media'));
+
+  it('le barré est posé sur le NOM, pas seulement sur la ligne', () => {
+    expect(base).toMatch(
+      /\.rangee\.supprime \.r-dest \.dest \.nom-dest \{\s*text-decoration: line-through;/,
+    );
+  });
+
+  it('le badge n’est JAMAIS barré', () => {
+    // Une étiquette barrée se lit comme un défaut d'affichage, pas comme une
+    // suppression. Règle antérieure, à ne pas perdre en chemin.
+    expect(base).toMatch(/\.rangee\.supprime \.badge-train \{\s*text-decoration: none;/);
+  });
+
+  it('l’heure de départ reste barrée, elle aussi', () => {
+    expect(base).toMatch(/\.rangee\.supprime \.r-dep[^{]*\{[^}]*text-decoration: line-through/);
+  });
+
+  it('l’atténuation reste sur la ligne entière', () => {
+    // L'opacité, elle, se transmet par héritage : elle doit rester sur
+    // `.dest` pour couvrir le badge et la pastille comme avant.
+    const groupe =
+      /\.rangee\.supprime \.r-dep,\s*\.rangee\.supprime \.r-dest \.dest \{([^}]*)\}/.exec(
+        base,
+      )?.[1] ?? '';
+    expect(groupe).toContain('opacity: 0.42');
   });
 });
