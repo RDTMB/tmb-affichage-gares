@@ -86,8 +86,15 @@ export interface DataProvider {
    * AFFLUENCE du jour (table `affluence`) : toutes les déclarations de la
    * date, écrans comme supervision. Seuls les trains DÉCLARÉS y figurent —
    * l'absence de ligne vaut « places disponibles ».
+   *
+   * `avecSignature` ajoute `maj_par` / `maj_le`. Ce n'est PAS un confort :
+   * `anon` — donc les écrans de gare — n'a pas la lecture de ces colonnes,
+   * qui portent l'adresse de l'agent. Les demander depuis un écran ferait
+   * échouer la requête entière. Seule la supervision, authentifiée, les
+   * demande : deux rôles écrivent au même endroit, chacun doit voir la main
+   * de l'autre.
    */
-  getAffluence(date: string): Promise<Affluence[]>;
+  getAffluence(date: string, options?: { avecSignature?: boolean }): Promise<Affluence[]>;
   /**
    * Déclare (ou lève) le remplissage d'un train. `null` SUPPRIME la ligne :
    * remettre un train à la normale n'est pas un troisième niveau.

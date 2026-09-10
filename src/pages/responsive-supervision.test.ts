@@ -211,31 +211,27 @@ describe('sous 768 px — la circulation devient une carte par train (§A.3)', (
   it('quatre colonnes de 701 à 768, deux sous 700, l’heure en tête et le statut à sa droite', () => {
     // Critère de l'exploitant : passer un train en retard en trois gestes
     // sans se tromper de ligne. L'heure (1re cellule) ouvre la carte, le
-    // statut (8e depuis l'ajout du remplissage) est sur le même rang, à
-    // droite.
+    // statut (7e) est sur le même rang, à droite.
     const colonnes = parSelecteur(corpsTelephone, 'grid-template-columns');
     expect(colonnes.get('#tab-circ tbody tr')).toBe('repeat(4, minmax(0, 1fr))');
     const zones = parSelecteur(corpsTelephone, 'grid-area');
     expect(zones.get('#tab-circ tbody td:nth-child(1)')).toMatch(/^1 \/ 1 \//);
-    expect(zones.get('#tab-circ tbody td:nth-child(8)')).toMatch(/^1 \/ 3 \//);
-    // Le remplissage prend un rang ENTIER : ses trois positions ne tiennent
-    // pas dans un quart de 390 px.
-    expect(zones.get('#tab-circ tbody td:nth-child(7)')).toBe('3 / 1 / 4 / 5');
+    expect(zones.get('#tab-circ tbody td:nth-child(7)')).toMatch(/^1 \/ 3 \//);
 
     const colonnesEtroit = parSelecteur(etroit?.corps ?? '', 'grid-template-columns');
     expect(colonnesEtroit.get('#tab-circ tbody tr')).toBe('minmax(0, 1fr) minmax(0, 1.6fr)');
     const zonesEtroit = parSelecteur(etroit?.corps ?? '', 'grid-area');
     expect(zonesEtroit.get('#tab-circ tbody td:nth-child(1)')).toMatch(/^1 \/ 1 \//);
-    expect(zonesEtroit.get('#tab-circ tbody td:nth-child(8)')).toMatch(/^1 \/ 2 \//);
-    expect(zonesEtroit.get('#tab-circ tbody td:nth-child(7)')).toBe('5 / 1 / 6 / 3');
+    expect(zonesEtroit.get('#tab-circ tbody td:nth-child(7)')).toMatch(/^1 \/ 2 \//);
   });
 
-  it('les neuf cellules ont une zone, et la cellule « aucun service » prend toute la largeur', () => {
-    // NEUF depuis l'ajout de « Remplissage » : une colonne sans zone se
-    // placerait toute seule et casserait la carte sans rien dire.
+  it('les huit cellules ont une zone, et la cellule « aucun service » prend toute la largeur', () => {
+    // Retour à HUIT : « Remplissage » a quitté ce tableau pour l'onglet
+    // « Places » (10/09/2026). Une colonne sans zone se placerait toute
+    // seule et casserait la carte sans rien dire.
     for (const corps of [corpsTelephone, etroit?.corps ?? '']) {
       const zones = parSelecteur(corps, 'grid-area');
-      for (let i = 1; i <= 9; i++) {
+      for (let i = 1; i <= 8; i++) {
         expect(zones.get(`#tab-circ tbody td:nth-child(${i})`), `cellule ${i}`).toBeDefined();
       }
       expect(zones.get('#tab-circ tbody td[colspan]')).toBe('auto / 1 / auto / -1');
@@ -254,17 +250,16 @@ describe('sous 768 px — la circulation devient une carte par train (§A.3)', (
       'Terminus',
       'Facultatif',
       'Sans voyageurs',
-      'Remplissage',
       'Statut',
       'Motif',
     ]);
     const contenu = parSelecteur(corpsTelephone, 'content');
-    for (const i of [3, 4, 5, 6, 7, 9]) {
+    for (const i of [3, 4, 5, 6, 8]) {
       expect(contenu.get(`#tab-circ tbody td:nth-child(${i})::before`), `cellule ${i}`).toBe(
         `'${entetes[i - 1]}'`,
       );
     }
-    for (const i of [1, 2, 8]) {
+    for (const i of [1, 2, 7]) {
       expect(contenu.has(`#tab-circ tbody td:nth-child(${i})::before`), `cellule ${i}`).toBe(false);
     }
   });

@@ -584,9 +584,18 @@ describe('barrePublication : les trois états et leur vocabulaire', () => {
 // ---------------------------------------------------------------------------
 
 describe('groupesNavigation : la barre tient pour n’importe quel sous-ensemble', () => {
-  it('huit onglets : cinq d’exploitation à gauche, trois d’administration à droite', () => {
+  it('neuf onglets : six d’exploitation à gauche, trois d’administration à droite', () => {
+    // « Places » (10/09/2026) est de l'exploitation du jour : il rejoint le
+    // groupe de gauche, juste après Circulations.
     const g = groupesNavigation([...ONGLETS]);
-    expect(g.exploitation).toEqual(['circulations', 'horaires', 'bandeau', 'medias', 'ecrans']);
+    expect(g.exploitation).toEqual([
+      'circulations',
+      'affluence',
+      'horaires',
+      'bandeau',
+      'medias',
+      'ecrans',
+    ]);
     expect(g.administration).toEqual(['parametres', 'utilisateurs', 'journal']);
   });
 

@@ -24,7 +24,7 @@ import {
   terminusPossiblesSup,
   trainsDuJour,
   monteesSansRetour,
-  passagesPourGare,
+  terminusReel,
   serviceActif,
 } from '../core/horaires';
 import { construitRotationSup, prepareDepartSup, prochainNumeroSup } from '../core/train-sup';
@@ -33,6 +33,7 @@ import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from '../core/types';
 import type {
   Affluence,
   Circulation,
+  Sens,
   EcranInfo,
   GareId,
   NiveauAffluence,
@@ -588,7 +589,11 @@ async function rechargeJour(): Promise<void> {
  * perdre ne doit pas emporter l'onglet un matin de service.
  */
 async function chargeAffluence(date: string): Promise<void> {
-  const liste = await provider.getAffluence(date).catch(() => [] as Affluence[]);
+  // `avecSignature` : la supervision est authentifiée et affiche « qui et
+  // quand ». Un écran de gare, anonyme, ne peut pas lire ces colonnes.
+  const liste = await provider
+    .getAffluence(date, { avecSignature: true })
+    .catch(() => [] as Affluence[]);
   if (date === dateSel) affluenceJour = liste;
 }
 
@@ -636,7 +641,7 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
     // Le journal d'exploitation trace l'écriture côté base ; ici on ne
     // touche PAS au compteur de « Publier » : rien n'est en attente.
     rendreCirculations();
-    rendreAffluenceCaisse();
+    rendreAffluence();
     toast(
       niveau === null
         ? `${libelle} rouvert à la vente — les écrans sont à jour`
@@ -655,7 +660,7 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
       'Remplissage non enregistré',
     );
     rendreCirculations();
-    rendreAffluenceCaisse();
+    rendreAffluence();
   }
 }
 
@@ -667,7 +672,7 @@ function rendreTout(): void {
   rendreSelecteurModeles();
   rendreBibliotheque();
   rendreMessages();
-  rendreAffluenceCaisse();
+  rendreAffluence();
   rendreMedias();
   rendreParametres();
   void rechargeJournal();
@@ -950,7 +955,7 @@ async function apresConnexion(): Promise<void> {
   brancheOngletsParRole();
   // Même raison : la liste des départs du guichet est réécrite à chaque
   // déclaration, l'écouteur vit donc sur son conteneur.
-  brancheAffluenceCaisse();
+  brancheAffluence();
   appliqueRoles();
   try {
     await chargeTout();
@@ -1101,38 +1106,6 @@ function ligneCirculation(
     aVide ? 'checked' : ''
   }${verrou} />${aVide ? 'Sans voyageurs' : ''}</label>`;
 
-  // AFFLUENCE — trois positions exclusives, donc le composant `.seg` (celui
-  // du statut), pas un `<select>` natif ni un interrupteur : ce n'est ni un
-  // oui/non, ni une liste longue.
-  //
-  // Écriture IMMÉDIATE, hors brouillon : mêmes raisons que « Le train est
-  // reparti » — on constate qu'on ne vend plus, avec des voyageurs sur le
-  // quai. D'où l'absence de `verrou` sur ces boutons : ils ne dépendent pas
-  // du droit `circulations` mais du droit `affluence`, que la caisse a aussi.
-  const niveau = affluenceDe(n);
-  // Un train qui ne prend personne n'a pas de remplissage : la commande est
-  // retirée, et le titre dit LEQUEL des trois cas c'est. Un contrôle grisé
-  // sans explication est une devinette.
-  const sansRemplissage =
-    c.statut === 'supprime'
-      ? 'Ce train est supprimé : il n’a plus de remplissage.'
-      : aVide
-        ? 'Ce train circule sans voyageurs : il n’a pas de remplissage.'
-        : inactif
-          ? 'Ce train facultatif n’est pas activé : il n’apparaît sur aucun écran.'
-          : jour?.enregistre === false
-            ? 'Journée non enregistrée : le remplissage se déclare sur une journée réelle.'
-            : null;
-  const verrouAffluence = aLeDroit(roles, 'affluence') ? '' : ' disabled';
-  const affluenceCellule =
-    sansRemplissage !== null
-      ? `<span class="hors-service" title="${echapper(sansRemplissage)}">—</span>`
-      : `<span class="seg seg-affluence">
-        <button class="${niveau === null ? 'on-places' : ''}" data-action="affluence-aucune" data-numero="${n}"${verrouAffluence}>Places</button>
-        <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-action="affluence-limite" data-numero="${n}"${verrouAffluence}>Dernières places</button>
-        <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-action="affluence-complet" data-numero="${n}"${verrouAffluence}>Complet</button>
-      </span>`;
-
   const statut = inactif
     ? // #B4C4D4 sur blanc : illisible. L'atténuation est juste dans son
       // principe — la ligne ne circule pas — mais un texte qu'on ne peut pas
@@ -1148,10 +1121,13 @@ function ligneCirculation(
           : ''
       }`;
 
-  // Marqueur de RANGÉE : un train complet doit se repérer en parcourant le
-  // tableau, sans lire la colonne. Un filet à gauche, pas un fond — le fond
-  // est déjà pris par « sans voyageurs » et les deux peuvent coexister.
-  const marqueurAffluence = sansRemplissage === null && niveau !== null ? ` aff-${niveau}` : '';
+  // Marqueur de RANGÉE. La COMMANDE a quitté ce tableau pour l'onglet
+  // « Places » (10/09/2026), mais l'INFORMATION reste : la supervision voit
+  // d'un balayage qu'un train est plein sans changer d'onglet. Un filet à
+  // gauche, pas un fond — le fond est déjà pris par « sans voyageurs », et
+  // les deux états peuvent coexister.
+  const niveauAffluence = affluenceDe(n);
+  const marqueurAffluence = niveauAffluence === null ? '' : ` aff-${niveauAffluence}`;
 
   return `<tr class="${heurePassee(depart) ? 'passe' : ''} ${inactif ? 'inactif' : ''} ${
     aVide ? 'a-vide' : ''
@@ -1186,7 +1162,6 @@ function ligneCirculation(
         ? '<small class="a-vide-note">ne circule pas pour les voyageurs — absent des écrans</small>'
         : ''
     }</td>
-    <td>${affluenceCellule}</td>
     <td>${statut}</td>
     <td><select data-action="motif" data-numero="${n}" ${inactif || lectureSeule ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
   </tr>`;
@@ -2082,11 +2057,6 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
           ? `TRAIN ${numero} sans voyageurs en attente de publication`
           : `TRAIN ${numero} rouvert aux voyageurs, en attente de publication`,
       );
-    } else if (action.startsWith('affluence-')) {
-      // SEULE écriture de ce tableau qui ne passe pas par « Publier », avec
-      // le départ réel : elle part tout de suite. Voir `changeAffluence`.
-      const demande = action.replace('affluence-', '');
-      void changeAffluence(numero, demande === 'aucune' ? null : (demande as NiveauAffluence));
     } else if (action.startsWith('statut-')) {
       const statut = action.replace('statut-', '') as Circulation['statut'];
       if (statut === 'supprime') {
@@ -2320,22 +2290,30 @@ function nomDeGare(id: string): string {
  * son navigateur est donc le bon endroit pour s'en souvenir.
  */
 const CLE_GARE_CAISSE = 'tmb-gare-caisse';
-const GARE_CAISSE_DEFAUT: GareId = 'saint-gervais';
+/** Valeur du `<option>` « Toutes les gares » — jamais un identifiant de gare. */
+const TOUTES_LES_GARES = '*';
 
-function gareCaisse(): GareId {
+/**
+ * Gare du poste, `null` pour « toutes ». Retenue LOCALEMENT : `profils` n'a
+ * aucune notion de gare et ce lot n'en invente pas une. Le poste de caisse
+ * est fixe, son navigateur est donc le bon endroit pour s'en souvenir ; la
+ * supervision, elle, garde la vue d'ensemble par défaut.
+ */
+function gareCaisse(): GareId | null {
   try {
     const memorisee = localStorage.getItem(CLE_GARE_CAISSE);
     if (memorisee && ORDRE_GARES.includes(memorisee as GareId)) return memorisee as GareId;
   } catch {
-    // stockage indisponible (navigation privée, quota) : la valeur par défaut
-    // suffit, la carte reste utilisable.
+    // stockage indisponible (navigation privée, quota) : la vue d'ensemble
+    // suffit, l'onglet reste utilisable.
   }
-  return GARE_CAISSE_DEFAUT;
+  return null;
 }
 
-function retientGareCaisse(gare: GareId): void {
+function retientGareCaisse(gare: GareId | null): void {
   try {
-    localStorage.setItem(CLE_GARE_CAISSE, gare);
+    if (gare === null) localStorage.removeItem(CLE_GARE_CAISSE);
+    else localStorage.setItem(CLE_GARE_CAISSE, gare);
   } catch {
     // idem : ne rien retenir vaut mieux que refuser le changement de gare.
   }
@@ -2346,47 +2324,134 @@ function retientGareCaisse(gare: GareId): void {
  * trois positions que l'onglet Circulations. Rendue à chaque changement
  * d'affluence pour que les deux surfaces restent d'accord.
  */
-function rendreAffluenceCaisse(): void {
-  const carte = document.getElementById('carte-affluence');
-  if (!carte) return;
-  // Le droit vient de la matrice, alignée sur RLS : sans lui, la carte
-  // n'existe pas — plutôt que d'afficher des boutons que la base refusera.
-  if (!aLeDroit(roles, 'affluence')) {
-    carte.style.display = 'none';
-    return;
+/** Une ligne de l'onglet « Places », prête à rendre. */
+interface LigneAffluence {
+  numero: number;
+  supplementaire: boolean;
+  sens: Sens;
+  express: boolean;
+  rame: string;
+  destination: GareId;
+  /** Heure retenue : départ de la gare filtrée, sinon départ de l'origine. */
+  depart_s: number;
+}
+
+/**
+ * Les trains du jour qui prennent encore des voyageurs, dans l'ordre de leur
+ * heure de départ.
+ *
+ * `trainsDuJour()` écarte déjà les courses à vide et les facultatifs non
+ * activés. Restent à écarter ici : les SUPPRIMÉS — un train supprimé n'a plus
+ * de places à déclarer, il a déjà disparu pour le voyageur — et les départs
+ * PASSÉS, pour la même raison.
+ *
+ * Sans filtre de gare, l'heure est celle du départ de l'ORIGINE ; avec un
+ * filtre, celle du départ de cette gare, et les trains qui ne la desservent
+ * pas disparaissent (un express ne s'arrête ni à Voza ni à Bellevue).
+ */
+function lignesAffluence(gare: GareId | null, maintenant_s: number): LigneAffluence[] {
+  const grille = grilleDuJour();
+  if (!grille || !jour) return [];
+  const lignes: LigneAffluence[] = [];
+  for (const train of trainsDuJour(grille, jour)) {
+    if (train.statut === 'supprime') continue;
+    const destination = terminusReel(train);
+    if (destination === null) continue;
+    const passage = gare === null ? train.passages[0] : train.passages.find((x) => x.gare === gare);
+    const depart_s = passage?.depart_s ?? null;
+    if (depart_s === null) continue; // gare non desservie, ou terminus d'arrivée
+    if (depart_s < maintenant_s) continue;
+    lignes.push({
+      numero: train.numero,
+      supplementaire: train.supplementaire,
+      sens: train.sens,
+      express: train.express,
+      rame: train.rame,
+      destination,
+      depart_s,
+    });
   }
-  carte.style.display = '';
+  return lignes.sort((a, b) => a.depart_s - b.depart_s);
+}
+
+/** « 14:07 » à partir d'un horodatage ISO, ou '' s'il est absent. */
+function heureSignature(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleTimeString('fr-FR', {
+        timeZone: 'Europe/Paris',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+}
+
+/**
+ * L'onglet « Places ». Le SEUL endroit où le remplissage se déclare, pour la
+ * supervision comme pour le guichet.
+ */
+function rendreAffluence(): void {
+  const panneau = document.getElementById('t-affluence');
+  if (!panneau) return;
+  // Le droit vient de la matrice, alignée sur RLS. Sans lui l'onglet n'est
+  // même pas dans la barre (`ongletsVisibles`) : ce garde-fou-ci évite de
+  // calculer un contenu que personne ne verra.
+  if (!aLeDroit(roles, 'affluence')) return;
 
   const grille = grilleDuJour();
   const gare = gareCaisse();
 
+  $('affluence-jour').textContent = new Date(`${dateSel}T12:00:00`).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+  // « Toutes les gares » en tête : c'est le défaut, et c'est la vue de
+  // l'exploitation. Un poste de caisse se règle une fois sur sa gare.
   const selecteur = $('affluence-gare') as HTMLSelectElement;
   const gares = grille?.gares ?? [];
-  const optionsAttendues = gares.map((g) => `${g.id}|${g.nom}`).join(',');
-  if (selecteur.dataset.gares !== optionsAttendues) {
-    selecteur.dataset.gares = optionsAttendues;
-    selecteur.innerHTML = gares
-      .map((g) => `<option value="${echapper(g.id)}">${echapper(g.nom)}</option>`)
-      .join('');
+  const attendu = gares.map((g) => `${g.id}|${g.nom}`).join(',');
+  if (selecteur.dataset.gares !== attendu) {
+    selecteur.dataset.gares = attendu;
+    selecteur.innerHTML =
+      `<option value="${TOUTES_LES_GARES}">Toutes les gares</option>` +
+      gares.map((g) => `<option value="${echapper(g.id)}">${echapper(g.nom)}</option>`).join('');
   }
-  selecteur.value = gare;
+  selecteur.value = gare ?? TOUTES_LES_GARES;
 
   const liste = $('liste-affluence');
-  if (!grille || !jour) {
-    liste.innerHTML = '<div class="vide">Aucun service ce jour.</div>';
+  const pose = (html: string): void => {
+    // Redessiné à chaque minute et à chaque signal temps réel : on ne touche
+    // au DOM que si quelque chose a VRAIMENT changé, sinon la liste
+    // clignoterait sous les doigts de l'agent.
+    if (liste.innerHTML !== html) liste.innerHTML = html;
+  };
+
+  if (jour?.hors_saison) {
+    pose('<div class="vide">Hors saison : aucun train ne circule ce jour.</div>');
     return;
   }
-  // Journée AFFICHÉE et non « aujourd'hui » : le guichet travaille sur la
-  // date sélectionnée comme le reste de la page, et c'est presque toujours
-  // aujourd'hui. Une heure de référence à minuit sur une autre date montre
-  // bien tous les départs, ce qui est le comportement attendu.
-  const maintenant = dateSel === dateISO(0) ? maintenantS() : 0;
-  const departs = passagesPourGare(grille, jour, gare, maintenant).filter(
-    (p) => p.depart_s !== null && p.statut !== 'supprime',
-  );
+  if (!grille || !jour) {
+    pose('<div class="vide">Aucun service ce jour.</div>');
+    return;
+  }
+  if (jour.enregistre === false) {
+    pose(
+      '<div class="vide">Journée non enregistrée — ouvrez-la dans Circulations avant de déclarer un remplissage.</div>',
+    );
+    return;
+  }
 
-  if (departs.length === 0) {
-    liste.innerHTML = '<div class="vide">Plus aucun départ de cette gare aujourd’hui.</div>';
+  const maintenant = dateSel === dateISO(0) ? maintenantS() : 0;
+  const lignes = lignesAffluence(gare, maintenant);
+  if (lignes.length === 0) {
+    pose(
+      gare === null
+        ? '<div class="vide">Plus aucun départ aujourd’hui.</div>'
+        : `<div class="vide">Plus aucun départ de ${echapper(nomDeGare(gare))} aujourd’hui.</div>`,
+    );
     return;
   }
 
@@ -2395,35 +2460,59 @@ function rendreAffluenceCaisse(): void {
     supplementaire: c.supplementaire,
   }));
 
-  liste.innerHTML = departs
-    .map((p) => {
-      const niveau = affluenceDe(p.numero);
-      // « TRAIN 9 » : le libellé CANONIQUE. « T9 » n'existe que sur l'écran
-      // de gare, où la place manque — jamais en supervision.
-      const nom = libelleTrain(
-        { numero: p.numero, supplementaire: p.supplementaire },
-        tousLesTrains,
-      );
-      return `<div class="ligne-affluence${niveau ? ` aff-${niveau}` : ''}">
-        <span class="h">${formatHeure(p.depart_s)}</span>
+  pose(
+    lignes
+      .map((l) => {
+        const declaration = affluenceJour.find((a) => a.numero === l.numero);
+        const niveau = declaration?.niveau ?? null;
+        // « TRAIN 9 » : le libellé CANONIQUE. « T9 » n'existe que sur
+        // l'écran de gare, où la place manque — jamais en supervision.
+        const nom = libelleTrain(
+          { numero: l.numero, supplementaire: l.supplementaire },
+          tousLesTrains,
+        );
+        const machine = machineDe(l.rame);
+        const quand = heureSignature(declaration?.maj_le);
+        const qui = declaration?.maj_par ?? '';
+        // Deux rôles écrivent au même endroit : chacun doit voir la main de
+        // l'autre, sinon on se contredit sans le savoir.
+        const signature =
+          niveau === null || (qui === '' && quand === '')
+            ? ''
+            : `<span class="signature">${echapper(qui)}${qui && quand ? ' · ' : ''}${quand}</span>`;
+        return `<div class="ligne-affluence${niveau ? ` aff-${niveau}` : ''}">
+        <span class="h">${formatHeure(l.depart_s)}</span>
+        <span class="sens-tag ${l.sens === 'montee' ? 'up' : 'down'}">${l.sens === 'montee' ? '↗' : '↙'}</span>
         <b>${echapper(nom)}</b>
-        <span class="dest">${echapper(nomDeGare(p.destination))}</span>
+        <span class="p" style="background:${couleurSure(machine.couleur)};${
+          anneauSur(machine.cercle) ? `box-shadow:0 0 0 2px ${anneauSur(machine.cercle)};` : ''
+        }"></span>
+        <span class="dest">${echapper(nomDeGare(l.destination))}</span>
+        ${l.express ? '<span class="exp-tag-affluence">EXPRESS</span>' : ''}
         <span class="spacer"></span>
+        ${signature}
         <span class="seg seg-affluence">
-          <button class="${niveau === null ? 'on-places' : ''}" data-affluence="aucune" data-numero="${p.numero}">Places</button>
-          <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-affluence="limite" data-numero="${p.numero}">Dernières places</button>
-          <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-affluence="complet" data-numero="${p.numero}">Complet</button>
+          <button class="${niveau === null ? 'on-places' : ''}" data-affluence="aucune" data-numero="${l.numero}">Places</button>
+          <button class="${niveau === 'limite' ? 'on-limite' : ''}" data-affluence="limite" data-numero="${l.numero}">Dernières places</button>
+          <button class="${niveau === 'complet' ? 'on-complet' : ''}" data-affluence="complet" data-numero="${l.numero}">Complet</button>
         </span>
       </div>`;
-    })
-    .join('');
+      })
+      .join(''),
+  );
 }
 
-function brancheAffluenceCaisse(): void {
+function brancheAffluence(): void {
   $('affluence-gare').addEventListener('change', (e) => {
-    retientGareCaisse((e.target as HTMLSelectElement).value as GareId);
-    rendreAffluenceCaisse();
+    const choix = (e.target as HTMLSelectElement).value;
+    retientGareCaisse(choix === TOUTES_LES_GARES ? null : (choix as GareId));
+    rendreAffluence();
   });
+  // La liste dépend de l'HEURE : un train dont le départ vient de passer n'a
+  // plus de places à déclarer et doit disparaître de lui-même. Une minute
+  // suffit — `rendreAffluence` ne touche au DOM que si le rendu a changé,
+  // donc ce battement ne fait rien la plupart du temps.
+  window.setInterval(rendreAffluence, 60_000);
   $('liste-affluence').addEventListener('click', (e) => {
     const bouton = (e.target as HTMLElement).closest('button[data-affluence]');
     if (!bouton) return;

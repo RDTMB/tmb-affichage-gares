@@ -145,8 +145,9 @@ describe('Onglets visibles', () => {
     expect(ongletsVisibles(['technique'])).not.toContain('parametres');
   });
 
-  it('admin : horaires, bandeau, médias, paramètres, utilisateurs, journal', () => {
+  it('admin : places, horaires, bandeau, médias, paramètres, utilisateurs, journal', () => {
     expect(ongletsVisibles(['admin'])).toEqual([
+      'affluence',
       'horaires',
       'bandeau',
       'medias',
@@ -159,6 +160,7 @@ describe('Onglets visibles', () => {
   it('supervision : tout sauf paramètres et utilisateurs', () => {
     expect(ongletsVisibles(['supervision'])).toEqual([
       'circulations',
+      'affluence',
       'horaires',
       'bandeau',
       'medias',
@@ -167,7 +169,7 @@ describe('Onglets visibles', () => {
     ]);
   });
 
-  it('caisse : cinq onglets sur huit depuis l’élargissement du 06/09', () => {
+  it('caisse : six onglets sur neuf depuis l’ouverture de « Places »', () => {
     // Correctif antérieur : l'onglet « Paramètres » exigeait `comptes.lire` ou
     // `journal.purger`, que la caisse n'a pas — son droit `journal` ne menait
     // donc à AUCUN écran. Un onglet dédié le rend accessible.
@@ -176,6 +178,7 @@ describe('Onglets visibles', () => {
     // lui masque Horaires (voir « Lot 2 » plus bas). Les deux cohabitent —
     // le plafond dit ce qui est permis, le réglage ce qui est affiché.
     expect(ongletsVisibles(['caisse'])).toEqual([
+      'affluence',
       'horaires',
       'bandeau',
       'medias',
@@ -226,6 +229,7 @@ describe('Onglets visibles', () => {
 
   it('le cumul réunit les onglets, dans l’ordre de la barre', () => {
     expect(ongletsVisibles(['technique', 'admin'])).toEqual([
+      'affluence',
       'horaires',
       'bandeau',
       'medias',
@@ -236,6 +240,7 @@ describe('Onglets visibles', () => {
     ]);
     expect(ongletsVisibles(['admin', 'supervision'])).toEqual([
       'circulations',
+      'affluence',
       'horaires',
       'bandeau',
       'medias',
@@ -605,7 +610,15 @@ describe('Lot 2 : Horaires masqué pour la caisse', () => {
   ) as Record<Role, Onglet[]>;
 
   it('la caisse ne voit plus Horaires', () => {
-    expect(ongletsVisibles(['caisse'], SEED)).toEqual(['bandeau', 'medias', 'ecrans', 'journal']);
+    // « Places » s'y est ajouté le 10/09/2026 : le guichet déclare le
+    // remplissage, et c'est le seul onglet du lot. Horaires reste masqué.
+    expect(ongletsVisibles(['caisse'], SEED)).toEqual([
+      'affluence',
+      'bandeau',
+      'medias',
+      'ecrans',
+      'journal',
+    ]);
   });
 
   it('elle garde le DROIT sous-jacent : c’est un masquage, pas un retrait', () => {

@@ -324,7 +324,7 @@ create index if not exists idx_profils_roles_role on profils_roles (role);
 create table if not exists onglets_par_role (
   role text not null references roles(code) on delete cascade,
   onglet text not null check (onglet in (
-    'circulations','horaires','bandeau','medias','ecrans',
+    'circulations','affluence','horaires','bandeau','medias','ecrans',
     'parametres','utilisateurs','journal')),
   regle_le timestamptz not null default now(),
   -- Adresse de l'agent, FORCÉE par déclencheur depuis son jeton : jamais une
@@ -366,6 +366,7 @@ insert into onglets_par_role (role, onglet) values
   ('technique', 'ecrans'),
   ('technique', 'utilisateurs'),
   ('technique', 'journal'),
+  ('admin', 'affluence'),
   ('admin', 'horaires'),
   ('admin', 'bandeau'),
   ('admin', 'medias'),
@@ -373,11 +374,13 @@ insert into onglets_par_role (role, onglet) values
   ('admin', 'utilisateurs'),
   ('admin', 'journal'),
   ('supervision', 'circulations'),
+  ('supervision', 'affluence'),
   ('supervision', 'horaires'),
   ('supervision', 'bandeau'),
   ('supervision', 'medias'),
   ('supervision', 'ecrans'),
   ('supervision', 'journal'),
+  ('caisse', 'affluence'),
   ('caisse', 'bandeau'),
   ('caisse', 'medias'),
   ('caisse', 'ecrans'),

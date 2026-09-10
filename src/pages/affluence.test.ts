@@ -351,14 +351,44 @@ describe('la lecture de l’affluence ne demande que ce qui est accordé', () =>
     expect(corps).toContain(".select('date, numero, niveau')");
   });
 
-  it('elle ne demande NI `maj_par` NI `maj_le`', () => {
-    const select = /\.select\('([^']*)'\)/.exec(corps)?.[1] ?? '';
-    expect(select, 'aucun select trouvé').not.toBe('');
-    for (const colonne of ['maj_par', 'maj_le']) {
-      expect(select, `${colonne} est demandée : la requête échouera pour anon`).not.toContain(
-        colonne,
-      );
-    }
+  it('la signature est une OPTION, jamais le défaut', () => {
+    // La supervision, authentifiée, affiche « qui et quand » (onglet
+    // Places) : elle demande `avecSignature`. L'écran de gare, anonyme, ne
+    // passe rien — et c'est ce défaut-là qui doit rester étroit.
+    const selects = [...corps.matchAll(/\.select\('([^']*)'\)/g)].map((m) => m[1] ?? '');
+    expect(selects.length, 'aucun select trouvé').toBeGreaterThan(0);
+    const large = selects.filter((s) => s.includes('maj_par'));
+    expect(large.length, 'la signature doit exister, et une seule fois').toBe(1);
+    expect(corps).toContain('options?.avecSignature === true');
+    // Le select LARGE est sur la branche `avecSignature`, l'étroit ailleurs.
+    const ligneLarge = corps
+      .split('\n')
+      .find((l) => l.includes('maj_par') && l.includes('.select('));
+    expect(ligneLarge, 'le select large est introuvable').toBeDefined();
+  });
+
+  it('l’écran de gare, lui, n’envoie aucune option', () => {
+    // C'est le point qui casse en production et nulle part ailleurs : un
+    // écran qui demanderait `maj_par` verrait sa requête refusée, donc son
+    // chargement entier échouer.
+    const ecran = source('src/pages/ecran.ts');
+    expect(ecran).toContain('provider.getAffluence(dateJour)');
+    expect(ecran).not.toMatch(/getAffluence\([^)]*avecSignature/);
+  });
+
+  it('la supervision, elle, la demande — sinon « qui et quand » disparaît', () => {
+    // Trou trouvé en mutant : retirer l'option passait toute la suite. Sans
+    // elle `maj_par` est simplement absent, la signature ne s'affiche plus,
+    // et RIEN ne le dit — ni erreur, ni ligne vide, juste une information
+    // qui cesse d'être là. Deux rôles écrivent au même endroit : c'est
+    // précisément ce qu'on ne peut pas perdre en silence.
+    const sup = source('src/pages/supervision.ts');
+    expect(sup).toContain('.getAffluence(date, { avecSignature: true })');
+    // …et l'onglet affiche bien ce qu'il est allé chercher.
+    const rendu = /function rendreAffluence\(\)[\s\S]*?\n}/.exec(sup)?.[0] ?? '';
+    expect(rendu, 'rendreAffluence introuvable').not.toBe('');
+    expect(rendu).toContain('maj_par');
+    expect(rendu).toContain('maj_le');
   });
 });
 
@@ -394,5 +424,90 @@ describe('la recette RLS éprouve l’instruction que le front envoie VRAIMENT',
 
   it('la recette éprouve aussi la suppression, l’autre moitié du geste', () => {
     expect(recette).toMatch(/delete from public\.affluence/);
+  });
+});
+
+describe('le remplissage se déclare dans « Places », et nulle part ailleurs', () => {
+  // Il se déclarait à DEUX endroits : une colonne dans Circulations
+  // (supervision) et une carte en tête de Bandeau (guichet). L'exploitant en
+  // a voulu UN, pour les deux rôles (10/09/2026). Le risque, en déplaçant :
+  // qu'un des deux anciens revienne « pour dépanner », et qu'on se retrouve
+  // avec deux commandes qui se contredisent.
+  const html = source('supervision.html');
+  const ts = source('src/pages/supervision.ts');
+  const roles = source('src/core/roles.ts');
+
+  it('l’onglet existe dans la barre ET dans le modèle', () => {
+    expect(html).toContain('<button data-t="affluence">Places</button>');
+    expect(html).toContain('<section class="onglet" id="t-affluence">');
+    expect(roles).toMatch(/ONGLETS = \[[\s\S]*?'affluence',/);
+    expect(roles).toMatch(/affluence: \['affluence'\]/);
+  });
+
+  it('il porte le droit `affluence` et LUI SEUL — un onglet = un droit', () => {
+    const ligne = /affluence: \[([^\]]*)\]/.exec(roles)?.[1] ?? '';
+    expect(ligne.split(',').filter((x) => x.trim() !== '')).toHaveLength(1);
+  });
+
+  it('la colonne a QUITTÉ le tableau Circulations', () => {
+    expect(html).not.toContain('>Remplissage</th>');
+    expect(ts).not.toContain('data-action="affluence-');
+    // Les huit en-têtes d'avant, ni un de plus ni un de moins.
+    const thead = /<table id="tab-circ">\s*<thead>([\s\S]*?)<\/thead>/.exec(html)?.[1] ?? '';
+    expect([...thead.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => (m[1] ?? '').trim())).toEqual([
+      'Train',
+      'Sens',
+      'Rame',
+      'Terminus',
+      'Facultatif',
+      'Sans voyageurs',
+      'Statut',
+      'Motif',
+    ]);
+  });
+
+  it('…mais le FILET de rangée reste : c’est une information, pas une commande', () => {
+    // La supervision voit d'un balayage qu'un train est plein sans changer
+    // d'onglet. Le retirer serait une décision à part, pas un effet de bord.
+    expect(ts).toMatch(/aff-\$\{niveauAffluence\}/);
+    expect(source('src/styles/supervision.css')).toContain(
+      '#tab-circ tr.aff-complet td:first-child',
+    );
+  });
+
+  it('la carte a QUITTÉ l’onglet Bandeau', () => {
+    expect(html).not.toContain('id="carte-affluence"');
+    // Bandeau reprend exactement par les messages voyageurs.
+    const bandeau =
+      /<section class="onglet" id="t-bandeau">([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+    expect(bandeau, 'onglet Bandeau introuvable').not.toBe('');
+    expect(bandeau.indexOf('Messages voyageurs')).toBeLessThan(bandeau.indexOf('liste-msgs') + 400);
+    expect(bandeau).not.toContain('liste-affluence');
+  });
+
+  it('la liste vit dans le panneau « Places »', () => {
+    const panneau =
+      /<section class="onglet" id="t-affluence">([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
+    expect(panneau, 'panneau Places introuvable').not.toBe('');
+    for (const organe of ['affluence-jour', 'affluence-gare', 'liste-affluence']) {
+      expect(panneau, `organe ${organe} absent`).toContain(`id="${organe}"`);
+    }
+  });
+
+  it('la liste écarte ce qui n’a plus de places à déclarer', () => {
+    const corps = /function lignesAffluence\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(corps, 'lignesAffluence introuvable').not.toBe('');
+    // Supprimés et départs passés. Les courses à vide et les facultatifs non
+    // activés sont déjà écartés par `trainsDuJour()` — les refiltrer ici
+    // dupliquerait une règle du moteur.
+    expect(corps).toContain("train.statut === 'supprime'");
+    expect(corps).toContain('depart_s < maintenant_s');
+    expect(corps).toContain('trainsDuJour(');
+  });
+
+  it('« toutes les gares » est le défaut, et la gare choisie est retenue', () => {
+    expect(ts).toContain("const TOUTES_LES_GARES = '*'");
+    const corps = /function gareCaisse\(\)[\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(corps).toContain('return null;');
   });
 });

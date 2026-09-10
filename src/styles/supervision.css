@@ -1019,10 +1019,7 @@ tr.paire-fin td {
    d'état), pas celles du statut, pour que l'agent reconnaisse en supervision
    ce que le voyageur voit en gare. */
 /* `nowrap` + un cran de police en moins : « Dernières places » se scindait
-   sur deux lignes et poussait CHAQUE rangée du tableau de 51 à 57 px, soit
-   un train de moins à l'écran toutes les huit lignes. À 11,5 px le segment
-   mesure 208 px — exactement ce que faisait la version repliée à 12,5 px,
-   donc sans un pixel de largeur en plus (mesuré à 1585 px de fenêtre). */
+   sinon sur deux lignes et faisait grandir chaque rangée. */
 .seg-affluence button {
   white-space: nowrap;
   font-size: 11.5px;
@@ -1043,9 +1040,11 @@ tr.paire-fin td {
   font-weight: 900;
 }
 
-/* Repère de RANGÉE : un train plein se voit en parcourant le tableau, sans
-   lire la colonne. Un filet à gauche et non un fond — « sans voyageurs »
-   occupe déjà le fond, et les deux états peuvent coexister. */
+/* Repère de RANGÉE dans Circulations. La COMMANDE a quitté ce tableau pour
+   l'onglet « Places » (10/09/2026) ; l'INFORMATION reste, pour que la
+   supervision voie d'un balayage qu'un train est plein sans changer
+   d'onglet. Un filet à gauche et non un fond — « sans voyageurs » occupe
+   déjà le fond, et les deux états peuvent coexister. */
 #tab-circ tr.aff-complet td:first-child {
   box-shadow: inset 4px 0 0 var(--rouge);
 }
@@ -1053,9 +1052,27 @@ tr.paire-fin td {
   box-shadow: inset 4px 0 0 var(--affluence-limite);
 }
 
-/* ------- Trains complets, carte du guichet (onglet Bandeau) ------- */
-/* Une ligne par départ restant. Pas un tableau : trois informations et une
-   commande, sur un poste où l'on agit vite et souvent au comptoir. */
+/* ------- Onglet « Places » ------- */
+/* Une ligne par départ restant. Pas un tableau : quelques informations et
+   une commande, sur un poste où l'on agit vite et souvent au comptoir. */
+.barre-affluence {
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.jour-affluence {
+  font-weight: 900;
+  font-size: 15px;
+  text-transform: capitalize;
+}
+
+.note-affluence {
+  font-size: 12px;
+  color: var(--sec);
+}
+
 .ligne-affluence {
   display: flex;
   align-items: center;
@@ -1091,6 +1108,40 @@ tr.paire-fin td {
 
 .ligne-affluence .spacer {
   flex: 1;
+}
+
+/* Pastille de rame, au format de la colonne Rame du tableau. */
+.ligne-affluence .p {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ligne-affluence .sens-tag {
+  font-weight: 900;
+  color: var(--sec);
+}
+
+.ligne-affluence .exp-tag-affluence {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--bleu);
+  background: var(--bleu-bg);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+/* QUI et QUAND, en retrait. Deux rôles écrivent au même endroit : chacun doit
+   voir la main de l'autre, sans que ça concurrence la commande du regard. */
+.ligne-affluence .signature {
+  font-size: 11.5px;
+  color: var(--sec);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
 }
 
 #liste-affluence .vide {
@@ -3192,7 +3243,7 @@ td.cell-sens > .sens-groupe {
     grid-area: 1 / 2 / 2 / 3;
   }
 
-  #tab-circ tbody td:nth-child(8) {
+  #tab-circ tbody td:nth-child(7) {
     grid-area: 1 / 3 / 2 / 5;
   }
 
@@ -3212,15 +3263,8 @@ td.cell-sens > .sens-groupe {
     grid-area: 2 / 4 / 3 / 5;
   }
 
-  /* Remplissage : un rang ENTIER. Ses trois positions (« Places »,
-     « Dernières places », « Complet ») ne tiennent pas dans un quart de
-     390 px, et c'est la commande qu'on actionne au comptoir. */
-  #tab-circ tbody td:nth-child(7) {
-    grid-area: 3 / 1 / 4 / 5;
-  }
-
-  #tab-circ tbody td:nth-child(9) {
-    grid-area: 4 / 1 / 5 / 3;
+  #tab-circ tbody td:nth-child(8) {
+    grid-area: 3 / 1 / 4 / 3;
   }
 
   /* « Aucun service ne circule à cette date. » : une seule cellule, sur
@@ -3256,11 +3300,7 @@ td.cell-sens > .sens-groupe {
     content: 'Sans voyageurs';
   }
 
-  #tab-circ tbody td:nth-child(7)::before {
-    content: 'Remplissage';
-  }
-
-  #tab-circ tbody td:nth-child(9)::before {
+  #tab-circ tbody td:nth-child(8)::before {
     content: 'Motif';
   }
 
@@ -3329,7 +3369,7 @@ td.cell-sens > .sens-groupe {
     grid-area: 1 / 1 / 2 / 2;
   }
 
-  #tab-circ tbody td:nth-child(8) {
+  #tab-circ tbody td:nth-child(7) {
     grid-area: 1 / 2 / 2 / 3;
   }
 
@@ -3337,7 +3377,7 @@ td.cell-sens > .sens-groupe {
     grid-area: 2 / 1 / 3 / 2;
   }
 
-  #tab-circ tbody td:nth-child(9) {
+  #tab-circ tbody td:nth-child(8) {
     grid-area: 2 / 2 / 3 / 3;
   }
 
@@ -3355,11 +3395,6 @@ td.cell-sens > .sens-groupe {
 
   #tab-circ tbody td:nth-child(6) {
     grid-area: 4 / 2 / 5 / 3;
-  }
-
-  /* Sur deux colonnes le remplissage garde son rang entier. */
-  #tab-circ tbody td:nth-child(7) {
-    grid-area: 5 / 1 / 6 / 3;
   }
 
   #tab-circ tbody td[colspan] {

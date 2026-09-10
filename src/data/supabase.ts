@@ -431,16 +431,23 @@ export class SupabaseProvider implements DataProvider {
     return (data ?? []) as Message[];
   }
 
-  async getAffluence(date: string): Promise<Affluence[]> {
-    const { data, error } = await this.client
-      .from('affluence')
-      // TROIS COLONNES, et pas une de plus. Cette lecture est faite AUSSI par
-      // les écrans de gare, qui interrogent en anonyme : `maj_par` porte
-      // l'adresse de l'agent et ne leur est pas accordée. Rien ne l'affiche
-      // nulle part — la traçabilité vit au journal d'exploitation, lisible
-      // par les seuls comptes connectés.
-      .select('date, numero, niveau')
-      .eq('date', date);
+  async getAffluence(date: string, options?: { avecSignature?: boolean }): Promise<Affluence[]> {
+    // TROIS COLONNES PAR DÉFAUT, et pas une de plus. Cette lecture est faite
+    // AUSSI par les écrans de gare, qui interrogent en anonyme : `maj_par`
+    // porte l'adresse de l'agent et ne leur est pas accordée. La demander
+    // depuis un écran ne « lirait pas un peu plus », elle ferait échouer la
+    // requête ENTIÈRE — et en production seulement. La supervision, elle, est
+    // authentifiée et l'affiche : deux rôles écrivent au même endroit, chacun
+    // doit voir la main de l'autre.
+    //
+    // Deux appels et non une chaîne construite : le typage de supabase-js lit
+    // la liste de colonnes comme un LITTÉRAL, et une expression conditionnelle
+    // lui rend un type d'erreur.
+    const table = this.client.from('affluence');
+    const { data, error } =
+      options?.avecSignature === true
+        ? await table.select('date, numero, niveau, maj_par, maj_le').eq('date', date)
+        : await table.select('date, numero, niveau').eq('date', date);
     verifie(error);
     return (data ?? []) as Affluence[];
   }
