@@ -30,6 +30,7 @@ import {
 } from '../core/roles';
 import { paramsValides } from '../core/params';
 import type {
+  Affluence,
   Circulation,
   EcranInfo,
   GareId,
@@ -41,6 +42,7 @@ import type {
   MediaMeta,
   ModeleMessage,
   Motif,
+  NiveauAffluence,
   Ciel,
   MetadonneesGrille,
   OptionsEnregistrementGrille,
@@ -75,6 +77,14 @@ const CLE_SESSION = 'tmb-mock-session';
 const EVENEMENT_LOCAL = 'tmb-mock-change';
 
 const FACULTATIFS_ACTIVES = [3, 4, 9, 10, 17, 18];
+
+/**
+ * Perturbation de DÉMONSTRATION : le jeu d'exemples des maquettes validées.
+ * Le TRAIN 5 est complet, le TRAIN 11 n'a plus que quelques places — les deux
+ * pastilles sont donc visibles d'emblée en `?demo=1`, sans rien déclarer.
+ * Écarté dès que l'état local porte des déclarations pour la journée.
+ */
+const AFFLUENCE_DEMO: Record<number, NiveauAffluence> = { 5: 'complet', 11: 'limite' };
 
 const MESSAGES_DEMO: Message[] = [
   {
@@ -321,6 +331,14 @@ interface EtatMock {
    * n'existe pas encore ».
    */
   ongletsParRole?: Partial<Record<Role, Onglet[]>>;
+  /**
+   * Affluence déclarée, par date puis par numéro de train. Une date ABSENTE
+   * retombe sur `AFFLUENCE_DEMO` ; une date PRÉSENTE mais vide veut dire
+   * « tout a été remis à la normale » et ne doit surtout pas y retomber.
+   * C'est la même distinction absence / vide qu'en base, où l'absence de
+   * ligne vaut « places disponibles ».
+   */
+  affluence?: Record<string, Record<string, NiveauAffluence>>;
 }
 
 function litEtat(): EtatMock {
@@ -359,6 +377,17 @@ const CREE_LE_REFERENCE = '2026-06-05T00:00:00.000Z';
  * N'est JAMAIS appelé par heartbeat() : les signaux de vie ne sont pas des
  * écritures d'exploitation et noieraient le journal.
  */
+/**
+ * Adresse du compte connecté en démonstration, `null` si personne. Le mock
+ * l'utilise là où la base pose la signature depuis le JETON — journal et
+ * `affluence.maj_par` : les deux doivent porter la même adresse, sinon la
+ * démonstration ne reproduit pas ce que fera la production.
+ */
+function emailSession(): string | null {
+  const session = sessionStorage.getItem(CLE_SESSION);
+  return session ? (JSON.parse(session) as { email: string }).email : null;
+}
+
 function trace(
   etat: EtatMock,
   table: string,
@@ -372,8 +401,7 @@ function trace(
   dateService?: string | null,
 ): void {
   etat.journal ??= [];
-  const session = sessionStorage.getItem(CLE_SESSION);
-  const qui = session ? (JSON.parse(session) as { email: string }).email : null;
+  const qui = emailSession();
   const surveilles =
     champs ??
     [...new Set([...Object.keys(apres ?? {}), ...Object.keys(avant ?? {})])].filter(
@@ -710,6 +738,43 @@ export class MockProvider implements DataProvider {
 
   async getMessages(): Promise<Message[]> {
     return litEtat().messages ?? MESSAGES_DEMO;
+  }
+
+  async getAffluence(date: string): Promise<Affluence[]> {
+    const declare = litEtat().affluence?.[date];
+    const niveaux = declare ?? AFFLUENCE_DEMO;
+    return Object.entries(niveaux).map(([numero, niveau]) => ({
+      date,
+      numero: Number(numero),
+      niveau,
+      maj_par: declare ? emailSession() : 'demo@tramwaydumontblanc.fr',
+      maj_le: new Date().toISOString(),
+    }));
+  }
+
+  async setAffluence(date: string, numero: number, niveau: NiveauAffluence | null): Promise<void> {
+    const etat = litEtat();
+    etat.affluence ??= {};
+    // La première déclaration d'une journée FIGE le jeu de démonstration : il
+    // devient la base de travail, puis c'est l'état local qui fait foi — y
+    // compris s'il finit vide.
+    etat.affluence[date] ??= { ...AFFLUENCE_DEMO };
+    const journee = etat.affluence[date];
+    const cle = String(numero);
+    const avant = journee[cle] ?? null;
+    if (avant === niveau) return;
+    trace(
+      etat,
+      'affluence',
+      `${date} ${numero}`,
+      avant === null ? null : { niveau: avant },
+      niveau === null ? null : { niveau },
+      ['niveau'],
+      date,
+    );
+    if (niveau === null) delete journee[cle];
+    else journee[cle] = niveau;
+    ecritEtat(etat);
   }
 
   async getMedias(gare: GareId): Promise<Media[]> {

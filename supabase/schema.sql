@@ -75,6 +75,29 @@ create table if not exists circulations (
     check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 
+-- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
+-- non colonne de `circulations`, pour deux raisons — ce n'est pas la même
+-- nature de donnée (un fait commercial, indépendant de la ponctualité), et ce
+-- n'est pas la même main (la caisse écrit ici, jamais dans `circulations`).
+-- L'ABSENCE DE LIGNE VAUT « places disponibles » : pas de niveau 'ok',
+-- remettre un train à la normale est un `delete`.
+-- L'API de réservation, à terme, remplira cette table telle quelle.
+-- Voir supabase/migrations/2026-09-affluence.sql pour une base existante.
+create table if not exists affluence (
+  date date not null,
+  numero smallint not null,
+  niveau text not null check (niveau in ('limite', 'complet')),
+  -- Posées par le déclencheur `affluence_signe`, jamais par le client.
+  maj_par text,
+  maj_le timestamptz not null default now(),
+  primary key (date, numero),
+  -- `on delete cascade` : réinitialiser une journée efface AUSSI son
+  -- affluence. Voulu — reconduire un « complet » sur un train qu'on vient de
+  -- recréer affirmerait un fait que personne n'a constaté depuis.
+  constraint affluence_circulation_fk
+    foreign key (date, numero) references circulations (date, numero) on delete cascade
+);
+
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   texte_fr text not null,
@@ -567,6 +590,7 @@ create trigger trg_sync_rame after insert or update of rame on circulations
 -- ---------------------------------------------------------------- RLS
 alter table jours enable row level security;
 alter table circulations enable row level security;
+alter table affluence enable row level security;
 alter table messages enable row level security;
 alter table medias enable row level security;
 alter table machines enable row level security;
@@ -589,6 +613,15 @@ alter table grilles enable row level security;
 -- s'habiliter lui-même.
 revoke all on roles from anon, authenticated;
 grant select on roles to authenticated;
+-- Affluence : mêmes raisons. Les deux colonnes de signature sont posées par
+-- déclencheur et ne sont accordées à personne. Pas d'UPDATE sur (date,
+-- numero) : changer l'un des deux désignerait un AUTRE train, ce qui est une
+-- suppression suivie d'une déclaration, pas une correction.
+revoke all on affluence from anon, authenticated;
+grant select on affluence to anon, authenticated;
+grant delete on affluence to authenticated;
+grant insert (date, numero, niveau) on affluence to authenticated;
+grant update (niveau) on affluence to authenticated;
 revoke all on profils_roles from anon, authenticated;
 -- Pas d'UPDATE : une attribution est IMMUABLE — on retire un rôle, on en
 -- attribue un autre, et chacun des deux gestes passe par sa politique et par
@@ -617,6 +650,7 @@ grant update (nom, actif) on profils to authenticated;
 -- Lecture publique (les écrans lisent sans compte)
 create policy "lecture publique" on jours for select using (true);
 create policy "lecture publique" on circulations for select using (true);
+create policy "lecture publique" on affluence for select using (true);
 create policy "lecture publique" on messages for select using (true);
 create policy "lecture publique" on medias for select using (true);
 create policy "lecture publique" on machines for select using (true);
@@ -657,6 +691,14 @@ create policy "roles: circulations regeneration" on circulations for insert to a
 -- le cycle d'affichage de « roles: params medias ». Les trois vont ensemble —
 -- n'en élargir qu'une donne une interface qui promet ce que la base refuse.
 create policy "roles: medias" on medias for all to authenticated
+  using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
+  with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
+
+-- Affluence : le guichet constate au comptoir qu'il ne vend plus, la
+-- supervision doit pouvoir en faire autant sans dépendre de lui. C'est
+-- précisément parce que cette écriture-là devait être ouverte à la caisse
+-- qu'elle ne pouvait pas vivre dans `circulations`, fermée au guichet.
+create policy "roles: affluence" on affluence for all to authenticated
   using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))
   with check ((select private.a_un_des_roles(array['admin','supervision','caisse'])));
 
@@ -1333,6 +1375,27 @@ create trigger trg_journal_circulations
     'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif', 'sans_voyageurs'
   );
 
+-- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du
+-- JETON de l'appelant (email_appelant), jamais du client — une signature
+-- écrite par le navigateur se forgerait.
+create or replace function private.affluence_signe()
+returns trigger language plpgsql security definer set search_path = '' as $fn$
+begin
+  new.maj_par := private.email_appelant();
+  new.maj_le := now();
+  return new;
+end $fn$;
+
+drop trigger if exists trg_affluence_signe on affluence;
+create trigger trg_affluence_signe
+  before insert or update on affluence
+  for each row execute function private.affluence_signe();
+
+drop trigger if exists trg_journal_affluence on affluence;
+create trigger trg_journal_affluence
+  after insert or update or delete on affluence
+  for each row execute function private.tracer_ecriture('date,numero', 'date', 'niveau');
+
 drop trigger if exists trg_journal_jours on jours;
 create trigger trg_journal_jours
   after insert or update or delete on jours
@@ -1499,8 +1562,12 @@ grant execute on function private.purge_journal_exploitation(int) to authenticat
 -- barre de navigation qui se réorganise sous les doigts de quelqu'un en train
 -- de saisir est pire que le délai d'un rechargement. Le réglage prend effet au
 -- chargement suivant de la supervision.
+-- `affluence` en fait partie : le guichet déclare complet le train qui part
+-- dans trois minutes, et les trente secondes du repli de sondage seraient
+-- trente secondes de trop.
 alter publication supabase_realtime add table jours, circulations, messages,
-  medias, params, machines, motifs, ciels, modeles_messages, ecrans, grilles;
+  medias, params, machines, motifs, ciels, modeles_messages, ecrans, grilles,
+  affluence;
 
 -- ---------------------------------------------------------------- storage
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

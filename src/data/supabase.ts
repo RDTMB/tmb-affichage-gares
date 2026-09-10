@@ -7,6 +7,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from '@supaba
 import { datePrecedente, generationJour, sectionReportee, serviceActif } from '../core/horaires';
 import { ecartDepuisEntete } from '../core/horloge';
 import type {
+  Affluence,
   Circulation,
   EcranInfo,
   GareId,
@@ -18,6 +19,7 @@ import type {
   Message,
   ModeleMessage,
   Motif,
+  NiveauAffluence,
   Ciel,
   MetadonneesGrille,
   Onglet,
@@ -55,6 +57,9 @@ import type { DataProvider, ReglagesPoste } from './provider';
 export const TABLES_AFFICHAGE = [
   'jours',
   'circulations',
+  // Le guichet déclare complet le train qui part dans trois minutes : sans
+  // cette entrée, l'écran ne le verrait qu'au repli de sondage de 30 s.
+  'affluence',
   'messages',
   'medias',
   'params',
@@ -424,6 +429,37 @@ export class SupabaseProvider implements DataProvider {
     const { data, error } = await this.client.from('messages').select('*').eq('actif', true);
     verifie(error);
     return (data ?? []) as Message[];
+  }
+
+  async getAffluence(date: string): Promise<Affluence[]> {
+    const { data, error } = await this.client
+      .from('affluence')
+      .select('date, numero, niveau, maj_par, maj_le')
+      .eq('date', date);
+    verifie(error);
+    return (data ?? []) as Affluence[];
+  }
+
+  async setAffluence(date: string, numero: number, niveau: NiveauAffluence | null): Promise<void> {
+    if (niveau === null) {
+      // Retour à la normale : on SUPPRIME la ligne. L'absence vaut « places
+      // disponibles » — écrire un troisième niveau laisserait en base des
+      // lignes sans information, à distinguer de leur absence.
+      const { error } = await this.client
+        .from('affluence')
+        .delete()
+        .eq('date', date)
+        .eq('numero', numero);
+      verifie(error);
+      return;
+    }
+    // `maj_par` et `maj_le` ne sont PAS envoyées : le déclencheur les pose
+    // depuis le jeton. Une signature écrite par le navigateur se forgerait,
+    // et les colonnes ne nous sont d'ailleurs pas accordées.
+    const { error } = await this.client
+      .from('affluence')
+      .upsert({ date, numero, niveau }, { onConflict: 'date,numero' });
+    verifie(error);
   }
 
   async getMedias(gare: GareId): Promise<Media[]> {

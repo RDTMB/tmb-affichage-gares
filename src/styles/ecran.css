@@ -283,6 +283,76 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* AFFLUENCE — pastille « COMPLET / Full » ou « DERNIÈRES PLACES / Few seats ».
+   Même famille visuelle que le badge « T9 » ci-dessus (variante retenue par
+   l'exploitant le 09/09/2026 parmi cinq ; la jauge de remplissage est réservée
+   à la version définitive alimentée par l'API de réservation).
+   Valeurs mesurées sur la maquette validée à 1920×1080 et 1280×720.
+   `vertical-align: .9vh` : le badge « T9 » se cale, lui, sur `baseline`, mais
+   il n'a pas de second texte à l'intérieur — la pastille porte l'anglais en
+   plus petit, ce qui déplace sa propre ligne de base. Ces .9vh la ramènent
+   sur celle du nom de gare (mesuré, écart 0 px). */
+.pill-affluence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vh;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-weight: 900;
+  font-size: 2.1vh;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 0.9vh;
+  padding: 0.55vh 1.2vh;
+  margin-left: 1.4vw;
+  vertical-align: 0.9vh;
+  white-space: nowrap;
+}
+
+.pill-affluence small {
+  font-weight: 700;
+  font-size: 1.5vh;
+  opacity: 0.85;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.pill-affluence.complet {
+  background: var(--rouge);
+  color: #fff;
+}
+
+.pill-affluence.limite {
+  background: var(--affluence-limite);
+  color: #2b1d00;
+}
+
+/* COLLISION MESURÉE le 10/09/2026, que la maquette ne pouvait pas montrer :
+   elle porte la pastille COURTE sur l'express (T9) et la pastille LONGUE sur
+   un train ordinaire (T6). La longue AVEC le picto n'y figure nulle part, et
+   les deux ne tiennent pas ensemble dans la colonne Destination.
+   Mesuré sur le rendu réel, « Nid d'Aigle » + « DERNIÈRES PLACES / Few
+   seats » + picto : 62 px de débordement (T9) et 80 px (T17) à 1920×1080,
+   42 et 54 px à 1280×720. Avec « COMPLET / Full », 0 px — d'où la règle
+   limitée à `.limite` : le cas validé par l'exploitant garde son picto,
+   exactement comme sur la maquette.
+
+   C'EST LE PICTO QUI CÈDE, et lui seul. C'est le seul élément de cette ligne
+   dont l'information est déjà écrite EN TOUTES LETTRES, et dans les deux
+   langues, sur la ligne de note juste en dessous (« EXPRESS — sans arrêt /
+   non-stop : Col de Voza & Bellevue »). Masquer l'anglais de la pastille
+   aurait rapporté moins (77 px, insuffisant pour T17 : il restait 3 px de
+   débordement) et surtout retiré une information que rien d'autre ne porte,
+   sur les trains qui transportent le plus de visiteurs étrangers. Ici, aucun
+   voyageur ne perd quoi que ce soit.
+
+   Sélecteur de VOISINAGE : le picto suit immédiatement la pastille dans
+   `ligneHtml()`. Pas de `:has()` — les Raspberry en gare ne tournent pas
+   forcément sur un Chromium récent, et cette règle doit tenir chez eux. */
+.dest .pill-affluence.limite + img.motrice-dest {
+  display: none;
+}
+
 .r-dest .dest img.motrice-dest {
   height: 7vh;
   width: auto;
@@ -1050,6 +1120,53 @@ body.mode-horloge .badge-cache {
   .r-dest .dest img.motrice-dest {
     height: calc(7 * var(--u));
     vertical-align: calc(-1.9 * var(--u));
+  }
+  .pill-affluence {
+    font-size: calc(2.1 * var(--u));
+    gap: calc(0.6 * var(--u));
+    border-radius: calc(0.9 * var(--u));
+    padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
+    vertical-align: calc(0.9 * var(--u));
+  }
+  .pill-affluence small {
+    font-size: calc(1.5 * var(--u));
+  }
+  /* §4.3 — DÉTERMINÉ AU RENDU, 1024×768 et 1080×1920, le 10/09/2026.
+     Ici la colonne Destination est bien plus étroite qu'en 16/9 et la
+     pastille n'y tient plus avec le picto : mesuré sur une ligne express
+     « Nid d'Aigle », 68 px de débordement (T9) et 80 px (T17) avec
+     « COMPLET », 69 et 82 px avec « DERNIÈRES PLACES ».
+
+     Ce qui a été essayé, et ce que ça donne (débordement dest / note) :
+       actuel . . . . . . . . . . . . . . . . 68–82 / 0
+       (a) pastille en tête de note,
+           mention express raccourcie . . . . 0 / 4    (complet)
+                                              0 / 114  (limite)
+       (b) idem, sans l'anglais . . . . . . . 0 / 0    (complet)
+                                              0 / 59   (limite)
+       (c) FR seul après le nom, picto gardé  44–57 / 0 (complet)
+                                              14–27 / 0 (limite)
+       (d) picto masqué, pastille inchangée   0 / 0    (complet)
+                                              69–82 / 0 (limite)
+
+     RETENU : (d) pour « COMPLET » — zéro troncature, et c'est déjà la règle
+     du 16/9, simplement étendue au niveau court ; l'information du picto
+     reste écrite en toutes lettres et dans les deux langues juste dessous.
+     Les options (a) et (b) déplacent la pastille dans la note et y font
+     tenir moins bien, pour le même résultat sur « COMPLET ».
+
+     « DERNIÈRES PLACES » NE TIENT PAS, quoi qu'on fasse : le meilleur essai
+     laisse 14 px (T9) et 27 px (T17) de coupe, et déplacer la pastille dans
+     la note est PIRE (59 px). On retient donc le moins mauvais — FR seul,
+     picto masqué — qui préserve le libellé français entier et ne coupe que
+     sa fin de boîte, au lieu d'entamer le mot « PLACES ». Ce format n'est
+     posé dans aucune gare aujourd'hui ; le lot « adaptation des écrans à
+     toutes les tailles » doit reprendre ce cas, colonne comprise. */
+  .dest .pill-affluence + img.motrice-dest {
+    display: none;
+  }
+  .dest .pill-affluence.limite small {
+    display: none;
   }
   .r-dest .note {
     font-size: calc(1.95 * var(--u));

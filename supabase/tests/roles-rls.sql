@@ -258,6 +258,11 @@ begin
   -- Une journée d'essai, très éloignée du service réel.
   insert into public.jours (date, grille_version) values ('2099-12-31', 'recette-roles')
     on conflict (date) do nothing;
+  -- Une circulation d'essai : `affluence` la référence par clé étrangère, on
+  -- ne peut donc pas déclarer complet un train qui n'existe pas.
+  insert into public.circulations (date, numero, sens, rame)
+    values ('2099-12-31', 9, 'montee', 'Marie')
+    on conflict (date, numero) do nothing;
   insert into public.ecrans (id, gare, type) values ('recette-roles-1', 'le-fayet', 'ecran')
     on conflict (id) do nothing;
 
@@ -348,6 +353,50 @@ begin
   get diagnostics touchees = row_count;
   if touchees = 1 then raise notice 'OK — caisse : règle la durée du cycle des médias';
   else raise exception 'ÉCHEC — caisse : n''a pas pu régler la durée du cycle'; end if;
+
+  -- AFFLUENCE : le guichet constate au comptoir qu'il ne vend plus. C'est
+  -- pour cette écriture-là que la table est séparée de `circulations`, qui
+  -- lui reste fermée (contrôlé quelques lignes plus bas).
+  insert into public.affluence (date, numero, niveau) values ('2099-12-31', 9, 'limite');
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : déclare un train aux dernières places';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu déclarer l''affluence'; end if;
+
+  -- La signature vient du JETON, jamais du client : le déclencheur l'impose.
+  select count(*) into n from public.affluence
+   where date = '2099-12-31' and numero = 9 and maj_par = 'test-caisse@exemple.invalid';
+  if n = 1 then raise notice 'OK — affluence : signée avec l''adresse du jeton';
+  else raise exception 'ÉCHEC — affluence : maj_par ne porte pas l''adresse de l''appelant'; end if;
+
+  update public.affluence set niveau = 'complet' where date = '2099-12-31' and numero = 9;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : passe le train à complet';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu passer le train à complet'; end if;
+
+  -- L'ÉCRAN DE GARE lit sans compte. C'est la moitié qui casserait l'affichage
+  -- en gare si elle manquait, et elle n'était contrôlée pour aucune table.
+  execute 'set local role anon';
+  select count(*) into n from public.affluence where date = '2099-12-31' and numero = 9;
+  if n = 1 then raise notice 'OK — anonyme : l''écran de gare lit l''affluence';
+  else raise exception 'ÉCHEC — anonyme : l''écran ne lit pas l''affluence (% ligne(s))', n; end if;
+
+  begin
+    insert into public.affluence (date, numero, niveau) values ('2099-12-31', 9, 'limite');
+    raise exception 'ÉCHEC — anonyme : a pu déclarer un train complet';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : l''écriture de l''affluence lui est refusée';
+  end;
+
+  execute 'set local role authenticated';
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+
+  -- Retour à la normale = SUPPRESSION : l'absence de ligne vaut « places
+  -- disponibles », il n'y a pas de troisième niveau.
+  delete from public.affluence where date = '2099-12-31' and numero = 9;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — caisse : remet le train à places disponibles';
+  else raise exception 'ÉCHEC — caisse : n''a pas pu remettre le train à la normale'; end if;
 
   -- Commander son écran : recharger, mettre en veille, ajuster sa vitesse.
   update public.ecrans set recharger_demande_at = now() where id = 'recette-roles-1';
@@ -440,6 +489,16 @@ begin
   get diagnostics touchees = row_count;
   if touchees = 0 then raise notice 'OK — technique : modifier un terminus lui est refusé';
   else raise exception 'ÉCHEC — technique : a pu modifier un terminus'; end if;
+
+  -- Affluence : c'est un fait d'exploitation commerciale, pas un réglage
+  -- d'infrastructure. Contrôlé AVANT la réinitialisation ci-dessous, qui
+  -- supprime la journée et donc la circulation référencée.
+  begin
+    insert into public.affluence (date, numero, niveau) values ('2099-12-31', 9, 'complet');
+    raise exception 'ÉCHEC — technique : a pu déclarer un train complet';
+  exception when insufficient_privilege then
+    raise notice 'OK — technique : déclarer l''affluence lui est refusé';
+  end;
 
   -- …mais il réinitialise une journée (supprimer puis régénérer).
   delete from public.jours where date = '2099-12-31';

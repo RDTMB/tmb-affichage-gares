@@ -59,6 +59,25 @@ const VH = /-?\d*\.?\d+vh\b/;
  *  message centré gagne à rester grand sur un écran haut. */
 const CALQUES_CENTRES = ['.veille', '.neutre', '.horloge-neutre', '.plein-ecran', '.erreur-config'];
 
+/**
+ * Les SEULES règles du bloc étroit qui ne sont pas une transcription.
+ *
+ * Elles ne redimensionnent rien : elles retirent des éléments, parce que la
+ * colonne Destination d'un écran plus carré que 4/3 ne peut pas tenir la
+ * pastille d'affluence, le picto express et le nom de gare ensemble
+ * (mesuré le 10/09/2026 : 68 à 82 px de débordement — voir le commentaire de
+ * la règle dans ecran.css, qui porte les chiffres des quatre options
+ * essayées). Un choix d'affichage, donc, pas un coefficient — et c'est
+ * pourquoi il ne peut pas se déduire de la feuille de base.
+ *
+ * Cette liste est EXPLICITE et doit le rester : toute autre règle du bloc
+ * qui n'est pas une transcription est un oubli, pas un choix.
+ */
+const CHOIX_DAFFICHAGE_ETROIT = new Map<string, string[]>([
+  ['.dest .pill-affluence + img.motrice-dest', ['display: none']],
+  ['.dest .pill-affluence.limite small', ['display: none']],
+]);
+
 describe('ecran.css — le 16:9 de Saint-Gervais ne bouge pas', () => {
   it('la taille du badge de train reste 2.8vh dans la feuille de base', () => {
     // Estimation en cours de validation par observation SUR PLACE : elle ne se
@@ -114,6 +133,16 @@ describe('ecran.css — le bloc étroit est une TRANSCRIPTION, pas une seconde f
   it('chaque déclaration du bloc reprend, coefficient compris, une déclaration de la base', () => {
     for (const [selecteur, declarations] of reglesBloc) {
       if (selecteur === ':root') continue;
+      const choix = CHOIX_DAFFICHAGE_ETROIT.get(selecteur);
+      if (choix) {
+        // Exception recensée : on vérifie qu'elle est bien CE qu'elle dit
+        // être — un retrait d'élément, rien d'autre. Une déclaration de
+        // taille glissée ici passerait autrement sans contrôle.
+        expect(declarations, `« ${selecteur} » : exception recensée, contenu inattendu`).toEqual(
+          choix,
+        );
+        continue;
+      }
       const origine = reglesBase.get(selecteur);
       expect(origine, `« ${selecteur} » n'existe pas dans la feuille de base`).toBeDefined();
       for (const d of declarations) {

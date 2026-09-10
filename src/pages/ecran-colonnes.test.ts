@@ -24,7 +24,13 @@ const DATE = '2026-07-15';
 const h = heureVersSecondes;
 
 function source(chemin: string): string {
-  return readFileSync(fileURLToPath(new URL(`../../${chemin}`, import.meta.url)), 'utf-8');
+  // Fins de ligne NORMALISÉES : le poste travaille en CRLF, le coureur
+  // d'intégration en LF. Un repère de texte qui contient un saut de ligne
+  // passe ici et échoue là-bas — c'est arrivé le 07/09/2026.
+  return readFileSync(fileURLToPath(new URL(`../../${chemin}`, import.meta.url)), 'utf-8').replace(
+    /\r\n/g,
+    '\n',
+  );
 }
 
 describe('ecran.html : plus aucune colonne d’arrivée', () => {
@@ -85,8 +91,30 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
   it('le numéro est un badge en TÊTE de .dest, avant le nom de gare', () => {
     // L'ordre compte : le badge doit précéder le nom, pas le suivre.
     expect(ts).toMatch(/<div class="dest">\$\{badge\}\$\{echapper\(nomGare/);
-    // …et le picto motrice de l'express reste après le nom.
-    expect(ts).toMatch(/nomGare\(p\.destination\)\)\}\$\{motrice\}<\/div>/);
+    // …et le picto motrice de l'express reste le DERNIER élément de la ligne.
+    // Entre les deux vient désormais la pastille d'affluence : elle se lit
+    // avec le nom, le picto termine (décision de l'exploitant du 09/09/2026).
+    expect(ts).toMatch(/nomGare\(p\.destination\)\)\}\$\{affluenceHtml\}\$\{motrice\}<\/div>/);
+  });
+
+  it('la pastille d’affluence ne s’affiche PAS sur un train supprimé', () => {
+    // Le train n'existe plus pour le voyageur : « complet » sur une ligne
+    // barrée n'a aucun sens. La garde est dans le calcul, pas dans le CSS —
+    // masquer par la feuille laisserait le texte dans le DOM.
+    const bloc = /const affluenceHtml =([\s\S]*?);\n/.exec(ts)?.[1] ?? '';
+    expect(bloc, 'affluenceHtml introuvable').not.toBe('');
+    expect(bloc).toContain('supprime');
+    expect(bloc).toContain('!p.affluence');
+    // Les deux niveaux, et eux seuls, portent leur classe.
+    expect(bloc).toContain('pill-affluence complet');
+    expect(bloc).toContain('pill-affluence limite');
+  });
+
+  it('les deux libellés sont bilingues, l’anglais dans un <small>', () => {
+    // Contrat de la page : UI voyageurs FR + EN. L'anglais n'est retiré que
+    // sous 4/3, par la feuille de style, et le commentaire y dit pourquoi.
+    expect(ts).toContain('Complet <small>Full</small>');
+    expect(ts).toContain('Dernières places <small>Few seats</small>');
   });
 
   it('la mention du départ constaté est NEUTRE, jamais du « retard »', () => {
