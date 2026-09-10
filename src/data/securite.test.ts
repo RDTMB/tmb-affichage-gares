@@ -1423,13 +1423,25 @@ describe('affluence — la table du guichet', () => {
     it(`${fichier} : l’écriture est ouverte à admin, supervision et caisse`, () => {
       const bloc = code.match(/create policy "roles: affluence"[\s\S]*?;/)?.[0];
       expect(bloc, 'politique « roles: affluence » absente').toBeDefined();
-      expect(bloc).toContain("array['admin','supervision','caisse']");
+      // Les DEUX clauses, contrôlées SÉPARÉMENT. Elles ne font pas le même
+      // travail : `with check` garde les INSERT, `using` garde ce qu'on peut
+      // voir, modifier et supprimer. Une politique dont elles divergent
+      // laisserait déclarer un train complet sans pouvoir le rouvrir à la
+      // vente. Un simple `toContain` sur le bloc entier ne le voyait PAS —
+      // la seconde clause suffisait à le satisfaire (trou trouvé en mutant
+      // ce test le 10/09/2026).
+      const using = /using \(\(select private\.a_un_des_roles\(([^)]*)\)/.exec(bloc ?? '')?.[1];
+      const check = /with check \(\(select private\.a_un_des_roles\(([^)]*)\)/.exec(
+        bloc ?? '',
+      )?.[1];
+      expect(using, 'clause `using` absente ou resserrée').toBe(
+        "array['admin','supervision','caisse']",
+      );
+      expect(check, 'clause `with check` absente ou resserrée').toBe(
+        "array['admin','supervision','caisse']",
+      );
       // Le technique protège la base, il ne constate pas les ventes.
       expect(bloc).not.toContain('technique');
-      // `using` ET `with check` : sans le second, un compte sans rôle
-      // pourrait INSÉRER (le `using` ne filtre que les lignes existantes).
-      expect(bloc).toContain('using');
-      expect(bloc).toContain('with check');
     });
 
     it(`${fichier} : les écrans lisent sans compte`, () => {
