@@ -368,9 +368,17 @@ begin
   if n = 1 then raise notice 'OK — affluence : signée avec l''adresse du jeton';
   else raise exception 'ÉCHEC — affluence : maj_par ne porte pas l''adresse de l''appelant'; end if;
 
-  update public.affluence set niveau = 'complet' where date = '2099-12-31' and numero = 9;
+  -- LA FORME EXACTE QUE LE FRONT ENVOIE, et non un `update` simple. Le code
+  -- fait un UPSERT, que PostgREST traduit en `on conflict … do update set
+  -- date = …, numero = …, niveau = …` : les colonnes de CLÉ sont réécrites.
+  -- Cette recette est passée au vert le 10/09/2026 avec un `update set
+  -- niveau` pendant que la production refusait l'écriture — elle éprouvait
+  -- une instruction que l'application n'émet jamais.
+  insert into public.affluence (date, numero, niveau) values ('2099-12-31', 9, 'complet')
+    on conflict (date, numero) do update
+    set date = excluded.date, numero = excluded.numero, niveau = excluded.niveau;
   get diagnostics touchees = row_count;
-  if touchees = 1 then raise notice 'OK — caisse : passe le train à complet';
+  if touchees = 1 then raise notice 'OK — caisse : passe le train à complet (upsert du front)';
   else raise exception 'ÉCHEC — caisse : n''a pas pu passer le train à complet'; end if;
 
   -- L'ÉCRAN DE GARE lit sans compte. C'est la moitié qui casserait l'affichage

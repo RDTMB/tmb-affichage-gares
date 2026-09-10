@@ -613,10 +613,12 @@ alter table grilles enable row level security;
 -- s'habiliter lui-même.
 revoke all on roles from anon, authenticated;
 grant select on roles to authenticated;
--- Affluence : mêmes raisons. Les deux colonnes de signature sont posées par
--- déclencheur et ne sont accordées à personne. Pas d'UPDATE sur (date,
--- numero) : changer l'un des deux désignerait un AUTRE train, ce qui est une
--- suppression suivie d'une déclaration, pas une correction.
+-- Affluence : mêmes raisons. Les deux colonnes de signature ne sont accordées
+-- EN ÉCRITURE à personne, c'est le déclencheur qui les pose.
+-- L'UPDATE porte sur les TROIS colonnes, clé comprise : le front fait un
+-- UPSERT, que PostgREST traduit en `on conflict … do update set date = …,
+-- numero = …, niveau = …`. Limiter l'UPDATE à `niveau` a cassé l'écriture en
+-- production le 10/09/2026 (« permission denied for table affluence »).
 revoke all on affluence from anon, authenticated;
 -- Lecture ANONYME limitée à trois colonnes : les écrans n'ont besoin que de
 -- (date, numéro, niveau). `maj_par` porte l'adresse de l'agent — accordée à
@@ -627,7 +629,7 @@ grant select (date, numero, niveau) on affluence to anon;
 grant select on affluence to authenticated;
 grant delete on affluence to authenticated;
 grant insert (date, numero, niveau) on affluence to authenticated;
-grant update (niveau) on affluence to authenticated;
+grant update (date, numero, niveau) on affluence to authenticated;
 revoke all on profils_roles from anon, authenticated;
 -- Pas d'UPDATE : une attribution est IMMUABLE — on retire un rôle, on en
 -- attribue un autre, et chacun des deux gestes passe par sa politique et par

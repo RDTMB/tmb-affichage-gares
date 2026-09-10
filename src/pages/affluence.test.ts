@@ -361,3 +361,38 @@ describe('la lecture de l’affluence ne demande que ce qui est accordé', () =>
     }
   });
 });
+
+describe('la recette RLS éprouve l’instruction que le front envoie VRAIMENT', () => {
+  // Le 10/09/2026, `supabase/tests/roles-rls.sql` est passé au vert pendant
+  // que la production refusait l'écriture : « permission denied for table
+  // affluence ». La recette faisait un `insert` puis un `update set niveau`,
+  // deux instructions que l'application n'émet jamais. Le front, lui, fait un
+  // UPSERT — que PostgREST traduit en `on conflict … do update set date = …,
+  // numero = …, niveau = …`, donc en réécrivant les colonnes de CLÉ, pour
+  // lesquelles le rôle n'avait pas le droit d'UPDATE.
+  //
+  // Une recette qui n'éprouve pas la forme réelle donne une fausse assurance,
+  // ce qui est pire que pas de recette du tout. Ce test attache les deux.
+  const ts = source('src/data/supabase.ts');
+  const recette = source('supabase/tests/roles-rls.sql');
+  const corps = /async setAffluence\([\s\S]*?\n  \}/.exec(ts)?.[0] ?? '';
+
+  it('le front écrit bien par UPSERT, et supprime pour lever', () => {
+    expect(corps, 'setAffluence introuvable').not.toBe('');
+    expect(corps).toContain('.upsert(');
+    expect(corps).toContain('.delete()');
+  });
+
+  it('la recette rejoue un `on conflict … do update`, pas un `update` simple', () => {
+    const bloc = recette.slice(recette.indexOf('insert into public.affluence'));
+    expect(bloc, 'aucune écriture d’affluence dans la recette').not.toBe('');
+    expect(bloc).toMatch(/on conflict \(date, numero\) do update/);
+    // …et il réécrit la CLÉ, comme le fait PostgREST : c'est précisément ce
+    // que l'ancien grant refusait.
+    expect(bloc).toMatch(/set date = excluded\.date, numero = excluded\.numero/);
+  });
+
+  it('la recette éprouve aussi la suppression, l’autre moitié du geste', () => {
+    expect(recette).toMatch(/delete from public\.affluence/);
+  });
+});
