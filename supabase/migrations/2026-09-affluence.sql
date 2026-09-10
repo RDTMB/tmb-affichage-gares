@@ -85,7 +85,17 @@ create policy "roles: affluence" on affluence for all to authenticated
 -- Pas d'UPDATE sur (date, numero) non plus : changer l'un des deux désignerait
 -- un AUTRE train, ce qui est une suppression suivie d'une déclaration.
 revoke all on affluence from anon, authenticated;
-grant select on affluence to anon, authenticated;
+-- LECTURE ANONYME LIMITÉE À TROIS COLONNES. Les écrans de gare lisent sans
+-- compte, et n'ont besoin que de (date, numéro, niveau) pour poser la
+-- pastille. `maj_par` porte l'ADRESSE de l'agent qui a déclaré : accordée à
+-- `anon`, elle serait lisible par quiconque détient la clé publiable, donc
+-- par n'importe qui. Le reste du projet ne l'admet nulle part — `profils` est
+-- révoquée à `anon`, et `journal_exploitation`, qui porte la même donnée dans
+-- `qui`, n'est accordée qu'à `authenticated`. C'est aussi la fuite qu'on a
+-- refusée sur « mot de passe oublié » : le formulaire ne dit pas si une
+-- adresse existe, ce serait absurde de la publier ici.
+grant select (date, numero, niveau) on affluence to anon;
+grant select on affluence to authenticated;
 grant delete on affluence to authenticated;
 grant insert (date, numero, niveau) on affluence to authenticated;
 grant update (niveau) on affluence to authenticated;
@@ -153,9 +163,16 @@ select 'temps reel', tablename, 'publie'
  where pubname = 'supabase_realtime' and tablename = 'affluence';
 
 -- -----------------------------------------------------------------------------
--- 2. Les droits de colonne : `maj_par` et `maj_le` ne doivent apparaître dans
---    AUCUNE ligne. Si elles y sont, un client peut signer à la place d'un
---    collègue.
+-- 2. Les droits de COLONNE. Deux lectures, et la première formulation de ce
+--    contrôle était fausse — « maj_par ne doit apparaître nulle part » : elle
+--    doit apparaître en SELECT pour `authenticated`, c'est la traçabilité.
+--    Ce qu'il faut vérifier, ligne par ligne :
+--      • `maj_par` / `maj_le` en INSERT ou UPDATE : JAMAIS, pour personne —
+--        sinon un client signe à la place d'un collègue ;
+--      • `maj_par` / `maj_le` en SELECT pour `anon` : JAMAIS non plus —
+--        `anon`, c'est la clé publiable, donc tout Internet.
+--    Attendu : anon → SELECT sur date, numero, niveau (trois lignes) ;
+--    authenticated → SELECT sur les cinq, INSERT sur trois, UPDATE sur niveau.
 -- -----------------------------------------------------------------------------
 select grantee, privilege_type, column_name
   from information_schema.column_privileges

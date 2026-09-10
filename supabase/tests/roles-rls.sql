@@ -380,6 +380,16 @@ begin
   if n = 1 then raise notice 'OK — anonyme : l''écran de gare lit l''affluence';
   else raise exception 'ÉCHEC — anonyme : l''écran ne lit pas l''affluence (% ligne(s))', n; end if;
 
+  -- …mais PAS l'adresse de l'agent qui a déclaré. `anon`, c'est la clé
+  -- publiable : tout Internet. Relevé le 10/09/2026 sur la base, après
+  -- exécution — le script accordait la lecture de TOUTES les colonnes.
+  begin
+    perform maj_par from public.affluence where date = '2099-12-31' and numero = 9;
+    raise exception 'ÉCHEC — anonyme : a pu lire l''adresse de l''agent (maj_par)';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : l''adresse de l''agent lui est refusée';
+  end;
+
   begin
     insert into public.affluence (date, numero, niveau) values ('2099-12-31', 9, 'limite');
     raise exception 'ÉCHEC — anonyme : a pu déclarer un train complet';

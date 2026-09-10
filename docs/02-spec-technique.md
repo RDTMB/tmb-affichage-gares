@@ -307,8 +307,16 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   lisent sans compte).
 - `affluence` : écriture ouverte à `admin`, `supervision` et `caisse`
   (« roles: affluence »), pas au technique. Les colonnes `maj_par` et
-  `maj_le` ne sont accordées à PERSONNE : un déclencheur les pose depuis le
-  jeton de l'appelant, une signature écrite par le navigateur se forgerait.
+  `maj_le` ne sont accordées EN ÉCRITURE à personne : un déclencheur les pose
+  depuis le jeton de l'appelant, une signature écrite par le navigateur se
+  forgerait. Et la lecture ANONYME est limitée aux trois colonnes dont les
+  écrans ont besoin — `grant select (date, numero, niveau) … to anon` :
+  `maj_par` porte l'adresse d'un agent, et `anon` c'est la clé publiable,
+  donc tout Internet. Même posture que `profils` (révoquée à `anon`) et que
+  `journal_exploitation`, qui porte la même donnée dans `qui` et n'est
+  accordée qu'à `authenticated`. `getAffluence` ne demande donc que ces trois
+  colonnes : en rajouter une ferait échouer la requête des écrans, et en
+  production seulement.
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
   ses RÔLES, multiples et cumulables (matrice complète : docs/01 §5.5 et
   docs/securite.md §2). Implémentation par `private.a_le_role(text)` et

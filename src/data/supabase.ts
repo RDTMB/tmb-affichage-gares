@@ -434,7 +434,12 @@ export class SupabaseProvider implements DataProvider {
   async getAffluence(date: string): Promise<Affluence[]> {
     const { data, error } = await this.client
       .from('affluence')
-      .select('date, numero, niveau, maj_par, maj_le')
+      // TROIS COLONNES, et pas une de plus. Cette lecture est faite AUSSI par
+      // les écrans de gare, qui interrogent en anonyme : `maj_par` porte
+      // l'adresse de l'agent et ne leur est pas accordée. Rien ne l'affiche
+      // nulle part — la traçabilité vit au journal d'exploitation, lisible
+      // par les seuls comptes connectés.
+      .select('date, numero, niveau')
       .eq('date', date);
     verifie(error);
     return (data ?? []) as Affluence[];

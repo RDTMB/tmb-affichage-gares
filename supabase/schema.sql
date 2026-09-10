@@ -618,7 +618,13 @@ grant select on roles to authenticated;
 -- numero) : changer l'un des deux désignerait un AUTRE train, ce qui est une
 -- suppression suivie d'une déclaration, pas une correction.
 revoke all on affluence from anon, authenticated;
-grant select on affluence to anon, authenticated;
+-- Lecture ANONYME limitée à trois colonnes : les écrans n'ont besoin que de
+-- (date, numéro, niveau). `maj_par` porte l'adresse de l'agent — accordée à
+-- `anon`, elle serait lisible par quiconque détient la clé publiable. Même
+-- posture que `profils` (révoquée à `anon`) et que `journal_exploitation`
+-- (accordée au seul `authenticated`), qui porte la même donnée dans `qui`.
+grant select (date, numero, niveau) on affluence to anon;
+grant select on affluence to authenticated;
 grant delete on affluence to authenticated;
 grant insert (date, numero, niveau) on affluence to authenticated;
 grant update (niveau) on affluence to authenticated;
