@@ -108,6 +108,13 @@ create table circulations (
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,
+  nature text not null default 'grille'  -- grille | supplementaire | special.
+    check (nature in ('grille','supplementaire','special')),
+                                  -- UN SEUL champ : deux booléens rendraient
+                                  -- représentable « sup ET spécial ».
+                                  -- `supplementaire` survit en colonne de
+                                  -- COMPATIBILITÉ, dérivée par déclencheur et
+                                  -- tenue par contrainte ; retrait saison 2027.
   commanditaire text,             -- TRAIN SPÉCIAL : qui l'a affrété. INTERNE —
                                   -- jamais servi aux écrans (droit de SELECT
                                   -- retiré à anon, voir RLS). Colonne PROPRE
@@ -327,10 +334,20 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   accordée qu'à `authenticated`. `getAffluence` ne demande donc que ces trois
   colonnes : en rajouter une ferait échouer la requête des écrans, et en
   production seulement.
+- `circulations` : l'écriture est réservée à `supervision` (« roles:
+  circulations ecriture »), plus `technique` pour la seule régénération. Depuis
+  le 11/09/2026, `admin` peut écrire les lignes `nature = 'special'` et ELLES
+  SEULES — trois politiques dédiées (insert / update / delete) plutôt qu'un
+  élargissement, et pas de `for all` dont le `using` s'appliquerait aussi au
+  SELECT. L'UPDATE porte les DEUX clauses : `using` tient l'admin à l'écart des
+  circulations de grille, `with check` l'empêche de convertir un spécial en
+  circulation de grille. ⚠ L'application écrit par UPSERT : la branche de
+  conflit exige le `using` ET le `with check` de l'UPDATE, et la recette rejoue
+  donc l'upsert deux fois.
 - `circulations` : la lecture ANONYME est limitée aux SEIZE colonnes que les
   écrans affichent — `revoke all … from anon` puis `grant select (date,
   numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus,
-  statut, retard_min, motif, sans_voyageurs, supplementaire, passages,
+  statut, retard_min, motif, sans_voyageurs, nature, passages,
   depart_reel) … to anon`. `commanditaire` (qui a affrété un train spécial)
   en est EXCLU, comme `affluence.maj_par` : RLS ne filtre que des lignes,
   seuls les droits de colonne retirent une colonne à la clé publiable.
