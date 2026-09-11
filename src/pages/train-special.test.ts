@@ -622,6 +622,18 @@ describe('les rotations se rangent à leur HEURE, pas après la grille', () => {
 
   it('`departOrigine` lit le premier passage, et rend `null` quand il n’y a rien', () => {
     expect(departOrigine([{ gare: 'le-fayet', d: '10:30:00' }])).toBe(h('10:30'));
+    // Sur une course ENTIÈRE, et pas seulement sur un passage isolé : lire le
+    // dernier passage rendrait l'heure d'ARRIVÉE au terminus, et les rotations
+    // se rangeraient par leur fin. Un train rapide passerait devant un train
+    // parti plus tôt. (Mutation survivante au premier passage : tous les cas
+    // ne portaient qu’un seul passage, où le premier EST le dernier.)
+    expect(
+      departOrigine([
+        { gare: 'le-fayet', d: '09:00:00' },
+        { gare: 'saint-gervais', a: '09:12:00', d: '09:13:00' },
+        { gare: 'nid-daigle', a: '10:03:30' },
+      ]),
+    ).toBe(h('09:00'));
     // Une descente de renfort peut n'avoir qu'une arrivée au premier passage.
     expect(departOrigine([{ gare: 'nid-daigle', a: '11:05:00' }])).toBe(h('11:05'));
     expect(departOrigine([])).toBeNull();
