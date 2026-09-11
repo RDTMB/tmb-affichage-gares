@@ -12,6 +12,7 @@ import type {
   Jour,
   Media,
   Message,
+  PassageGrille,
   Profil,
   Sens,
 } from '../core/types';
@@ -380,9 +381,15 @@ export function dateEnToutesLettres(dateISO: string): string {
  * qui situe la rotation dans la journée. Les heures sont THÉORIQUES, comme
  * partout dans ce tableau — un retard ne déplace pas une ligne, il s'affiche
  * dans sa colonne.
+ *
+ * Le paramètre est typé `PassageGrille`, c'est-à-dire CE QUE L'APPELANT PASSE
+ * (`montee.passages`). La forme anonyme `{ a?, d? }` qu'il portait d'abord
+ * était plus étroite que la réalité : elle refusait un passage complet, donc
+ * les cas d'essai réalistes — or c'est justement une course entière qui a
+ * attrapé la mutation « lire le dernier passage plutôt que le premier ».
  */
 export function departOrigine(
-  passages: readonly { a?: string; d?: string }[] | null | undefined,
+  passages: readonly PassageGrille[] | null | undefined,
 ): number | null {
   const premier = passages?.[0];
   const heure = premier?.d ?? premier?.a;
