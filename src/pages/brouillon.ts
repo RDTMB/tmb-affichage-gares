@@ -13,6 +13,7 @@
 // Les écritures elles-mêmes restent dans supervision.ts (provider) : ce
 // fichier ne fait que de la fusion pure, testable sans DOM ni réseau.
 import { deltaTerminusBellevue, seuilMontee } from '../core/horaires';
+import { horsGrille } from '../core/types';
 import type { Circulation, Jour, Message, Params, SectionJour, TerminusFlag } from '../core/types';
 
 /** Une circulation en attente, par date puis par numéro de train. */
@@ -117,7 +118,7 @@ export function appliqueBrouillonJour(
   // journée : il faut l'AJOUTER, là où les autres modifications ne font que
   // remplacer une circulation existante.
   const ajouts = [...(parNumero?.values() ?? [])].filter(
-    (c) => c.supplementaire && !existants.has(c.numero),
+    (c) => horsGrille(c) && !existants.has(c.numero),
   );
 
   // La bascule Terminus AVANT les modifications de circulations, dans cet
@@ -140,7 +141,7 @@ export function appliqueBrouillonJour(
       if (!retires?.size) return true;
       // La suppression vise une rotation : montée impaire et descente n+1.
       const rotation = c.numero % 2 === 0 ? c.numero - 1 : c.numero;
-      return !(c.supplementaire && retires.has(rotation));
+      return !(horsGrille(c) && retires.has(rotation));
     })
     .sort((a, b) => a.numero - b.numero);
 

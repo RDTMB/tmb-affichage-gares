@@ -53,7 +53,7 @@ revoke all on circulations from anon;
 
 grant select (
   date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
-  terminus, statut, retard_min, motif, sans_voyageurs, supplementaire,
+  terminus, statut, retard_min, motif, sans_voyageurs, nature,
   passages, depart_reel
 ) on circulations to anon;
 
@@ -62,9 +62,68 @@ grant select (
 -- explicitement pour que ce script se suffise à lui-même.
 grant select, insert, update, delete on circulations to authenticated;
 
+-- -----------------------------------------------------------------------------
+-- 2. Les CONTRAINTES de nature. Elles arrivent seulement maintenant : avant le
+--    déploiement, l'ancien front créait encore des renforts sans écrire
+--    `nature`, et la contrainte de plage les aurait refusés.
+--
+--    Rattrapage d'abord — ce que l'ancien front aurait créé pendant la fenêtre
+--    A. La condition ne touche PAS un spécial correctement écrit ('special'
+--    porte bien `supplementaire` à vrai) : elle ne vise que l'incohérence.
+-- -----------------------------------------------------------------------------
+update circulations
+   set nature = case when supplementaire then 'supplementaire' else 'grille' end
+ where supplementaire <> (nature <> 'grille');
+
+do $$
+begin
+  -- (a) La colonne de compatibilité ne peut plus diverger. Le déclencheur la
+  --     tient déjà ; la contrainte le dit à la base, qui est la seule à ne
+  --     jamais oublier.
+  if not exists (select 1 from pg_constraint where conname = 'circulations_nature_supplementaire') then
+    alter table circulations add constraint circulations_nature_supplementaire
+      check (supplementaire = (nature <> 'grille'));
+  end if;
+
+  -- (b) La PLAGE DE NUMÉROS. Elle n'était qu'une convention du front
+  --     (`NUMERO_SUP_MIN = 101`) tant que seule la supervision écrivait cette
+  --     table. Elle devient porteuse dès qu'admin peut y insérer des lignes
+  --     'special' : sans elle, un spécial numéroté 9 s'afficherait « TRAIN 9 »
+  --     en gare, pour quelque chose que personne à l'exploitation n'a créé.
+  --     Le `using` d'une politique ne l'attrape pas — il n'y a pas d'ancienne
+  --     ligne à l'INSERT.
+  --
+  --     La parité reste liée au sens dans TOUTES les plages : impair = montée,
+  --     pair = descente. 201 est impair, la convention tient. Elle n'est pas
+  --     mise en contrainte ici : aucune donnée existante ne la viole, mais une
+  --     contrainte qui ferait ÉCHOUER cette migration en production hors
+  --     service coûterait plus cher qu'elle ne protège.
+  if not exists (select 1 from pg_constraint where conname = 'circulations_nature_numero') then
+    alter table circulations add constraint circulations_nature_numero
+      check (
+        (nature = 'grille' and numero between 1 and 99)
+        or (nature = 'supplementaire' and numero between 101 and 199)
+        or (nature = 'special' and numero >= 201)
+      );
+  end if;
+end $$;
+
 -- =============================================================================
 -- VÉRIFICATION — à lire, pas à survoler.
 -- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 0. Les contraintes sont posées. Attendu : trois lignes.
+-- -----------------------------------------------------------------------------
+select conname
+  from pg_constraint
+ where conrelid = 'public.circulations'::regclass
+   and conname in (
+     'circulations_nature_valeurs',
+     'circulations_nature_supplementaire',
+     'circulations_nature_numero'
+   )
+ order by conname;
 
 -- -----------------------------------------------------------------------------
 -- 1. Les droits de colonne. Deux critères SÉPARÉS — les confondre est ce qui
@@ -72,7 +131,8 @@ grant select, insert, update, delete on circulations to authenticated;
 --      • `anon` ne doit avoir AUCUNE ligne portant `commanditaire` ;
 --      • `anon` doit avoir SELECT sur les SEIZE autres — une colonne oubliée
 --        ici éteint les écrans, ce n'est pas un simple manque.
---    Attendu : 16 lignes pour anon, toutes en SELECT, sans `commanditaire`.
+--    Attendu : 16 lignes pour anon, toutes en SELECT, sans `commanditaire`
+--    ni `supplementaire` (le front lit `nature`).
 -- -----------------------------------------------------------------------------
 select grantee, privilege_type, column_name
   from information_schema.column_privileges

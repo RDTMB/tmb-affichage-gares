@@ -102,7 +102,12 @@ describe('le DÉCOUPAGE en deux migrations, et ce qu’il protège', () => {
   it('A n’enlève RIEN : l’ancien front tient jusqu’au déploiement', () => {
     // C'est toute la raison du découpage. Un `revoke` glissé dans A
     // éteindrait les six gares pendant la propagation de GitHub Pages.
-    expect(MIGRATION_A, 'A révoque des droits').not.toContain('revoke');
+    // Sur la TABLE : A ne doit rien y retirer. (Le `revoke … on function`
+    // qui durcit la fonction de déclencheur n'enlève rien à personne sur les
+    // données — c'est la pose normale d'une fonction `private`.)
+    expect(MIGRATION_A, 'A révoque des droits sur la table').not.toMatch(
+      /revoke[^;]*\son circulations/,
+    );
     expect(MIGRATION_A, 'A restreint des droits').not.toContain('grant select (');
   });
 

@@ -37,7 +37,7 @@ function sup(numero: number): Circulation[] {
     retard_min: 0,
     motif: null,
     sans_voyageurs: false,
-    supplementaire: true,
+    nature: 'supplementaire' as const,
     passages: [
       { gare: 'le-fayet', d: '11:20:00' },
       { gare: 'col-de-voza', a: '12:00:00' },

@@ -29,7 +29,8 @@ import {
 } from '../core/horaires';
 import { construitRotationSup, prepareDepartSup, prochainNumeroSup } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
-import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, ORDRE_GARES } from '../core/types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, horsGrille, ORDRE_GARES } from '../core/types';
+import type { NatureCirculation } from '../core/types';
 import type {
   Affluence,
   Circulation,
@@ -654,11 +655,8 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
   }
   if (affluenceDe(numero) === niveau) return; // rien à écrire
   const libelle = libelleTrain(
-    { numero, supplementaire: circulationDe(numero)?.supplementaire === true },
-    (jour?.circulations ?? []).map((x) => ({
-      numero: x.numero,
-      supplementaire: x.supplementaire,
-    })),
+    { numero, nature: circulationDe(numero)?.nature ?? 'grille' },
+    (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
   );
   try {
     await provider.setAffluence(date, numero, niveau);
@@ -1030,7 +1028,7 @@ function maintenantS(): number {
  * Une date passée compte comme arrivée, une date à venir jamais.
  */
 function monteeSupArrivee(montee: Circulation | null): boolean {
-  if (!montee?.supplementaire) return false;
+  if (!montee || !horsGrille(montee)) return false;
   if (dateSel > dateISO(0)) return false;
   if (dateSel < dateISO(0)) return true;
   const passages = montee.passages ?? [];
@@ -1161,15 +1159,12 @@ function ligneCirculation(
   }${marqueurAffluence} ${montee ? '' : 'paire-fin'}">
     <td class="h-dep">${heure}<small>${echapper(
       libelleTrain(
-        { numero: n, supplementaire: c.supplementaire },
-        (jour?.circulations ?? []).map((x) => ({
-          numero: x.numero,
-          supplementaire: x.supplementaire,
-        })),
+        { numero: n, nature: c.nature },
+        (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
       ),
     )}</small>${
-      c.supplementaire
-        ? `<span class="badge-sup">SUP</span>${
+      horsGrille(c)
+        ? `<span class="badge-sup">${c.nature === 'special' ? 'SPÉCIAL' : 'SUP'}</span>${
             montee && !lectureSeule
               ? `<button class="leger btn-sup-suppr" data-action="sup-supprimer" data-numero="${n}">Supprimer ce train</button>`
               : ''
@@ -1377,15 +1372,15 @@ function rendreCirculations(): void {
         );
       })
       .join('') +
-    // Trains SUPPLÉMENTAIRES : absents de la grille, ils portent leurs propres
-    // passages. On fabrique le TrainGrille équivalent pour réutiliser
-    // exactement le même rendu de ligne.
+    // Trains HORS GRILLE — renforts ET spéciaux : absents de la grille, ils
+    // portent leurs propres passages. On fabrique le TrainGrille équivalent
+    // pour réutiliser exactement le même rendu de ligne.
     (jour?.circulations ?? [])
-      .filter((c) => c.supplementaire && c.sens === 'montee')
+      .filter((c) => horsGrille(c) && c.sens === 'montee')
       .sort((a, b) => a.numero - b.numero)
       .map((montee) => {
         const descente = jour?.circulations.find(
-          (c) => c.supplementaire && c.numero === montee.numero + 1,
+          (c) => horsGrille(c) && c.numero === montee.numero + 1,
         );
         return (
           ligneCirculation(commeTrainGrille(montee), 'montee', lectureSeule) +
@@ -1801,7 +1796,7 @@ function initCirculations(): void {
       retard_min: 0,
       motif: null,
       sans_voyageurs: ($('sup-sans-voyageurs') as HTMLInputElement).checked,
-      supplementaire: true,
+      nature: 'supplementaire',
       passages: rotation.montee,
     };
     stageCirculation(brouillonCirc, base);
@@ -2038,11 +2033,8 @@ function initCirculations(): void {
       proposeAppariementFacultatif(numero, actif);
     } else if (action === 'sup-supprimer') {
       const libelle = libelleTrain(
-        { numero, supplementaire: true },
-        (jour?.circulations ?? []).map((x) => ({
-          numero: x.numero,
-          supplementaire: x.supplementaire,
-        })),
+        { numero, nature: circulationDe(numero)?.nature ?? 'supplementaire' },
+        (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
       );
       if (
         !window.confirm(
@@ -2385,7 +2377,7 @@ function retientGareCaisse(gare: GareId | null): void {
 /** Une ligne de l'onglet « Places », prête à rendre. */
 interface LigneAffluence {
   numero: number;
-  supplementaire: boolean;
+  nature: NatureCirculation;
   sens: Sens;
   express: boolean;
   rame: string;
@@ -2421,7 +2413,7 @@ function lignesAffluence(gare: GareId | null, maintenant_s: number): LigneAfflue
     if (depart_s < maintenant_s) continue;
     lignes.push({
       numero: train.numero,
-      supplementaire: train.supplementaire,
+      nature: train.nature,
       sens: train.sens,
       express: train.express,
       rame: train.rame,
@@ -2523,7 +2515,7 @@ function rendreAffluence(): void {
 
   const tousLesTrains = (jour.circulations ?? []).map((c) => ({
     numero: c.numero,
-    supplementaire: c.supplementaire,
+    nature: c.nature,
   }));
   // `disabled` sur chaque bouton : un sélecteur qui a l'air cliquable et ne
   // fait rien est pire qu'un sélecteur éteint. Le gestionnaire refuse aussi
@@ -2537,10 +2529,7 @@ function rendreAffluence(): void {
         const niveau = declaration?.niveau ?? null;
         // « TRAIN 9 » : le libellé CANONIQUE. « T9 » n'existe que sur
         // l'écran de gare, où la place manque — jamais en supervision.
-        const nom = libelleTrain(
-          { numero: l.numero, supplementaire: l.supplementaire },
-          tousLesTrains,
-        );
+        const nom = libelleTrain({ numero: l.numero, nature: l.nature }, tousLesTrains);
         const machine = machineDe(l.rame);
         const quand = heureSignature(declaration?.maj_le);
         const qui = declaration?.maj_par ?? '';

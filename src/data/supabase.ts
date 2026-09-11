@@ -37,7 +37,8 @@ import type {
   EntreeJournal,
   FiltreJournal,
 } from '../core/types';
-import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, horsGrille } from '../core/types';
+import type { NatureCirculation } from '../core/types';
 import { ROLES, aLeDroit } from '../core/roles';
 import { paramsValides } from '../core/params';
 import {
@@ -331,13 +332,13 @@ export class SupabaseProvider implements DataProvider {
       options?.avecCommanditaire === true
         ? table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, supplementaire, passages, depart_reel, commanditaire',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, commanditaire',
             )
             .eq('date', date)
             .order('numero')
         : table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, supplementaire, passages, depart_reel',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel',
             )
             .eq('date', date)
             .order('numero'),
@@ -828,14 +829,14 @@ export class SupabaseProvider implements DataProvider {
     // constater, ses heures viennent du document d'exploitation.
     const { data, error } = await this.client
       .from('circulations')
-      .select('numero, sens, supplementaire')
+      .select('numero, sens, nature')
       .eq('date', date)
       .eq('numero', numeroDescente)
       .maybeSingle();
     verifie(error);
-    const ligne = data as { sens: Sens; supplementaire: boolean } | null;
+    const ligne = data as { sens: Sens; nature: NatureCirculation } | null;
     if (!ligne) throw new Error(`TRAIN ${numeroDescente} introuvable au ${date}`);
-    if (!ligne.supplementaire || ligne.sens !== 'descente') {
+    if (!horsGrille(ligne) || ligne.sens !== 'descente') {
       throw new Error(
         `TRAIN ${numeroDescente} n'est pas une descente supplémentaire : départ réel refusé`,
       );
@@ -856,13 +857,13 @@ export class SupabaseProvider implements DataProvider {
     // grille se met au statut « supprimé », il ne disparaît pas de la journée.
     const { data, error } = await this.client
       .from('circulations')
-      .select('numero, supplementaire')
+      .select('numero, nature')
       .eq('date', date)
       .in('numero', [numeroMontee, numeroMontee + 1]);
     verifie(error);
-    const lignes = (data ?? []) as { numero: number; supplementaire: boolean }[];
+    const lignes = (data ?? []) as { numero: number; nature: NatureCirculation }[];
     if (lignes.length === 0) throw new Error(`TRAIN ${numeroMontee} introuvable au ${date}`);
-    if (lignes.some((l) => !l.supplementaire)) {
+    if (lignes.some((l) => !horsGrille(l))) {
       throw new Error(
         `TRAIN ${numeroMontee} n'est pas un train supplémentaire : suppression refusée`,
       );

@@ -36,7 +36,7 @@ import {
 import type { FermetureGare } from '../core/horaires';
 import { vitesseTickerEffective } from '../core/ticker';
 import { paramsValides } from '../core/params';
-import { ORDRE_GARES } from '../core/types';
+import { horsGrille, ORDRE_GARES } from '../core/types';
 import type {
   Affluence,
   FinDeService,
@@ -247,7 +247,7 @@ function trainsParNumero(): Map<number, TrainJour> {
 
 /** Gares non desservies par un train sup, en clair et bilingue. */
 function mentionSansArret(train: TrainJour | undefined): string {
-  if (!grille || !train?.supplementaire) return '';
+  if (!grille || !train || !horsGrille(train)) return '';
   let sautees: GareId[] = [];
   try {
     sautees = garesSautees(
@@ -327,7 +327,7 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // l'œil du voyageur va déjà. « TRAIN 11 » reste le libellé canonique en
   // supervision et dans la grille du jour ; ici on écrit « T11 ».
   const badge = `<span class="badge-train">${echapper(
-    libelleTrainCourt({ numero: p.numero, supplementaire: p.supplementaire }, [...trains.values()]),
+    libelleTrainCourt({ numero: p.numero, nature: p.nature }, [...trains.values()]),
   )}</span>`;
 
   return `<div class="gridrow rangee${supprime ? ' supprime' : ''}">

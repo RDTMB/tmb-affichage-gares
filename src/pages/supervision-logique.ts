@@ -16,7 +16,7 @@ import type {
   Sens,
 } from '../core/types';
 import type { Onglet, VisibiliteOnglets } from '../core/types';
-import { ORDRE_GARES } from '../core/types';
+import { horsGrille, ORDRE_GARES } from '../core/types';
 import {
   LIBELLE_ROLE,
   ONGLETS,
@@ -805,7 +805,7 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
   // --- Train SUPPLÉMENTAIRE : le terminus vient des passages, jamais de la
   //     colonne. Montée → son terminus ; descente → sa gare de départ, qui
   //     n'est pas forcément Le Fayet (un renfort peut ne pas redescendre en bas).
-  if (c.supplementaire) {
+  if (horsGrille(c)) {
     const source =
       passagesEffectifs && passagesEffectifs.length > 0 ? { passages: passagesEffectifs } : c;
     const gare = montee ? terminusReel(source) : origineReelle(source);
@@ -913,7 +913,7 @@ export function routageCirculations(
   const consommes = new Set<number>();
 
   for (const c of enAttente) {
-    if (!c.supplementaire || c.sens !== 'montee' || !neufs.has(c.numero)) continue;
+    if (!horsGrille(c) || c.sens !== 'montee' || !neufs.has(c.numero)) continue;
     const descente = enAttente.find((x) => x.numero === c.numero + 1);
     if (!descente) {
       throw new Error(
@@ -973,7 +973,11 @@ export function resumeJournee(
 ): ResumeJournee {
   const facultatifs = jour.circulations.filter((c) => c.facultatif);
   const actifs = facultatifs.filter((c) => c.facultatif_actif).length;
-  const sups = jour.circulations.filter((c) => c.supplementaire && c.sens === 'montee').length;
+  // Les RENFORTS seulement : un train spécial n'est pas un renfort, et le
+  // compteur de la barre du jour annonce « renfort(s) ».
+  const sups = jour.circulations.filter(
+    (c) => c.nature === 'supplementaire' && c.sens === 'montee',
+  ).length;
 
   const etat: EtatJournee =
     jour.hors_saison === true

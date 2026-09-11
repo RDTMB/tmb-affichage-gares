@@ -757,7 +757,8 @@ export class MockProvider implements DataProvider {
       // sans quoi ils disparaîtraient à la relecture.
       const connus = new Set(jour.circulations.map((c) => c.numero));
       for (const brut of Object.values(etatJour.circulations)) {
-        if (brut?.supplementaire !== true || connus.has(brut.numero ?? -1)) continue;
+        if (brut?.nature === undefined || brut.nature === 'grille') continue;
+        if (connus.has(brut.numero ?? -1)) continue;
         jour.circulations.push(brut as Circulation);
       }
       jour.circulations.sort((x, y) => x.numero - y.numero);
@@ -1131,7 +1132,11 @@ export class MockProvider implements DataProvider {
     if (!jour || !descente) throw new Error(`TRAIN ${numeroDescente} introuvable au ${date}`);
     // Même garde-fou qu'en production : seule une DESCENTE supplémentaire a un
     // départ à constater.
-    if (descente.supplementaire !== true || descente.sens !== 'descente') {
+    if (
+      descente.nature === undefined ||
+      descente.nature === 'grille' ||
+      descente.sens !== 'descente'
+    ) {
       throw new Error(
         `TRAIN ${numeroDescente} n'est pas une descente supplémentaire : départ réel refusé`,
       );
@@ -1155,7 +1160,7 @@ export class MockProvider implements DataProvider {
     const montee = jour?.circulations[String(numeroMontee)];
     if (!jour || !montee) throw new Error(`TRAIN ${numeroMontee} introuvable au ${date}`);
     // Même garde-fou qu'en production : un train de grille ne se supprime pas.
-    if (montee.supplementaire !== true) {
+    if (montee.nature === undefined || montee.nature === 'grille') {
       throw new Error(
         `TRAIN ${numeroMontee} n'est pas un train supplémentaire : suppression refusée`,
       );

@@ -22,6 +22,35 @@ export type GareId = (typeof ORDRE_GARES)[number];
 export type Sens = 'montee' | 'descente';
 
 /** Bornes de la ligne complète : défaut de toute journée. */
+/**
+ * NATURE d'une circulation. UN SEUL champ, et c'est le sujet : deux booléens
+ * côte à côte (`supplementaire` + `special`) rendraient représentable la
+ * combinaison « sup ET spécial », qui n'existe pas en exploitation et que
+ * rien n'empêcherait en base.
+ *
+ *  - `grille`         : le train vient du document d'exploitation. Ses heures
+ *                       sont jointes depuis la grille, il ne porte pas de
+ *                       passages.
+ *  - `supplementaire` : renfort créé à la demande (docs/01 §2.7).
+ *  - `special`        : train affrété, affiché avec la mention « privé »
+ *                       (docs/01 §2.9).
+ *
+ * Les deux dernières portent LEURS PROPRES passages — sans quoi elles
+ * seraient invisibles partout, `trainsDuJour()` ne sachant joindre que des
+ * trains de grille. C'est ce que dit `horsGrille()`.
+ */
+export type NatureCirculation = 'grille' | 'supplementaire' | 'special';
+
+/**
+ * Le train porte-t-il SES PROPRES passages ? Vrai pour un renfort comme pour
+ * un spécial. Ce prédicat a remplacé l'ancien booléen `supplementaire`
+ * partout où celui-ci voulait dire « hors grille » et non « renfort » — la
+ * distinction n'existait pas avant qu'une troisième nature apparaisse.
+ */
+export function horsGrille(t: { nature: NatureCirculation }): boolean {
+  return t.nature !== 'grille';
+}
+
 export const GARE_DEBUT_DEFAUT: GareId = 'le-fayet';
 export const GARE_FIN_DEFAUT: GareId = 'nid-daigle';
 
@@ -192,12 +221,17 @@ export interface Circulation {
    */
   sans_voyageurs: boolean;
   /**
-   * TRAIN SUPPLÉMENTAIRE : train de renfort créé à la demande, absent de
-   * toute grille. Il porte donc SES PROPRES passages — sans quoi il serait
-   * invisible partout, trainsDuJour() ne sachant joindre que des trains de
+   * GRILLE, RENFORT ou SPÉCIAL. Les deux dernières sont absentes de toute
+   * grille et portent donc SES PROPRES passages — sans quoi elles seraient
+   * invisibles partout, trainsDuJour() ne sachant joindre que des trains de
    * grille.
+   *
+   * La colonne SQL `supplementaire` existe encore en base, dérivée de
+   * celle-ci par déclencheur et tenue par une contrainte. Elle n'est plus ni
+   * lue ni écrite par le front, et son retrait est prévu pour la saison 2027
+   * (une fois qu'aucun poste ne peut plus servir l'ancien bundle).
    */
-  supplementaire: boolean;
+  nature: NatureCirculation;
   /**
    * Passages du train sup, au format des grilles JSON
    * (`[{"gare":"le-fayet","d":"17:00:00"}, …]`). null pour un train de
@@ -286,8 +320,8 @@ export interface TrainJour {
   motif: string | null;
   /** Montée tronquée à Bellevue ou descente partant de Bellevue. */
   terminusExceptionnel: boolean;
-  /** Train de renfort, absent des grilles (docs/01 §2.7). */
-  supplementaire: boolean;
+  /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
+  nature: NatureCirculation;
   /**
    * Descente supplémentaire dont le départ du terminus a été CONSTATÉ : ses
    * heures ne sont plus une estimation. Ce n'est PAS un retard — l'écran le
@@ -312,8 +346,8 @@ export interface PassageGare {
   /** Gare terminus effective (« Nid d'Aigle », « Le Fayet », « Bellevue » si exceptionnel). */
   destination: GareId;
   terminusExceptionnel: boolean;
-  /** Train de renfort, absent des grilles (docs/01 §2.7). */
-  supplementaire: boolean;
+  /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
+  nature: NatureCirculation;
   /** Descente supplémentaire au départ CONSTATÉ (mention neutre, jamais « retard »). */
   departConfirme: boolean;
   /** Heures réelles (retard inclus) ; un supprimé garde ses heures théoriques (affichées barrées). */

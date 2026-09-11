@@ -1333,7 +1333,9 @@ describe('Commanditaire : le mock reproduit le droit de colonne (11/09/2026)', (
   // production. Les tests de texte de src/data/commanditaire.test.ts ne
   // suffisent pas : ils ont laissé survivre la mutation `if (true) return`.
 
-  async function avecUnCommanditaire(): Promise<MockProvider> {
+  // Pas d'annotation de retour : `MockProvider` arrive par `await import()`,
+  // c'est donc une VALEUR ici et non un type — l'inférence, elle, donne le bon.
+  async function avecUnCommanditaire() {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.signIn('supervision@demo', 'x');
     const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });

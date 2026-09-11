@@ -2,6 +2,7 @@
 // L'heure courante est TOUJOURS injectée (en secondes depuis minuit) pour
 // permettre l'heure simulée ?simule=HH:MM et des tests déterministes.
 
+import { horsGrille } from './types';
 import type {
   Circulation,
   CompteARebours,
@@ -134,7 +135,7 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
-      supplementaire: false,
+      nature: 'grille',
       passages: null,
     });
   });
@@ -155,7 +156,7 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
-      supplementaire: false,
+      nature: 'grille',
       passages: null,
     });
   }
@@ -484,7 +485,7 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
         retard_min: circulation?.statut === 'retard' ? circulation.retard_min : 0,
         motif: circulation?.motif ?? null,
         terminusExceptionnel: false,
-        supplementaire: false,
+        nature: 'grille',
         // Un train de GRILLE n'a pas de départ à constater : ses heures sont
         // celles du document d'exploitation, pas une estimation.
         departConfirme: false,
@@ -493,11 +494,11 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
     }
   }
 
-  // TRAINS SUPPLÉMENTAIRES : absents de toute grille, ils portent leurs
-  // propres passages. Sans ce bloc ils seraient invisibles partout — la
-  // boucle ci-dessus ne sait joindre que des trains de grille.
+  // TRAINS HORS GRILLE — renforts ET spéciaux : absents de toute grille, ils
+  // portent leurs propres passages. Sans ce bloc ils seraient invisibles
+  // partout — la boucle ci-dessus ne sait joindre que des trains de grille.
   for (const circulation of jour.circulations) {
-    if (!circulation.supplementaire || !circulation.passages) continue;
+    if (!horsGrille(circulation) || !circulation.passages) continue;
     if (circulation.sans_voyageurs === true) continue; // course à vide : jamais affichée
 
     let rame = circulation.rame;
@@ -522,7 +523,10 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
       retard_min: circulation.statut === 'retard' ? circulation.retard_min : 0,
       motif: circulation.motif,
       terminusExceptionnel: false,
-      supplementaire: true,
+      // La NATURE est reportée telle quelle : un spécial n'est pas un renfort,
+      // et c'est elle qui décide du libellé (« SPÉCIAL 1 ») comme de la
+      // mention « privé » sur l'écran de gare.
+      nature: circulation.nature,
       // Départ CONSTATÉ depuis le terminus : seule une descente de renfort
       // peut en porter un. Ce n'est pas un retard, l'écran le dit en neutre.
       departConfirme: circulation.sens === 'descente' && Boolean(circulation.depart_reel),
@@ -654,12 +658,13 @@ export function terminusReel(train: { passages?: SuiteDePassages }): GareId | nu
  * il doit rester le même partout et d'un rafraîchissement à l'autre.
  */
 export function libelleTrain(
-  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
-  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+  train: Pick<TrainJour, 'numero' | 'nature'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
 ): string {
-  if (!train.supplementaire) return `TRAIN ${train.numero}`;
-  const rang = rangSup(train, tousLesTrainsDuJour);
-  return rang === null ? 'TRAIN SUP' : `TRAIN SUP ${rang}`;
+  if (!horsGrille(train)) return `TRAIN ${train.numero}`;
+  const rang = rangDansSaSerie(train, tousLesTrainsDuJour);
+  const mot = train.nature === 'special' ? 'SPÉCIAL' : 'TRAIN SUP';
+  return rang === null ? mot : `${mot} ${rang}`;
 }
 
 /**
@@ -674,12 +679,13 @@ export function libelleTrain(
  * les deux fonctions le tirent de `rangSup()`.
  */
 export function libelleTrainCourt(
-  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
-  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+  train: Pick<TrainJour, 'numero' | 'nature'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
 ): string {
-  if (!train.supplementaire) return `T${train.numero}`;
-  const rang = rangSup(train, tousLesTrainsDuJour);
-  return rang === null ? 'SUP' : `SUP ${rang}`;
+  if (!horsGrille(train)) return `T${train.numero}`;
+  const rang = rangDansSaSerie(train, tousLesTrainsDuJour);
+  const mot = train.nature === 'special' ? 'SPÉ' : 'SUP';
+  return rang === null ? mot : `${mot} ${rang}`;
 }
 
 /**
@@ -690,15 +696,20 @@ export function libelleTrainCourt(
  * L'ordre suit les NUMÉROS, pas l'ordre d'affichage : le rang doit rester le
  * même partout et d'un rafraîchissement à l'autre.
  */
-function rangSup(
-  train: Pick<TrainJour, 'numero' | 'supplementaire'>,
-  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'supplementaire'>[],
+function rangDansSaSerie(
+  train: Pick<TrainJour, 'numero' | 'nature'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
 ): number | null {
-  // Une rotation sup compte pour UN train : la montée (impair) et sa
-  // descente (numéro + 1) portent le même rang.
+  // Une rotation compte pour UN train : la montée (impair) et sa descente
+  // (numéro + 1) portent le même rang.
   const rotation = (numero: number): number => (numero % 2 === 0 ? numero - 1 : numero);
+  // Chaque nature a SA série : « SUP 2 » et « SPÉCIAL 2 » sont deux trains
+  // différents, et compter les deux ensemble ferait sauter un rang à chaque
+  // fois que l'autre série gagne une rotation.
   const rotations = [
-    ...new Set(tousLesTrainsDuJour.filter((t) => t.supplementaire).map((t) => rotation(t.numero))),
+    ...new Set(
+      tousLesTrainsDuJour.filter((t) => t.nature === train.nature).map((t) => rotation(t.numero)),
+    ),
   ].sort((a, b) => a - b);
   if (rotations.length <= 1) return null;
   const rang = rotations.indexOf(rotation(train.numero));
@@ -736,7 +747,7 @@ export function passagesPourGare(
       origine,
       destination,
       terminusExceptionnel: train.terminusExceptionnel,
-      supplementaire: train.supplementaire,
+      nature: train.nature,
       departConfirme: train.departConfirme,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,
       depart_s: passage.depart_s === null ? null : passage.depart_s + decalage,

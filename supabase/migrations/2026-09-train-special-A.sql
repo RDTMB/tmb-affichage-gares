@@ -54,7 +54,70 @@ comment on column circulations.commanditaire is
   'droit de SELECT est retiré à anon par la migration B.';
 
 -- -----------------------------------------------------------------------------
--- 2. Le JOURNAL suit la colonne. Sans cette ligne, changer le commanditaire
+-- 2. La NATURE de la circulation : grille, renfort, ou spécial.
+--
+--    UN SEUL champ, et c'est le sujet. Deux booléens côte à côte
+--    (`supplementaire` + `special`) rendraient représentable la combinaison
+--    « sup ET spécial », qui n'existe pas en exploitation et que rien
+--    n'empêcherait en base.
+--
+--    Pas de contrainte de PLAGE ici : pendant la fenêtre A, l'ancien front
+--    crée encore des renforts sans écrire `nature` — ils arriveraient en
+--    'grille' avec un numéro 101, et la contrainte les refuserait. Elle est
+--    dans B, après le déploiement.
+-- -----------------------------------------------------------------------------
+alter table circulations add column if not exists nature text not null default 'grille';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'circulations_nature_valeurs') then
+    alter table circulations add constraint circulations_nature_valeurs
+      check (nature in ('grille', 'supplementaire', 'special'));
+  end if;
+end $$;
+
+comment on column circulations.nature is
+  'grille | supplementaire | special. Remplace le booléen supplementaire, '
+  'qui reste dérivé par déclencheur jusqu''à son retrait (saison 2027).';
+
+-- Report de l'existant : tout ce qui portait `supplementaire` est un renfort.
+update circulations set nature = 'supplementaire'
+ where supplementaire and nature <> 'supplementaire';
+
+-- -----------------------------------------------------------------------------
+-- 3. Le déclencheur qui tient les deux colonnes d'accord, DANS LES DEUX SENS.
+--
+--    Il existe pour la fenêtre A, et il vaut mieux qu'un simple report :
+--      • l'ANCIEN front écrit `supplementaire` sans connaître `nature` — on
+--        déduit dans ce sens-là, sinon un renfort créé pendant la fenêtre
+--        resterait en 'grille' ;
+--      • le NOUVEAU front écrit `nature` et n'envoie plus `supplementaire` —
+--        sans ce déclencheur, la valeur par défaut `false` ferait échouer la
+--        contrainte `circulations_sup_passages` sur tout renfort.
+--
+--    Il survit à B : c'est lui qui permet au front de ne plus jamais parler de
+--    `supplementaire`, en attendant le retrait de la colonne (saison 2027).
+-- -----------------------------------------------------------------------------
+create or replace function private.circulations_nature()
+returns trigger language plpgsql set search_path = '' as $fn$
+begin
+  -- Ancien front : il pose `supplementaire` et laisse `nature` au défaut.
+  if tg_op = 'INSERT' and new.nature = 'grille' and new.supplementaire then
+    new.nature := 'supplementaire';
+  end if;
+  -- Dans tous les cas, la colonne de compatibilité SUIT la nature.
+  new.supplementaire := (new.nature <> 'grille');
+  return new;
+end $fn$;
+revoke all on function private.circulations_nature() from public;
+
+drop trigger if exists trg_circulations_nature on circulations;
+create trigger trg_circulations_nature
+  before insert or update on circulations
+  for each row execute function private.circulations_nature();
+
+-- -----------------------------------------------------------------------------
+-- 4. Le JOURNAL suit la colonne. Sans cette ligne, changer le commanditaire
 --    d'un train affrété ne laisserait aucune trace — or c'est précisément la
 --    donnée dont on aura besoin le jour où l'on cherche qui a demandé quoi.
 -- -----------------------------------------------------------------------------
@@ -64,7 +127,7 @@ create trigger trg_journal_circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
     'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
-    'sans_voyageurs', 'commanditaire'
+    'sans_voyageurs', 'commanditaire', 'nature'
   );
 
 -- =============================================================================
@@ -78,7 +141,19 @@ create trigger trg_journal_circulations
 select column_name, data_type, is_nullable
   from information_schema.columns
  where table_schema = 'public' and table_name = 'circulations'
-   and column_name = 'commanditaire';
+   and column_name in ('commanditaire', 'nature')
+ order by column_name;
+
+-- -----------------------------------------------------------------------------
+-- 1 bis. La nature reporte l'existant, et le déclencheur tient les deux
+--        colonnes d'accord. Attendu : AUCUNE ligne (toute ligne renvoyée est
+--        une incohérence).
+-- -----------------------------------------------------------------------------
+select date, numero, nature, supplementaire
+  from circulations
+ where supplementaire <> (nature <> 'grille')
+ order by date, numero
+ limit 20;
 
 -- -----------------------------------------------------------------------------
 -- 2. A n'a RIEN retiré : `anon` lit encore la table en bloc, donc l'ancien

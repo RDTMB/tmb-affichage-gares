@@ -60,6 +60,15 @@ create table if not exists circulations (
   -- TRAIN SUPPLÉMENTAIRE : train de renfort absent de toute grille. Il porte
   -- donc SES PROPRES passages, au format des grilles JSON — sans quoi il
   -- serait invisible partout (docs/01 §2.7).
+  -- NATURE de la circulation. UN SEUL champ : deux booléens côte à côte
+  -- (`supplementaire` + `special`) rendraient représentable la combinaison
+  -- « sup ET spécial », qui n'existe pas en exploitation.
+  nature text not null default 'grille'
+    check (nature in ('grille', 'supplementaire', 'special')),
+  -- COLONNE DE COMPATIBILITÉ, dérivée de `nature` par `trg_circulations_nature`
+  -- et tenue par `circulations_nature_supplementaire`. Le front ne la lit ni
+  -- ne l'écrit plus depuis le 11/09/2026 ; RETRAIT PRÉVU saison 2027, quand
+  -- plus aucun poste ne pourra servir l'ancien bundle.
   supplementaire boolean not null default false,
   passages jsonb,
   -- DÉPART RÉEL constaté depuis le terminus (descente d'une rotation
@@ -78,7 +87,19 @@ create table if not exists circulations (
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
   constraint circulations_sup_passages
-    check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
+    check ((supplementaire and passages is not null) or (not supplementaire and passages is null)),
+  constraint circulations_nature_supplementaire
+    check (supplementaire = (nature <> 'grille')),
+  -- PLAGES DE NUMÉROS, par nature. Ce n'était qu'une convention du front tant
+  -- que seule la supervision écrivait cette table ; elle devient porteuse dès
+  -- qu'admin peut y insérer des lignes 'special'. La parité reste liée au sens
+  -- dans toutes les plages : impair = montée, pair = descente.
+  constraint circulations_nature_numero
+    check (
+      (nature = 'grille' and numero between 1 and 99)
+      or (nature = 'supplementaire' and numero between 101 and 199)
+      or (nature = 'special' and numero >= 201)
+    )
 );
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
@@ -577,6 +598,25 @@ $fn$;
 revoke all on function private.email_appelant() from public;
 grant execute on function private.email_appelant() to authenticated;
 
+-- NATURE : la colonne de compatibilité `supplementaire` en est dérivée, dans
+-- les deux sens. Voir migrations/2026-09-train-special-A.sql pour le détail —
+-- l'ancien front écrivait `supplementaire` sans connaître `nature`.
+create or replace function private.circulations_nature()
+returns trigger language plpgsql set search_path = '' as $fn$
+begin
+  if tg_op = 'INSERT' and new.nature = 'grille' and new.supplementaire then
+    new.nature := 'supplementaire';
+  end if;
+  new.supplementaire := (new.nature <> 'grille');
+  return new;
+end $fn$;
+revoke all on function private.circulations_nature() from public;
+
+drop trigger if exists trg_circulations_nature on circulations;
+create trigger trg_circulations_nature
+  before insert or update on circulations
+  for each row execute function private.circulations_nature();
+
 -- Rotation : la rame d'une montée est recopiée sur sa descente appariée
 -- (numero + 1) pour les exports — l'affichage la dérive déjà par jointure.
 create or replace function private.sync_rame_descente()
@@ -675,7 +715,7 @@ grant update (nom, actif) on profils to authenticated;
 revoke all on circulations from anon;
 grant select (
   date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
-  terminus, statut, retard_min, motif, sans_voyageurs, supplementaire,
+  terminus, statut, retard_min, motif, sans_voyageurs, nature,
   passages, depart_reel
 ) on circulations to anon;
 grant select, insert, update, delete on circulations to authenticated;
@@ -1406,7 +1446,7 @@ create trigger trg_journal_circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
     'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
-    'sans_voyageurs', 'commanditaire'
+    'sans_voyageurs', 'commanditaire', 'nature'
   );
 
 -- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du

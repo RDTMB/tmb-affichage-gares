@@ -62,7 +62,7 @@ function rotationSup(
     retard_min: 0,
     motif: null,
     sans_voyageurs: false,
-    supplementaire: true,
+    nature: 'supplementaire' as const,
     passages: rotation.montee,
   };
   return {

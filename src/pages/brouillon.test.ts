@@ -23,7 +23,7 @@ function circulation(partiel: Partial<Circulation> = {}): Circulation {
     numero: 5,
     sens: 'montee',
     express: false,
-    supplementaire: false,
+    nature: 'grille' as const,
     facultatif: false,
     facultatif_actif: true,
     velos: false,
