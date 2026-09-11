@@ -276,6 +276,24 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   }"></span>`;
 
   const sansArret = mentionSansArret(trains.get(p.numero));
+  // Le STATUT, en tête de note, avant le sens de marche.
+  //
+  // FORMULATION ARRÊTÉE PAR LA MESURE (11/09/2026). « Ne prend pas de
+  // voyageurs / No boarding » a été écarté pour deux raisons :
+  //  - il est littéralement FAUX pour le groupe affrété qui monte à bord sous
+  //    les yeux des autres ; une course réellement vide est `sans_voyageurs`,
+  //    et celle-là ne s'affiche nulle part ;
+  //  - il ne TIENT PAS. Mesuré à 1920×1080 : avec la mention express sur la
+  //    même ligne (« EXPRESS — sans arrêt / non-stop : Col de Voza &
+  //    Bellevue », 56 caractères), la note est tronquée par ellipse dès 65
+  //    caractères de mention privée. « Train privé / Private charter » en fait
+  //    29 et laisse l'express entier — or c'est l'express qui doit survivre :
+  //    il dit aux voyageurs de Voza et de Bellevue que ce train ne s'arrête
+  //    pas chez eux.
+  // « Private » se lit bien au-delà de l'anglais ; « charter » non, d'où le
+  // couple entier plutôt que le seul mot anglais.
+  const prive =
+    p.nature === 'special' ? '<span class="prive">Train privé / Private charter</span>' : '';
   let note = p.express
     ? '<span class="exp">EXPRESS — sans arrêt / non-stop : Col de Voza &amp; Bellevue</span>'
     : sansArret !== ''
@@ -292,6 +310,17 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   if (p.departConfirme) note += ' · Horaire confirmé / Departure confirmed';
   if (p.velos) note += ' · Vélos acceptés / Bikes allowed';
   if (retard && p.motif) note += ` · <b>${echapper(motifBilingue(p.motif))}</b>`;
+  // La note ne reprend « privé » QUE si elle a la place — c'est-à-dire quand
+  // aucune mention express ou « sans arrêt » ne l'occupe déjà. Mesuré à 1280×720
+  // avec les deux : 456,5 px disponibles pour 456,5 px de contenu, zéro marge.
+  // Ça tenait, et ça n'aurait pas tenu au premier mot de plus.
+  //
+  // Ce n'est pas une perte : la pastille « PRIVÉ / PRIVATE » porte déjà
+  // l'information sur la ligne au-dessus. La mention express, elle, n'a pas
+  // d'autre endroit où aller, et c'est elle qui dit aux voyageurs du Col de
+  // Voza et de Bellevue que ce train ne s'arrête pas chez eux.
+  const noteLibre = !p.express && sansArret === '';
+  if (prive !== '' && !supprime && noteLibre) note = `${prive} · ${note}`;
   if (supprime) {
     note = `<span class="motif-supprime">${echapper(motifBilingue(p.motif ?? 'Supprimé'))}</span>`;
   }
@@ -316,8 +345,32 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // SUPPRIMÉ — il n'existe plus pour le voyageur, et « complet » sur un train
   // barré n'a aucun sens. Le FR passe en majuscules par CSS, l'anglais reste
   // en minuscules et plus petit (maquette validée le 09/09/2026).
+  // TRAIN SPÉCIAL : la mention « privé ». Pastille COURTE sur la ligne de
+  // destination, phrase complète sur la ligne de note juste en dessous.
+  //
+  // Pourquoi les deux mots et pas un seul : « Train privé » dit le STATUT et
+  // laisse le voyageur en tirer la conséquence ; « Ne prend pas de voyageurs »
+  // dit la conséquence mais est littéralement FAUX pour le groupe affrété qui
+  // monte à bord sous les yeux des autres. La pastille porte le statut —
+  // « PRIVATE » est un mot reconnu bien au-delà de l'anglais, « charter » non
+  // — et la note porte la conséquence, en toutes lettres et dans les deux
+  // langues.
+  //
+  // Rien sur un train SUPPRIMÉ : il n'existe plus pour le voyageur.
+  const priveHtml =
+    supprime || p.nature !== 'special'
+      ? ''
+      : '<span class="pill-prive">Privé <small>Private</small></span>';
+
+  // …et JAMAIS de pastille de remplissage sur un spécial. Deux raisons, et
+  // la seconde est mesurée : un train affrété ne vend pas ses places au
+  // comptoir (il est exclu de l'onglet « Places », docs/01 §2.8), et les deux
+  // pastilles ne tiennent PAS ensemble — « PRIVÉ » + « DERNIÈRES PLACES » +
+  // picto déborde de 140 px à 1920×1080, ce qui tronquerait le nom de la gare
+  // de destination. L'interface ne peut pas produire ce cas ; une ligne
+  // écrite à la main en base, si. Mesuré le 11/09/2026.
   const affluenceHtml =
-    supprime || !p.affluence
+    supprime || p.nature === 'special' || !p.affluence
       ? ''
       : p.affluence === 'complet'
         ? '<span class="pill-affluence complet">Complet <small>Full</small></span>'
@@ -334,8 +387,8 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
-      <div class="txt"><div class="dest">${badge}<span class="nom-dest">${echapper(nomGare(p.destination))}</span>${affluenceHtml}${motrice}</div><div class="note${
-        p.express || sansArret !== '' ? ' note-exp' : ''
+      <div class="txt"><div class="dest">${badge}<span class="nom-dest">${echapper(nomGare(p.destination))}</span>${priveHtml}${affluenceHtml}${motrice}</div><div class="note${
+        p.express || sansArret !== '' || prive !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
     <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span></div></div>

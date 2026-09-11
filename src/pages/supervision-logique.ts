@@ -393,6 +393,13 @@ export interface ChampsFormulaireCourse {
   garesDescente: boolean;
   /** Commanditaire : le spécial, et lui seul. */
   commanditaire: boolean;
+  /**
+   * Express et vélos : RÉGLAGES GARDÉS pour le spécial (décision du
+   * 10/09/2026). Un renfort ne les a jamais eus — il double une rotation de
+   * la grille et suit sa desserte.
+   */
+  express: boolean;
+  velos: boolean;
 }
 
 /**
@@ -412,6 +419,8 @@ export function champsFormulaireCourse(
     departDescente: avecDescente && forme === 'stationnement',
     garesDescente: avecDescente,
     commanditaire: nature === 'special',
+    express: nature === 'special',
+    velos: nature === 'special',
   };
 }
 

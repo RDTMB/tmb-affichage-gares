@@ -384,6 +384,56 @@ main {
   letter-spacing: 0;
 }
 
+/* TRAIN SPÉCIAL — pastille « privé ». Même gabarit que la pastille
+   d'affluence (même hauteur, même marge, même alignement sur l'axe de la
+   ligne), volontairement : les deux répondent à « ce train est-il pour
+   moi ? » et doivent se lire d'un même balayage.
+
+   Elles ne se rencontrent JAMAIS : un spécial est exclu de l'onglet
+   « Places » (docs/01 §2.8), et l'écran refuse en plus de lui poser une
+   pastille de remplissage. Ce second verrou vient d'une mesure — « PRIVÉ » +
+   « DERNIÈRES PLACES » + picto déborde de 140 px à 1920×1080 et tronquerait
+   le nom de la gare. La première rédaction de ce commentaire affirmait le
+   contraire, sans l'avoir mesuré (corrigé le 11/09/2026).
+
+   Marine sur crème : ce n'est NI le rouge du complet NI l'ambre des
+   dernières places — le privé n'est pas un niveau de remplissage, et lui
+   donner une couleur de la même famille ferait croire à un troisième
+   niveau. */
+.pill-prive {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vh;
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-weight: 900;
+  font-size: 2.1vh;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 0.9vh;
+  padding: 0.55vh 1.2vh;
+  margin-left: 0.7vw;
+  white-space: nowrap;
+  background: var(--creme);
+  color: var(--marine);
+}
+
+.pill-prive small {
+  font-weight: 700;
+  font-size: 1.5vh;
+  opacity: 0.85;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Même priorité que la pastille d'affluence devant le picto express : sans
+   ce sélecteur préfixé `.r-dest`, la marge de 1,4vw déclarée plus bas
+   l'emporte par ordre de fichier et la réserve avant troncature perd 13,4 px
+   sans que rien ne le dise (constaté le 10/09/2026 sur l'affluence). */
+.r-dest .dest .pill-prive + img.motrice-dest {
+  margin-left: 0.7vw;
+}
+
 .pill-affluence.complet {
   background: var(--rouge);
   color: #fff;
@@ -480,6 +530,15 @@ main {
 
 .r-dest .note .exp {
   color: var(--jaune);
+  font-weight: 700;
+}
+
+/* La mention « privé » dans la note : en CRÈME, la couleur de la pastille
+   qui la résume au-dessus — le lien entre les deux se lit sans être
+   expliqué. Pas en jaune : le jaune est celui de l'express, et deux
+   informations différentes de la même couleur se confondent à distance. */
+.r-dest .note .prive {
+  color: var(--creme);
   font-weight: 700;
 }
 
@@ -1228,6 +1287,16 @@ body.mode-horloge .badge-cache {
     padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
   }
   .pill-affluence small {
+    font-size: calc(1.5 * var(--u));
+  }
+  /* Même gabarit que la pastille d'affluence, donc même transcription. */
+  .pill-prive {
+    font-size: calc(2.1 * var(--u));
+    gap: calc(0.6 * var(--u));
+    border-radius: calc(0.9 * var(--u));
+    padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
+  }
+  .pill-prive small {
     font-size: calc(1.5 * var(--u));
   }
   /* §4.3 — DÉTERMINÉ AU RENDU, 1024×768 et 1080×1920, le 10/09/2026.

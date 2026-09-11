@@ -513,11 +513,17 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
       numero: circulation.numero,
       sens: circulation.sens,
       // « express » désigne le train qui saute Voza et Bellevue, avec son
-      // picto motrice : un train sup n'en est pas un, même s'il saute des
-      // gares. Sa mention à lui est « SANS ARRÊT » (docs/01 §2.7).
-      express: false,
+      // picto motrice : un RENFORT n'en est pas un, même s'il saute des
+      // gares — sa mention à lui est « SANS ARRÊT » (docs/01 §2.7).
+      //
+      // Un SPÉCIAL, si : l'exploitant a gardé le réglage (décision du
+      // 10/09/2026), et un train affrété qui monte sans desservir Voza ni
+      // Bellevue se signale comme n'importe quel express. La colonne était
+      // ignorée ici, si bien que la case du formulaire n'avait aucun effet à
+      // l'écran — relevé au navigateur le 11/09/2026, pas supposé.
+      express: circulation.nature === 'special' && circulation.express,
       facultatif: false,
-      velos: false,
+      velos: circulation.nature === 'special' && circulation.velos,
       rame,
       statut: circulation.statut,
       retard_min: circulation.statut === 'retard' ? circulation.retard_min : 0,

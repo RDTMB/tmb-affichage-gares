@@ -1639,6 +1639,8 @@ function initCirculations(): void {
     montre('sup-champ-descente', champs.departDescente);
     montre('sup-champ-gares-descente', champs.garesDescente);
     montre('sup-champ-commanditaire', champs.commanditaire);
+    montre('sup-champ-express', champs.express);
+    montre('sup-champ-velos', champs.velos);
     $('sup-titre').textContent = nature === 'special' ? 'Train spécial' : 'Train supplémentaire';
 
     // Terminus hors section ou au-delà de Bellevue : on le DIT, on ne bloque
@@ -1887,10 +1889,14 @@ function initCirculations(): void {
       date: dateSel,
       numero,
       sens: 'montee',
-      express: false,
+      // RÉGLAGES GARDÉS pour le spécial (décision du 10/09/2026) ; un
+      // renfort n'a jamais eu ni l'un ni l'autre. « Facultatif » est RETIRÉ
+      // pour les deux : un train affrété qu'on n'activerait pas n'a pas de
+      // sens, et le formulaire ne l'a jamais proposé.
+      express: nature === 'special' && ($('sup-express') as HTMLInputElement).checked,
       facultatif: false,
       facultatif_actif: false,
-      velos: false,
+      velos: nature === 'special' && ($('sup-velos') as HTMLInputElement).checked,
       rame: ($('sup-rame') as HTMLSelectElement).value,
       // ATTENTION : cette colonne ne dit RIEN du terminus du renfort, qui est
       // le dernier de ses `passages`. Elle ne porte que deux valeurs (contrainte
