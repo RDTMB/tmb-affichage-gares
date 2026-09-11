@@ -24,14 +24,14 @@ import { describe, expect, it } from 'vitest';
 
 import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import { construitCourse, NUMERO_SPECIAL_MIN, prochainNumeroHorsGrille } from '../core/train-sup';
-import { libelleTrain, libelleTrainCourt } from '../core/horaires';
+import { libelleTrain, libelleTrainCourt, passagesPourGare, trainsDuJour } from '../core/horaires';
 import { aLeDroit, ongletsVisibles } from '../core/roles';
 import {
   avertissementTerminusCourse,
   champsFormulaireCourse,
   formesPossibles,
 } from './supervision-logique';
-import type { GareId, Grille } from '../core/types';
+import type { GareId, Grille, Jour } from '../core/types';
 
 /** Fins de ligne normalisées : poste en CRLF, coureur d'intégration en LF. */
 function source(chemin: string): string {
@@ -420,5 +420,78 @@ describe('le lot se vérifie avec `?jour=`', () => {
   it('les écrans savent afficher une autre journée', () => {
     // Sans lui, un spécial créé pour demain ne serait vérifiable que demain.
     expect(source('src/pages/ecran.ts')).toContain("url.get('jour')");
+  });
+});
+
+// ============================================================================
+// La NATURE survit jusqu'à l'écran
+// ============================================================================
+describe('la nature traverse le moteur sans se perdre', () => {
+  // Mutation survivante au premier passage : remplacer `nature:
+  // circulation.nature` par `'supplementaire'` dans `trainsDuJour()` faisait
+  // afficher « TRAIN SUP » et retirait la pastille « privé » — sans qu'aucun
+  // test ne tombe, parce que tous les autres regardent la Circulation et non
+  // le TrainJour qui en sort.
+  const jourAvecSpecial = (): Jour => ({
+    date: '2026-07-15',
+    grille_version: GRAND.version,
+    terminus_bellevue: false,
+    gare_debut: 'le-fayet',
+    gare_fin: 'nid-daigle',
+    message_troncon_fr: null,
+    message_troncon_en: null,
+    enregistre: true,
+    circulations: [
+      {
+        date: '2026-07-15',
+        numero: 201,
+        sens: 'montee',
+        express: false,
+        facultatif: false,
+        facultatif_actif: false,
+        velos: false,
+        rame: 'Marie',
+        terminus: 'nid-daigle',
+        statut: 'ok',
+        retard_min: 0,
+        motif: null,
+        sans_voyageurs: false,
+        nature: 'special',
+        commanditaire: 'Comité d’entreprise',
+        passages: construitCourse(GRAND, { heureDepart_s: h('09:00'), garesMontee: MONTEE }).montee,
+      },
+    ],
+  });
+
+  it('un spécial reste un spécial dans `trainsDuJour()`', () => {
+    const train = trainsDuJour(GRAND, jourAvecSpecial()).find((t) => t.numero === 201);
+    expect(train, 'le spécial est absent de la journée').toBeDefined();
+    expect(train?.nature, 'la nature a été écrasée en cours de route').toBe('special');
+  });
+
+  it('…et jusque dans les passages de gare, qui alimentent l’écran', () => {
+    const passages = passagesPourGare(GRAND, jourAvecSpecial(), 'saint-gervais');
+    const p = passages.find((x) => x.numero === 201);
+    expect(p, 'le spécial ne passe pas à Saint-Gervais').toBeDefined();
+    expect(p?.nature, 'la nature se perd entre le train et le passage').toBe('special');
+    // C'est cette valeur qui décide de la pastille « privé » et du libellé.
+    expect(
+      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille' }, [
+        { numero: 201, nature: 'special' },
+      ]),
+    ).toBe('SPÉ');
+  });
+
+  it('un renfort, lui, ne devient pas un spécial', () => {
+    const jour = jourAvecSpecial();
+    const premiere = jour.circulations[0];
+    if (!premiere) throw new Error('circulation absente');
+    const renfort: Jour = {
+      ...jour,
+      circulations: [{ ...premiere, numero: 101, nature: 'supplementaire', commanditaire: null }],
+    };
+    expect(trainsDuJour(GRAND, renfort).find((t) => t.numero === 101)?.nature).toBe(
+      'supplementaire',
+    );
   });
 });
