@@ -119,7 +119,11 @@ create table circulations (
     check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 -- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
--- `commanditaire` + droits de colonne : supabase/migrations/2026-09-train-special.sql
+-- `commanditaire` : supabase/migrations/2026-09-train-special-A.sql (colonne +
+--   journal, n'enlève rien) puis -B.sql (droits de colonne). DEUX fichiers :
+--   A → déploiement du front → B, sans quoi soit les six écrans s'éteignent
+--   le temps de Pages, soit la supervision tombe sur « column commanditaire
+--   does not exist ». La séquence complète est écrite en tête des deux.
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
 -- non colonne de `circulations` — ce n'est ni la même nature de donnée (un

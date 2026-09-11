@@ -56,7 +56,13 @@ function selectsDeGetJour(ts: string): string[][] {
 }
 
 const SCHEMA = source('supabase/schema.sql');
-const MIGRATION = source('supabase/migrations/2026-09-train-special.sql');
+// Deux migrations, et le découpage EST le sujet : A ajoute (la colonne, le
+// journal) sans rien retirer, B retire (la lecture en bloc de anon). SQL tout
+// en un seul bloc, il n'existe aucun ordre gagnant — soit les six écrans
+// s'éteignent le temps du déploiement, soit la supervision tombe sur
+// « column commanditaire does not exist ».
+const MIGRATION_A = source('supabase/migrations/2026-09-train-special-A.sql');
+const MIGRATION_B = source('supabase/migrations/2026-09-train-special-B.sql');
 const SUPABASE = source('src/data/supabase.ts');
 
 describe('la colonne existe, et elle est PROPRE', () => {
@@ -64,22 +70,26 @@ describe('la colonne existe, et elle est PROPRE', () => {
     // `motif` porte déjà la raison d'une suppression et celle d'un retard.
     // Un troisième sens en ferait le piège qu'a été `terminus`.
     expect(SCHEMA).toContain('commanditaire text,');
-    expect(MIGRATION).toContain('alter table circulations add column if not exists commanditaire');
+    expect(MIGRATION_A).toContain(
+      'alter table circulations add column if not exists commanditaire',
+    );
     expect(source('src/core/types.ts')).toContain('commanditaire?: string | null;');
   });
 
-  it('la migration est REJOUABLE', () => {
-    expect(MIGRATION).toContain('add column if not exists');
-    expect(MIGRATION).toContain('drop trigger if exists trg_journal_circulations');
+  it('les deux migrations sont REJOUABLES', () => {
+    expect(MIGRATION_A).toContain('add column if not exists');
+    expect(MIGRATION_A).toContain('drop trigger if exists trg_journal_circulations');
+    // B ne fait que des `revoke`/`grant`, idempotents par nature.
+    expect(MIGRATION_B).toContain('revoke all on circulations from anon;');
   });
 
-  it('le JOURNAL suit la colonne', () => {
+  it('le JOURNAL suit la colonne, et il est posé par A', () => {
     // Sans cela, changer l'affréteur d'un train ne laisserait aucune trace —
     // or c'est la donnée qu'on cherchera le jour où l'on se demande qui a
     // demandé quoi.
     for (const [nom, sql] of [
       ['schema.sql', SCHEMA],
-      ['migration', MIGRATION],
+      ['migration A', MIGRATION_A],
     ] as const) {
       const trigger = /create trigger trg_journal_circulations([\s\S]*?);/.exec(sql)?.[0] ?? '';
       expect(trigger, `déclencheur absent de ${nom}`).not.toBe('');
@@ -88,11 +98,55 @@ describe('la colonne existe, et elle est PROPRE', () => {
   });
 });
 
+describe('le DÉCOUPAGE en deux migrations, et ce qu’il protège', () => {
+  it('A n’enlève RIEN : l’ancien front tient jusqu’au déploiement', () => {
+    // C'est toute la raison du découpage. Un `revoke` glissé dans A
+    // éteindrait les six gares pendant la propagation de GitHub Pages.
+    expect(MIGRATION_A, 'A révoque des droits').not.toContain('revoke');
+    expect(MIGRATION_A, 'A restreint des droits').not.toContain('grant select (');
+  });
+
+  it('B ne crée RIEN : il ne fait que fermer', () => {
+    // Une colonne ajoutée dans B ne serait créée qu'APRÈS le déploiement du
+    // front qui l'utilise — donc trop tard.
+    expect(MIGRATION_B, 'B ajoute une colonne').not.toContain('add column');
+  });
+
+  it('les DEUX fichiers portent la séquence complète, dans l’ordre', () => {
+    // Elle doit se lire là où on l'exécute. Un ordre gardé dans une PR se
+    // perd ; un ordre écrit en tête du script s'exécute.
+    for (const [nom, sql] of [
+      ['A', MIGRATION_A],
+      ['B', MIGRATION_B],
+    ] as const) {
+      const etapes = [
+        'A sur la base de TEST',
+        'déploiement du front',
+        'vérifier les SIX écrans',
+        'B sur la base de TEST',
+        'en PRODUCTION',
+      ];
+      let precedent = -1;
+      for (const etape of etapes) {
+        const ou = sql.indexOf(etape);
+        expect(ou, `${nom} : étape « ${etape} » absente`).toBeGreaterThan(precedent);
+        precedent = ou;
+      }
+    }
+  });
+
+  it('B avertit qu’il ne se joue pas avant le front', () => {
+    expect(MIGRATION_B).toContain(
+      'NE PAS JOUER CE SCRIPT AVANT QUE LE NOUVEAU FRONT SOIT EN LIGNE',
+    );
+  });
+});
+
 describe('`anon` ne lit PAS le commanditaire', () => {
   it('le droit de colonne existe dans les DEUX copies', () => {
     for (const [nom, sql] of [
       ['schema.sql', SCHEMA],
-      ['migration', MIGRATION],
+      ['migration B', MIGRATION_B],
     ] as const) {
       expect(sql, `${nom} : anon garde ses droits par défaut`).toContain(
         'revoke all on circulations from anon;',
@@ -108,7 +162,7 @@ describe('`anon` ne lit PAS le commanditaire', () => {
   it('les deux copies accordent EXACTEMENT les mêmes colonnes', () => {
     // Élargir ici sans élargir là-bas donne le pire résultat : la base de test
     // et la production ne se comportent pas pareil.
-    expect(colonnesAccordeesAAnon(SCHEMA)).toEqual(colonnesAccordeesAAnon(MIGRATION));
+    expect(colonnesAccordeesAAnon(SCHEMA)).toEqual(colonnesAccordeesAAnon(MIGRATION_B));
   });
 
   it('ni `id` ni `maj` : on n’accorde que ce qui est affiché', () => {
@@ -118,7 +172,7 @@ describe('`anon` ne lit PAS le commanditaire', () => {
   });
 
   it('`authenticated` garde la table entière : la supervision doit la voir', () => {
-    for (const sql of [SCHEMA, MIGRATION]) {
+    for (const sql of [SCHEMA, MIGRATION_B]) {
       expect(sql).toContain(
         'grant select, insert, update, delete on circulations to authenticated;',
       );

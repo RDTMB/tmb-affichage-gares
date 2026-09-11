@@ -1,29 +1,27 @@
 -- =============================================================================
--- TRAIN SPÉCIAL — §6 : le COMMANDITAIRE, et la fermeture de `circulations`
---                      à la clé publiable
+-- TRAIN SPÉCIAL — ÉTAPE B : ce qui RETIRE, et qui exige le nouveau front
 --
 -- À EXÉCUTER À LA MAIN par l'exploitant, dans l'éditeur SQL Supabase, sur la
--- base de TEST d'abord. Rejouable. Déjà recopié dans supabase/schema.sql pour
--- les nouvelles installations ; src/data/securite.test.ts compare les deux
--- copies.
+-- base de TEST d'abord. Rejouable. Recopié dans supabase/schema.sql (qui porte
+-- l'état FINAL, A + B) ; src/data/commanditaire.test.ts compare les copies.
 --
--- ⚠ L'éditeur SQL de Supabase n'affiche pas les `notice` : « Success. No rows
--- returned » est le résultat NORMAL d'une migration réussie, et ne prouve
--- rien à lui seul. Le bloc VÉRIFICATION en fin de script, lui, prouve.
+-- ⚠ NE PAS JOUER CE SCRIPT AVANT QUE LE NOUVEAU FRONT SOIT EN LIGNE. Il retire
+-- à `anon` la lecture en bloc de `circulations` : un front qui demande encore
+-- `select=*` reçoit « permission denied for column commanditaire », et les SIX
+-- écrans de gare s'éteignent ensemble.
 --
--- ⚠ CETTE MIGRATION VA DE PAIR AVEC UN DÉPLOIEMENT DU FRONT. Elle retire à
--- `anon` le droit de lire `circulations` en bloc ; un front antérieur, qui
--- demande `select=*`, reçoit alors « permission denied for column
--- commanditaire » et les SIX ÉCRANS DE GARE s'éteignent ensemble. Jouer la
--- migration APRÈS la mise en ligne du front, ou dans la même fenêtre.
+-- -----------------------------------------------------------------------------
+-- SÉQUENCE DE MISE EN SERVICE — dans cet ordre, sans en sauter une :
 --
--- POURQUOI UNE COLONNE PROPRE, ET NON `motif`.
--- `motif` porte déjà deux sens — la raison d'une suppression et celle d'un
--- retard. Y ranger le commanditaire en ferait un troisième, et c'est
--- exactement le piège de la colonne `terminus`, déjà payé par deux
--- correctifs : une colonne à plusieurs sens finit par être lue avec le
--- mauvais. Le commanditaire répond à une autre question (« pour qui ce train
--- roule-t-il ? »), il a donc sa colonne.
+--   1. A sur la base de TEST
+--   2. déploiement du front (GitHub Pages)
+--   3. vérifier les SIX écrans de gare ET la supervision
+--   4. B sur la base de TEST          ← vous êtes ici
+--   5. même vérification
+--   6. les trois mêmes étapes en PRODUCTION, hors service
+--
+-- Après B, jouer supabase/tests/roles-rls.sql : ses cas « anonyme » sur
+-- `circulations` ne passent QUE si ce script a été exécuté.
 --
 -- POURQUOI DES DROITS DE COLONNE, ET POURQUOI ILS COÛTENT PLUS CHER ICI.
 -- `circulations` porte la politique « lecture publique … using (true) » : les
@@ -34,24 +32,13 @@
 -- La différence avec `affluence` est le nombre de colonnes : trois là-bas,
 -- seize ici. Chaque colonne ajoutée à `circulations` devra désormais être
 -- ajoutée à ce `grant`, sans quoi elle sera invisible des écrans — ou, si le
--- front la demande, les éteindra. C'est une charge réelle ; elle est tenue
--- par src/data/commanditaire.test.ts, qui compare cette liste à celle que le
--- front demande vraiment.
+-- front la demande, les éteindra. C'est une charge réelle ; elle est tenue par
+-- src/data/commanditaire.test.ts, qui compare cette liste à celle que le front
+-- demande vraiment.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. La colonne. Nullable : seuls les trains spéciaux la renseignent, et une
---    circulation de grille n'a pas de commanditaire — pas de chaîne vide qui
---    voudrait dire « aucun ».
--- -----------------------------------------------------------------------------
-alter table circulations add column if not exists commanditaire text;
-
-comment on column circulations.commanditaire is
-  'Qui a affrété le train spécial. INTERNE : jamais servi aux écrans — '
-  'le droit de SELECT est retiré à anon (droits de colonne ci-dessous).';
-
--- -----------------------------------------------------------------------------
--- 2. Les droits de COLONNE sur `circulations`.
+-- 1. Les droits de COLONNE sur `circulations`.
 --
 --    `anon`, c'est la clé publiable, donc tout Internet : il ne doit lire que
 --    ce qu'un écran de gare affiche. Il n'a par ailleurs aucune raison de
@@ -75,35 +62,12 @@ grant select (
 -- explicitement pour que ce script se suffise à lui-même.
 grant select, insert, update, delete on circulations to authenticated;
 
--- -----------------------------------------------------------------------------
--- 3. Le JOURNAL suit la colonne. Sans cette ligne, changer le commanditaire
---    d'un train affrété ne laisserait aucune trace — or c'est précisément la
---    donnée dont on aura besoin le jour où l'on cherche qui a demandé quoi.
--- -----------------------------------------------------------------------------
-drop trigger if exists trg_journal_circulations on circulations;
-create trigger trg_journal_circulations
-  after insert or update or delete on circulations
-  for each row execute function private.tracer_ecriture(
-    'date,numero', 'date',
-    'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
-    'sans_voyageurs', 'commanditaire'
-  );
-
 -- =============================================================================
 -- VÉRIFICATION — à lire, pas à survoler.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. La colonne existe.
---    Attendu : une ligne, commanditaire / text / YES (nullable).
--- -----------------------------------------------------------------------------
-select column_name, data_type, is_nullable
-  from information_schema.columns
- where table_schema = 'public' and table_name = 'circulations'
-   and column_name = 'commanditaire';
-
--- -----------------------------------------------------------------------------
--- 2. Les droits de colonne. Deux critères SÉPARÉS — les confondre est ce qui
+-- 1. Les droits de colonne. Deux critères SÉPARÉS — les confondre est ce qui
 --    avait laissé passer la fuite de `affluence.maj_par` :
 --      • `anon` ne doit avoir AUCUNE ligne portant `commanditaire` ;
 --      • `anon` doit avoir SELECT sur les SEIZE autres — une colonne oubliée
@@ -124,7 +88,7 @@ select count(*) filter (where privilege_type = 'SELECT')            as colonnes_
    and grantee = 'anon';
 
 -- -----------------------------------------------------------------------------
--- 3. ESSAI — sur la base de TEST uniquement, lignes à décommenter.
+-- 2. ESSAI — sur la base de TEST uniquement, lignes à décommenter.
 --    Le résultat attendu : la première requête renvoie la circulation, la
 --    seconde ÉCHOUE avec « permission denied for column commanditaire ». Un
 --    succès de la seconde est le défaut que cette migration corrige.
@@ -132,4 +96,5 @@ select count(*) filter (where privilege_type = 'SELECT')            as colonnes_
 -- set local role anon;
 -- select date, numero, statut from circulations limit 1;
 -- select date, numero, commanditaire from circulations limit 1;  -- doit ÉCHOUER
+-- select * from circulations limit 1;                            -- doit ÉCHOUER
 -- reset role;
