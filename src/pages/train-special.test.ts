@@ -28,6 +28,8 @@ import { libelleTrain, libelleTrainCourt, passagesPourGare, trainsDuJour } from 
 import { aLeDroit, ongletsVisibles } from '../core/roles';
 import {
   avertissementTerminusCourse,
+  departOrigine,
+  ordreRotations,
   champsFormulaireCourse,
   formesPossibles,
 } from './supervision-logique';
@@ -558,5 +560,120 @@ describe('la mention « privé » tient à l’écran', () => {
     const r = trainsDuJour(GRAND, renfort).find((x) => x.numero === 101);
     expect(r?.express, 'un renfort est devenu express').toBe(false);
     expect(r?.velos, 'un renfort a gagné les vélos').toBe(false);
+  });
+});
+
+// ============================================================================
+// Ordre d'affichage des rotations (défaut relevé à la recette, 11/09/2026)
+// ============================================================================
+describe('les rotations se rangent à leur HEURE, pas après la grille', () => {
+  // Le tableau était construit en DEUX blocs concaténés : toute la grille,
+  // puis les trains hors grille. Un renfort de 17 h se rangeait donc après le
+  // dernier train du soir, et un spécial de 10 h 30 aussi. Ce n'est pas le
+  // train spécial qui l'a introduit — les renforts étaient affichés ainsi
+  // depuis toujours, et le corriger les répare tous les deux.
+
+  /** Une journée fictive : trois rotations de grille, à 10 h, 11 h et 17 h. */
+  const GRILLE = [
+    { numero: 1, depart_s: h('10:00') },
+    { numero: 3, depart_s: h('11:00') },
+    { numero: 5, depart_s: h('17:00') },
+  ];
+
+  it('un SPÉCIAL de 10:30 se place entre la rotation de 10:00 et celle de 11:00', () => {
+    expect(ordreRotations([...GRILLE, { numero: 201, depart_s: h('10:30') }])).toEqual([
+      1, 201, 3, 5,
+    ]);
+  });
+
+  it('un RENFORT de 17:00 se place à 17:00, pas à la fin', () => {
+    // À heure égale avec le train 5, le numéro départage : le renfort suit.
+    expect(ordreRotations([...GRILLE, { numero: 101, depart_s: h('17:00') }])).toEqual([
+      1, 3, 5, 101,
+    ]);
+    // …et une minute plus tôt, il passe devant.
+    expect(ordreRotations([...GRILLE, { numero: 101, depart_s: h('16:59') }])).toEqual([
+      1, 3, 101, 5,
+    ]);
+  });
+
+  it('les trains de GRILLE gardent leur ordre relatif', () => {
+    // Il est déjà chronologique, et les numéros croissent avec lui : la clé
+    // (heure, numéro) le reproduit exactement, sans dépendre de la stabilité
+    // du tri de la plateforme.
+    expect(ordreRotations(GRILLE)).toEqual([1, 3, 5]);
+    expect(ordreRotations([...GRILLE].reverse())).toEqual([1, 3, 5]);
+  });
+
+  it('une heure INDÉTERMINABLE va en fin de liste, sans rien casser', () => {
+    // Journée non ouverte, passages absents : un tableau qui ne s'affiche pas
+    // est pire qu'un train mal placé.
+    expect(ordreRotations([...GRILLE, { numero: 201, depart_s: null }])).toEqual([1, 3, 5, 201]);
+    expect(() => ordreRotations([{ numero: 201, depart_s: null }])).not.toThrow();
+    // Plusieurs sans heure : elles restent entre elles, par numéro.
+    expect(
+      ordreRotations([
+        { numero: 203, depart_s: null },
+        { numero: 1, depart_s: h('10:00') },
+        { numero: 201, depart_s: null },
+      ]),
+    ).toEqual([1, 201, 203]);
+  });
+
+  it('`departOrigine` lit le premier passage, et rend `null` quand il n’y a rien', () => {
+    expect(departOrigine([{ gare: 'le-fayet', d: '10:30:00' }])).toBe(h('10:30'));
+    // Une descente de renfort peut n'avoir qu'une arrivée au premier passage.
+    expect(departOrigine([{ gare: 'nid-daigle', a: '11:05:00' }])).toBe(h('11:05'));
+    expect(departOrigine([])).toBeNull();
+    expect(departOrigine(null)).toBeNull();
+    expect(departOrigine(undefined)).toBeNull();
+    expect(departOrigine([{ gare: 'le-fayet' }])).toBeNull();
+  });
+
+  it('l’APPARIEMENT survit au tri : la descente suit sa montée', () => {
+    // Le rang appartient à la ROTATION. Une descente qui se trierait pour
+    // elle-même défairait la lecture même du tableau.
+    const ts = source('src/pages/supervision.ts');
+    const bloc = /const rotations = new Map<number[\s\S]*?\.join\(''\);/.exec(ts)?.[0] ?? '';
+    expect(bloc, 'la liste unique de rotations est introuvable').not.toBe('');
+    // Les descentes ne sont jamais rangées : elles sont portées par la montée.
+    expect(bloc).toContain(
+      'descente: grille.descentes.find((d) => d.numero === montee.numero + 1)',
+    );
+    expect(bloc).toContain('x.numero === c.numero + 1');
+    expect(bloc).toContain('ligneCirculation(rotation.montee, ');
+    expect(bloc).toContain('rotation.descente ? ligneCirculation(rotation.descente, ');
+    // Et le tri porte bien sur la MONTÉE.
+    expect(bloc).toContain('depart_s: departOrigine(montee.passages)');
+  });
+
+  it('plus DEUX blocs concaténés : c’est le défaut lui-même', () => {
+    const ts = source('src/pages/supervision.ts');
+    expect(ts, 'le tri par numéro des hors-grille est revenu').not.toContain(
+      "filter((c) => horsGrille(c) && c.sens === 'montee')\n      .sort((a, b) => a.numero - b.numero)",
+    );
+    expect(ts).toContain('ordreRotations(');
+  });
+
+  it('la GRILLE DU JOUR souffrait du même défaut, et trie maintenant par l’heure', () => {
+    // La consigne disait « la grille du jour trie par heure, vérifie-le » :
+    // elle ne le faisait pas. `trainsDuJour()` rend les trains de grille PUIS
+    // les hors grille, et `colonnesDuSens()` reprenait cet ordre tel quel —
+    // un spécial de 10 h 30 finissait en dernière colonne.
+    const ts = source('src/pages/grille.ts');
+    const bloc = /function colonnesDuSens\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(bloc, 'colonnesDuSens introuvable').not.toBe('');
+    expect(bloc, 'les colonnes ne sont pas triées par l’heure').toContain('.sort((a, b) => {');
+    expect(bloc).toContain('a.passages[0]?.depart_s');
+  });
+
+  it('l’onglet Places et l’écran de gare, eux, triaient DÉJÀ — on n’y touche pas', () => {
+    // Vérifié plutôt que supposé, comme pour la grille du jour.
+    expect(source('src/pages/supervision.ts')).toContain(
+      'return lignes.sort((a, b) => a.depart_s - b.depart_s);',
+    );
+    expect(source('src/core/horaires.ts')).toContain(
+      'passages.sort((a, b) => (a.depart_s ?? a.arrivee_s ?? 0) - (b.depart_s ?? b.arrivee_s ?? 0));',
+    );
   });
 });

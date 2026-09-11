@@ -26,7 +26,7 @@ import {
   ongletsVisibles,
   plafondOnglets,
 } from '../core/roles';
-import { origineReelle, sectionComplete, terminusReel } from '../core/horaires';
+import { heureVersSecondes, origineReelle, sectionComplete, terminusReel } from '../core/horaires';
 import type { FormeCourse } from '../core/train-sup';
 import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
@@ -365,6 +365,68 @@ export function dateEnToutesLettres(dateISO: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+// ============================================================================
+// Ordre d'affichage des rotations (onglet Circulations)
+// ============================================================================
+
+/**
+ * Heure de départ d'un train à son ORIGINE, en secondes depuis minuit, ou
+ * `null` si elle est indéterminable — passages absents (journée non ouverte),
+ * ou premier passage sans heure.
+ *
+ * On lit le premier passage et lui seul : c'est le départ de la course, celui
+ * qui situe la rotation dans la journée. Les heures sont THÉORIQUES, comme
+ * partout dans ce tableau — un retard ne déplace pas une ligne, il s'affiche
+ * dans sa colonne.
+ */
+export function departOrigine(
+  passages: readonly { a?: string; d?: string }[] | null | undefined,
+): number | null {
+  const premier = passages?.[0];
+  const heure = premier?.d ?? premier?.a;
+  if (heure === undefined) return null;
+  const secondes = heureVersSecondes(heure);
+  return Number.isFinite(secondes) ? secondes : null;
+}
+
+/** Une rotation à ranger : son numéro de MONTÉE, et l'heure de ce départ. */
+export interface RotationAOrdonner {
+  /** Numéro de la MONTÉE — c'est le rang de la rotation entière. */
+  numero: number;
+  /** Départ de la montée à son origine ; `null` = indéterminable. */
+  depart_s: number | null;
+}
+
+/**
+ * Numéros de montée, dans l'ordre où l'onglet Circulations doit les rendre.
+ *
+ * DÉFAUT CORRIGÉ LE 11/09/2026, relevé à la recette : le tableau était
+ * construit en DEUX blocs concaténés — toute la grille, puis les trains hors
+ * grille. Un renfort de 17 h se rangeait donc après le dernier train du soir,
+ * et un train spécial de 10 h 30 aussi. Ce n'est pas le train spécial qui l'a
+ * introduit : les renforts étaient affichés ainsi depuis toujours.
+ *
+ * Trois propriétés, et chacune a sa raison :
+ *
+ *  - le rang appartient à la ROTATION, pas à la ligne. Une descente ne se
+ *    trie jamais pour elle-même : elle suit sa montée, sans quoi l'appariement
+ *    — qui est la lecture même de ce tableau — se défait au premier renfort ;
+ *  - à heure égale, le NUMÉRO départage. Les trains de grille sont déjà
+ *    chronologiques et numérotés dans cet ordre : leur ordre relatif actuel
+ *    est ainsi reproduit exactement, sans dépendre de la stabilité du tri ;
+ *  - heure indéterminable → EN FIN de liste. Un tableau qui ne s'affiche pas
+ *    est pire qu'un train mal placé.
+ */
+export function ordreRotations(rotations: readonly RotationAOrdonner[]): number[] {
+  return [...rotations]
+    .sort((a, b) => {
+      const ha = a.depart_s ?? Number.POSITIVE_INFINITY;
+      const hb = b.depart_s ?? Number.POSITIVE_INFINITY;
+      return ha === hb ? a.numero - b.numero : ha - hb;
+    })
+    .map((r) => r.numero);
 }
 
 // ============================================================================

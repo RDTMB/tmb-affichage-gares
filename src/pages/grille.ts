@@ -174,24 +174,37 @@ interface ColonneTrain {
 
 function colonnesDuSens(sens: Sens, maintenant_s: number): ColonneTrain[] {
   if (!grille || !jour) return [];
-  return trainsDuJour(grille, jour)
-    .filter((t) => t.sens === sens)
-    .map((train) => {
-      const decalage = train.statut === 'retard' ? train.retard_min * 60 : 0;
-      const premier = train.passages[0];
-      const dernier = train.passages[train.passages.length - 1];
-      const departTheorique = premier?.depart_s ?? premier?.arrivee_s ?? 0;
-      const finReelle = (dernier?.arrivee_s ?? dernier?.depart_s ?? 0) + decalage;
-      return {
-        train,
-        decalage,
-        departTheorique_s: departTheorique,
-        departReel_s: departTheorique + decalage,
-        supprime: train.statut === 'supprime',
-        retard: train.statut === 'retard',
-        passe: finReelle < maintenant_s, // colonne atténuée : train arrivé à son terminus
-      };
-    });
+  return (
+    trainsDuJour(grille, jour)
+      .filter((t) => t.sens === sens)
+      // TRIÉ PAR L'HEURE, et il ne l'était pas. `trainsDuJour()` rend les trains
+      // de grille puis les HORS GRILLE, dans cet ordre : un train spécial de
+      // 10 h 30 arrivait donc en dernière colonne, après le train du soir. Même
+      // défaut que l'onglet Circulations, relevé en le vérifiant le 11/09/2026.
+      // Les colonnes se lisent de gauche à droite comme une journée : l'ordre
+      // EST l'information.
+      .sort((a, b) => {
+        const ha = a.passages[0]?.depart_s ?? a.passages[0]?.arrivee_s ?? Number.POSITIVE_INFINITY;
+        const hb = b.passages[0]?.depart_s ?? b.passages[0]?.arrivee_s ?? Number.POSITIVE_INFINITY;
+        return ha === hb ? a.numero - b.numero : ha - hb;
+      })
+      .map((train) => {
+        const decalage = train.statut === 'retard' ? train.retard_min * 60 : 0;
+        const premier = train.passages[0];
+        const dernier = train.passages[train.passages.length - 1];
+        const departTheorique = premier?.depart_s ?? premier?.arrivee_s ?? 0;
+        const finReelle = (dernier?.arrivee_s ?? dernier?.depart_s ?? 0) + decalage;
+        return {
+          train,
+          decalage,
+          departTheorique_s: departTheorique,
+          departReel_s: departTheorique + decalage,
+          supprime: train.statut === 'supprime',
+          retard: train.statut === 'retard',
+          passe: finReelle < maintenant_s, // colonne atténuée : train arrivé à son terminus
+        };
+      })
+  );
 }
 
 function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {

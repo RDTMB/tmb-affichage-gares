@@ -140,6 +140,8 @@ import {
   traductionLocale,
   valeursFormulaireMessage,
   avertissementTerminusCourse,
+  departOrigine,
+  ordreRotations,
   champsFormulaireCourse,
   enTeteAffluence,
   messageAucunDepart,
@@ -1388,32 +1390,46 @@ function rendreCirculations(): void {
       '<tr><td colspan="8" style="padding:22px;color:var(--sec);font-weight:700">Aucun service ne circule à cette date.</td></tr>';
     return;
   }
-  tbody.innerHTML =
-    grille.montees
-      .map((montee) => {
-        const descente = grille.descentes.find((d) => d.numero === montee.numero + 1);
-        return (
-          ligneCirculation(montee, 'montee', lectureSeule) +
-          (descente ? ligneCirculation(descente, 'descente', lectureSeule) : '')
-        );
-      })
-      .join('') +
-    // Trains HORS GRILLE — renforts ET spéciaux : absents de la grille, ils
-    // portent leurs propres passages. On fabrique le TrainGrille équivalent
-    // pour réutiliser exactement le même rendu de ligne.
-    (jour?.circulations ?? [])
-      .filter((c) => horsGrille(c) && c.sens === 'montee')
-      .sort((a, b) => a.numero - b.numero)
-      .map((montee) => {
-        const descente = jour?.circulations.find(
-          (c) => horsGrille(c) && c.numero === montee.numero + 1,
-        );
-        return (
-          ligneCirculation(commeTrainGrille(montee), 'montee', lectureSeule) +
-          (descente ? ligneCirculation(commeTrainGrille(descente), 'descente', lectureSeule) : '')
-        );
-      })
-      .join('');
+  // UNE SEULE liste de rotations, grille et hors grille confondues, triée par
+  // l'heure de départ de la montée. Deux blocs concaténés rangeaient tout
+  // train hors grille APRÈS la journée entière, quelle que soit son heure —
+  // un renfort de 17 h derrière le dernier train du soir (relevé à la recette
+  // le 11/09/2026, et vrai depuis toujours pour les renforts).
+  //
+  // Les trains hors grille sont convertis d'abord : `commeTrainGrille()` leur
+  // donne la même forme, ce qui permet UN rendu de ligne et UNE clé de tri
+  // plutôt que deux de chaque.
+  const rotations = new Map<number, { montee: TrainGrille; descente: TrainGrille | undefined }>();
+  for (const montee of grille.montees) {
+    rotations.set(montee.numero, {
+      montee,
+      descente: grille.descentes.find((d) => d.numero === montee.numero + 1),
+    });
+  }
+  for (const c of jour.circulations) {
+    if (!horsGrille(c) || c.sens !== 'montee') continue;
+    const descente = jour.circulations.find((x) => horsGrille(x) && x.numero === c.numero + 1);
+    rotations.set(c.numero, {
+      montee: commeTrainGrille(c),
+      descente: descente ? commeTrainGrille(descente) : undefined,
+    });
+  }
+
+  tbody.innerHTML = ordreRotations(
+    [...rotations.values()].map(({ montee }) => ({
+      numero: montee.numero,
+      depart_s: departOrigine(montee.passages),
+    })),
+  )
+    .map((numero) => {
+      const rotation = rotations.get(numero);
+      if (!rotation) return '';
+      return (
+        ligneCirculation(rotation.montee, 'montee', lectureSeule) +
+        (rotation.descente ? ligneCirculation(rotation.descente, 'descente', lectureSeule) : '')
+      );
+    })
+    .join('');
 }
 
 /**
