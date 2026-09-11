@@ -200,6 +200,18 @@ describe('le front demande EXACTEMENT ce qui lui est accordé', () => {
     expect(publique).toEqual(colonnesAccordeesAAnon(SCHEMA));
   });
 
+  it('l’option COMMANDE vraiment la lecture, elle n’est pas décorative', () => {
+    // Mutation survivante au premier passage : remplacer la condition par
+    // `false` laissait les deux listes dans le fichier — donc tous les
+    // contrôles de texte verts — pendant que la supervision cessait de
+    // recevoir la colonne.
+    const corps = /async getJour\([\s\S]*?\n  async /.exec(SUPABASE)?.[0] ?? '';
+    expect(corps, 'getJour introuvable').not.toBe('');
+    expect(corps, 'l’option ne décide plus de la lecture').toContain(
+      'options?.avecCommanditaire === true',
+    );
+  });
+
   it('la lecture de SUPERVISION ajoute le commanditaire, et rien d’autre', () => {
     const selects = selectsDeGetJour(SUPABASE);
     const publique = selects.find((c) => !c.includes('commanditaire')) ?? [];
