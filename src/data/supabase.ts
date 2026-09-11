@@ -312,11 +312,35 @@ export class SupabaseProvider implements DataProvider {
     return ((data ?? []) as { date: string }[]).map((l) => l.date);
   }
 
-  async getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour> {
+  async getJour(
+    date: string,
+    options?: { creerSiAbsent?: boolean; avecCommanditaire?: boolean },
+  ): Promise<Jour> {
+    // Les colonnes sont ÉNUMÉRÉES, jamais `*` : `commanditaire` est retiré à
+    // `anon` par droit de colonne, et `select=*` déclencherait « permission
+    // denied for column commanditaire » sur les SIX écrans à la fois.
+    //
+    // Les deux listes sont écrites en toutes lettres, sans interpolation : le
+    // typage de supabase-js lit la CHAÎNE et non sa valeur (même raison que
+    // `getAffluence`). Elles doivent rester d'accord avec le `grant select`
+    // de schema.sql — src/data/commanditaire.test.ts les compare.
+    const table = this.client.from('circulations');
     const [grilles, jourRes, circRes] = await Promise.all([
       this.getGrilles(),
       this.client.from('jours').select('*').eq('date', date).maybeSingle(),
-      this.client.from('circulations').select('*').eq('date', date).order('numero'),
+      options?.avecCommanditaire === true
+        ? table
+            .select(
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, supplementaire, passages, depart_reel, commanditaire',
+            )
+            .eq('date', date)
+            .order('numero')
+        : table
+            .select(
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, supplementaire, passages, depart_reel',
+            )
+            .eq('date', date)
+            .order('numero'),
     ]);
     verifie(jourRes.error);
     verifie(circRes.error);

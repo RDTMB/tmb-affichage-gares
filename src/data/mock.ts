@@ -656,7 +656,32 @@ export class MockProvider implements DataProvider {
       .sort();
   }
 
-  async getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour> {
+  /**
+   * Retire `commanditaire` quand l'appelant ne l'a pas demandé. La production
+   * ne le RETIRE pas : elle ne le lit pas, parce que `anon` n'a pas le droit
+   * de SELECT sur cette colonne. Le mock, lui, n'a pas de droits — s'il
+   * servait le commanditaire à tout le monde, l'aperçu écran de la démo
+   * montrerait un nom d'affréteur que la gare ne verra jamais, et personne ne
+   * s'en apercevrait avant la production.
+   */
+  private filtreCommanditaire(jour: Jour, avec: boolean): Jour {
+    if (avec) return jour;
+    return {
+      ...jour,
+      circulations: jour.circulations.map((c) => {
+        if (c.commanditaire === undefined || c.commanditaire === null) return c;
+        const copie = { ...c };
+        delete copie.commanditaire;
+        return copie;
+      }),
+    };
+  }
+
+  async getJour(
+    date: string,
+    options?: { creerSiAbsent?: boolean; avecCommanditaire?: boolean },
+  ): Promise<Jour> {
+    const avecCommanditaire = options?.avecCommanditaire === true;
     const grilles = await this.getGrilles();
     const grille = serviceActif(grilles, date);
     if (!grille) {
@@ -742,9 +767,12 @@ export class MockProvider implements DataProvider {
     }
 
     if (this.options.terminusAPartirDuTrain !== undefined) {
-      return appliqueTerminusBellevue(grille, jour, this.options.terminusAPartirDuTrain).jour;
+      return this.filtreCommanditaire(
+        appliqueTerminusBellevue(grille, jour, this.options.terminusAPartirDuTrain).jour,
+        avecCommanditaire,
+      );
     }
-    return jour;
+    return this.filtreCommanditaire(jour, avecCommanditaire);
   }
 
   async getMessages(): Promise<Message[]> {

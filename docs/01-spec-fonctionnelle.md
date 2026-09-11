@@ -17,7 +17,25 @@ Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant physique,
 défaut `<gare>-<type>-1` où type = `ecran` ou `grille` — les deux pages
 d'une même gare sont ainsi deux postes distincts dans « État des écrans » ;
 plusieurs écrans du même type se distinguent par `ecran=`),
-`simule=HH:MM` (démo/tests), `zoom=`.
+`simule=HH:MM` (démo/tests), `jour=AAAA-MM-JJ`, `zoom=`.
+
+`jour=AAAA-MM-JJ` simule la **journée d'exploitation** : l'écran sert la
+journée demandée, ce qui permet de regarder aujourd'hui ce qu'il affichera
+demain — sans quoi un train créé pour demain n'est vérifiable que demain. Il
+ne déplace **que** la date : ni l'horloge affichée, ni l'horodatage qui fait
+expirer les messages et tourner les médias. Décaler celui-ci de plusieurs
+jours donnerait un écran qui a l'air de marcher tout en montrant autre chose
+que la réalité. Une valeur mal formée — ou une date qui n'existe pas, comme
+le 31 juin — est **ignorée**, comme l'est déjà une heure mal formée : on ne
+casse pas un écran de gare sur une faute de frappe d'URL.
+
+Les deux paramètres partagent le **bandeau permanent et non masquable** de
+l'heure simulée, dont le texte nomme alors la journée regardée, en français
+et en anglais. C'est le cas le plus grave des deux : une heure décalée de
+trois heures se remarque au premier coup d'œil, la grille de demain a l'air
+parfaitement normale. Sur une journée à venir non encore ouverte en
+supervision, le badge « Horaires théoriques — journée non confirmée »
+apparaît de lui-même, et c'est juste.
 
 **Paramètres de la supervision.** `demo=1` sert la démonstration (aucune
 écriture réelle) ; il est reconnu **strictement** — `?demo`, `?demo=true` et

@@ -211,6 +211,17 @@ export interface Circulation {
    * départ, et `passages` a été recalculé depuis elle.
    */
   depart_reel?: string | null;
+  /**
+   * COMMANDITAIRE d'un train SPÉCIAL : qui l'a affrété. Champ INTERNE —
+   * visible en supervision et dans le journal, JAMAIS servi aux écrans. Le
+   * droit de SELECT est retiré à `anon` en base (droits de colonne), donc
+   * absent des lectures d'écran : c'est `undefined` là-bas, et ce n'est pas
+   * un oubli.
+   *
+   * Colonne propre et non `motif` : celui-ci porte déjà la raison d'une
+   * suppression et celle d'un retard.
+   */
+  commanditaire?: string | null;
 }
 
 export interface Jour {

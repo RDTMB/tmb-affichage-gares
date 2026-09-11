@@ -68,6 +68,12 @@ create table if not exists circulations (
   -- passages de la descente ont été recalculés depuis elle. Conserve aussi
   -- la trace du départ, utile à l'exploitation.
   depart_reel time,
+  -- COMMANDITAIRE d'un train spécial : qui l'a affrété. INTERNE — jamais
+  -- servi aux écrans (le droit de SELECT est retiré à `anon`, plus bas).
+  -- Colonne PROPRE et non `motif` : celui-ci porte déjà la raison d'une
+  -- suppression et celle d'un retard ; un troisième sens en ferait le piège
+  -- qu'a été `terminus`, déjà payé par deux correctifs.
+  commanditaire text,
   maj timestamptz not null default now(),
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
@@ -657,6 +663,22 @@ revoke all on profils from anon, authenticated;
 grant select, delete on profils to authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
+
+-- CIRCULATIONS : la table la plus lue du projet, et la seule dont une colonne
+-- doit rester INVISIBLE de la clé publiable. RLS ne filtre que des lignes ;
+-- retirer une colonne à `anon` n'a qu'un moyen, les droits de colonne — même
+-- traitement que `affluence.maj_par`. La liste est exactement celle que
+-- `getJour` demande, et rien de plus : ni `id`, ni `maj`, ni
+-- `commanditaire`. Toute colonne ajoutée à cette table devra être ajoutée
+-- ICI, sinon elle sera invisible des écrans — ou les éteindra si le front la
+-- demande. src/data/commanditaire.test.ts compare cette liste à celle du front.
+revoke all on circulations from anon;
+grant select (
+  date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
+  terminus, statut, retard_min, motif, sans_voyageurs, supplementaire,
+  passages, depart_reel
+) on circulations to anon;
+grant select, insert, update, delete on circulations to authenticated;
 
 -- Lecture publique (les écrans lisent sans compte)
 create policy "lecture publique" on jours for select using (true);
@@ -1383,7 +1405,8 @@ create trigger trg_journal_circulations
   after insert or update or delete on circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
-    'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif', 'sans_voyageurs'
+    'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
+    'sans_voyageurs', 'commanditaire'
   );
 
 -- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du

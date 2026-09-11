@@ -405,7 +405,71 @@ begin
     raise notice 'OK — anonyme : l''écriture de l''affluence lui est refusée';
   end;
 
+  -- CIRCULATIONS : l'écran de gare lit la journée sans compte. Deux critères
+  -- SÉPARÉS, et c'est leur confusion qui avait laissé passer la fuite de
+  -- `affluence.maj_par` : « la colonne n'apparaît nulle part » n'est PAS le
+  -- critère — elle doit apparaître pour `authenticated`, c'est la supervision.
+  --
+  -- (a) l'écran lit ce qu'il affiche. Les colonnes sont énumérées comme le
+  --     front les énumère : un `select *` passerait ici et échouerait en gare.
+  select count(*) into n from (
+    select date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
+           terminus, statut, retard_min, motif, sans_voyageurs, supplementaire,
+           passages, depart_reel
+      from public.circulations where date = '2099-12-31' and numero = 9
+  ) x;
+  if n = 1 then raise notice 'OK — anonyme : l''écran de gare lit la circulation';
+  else raise exception 'ÉCHEC — anonyme : l''écran ne lit pas la circulation (% ligne(s))', n; end if;
+
+  -- (b) …mais PAS le commanditaire du train spécial. `anon`, c'est la clé
+  --     publiable : tout Internet saurait pour qui roule un train affrété.
+  begin
+    perform commanditaire from public.circulations where date = '2099-12-31' and numero = 9;
+    raise exception 'ÉCHEC — anonyme : a pu lire le commanditaire d''un train';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : le commanditaire lui est refusé';
+  end;
+
+  -- (c) `select *` doit ÉCHOUER pour l'anonyme, et c'est voulu : c'est ce qui
+  --     garantit qu'aucune colonne ajoutée plus tard ne lui parviendra par
+  --     inadvertance. Si ce contrôle passe un jour, c'est que le `revoke` a
+  --     été perdu — et le commanditaire avec lui.
+  begin
+    perform * from public.circulations where date = '2099-12-31' and numero = 9;
+    raise exception 'ÉCHEC — anonyme : lit la table entière (le revoke a disparu)';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : la lecture en bloc lui est refusée';
+  end;
+
   execute 'set local role authenticated';
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+
+  -- Le COMMANDITAIRE, lui, se lit et s'écrit depuis un compte : c'est la
+  -- moitié qu'un contrôle « la colonne n'apparaît nulle part » aurait cassée
+  -- sans que rien ne le dise. On repasse sous les droits de la SUPERVISION —
+  -- la caisse n'écrit jamais dans `circulations`, et ce refus-là est déjà
+  -- contrôlé plus haut.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);
+  update public.circulations set commanditaire = 'Recette RLS'
+   where date = '2099-12-31' and numero = 9;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — supervision : renseigne le commanditaire';
+  else raise exception 'ÉCHEC — supervision : n''a pas pu renseigner le commanditaire'; end if;
+
+  select count(*) into n from public.circulations
+   where date = '2099-12-31' and numero = 9 and commanditaire = 'Recette RLS';
+  if n = 1 then raise notice 'OK — supervision : relit le commanditaire';
+  else raise exception 'ÉCHEC — supervision : ne relit pas le commanditaire'; end if;
+
+  -- Et le journal l'a tracé : c'est la donnée qu'on cherchera le jour où l'on
+  -- se demandera qui a demandé quoi.
+  select count(*) into n from public.journal_exploitation
+   where table_cible = 'circulations' and champ = 'commanditaire';
+  if n >= 1 then raise notice 'OK — journal : le commanditaire est tracé';
+  else raise exception 'ÉCHEC — journal : le changement de commanditaire n''est pas tracé'; end if;
+
   perform set_config('request.jwt.claims',
     json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
 

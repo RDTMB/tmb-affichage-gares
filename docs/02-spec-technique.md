@@ -108,12 +108,18 @@ create table circulations (
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,
+  commanditaire text,             -- TRAIN SPÉCIAL : qui l'a affrété. INTERNE —
+                                  -- jamais servi aux écrans (droit de SELECT
+                                  -- retiré à anon, voir RLS). Colonne PROPRE
+                                  -- et non `motif`, qui porte déjà la raison
+                                  -- d'une suppression et celle d'un retard.
   maj timestamptz not null default now(),
   unique (date, numero),
   constraint circulations_sup_passages
     check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 -- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
+-- `commanditaire` + droits de colonne : supabase/migrations/2026-09-train-special.sql
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
 -- non colonne de `circulations` — ce n'est ni la même nature de donnée (un
@@ -317,6 +323,22 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   accordée qu'à `authenticated`. `getAffluence` ne demande donc que ces trois
   colonnes : en rajouter une ferait échouer la requête des écrans, et en
   production seulement.
+- `circulations` : la lecture ANONYME est limitée aux SEIZE colonnes que les
+  écrans affichent — `revoke all … from anon` puis `grant select (date,
+  numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus,
+  statut, retard_min, motif, sans_voyageurs, supplementaire, passages,
+  depart_reel) … to anon`. `commanditaire` (qui a affrété un train spécial)
+  en est EXCLU, comme `affluence.maj_par` : RLS ne filtre que des lignes,
+  seuls les droits de colonne retirent une colonne à la clé publiable.
+  Conséquence à ne pas perdre de vue : `getJour` énumère ces colonnes et
+  n'utilise plus `select('*')` — l'étoile demanderait `commanditaire` et
+  éteindrait les six gares d'un coup. **Toute colonne ajoutée à
+  `circulations` doit l'être aussi dans ce `grant`**, sinon elle sera
+  invisible des écrans ; `src/data/commanditaire.test.ts` compare les deux
+  listes, et la recette RLS vérifie en plus que `select *` ÉCHOUE pour
+  `anon` — c'est ce refus qui garantit qu'aucune colonne future ne lui
+  parviendra par inadvertance. La supervision passe
+  `getJour(date, { avecCommanditaire: true })`.
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
   ses RÔLES, multiples et cumulables (matrice complète : docs/01 §5.5 et
   docs/securite.md §2). Implémentation par `private.a_le_role(text)` et
