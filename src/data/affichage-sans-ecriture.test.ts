@@ -62,7 +62,10 @@ describe('la supervision, elle, la demande — partout où elle lit une journée
     const appels = appelsGetJour('src/pages/supervision.ts');
     expect(appels).toHaveLength(3);
     for (const appel of appels) {
-      expect(appel).toContain('{ creerSiAbsent: true }');
+      // Pas l'accolade entière : l'appel porte depuis le 11/09/2026 une
+      // seconde option (`avecCommanditaire`). Ce qui compte reste que la
+      // création soit demandée.
+      expect(appel).toContain('creerSiAbsent: true');
     }
   });
 });
@@ -73,9 +76,14 @@ describe('le DÉFAUT de l’option est de ne pas créer', () => {
     // l'option ne pourra pas écrire par inadvertance ; c'est l'inverse qui a
     // produit ce défaut.
     const provider = source('src/data/provider.ts');
-    expect(provider).toContain(
-      'getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour>;',
-    );
+    // La signature a gagné une seconde option le 11/09/2026
+    // (`avecCommanditaire`) et tient désormais sur plusieurs lignes : ce qui
+    // est verrouillé ici est le SENS — les deux points d'interrogation — et
+    // non la mise en forme, qu'un passage de Prettier suffirait à casser.
+    const signature = /getJour\(([\s\S]*?)\): Promise<Jour>;/.exec(provider)?.[1] ?? '';
+    expect(signature, 'getJour introuvable dans provider.ts').not.toBe('');
+    expect(signature, 'le sac d’options est devenu obligatoire').toContain('options?:');
+    expect(signature, 'creerSiAbsent est devenue obligatoire').toContain('creerSiAbsent?: boolean');
   });
 
   it('les deux fournisseurs exigent `=== true`, pas une valeur qui traîne', () => {

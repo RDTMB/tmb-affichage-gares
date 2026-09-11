@@ -152,6 +152,23 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   constate au guichet qu'on ne vend plus, avec des voyageurs sur le quai. En
   contrepartie l'échec est dit franchement (message persistant) et l'écran de
   saisie garde son état précédent.
+- **Train SPÉCIAL** (`circulations.nature = 'special'`, docs/01 §2.9) : course
+  AFFRÉTÉE, affichée en gare avec la mention « privé » bilingue. `nature` est
+  un ENUM — `grille` | `supplementaire` | `special` — et surtout PAS un second
+  booléen à côté de `supplementaire` : « sup ET spécial » n'existe pas en
+  exploitation et rien ne l'empêcherait en base. Trois formes (aller-retour,
+  aller simple, stationnement long en haut) ; série de numéros PROPRE à partir
+  de 201, tenue par une contrainte SQL, parité impair = montée conservée, et le
+  numéro pair RÉSERVÉ même pour un aller simple (`sync_rame_descente` écrit
+  dans `numero + 1`). Créé par la supervision ET par l'admin, qui n'obtient pas
+  `circulations` pour autant : droit propre `circulations.special` et trois
+  politiques RLS bornées à `nature = 'special'` — l'onglet Circulations s'ouvre
+  à lui en LECTURE SEULE, bouton de création excepté. Terminus sans limite
+  (avertissement non bloquant hors section) ; express et vélos gardés,
+  facultatif retiré ; `commanditaire` en colonne propre, INTERNE (retirée à
+  `anon` par droit de colonne). EXCLU de l'onglet « Places » et sans pastille
+  de remplissage à l'écran : un train affrété ne vend pas ses places au
+  comptoir, et les deux pastilles ne tiendraient pas ensemble (mesuré).
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir

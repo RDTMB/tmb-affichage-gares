@@ -17,7 +17,25 @@ Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant physique,
 défaut `<gare>-<type>-1` où type = `ecran` ou `grille` — les deux pages
 d'une même gare sont ainsi deux postes distincts dans « État des écrans » ;
 plusieurs écrans du même type se distinguent par `ecran=`),
-`simule=HH:MM` (démo/tests), `zoom=`.
+`simule=HH:MM` (démo/tests), `jour=AAAA-MM-JJ`, `zoom=`.
+
+`jour=AAAA-MM-JJ` simule la **journée d'exploitation** : l'écran sert la
+journée demandée, ce qui permet de regarder aujourd'hui ce qu'il affichera
+demain — sans quoi un train créé pour demain n'est vérifiable que demain. Il
+ne déplace **que** la date : ni l'horloge affichée, ni l'horodatage qui fait
+expirer les messages et tourner les médias. Décaler celui-ci de plusieurs
+jours donnerait un écran qui a l'air de marcher tout en montrant autre chose
+que la réalité. Une valeur mal formée — ou une date qui n'existe pas, comme
+le 31 juin — est **ignorée**, comme l'est déjà une heure mal formée : on ne
+casse pas un écran de gare sur une faute de frappe d'URL.
+
+Les deux paramètres partagent le **bandeau permanent et non masquable** de
+l'heure simulée, dont le texte nomme alors la journée regardée, en français
+et en anglais. C'est le cas le plus grave des deux : une heure décalée de
+trois heures se remarque au premier coup d'œil, la grille de demain a l'air
+parfaitement normale. Sur une journée à venir non encore ouverte en
+supervision, le badge « Horaires théoriques — journée non confirmée »
+apparaît de lui-même, et c'est juste.
 
 **Paramètres de la supervision.** `demo=1` sert la démonstration (aucune
 écriture réelle) ; il est reconnu **strictement** — `?demo`, `?demo=true` et
@@ -359,6 +377,95 @@ _(Décisions de l'exploitant du 09/09/2026 pour l'affichage, du 10/09/2026 pour
 l'onglet dédié et pour la navigation dans les jours. La jauge de remplissage
 graduée est réservée à la version alimentée par l'API de réservation : elle
 n'est pas dans ce lot.)_
+
+### 2.9 Train spécial — course affrétée (`circulations.nature = 'special'`)
+
+Un groupe loue un train. Il circule, il est **affiché en gare** — un voyageur
+qui voit passer une rame doit savoir qu'elle n'est pas pour lui — et il porte
+la mention **« privé »**, bilingue.
+
+**UNE NATURE, PAS DEUX BOOLÉENS.** `circulations.nature` vaut `grille`,
+`supplementaire` ou `special`. Un second booléen à côté de `supplementaire`
+aurait rendu représentable la combinaison « sup ET spécial », qui n'existe
+pas en exploitation et que rien n'aurait empêchée en base. Les deux natures
+hors grille portent **leurs propres passages** — sans quoi elles seraient
+invisibles partout.
+
+**Trois formes** (décision de l'exploitant du 10/09/2026) :
+
+| Forme                  | Ce que ça donne                                          |
+| ---------------------- | -------------------------------------------------------- |
+| aller-retour           | montée + descente, qui repart après un **battement** estimé |
+| aller simple           | la montée **seule** — aucune ligne de descente             |
+| stationnement en haut  | montée + descente, dont l'**heure de départ est saisie**   |
+
+Le stationnement long n'est pas un battement très long déguisé : l'heure est
+**convenue avec l'affréteur**, pas déduite. C'est aussi ce qui a rendu
+atteignable un défaut qui dormait — un battement négatif produisait en
+silence une descente partant avant l'arrivée de la montée. Le contrôle existe
+désormais et refuse.
+
+**Numérotation : série propre, à partir de 201.** Les renforts occupent
+101–199, la grille 1–99, et la base le vérifie (contrainte
+`circulations_nature_numero`) : ce n'était qu'une convention du front tant que
+seule la supervision écrivait cette table, et elle devient porteuse dès
+qu'`admin` peut y insérer des spéciaux. La **parité reste liée au sens** dans
+toutes les plages — impair = montée, pair = descente ; 201 est impair.
+Le numéro pair est **réservé même pour un aller simple** : le déclencheur
+`sync_rame_descente` recopie la rame de toute montée dans `numero + 1` sans
+vérifier qu'elle appartient au même train.
+
+**Libellés.** « SPÉCIAL 1 », « SPÉCIAL 2 »… sur le modèle de « TRAIN SUP 1 » —
+un seul spécial dans la journée donne « SPÉCIAL » sans rang. Le badge de
+l'écran de gare écrit **« SPÉ 1 »** : mesuré à 1280×720, il occupe 68,0 px
+contre 71,3 px pour « SUP 1 », donc la même empreinte que la série existante
+et aucun décalage du nom de gare. « SP » ferait la même largeur mais ne
+diffère de « SUP » que d'une lettre, à lire de loin sur un quai.
+
+**Qui le crée : la supervision ET l'admin.** L'admin n'obtient PAS le droit
+`circulations` — la séparation de §5.5 reste entière — mais un droit propre,
+`circulations.special`, et trois politiques RLS bornées aux lignes
+`nature = 'special'`. L'onglet Circulations s'ouvre à lui **en lecture seule**,
+à la seule exception du bouton « + Train supplémentaire ou spécial ».
+
+**Terminus : aucune limite, l'agent choisit.** Mais l'écran de création ne se
+tait pas : si le terminus sort de la section du jour, ou dépasse Bellevue un
+jour de bascule, un **avertissement non bloquant** dit ce que l'écran
+annoncera (« Ligne fermée » au-delà, ou signalement « à traiter »).
+
+**Réglages gardés** : rame imposée, express, vélos. **Facultatif retiré** — un
+train affrété qu'on n'activerait pas n'a pas de sens. Un spécial reste soumis
+à `sans_voyageurs` : une course à vide ne s'affiche nulle part, spéciale ou
+non.
+
+**Commanditaire** (`circulations.commanditaire`) : qui a affrété le train.
+Colonne PROPRE et non `motif`, qui porte déjà la raison d'une suppression et
+celle d'un retard. Champ **interne** — visible en supervision et dans le
+journal, jamais servi aux écrans : le droit de SELECT est retiré à `anon` par
+droit de colonne, comme pour `affluence.maj_par`.
+
+**Ce que l'écran de gare montre.** Pastille « PRIVÉ / PRIVATE » entre le nom
+de la gare et le picto express : elle répond à « ce train est-il pour moi ? »,
+qui passe avant « y reste-t-il de la place ». En crème sur marine — ni le
+rouge du complet ni l'ambre des dernières places, le privé n'étant pas un
+niveau de remplissage. La ligne de note porte « Train privé / Private
+charter » **lorsqu'elle a la place**, c'est-à-dire quand aucune mention
+express ou « sans arrêt » ne l'occupe déjà : mesuré à 1280×720, les deux
+mentions ensemble remplissent la ligne à 456,5 px pour 456,5 px disponibles,
+sans marge. La pastille, elle, est toujours là.
+
+_(« Ne prend pas de voyageurs / No boarding » a été écarté : c'est faux pour
+le groupe affrété qui monte à bord, et deux fois trop long pour cohabiter avec
+la mention express.)_
+
+**Pas de pastille de remplissage sur un spécial**, et pas de spécial dans
+l'onglet « Places » : un train affrété ne vend pas ses places au comptoir. Les
+deux pastilles ne tiendraient d'ailleurs pas ensemble — mesuré, 140 px de
+débordement à 1920×1080, qui tronqueraient le nom de la gare.
+
+_(Décisions de l'exploitant du 10/09/2026 ; mise en œuvre du 11/09/2026.
+Migrations `2026-09-train-special-A.sql` puis `-B.sql`, à jouer de part et
+d'autre du déploiement du front.)_
 
 ## 3. Écran de gare (`ecran.html`)
 

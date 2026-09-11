@@ -108,12 +108,29 @@ create table circulations (
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
   motif text,
+  nature text not null default 'grille'  -- grille | supplementaire | special.
+    check (nature in ('grille','supplementaire','special')),
+                                  -- UN SEUL champ : deux booléens rendraient
+                                  -- représentable « sup ET spécial ».
+                                  -- `supplementaire` survit en colonne de
+                                  -- COMPATIBILITÉ, dérivée par déclencheur et
+                                  -- tenue par contrainte ; retrait saison 2027.
+  commanditaire text,             -- TRAIN SPÉCIAL : qui l'a affrété. INTERNE —
+                                  -- jamais servi aux écrans (droit de SELECT
+                                  -- retiré à anon, voir RLS). Colonne PROPRE
+                                  -- et non `motif`, qui porte déjà la raison
+                                  -- d'une suppression et celle d'un retard.
   maj timestamptz not null default now(),
   unique (date, numero),
   constraint circulations_sup_passages
     check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 -- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
+-- `commanditaire` : supabase/migrations/2026-09-train-special-A.sql (colonne +
+--   journal, n'enlève rien) puis -B.sql (droits de colonne). DEUX fichiers :
+--   A → déploiement du front → B, sans quoi soit les six écrans s'éteignent
+--   le temps de Pages, soit la supervision tombe sur « column commanditaire
+--   does not exist ». La séquence complète est écrite en tête des deux.
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
 -- non colonne de `circulations` — ce n'est ni la même nature de donnée (un
@@ -317,6 +334,32 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   accordée qu'à `authenticated`. `getAffluence` ne demande donc que ces trois
   colonnes : en rajouter une ferait échouer la requête des écrans, et en
   production seulement.
+- `circulations` : l'écriture est réservée à `supervision` (« roles:
+  circulations ecriture »), plus `technique` pour la seule régénération. Depuis
+  le 11/09/2026, `admin` peut écrire les lignes `nature = 'special'` et ELLES
+  SEULES — trois politiques dédiées (insert / update / delete) plutôt qu'un
+  élargissement, et pas de `for all` dont le `using` s'appliquerait aussi au
+  SELECT. L'UPDATE porte les DEUX clauses : `using` tient l'admin à l'écart des
+  circulations de grille, `with check` l'empêche de convertir un spécial en
+  circulation de grille. ⚠ L'application écrit par UPSERT : la branche de
+  conflit exige le `using` ET le `with check` de l'UPDATE, et la recette rejoue
+  donc l'upsert deux fois.
+- `circulations` : la lecture ANONYME est limitée aux SEIZE colonnes que les
+  écrans affichent — `revoke all … from anon` puis `grant select (date,
+  numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus,
+  statut, retard_min, motif, sans_voyageurs, nature, passages,
+  depart_reel) … to anon`. `commanditaire` (qui a affrété un train spécial)
+  en est EXCLU, comme `affluence.maj_par` : RLS ne filtre que des lignes,
+  seuls les droits de colonne retirent une colonne à la clé publiable.
+  Conséquence à ne pas perdre de vue : `getJour` énumère ces colonnes et
+  n'utilise plus `select('*')` — l'étoile demanderait `commanditaire` et
+  éteindrait les six gares d'un coup. **Toute colonne ajoutée à
+  `circulations` doit l'être aussi dans ce `grant`**, sinon elle sera
+  invisible des écrans ; `src/data/commanditaire.test.ts` compare les deux
+  listes, et la recette RLS vérifie en plus que `select *` ÉCHOUE pour
+  `anon` — c'est ce refus qui garantit qu'aucune colonne future ne lui
+  parviendra par inadvertance. La supervision passe
+  `getJour(date, { avecCommanditaire: true })`.
 - INSERT/UPDATE/DELETE : `authenticated` avec profil `actif`, en respectant
   ses RÔLES, multiples et cumulables (matrice complète : docs/01 §5.5 et
   docs/securite.md §2). Implémentation par `private.a_le_role(text)` et

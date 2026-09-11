@@ -98,7 +98,10 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
     // Entre les deux vient désormais la pastille d'affluence : elle se lit
     // avec le nom, le picto termine (décision de l'exploitant du 09/09/2026).
     expect(ts).toMatch(
-      /nomGare\(p\.destination\)\)\}<\/span>\$\{affluenceHtml\}\$\{motrice\}<\/div>/,
+      // La pastille « privé » du train spécial s'insère AVANT celle
+      // d'affluence : elle répond à « ce train est-il pour moi ? », qui passe
+      // avant « y reste-t-il de la place ». Le picto termine toujours.
+      /nomGare\(p\.destination\)\)\}<\/span>\$\{priveHtml\}\$\{affluenceHtml\}\$\{motrice\}<\/div>/,
     );
   });
 

@@ -29,7 +29,7 @@ function circulation(partiel: Partial<Circulation> = {}): Circulation {
     retard_min: 0,
     motif: null,
     sans_voyageurs: false,
-    supplementaire: false,
+    nature: 'grille' as const,
     ...partiel,
   };
 }
@@ -46,11 +46,15 @@ const PASSAGES_DESCENTE: PassageGrille[] = [
 /** La rotation supplémentaire 101/102, telle que le formulaire la met en attente. */
 function rotationSup(): { montee: Circulation; descente: Circulation } {
   return {
-    montee: circulation({ numero: 101, supplementaire: true, passages: PASSAGES_MONTEE }),
+    montee: circulation({
+      numero: 101,
+      nature: 'supplementaire' as const,
+      passages: PASSAGES_MONTEE,
+    }),
     descente: circulation({
       numero: 102,
       sens: 'descente',
-      supplementaire: true,
+      nature: 'supplementaire' as const,
       passages: PASSAGES_DESCENTE,
     }),
   };
@@ -132,7 +136,7 @@ describe('Modification d’un train supplémentaire DÉJÀ enregistré', () => {
     const { montee } = rotationSup();
     const r = routageCirculations([{ ...montee, rame: 'Anne' }], new Set());
     expect(r.misesAJour[0]?.passages).toEqual(PASSAGES_MONTEE);
-    expect(r.misesAJour[0]?.supplementaire).toBe(true);
+    expect(r.misesAJour[0]?.nature).toBe('supplementaire');
   });
 });
 

@@ -43,6 +43,7 @@ import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config
 import {
   anneauSur,
   badgeFraicheur,
+  bandeauSimulation,
   couleurSure,
   creeJournalHeartbeat,
   creeTicker,
@@ -87,14 +88,27 @@ const gare: GareId | null =
   gareParam && (ORDRE_GARES as readonly string[]).includes(gareParam)
     ? (gareParam as GareId)
     : null;
-const heure = creeSourceHeure(url.get('simule'));
+const heure = creeSourceHeure(url.get('simule'), url.get('jour'));
 
-// HEURE SIMULÉE : le drapeau existait dans horloge-source.ts mais aucune
-// page d'affichage ne le lisait — seule la supervision s'en servait. Un
-// écran lancé avec ?simule= affichait un tableau parfaitement crédible mais
+// SIMULATION : le drapeau existait dans horloge-source.ts mais aucune page
+// d'affichage ne le lisait — seule la supervision s'en servait. Un écran
+// lancé avec ?simule= affichait un tableau parfaitement crédible mais
 // décalé, sans aucune marque. Posé ICI, avant tout await : le bandeau est là
 // même si le démarrage échoue ensuite.
-if (heure.simulee) document.body.classList.add('mode-simule');
+//
+// ?jour= relève du MÊME bandeau, et c'est le cas le plus grave des deux : une
+// heure décalée de trois heures se remarque, la grille de demain a l'air
+// parfaitement normale. Le texte nomme donc la journée regardée.
+if (heure.simulee || heure.jourSimule) document.body.classList.add('mode-simule');
+const bandeau = bandeauSimulation({ heureSimulee: heure.simulee, jourSimule: heure.jourSimule });
+if (bandeau) {
+  const poser = (id: string, texte: string): void => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = texte;
+  };
+  poser('bandeau-simule-fr', bandeau.fr);
+  poser('bandeau-simule-en', bandeau.en);
+}
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 // Identifiant physique : « <gare>-<type>-1 » (docs/01 §1) — l'écran grille
@@ -160,24 +174,37 @@ interface ColonneTrain {
 
 function colonnesDuSens(sens: Sens, maintenant_s: number): ColonneTrain[] {
   if (!grille || !jour) return [];
-  return trainsDuJour(grille, jour)
-    .filter((t) => t.sens === sens)
-    .map((train) => {
-      const decalage = train.statut === 'retard' ? train.retard_min * 60 : 0;
-      const premier = train.passages[0];
-      const dernier = train.passages[train.passages.length - 1];
-      const departTheorique = premier?.depart_s ?? premier?.arrivee_s ?? 0;
-      const finReelle = (dernier?.arrivee_s ?? dernier?.depart_s ?? 0) + decalage;
-      return {
-        train,
-        decalage,
-        departTheorique_s: departTheorique,
-        departReel_s: departTheorique + decalage,
-        supprime: train.statut === 'supprime',
-        retard: train.statut === 'retard',
-        passe: finReelle < maintenant_s, // colonne atténuée : train arrivé à son terminus
-      };
-    });
+  return (
+    trainsDuJour(grille, jour)
+      .filter((t) => t.sens === sens)
+      // TRIÉ PAR L'HEURE, et il ne l'était pas. `trainsDuJour()` rend les trains
+      // de grille puis les HORS GRILLE, dans cet ordre : un train spécial de
+      // 10 h 30 arrivait donc en dernière colonne, après le train du soir. Même
+      // défaut que l'onglet Circulations, relevé en le vérifiant le 11/09/2026.
+      // Les colonnes se lisent de gauche à droite comme une journée : l'ordre
+      // EST l'information.
+      .sort((a, b) => {
+        const ha = a.passages[0]?.depart_s ?? a.passages[0]?.arrivee_s ?? Number.POSITIVE_INFINITY;
+        const hb = b.passages[0]?.depart_s ?? b.passages[0]?.arrivee_s ?? Number.POSITIVE_INFINITY;
+        return ha === hb ? a.numero - b.numero : ha - hb;
+      })
+      .map((train) => {
+        const decalage = train.statut === 'retard' ? train.retard_min * 60 : 0;
+        const premier = train.passages[0];
+        const dernier = train.passages[train.passages.length - 1];
+        const departTheorique = premier?.depart_s ?? premier?.arrivee_s ?? 0;
+        const finReelle = (dernier?.arrivee_s ?? dernier?.depart_s ?? 0) + decalage;
+        return {
+          train,
+          decalage,
+          departTheorique_s: departTheorique,
+          departReel_s: departTheorique + decalage,
+          supprime: train.statut === 'supprime',
+          retard: train.statut === 'retard',
+          passe: finReelle < maintenant_s, // colonne atténuée : train arrivé à son terminus
+        };
+      })
+  );
 }
 
 function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {

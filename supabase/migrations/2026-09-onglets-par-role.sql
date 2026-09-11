@@ -243,6 +243,10 @@ insert into onglets_par_role (role, onglet) values
   ('technique', 'ecrans'),
   ('technique', 'utilisateurs'),
   ('technique', 'journal'),
+  -- Onglet Circulations : l'admin y entre pour le TRAIN SPÉCIAL, et rien
+  -- d'autre — le reste de l'onglet lui est en lecture seule (droit
+  -- 'circulations.special', 11/09/2026).
+  ('admin', 'circulations'),
   ('admin', 'affluence'),
   ('admin', 'horaires'),
   ('admin', 'bandeau'),

@@ -22,6 +22,7 @@ import type {
   Ciel,
   Params,
 } from '../core/types';
+import { horsGrille } from '../core/types';
 
 /** État publiable aplati : une clé stable par CHAMP, valeur normalisée. */
 export type Instantane = Record<string, string>;
@@ -109,7 +110,7 @@ export function instantaneJours(jours: JourPubliable[]): Instantane {
   const instantane: Instantane = {};
   for (const { date, jour } of jours) {
     for (const c of jour?.circulations ?? []) {
-      if (c.supplementaire) {
+      if (horsGrille(c)) {
         // UNE seule clé pour un train supplémentaire : sa création ou sa
         // suppression compte pour UNE modification par train, pas une par
         // champ (huit champs feraient annoncer « 16 modifications » pour la

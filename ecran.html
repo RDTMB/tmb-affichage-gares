@@ -96,11 +96,14 @@
       <b>Démonstration — horaires fictifs</b>
       <span>Demonstration — fictitious timetable</span>
     </div>
-    <!-- Heure simulée (?simule=) : permanent et non masquable, y compris en
-         mode neutre et sous un média plein écran. -->
+    <!-- Simulation (?simule= et/ou ?jour=) : permanent et non masquable, y
+         compris en mode neutre et sous un média plein écran. Le texte est
+         POSÉ par le script (bandeauSimulation) parce qu'il nomme la journée
+         regardée ; celui écrit ici est le cas de l'heure seule, qui reste
+         affiché si le script échoue avant de le remplacer. -->
     <div class="bandeau-simule" id="bandeau-simule">
-      <b>Heure simulée — affichage de test</b>
-      <span>Simulated time — test display</span>
+      <b id="bandeau-simule-fr">Heure simulée — affichage de test</b>
+      <span id="bandeau-simule-en">Simulated time — test display</span>
     </div>
     <!-- Horloge du poste déréglée (lot 5) : permanent et non masquable, comme
          le bandeau d'heure simulée. Au-delà de 30 s d'écart, ce n'est plus un

@@ -79,8 +79,17 @@ export interface DataProvider {
    * inadvertance ; c'est l'inverse qui a produit ce défaut.
    *
    * Seule la supervision passe `{ creerSiAbsent: true }`.
+   *
+   * `avecCommanditaire` ajoute `circulations.commanditaire`. Comme
+   * `avecSignature` sur l'affluence, ce n'est pas un confort : la colonne est
+   * RETIRÉE à `anon` en base, et une lecture d'écran qui la demanderait
+   * échouerait — « permission denied for column commanditaire », les six
+   * gares en même temps. Seule la supervision la passe.
    */
-  getJour(date: string, options?: { creerSiAbsent?: boolean }): Promise<Jour>;
+  getJour(
+    date: string,
+    options?: { creerSiAbsent?: boolean; avecCommanditaire?: boolean },
+  ): Promise<Jour>;
   getMessages(gare: GareId): Promise<Message[]>;
   /**
    * AFFLUENCE du jour (table `affluence`) : toutes les déclarations de la

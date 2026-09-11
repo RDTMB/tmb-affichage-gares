@@ -48,7 +48,7 @@ function passage(numero: number, reste: Partial<PassageGare> = {}): PassageGare 
     origine: 'le-fayet',
     destination: 'nid-daigle',
     terminusExceptionnel: false,
-    supplementaire: false,
+    nature: 'grille' as const,
     departConfirme: false,
     arrivee_s: null,
     depart_s: 36000,

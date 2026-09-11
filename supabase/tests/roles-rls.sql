@@ -318,6 +318,105 @@ begin
     raise notice 'OK — supervision : déclarer un écran lui est refusé';
   end;
 
+  -- (a bis) TRAIN SPÉCIAL — l'ADMIN, et le spécial SEUL (décision du
+  --          10/09/2026). C'est le point le plus risqué du lot : on ouvre une
+  --          écriture sur la table d'où sortent tous les horaires de gare.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+
+  -- L'UPSERT, et pas un INSERT à la main : c'est ce que le bouton envoie
+  -- (`on conflict (date, numero) do update`). Une politique écrite « for
+  -- insert » seule passerait l'INSERT ici et échouerait sur le vrai bouton —
+  -- la forme exacte de l'incident `affluence` du 10/09/2026.
+  insert into public.circulations (date, numero, sens, rame, nature, passages, commanditaire)
+    values ('2099-12-31', 201, 'montee', 'Marie', 'special',
+            '[{"gare":"le-fayet","d":"09:00:00"},{"gare":"nid-daigle","a":"10:10:00"}]'::jsonb,
+            'Comité d''entreprise')
+    on conflict (date, numero) do update
+      set nature = excluded.nature,
+          passages = excluded.passages,
+          commanditaire = excluded.commanditaire;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — admin : crée un train spécial (upsert du front)';
+  else raise exception 'ÉCHEC — admin : n''a pas pu créer un train spécial'; end if;
+
+  -- Le même upsert une SECONDE fois : la branche de conflit s'exécute, et
+  -- c'est elle qui exige le `using` de la politique d'UPDATE. Sans lui, le
+  -- premier passage réussit et le second échoue — un défaut qui ne se
+  -- montrerait qu'à la deuxième modification d'un train affrété.
+  insert into public.circulations (date, numero, sens, rame, nature, passages, commanditaire)
+    values ('2099-12-31', 201, 'montee', 'Marie', 'special',
+            '[{"gare":"le-fayet","d":"09:05:00"},{"gare":"nid-daigle","a":"10:15:00"}]'::jsonb,
+            'Comité d''entreprise')
+    on conflict (date, numero) do update
+      set passages = excluded.passages;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — admin : REMODIFIE son train spécial (branche UPDATE)';
+  else raise exception 'ÉCHEC — admin : la seconde écriture du spécial est refusée'; end if;
+
+  -- ⚠ LE TEST QUI COMPTE. Celui qui vérifie qu'admin crée un spécial ne
+  --   protège rien : c'est celui-ci qui échoue si la politique a été élargie
+  --   par mégarde. La séparation « admin gère les comptes et l'exploitation,
+  --   l'exploitation gère les circulations » (docs/01 §5.5) tient ou tombe
+  --   ici.
+  begin
+    update public.circulations set statut = 'retard', retard_min = 5
+     where date = '2099-12-31' and numero = 9;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — admin : a pu modifier une circulation de GRILLE';
+    end if;
+    raise notice 'OK — admin : la circulation de grille lui est invisible en écriture';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : modifier une circulation de grille lui est refusé';
+  end;
+
+  -- …et il ne peut pas davantage en CRÉER une, ni convertir son spécial en
+  -- circulation de grille (c'est le `with check` de l'UPDATE).
+  begin
+    insert into public.circulations (date, numero, sens, rame, nature)
+      values ('2099-12-31', 11, 'montee', 'Marie', 'grille');
+    raise exception 'ÉCHEC — admin : a pu créer une circulation de grille';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : créer une circulation de grille lui est refusé';
+  end;
+
+  begin
+    update public.circulations set nature = 'grille', passages = null
+     where date = '2099-12-31' and numero = 201;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — admin : a converti son spécial en circulation de grille';
+    end if;
+    raise notice 'OK — admin : la conversion en grille ne trouve aucune ligne';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : convertir un spécial en grille lui est refusé';
+  end;
+
+  -- La SUPERVISION, elle, garde tout : elle écrit les spéciaux comme le reste.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);
+  update public.circulations set commanditaire = 'Affrètement (recette)'
+   where date = '2099-12-31' and numero = 201;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — supervision : modifie aussi un train spécial';
+  else raise exception 'ÉCHEC — supervision : le train spécial lui échappe'; end if;
+
+  -- La CAISSE n'écrit toujours rien dans cette table, spécial compris.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  begin
+    update public.circulations set commanditaire = 'Caisse'
+     where date = '2099-12-31' and numero = 201;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — caisse : a pu modifier un train spécial';
+    end if;
+    raise notice 'OK — caisse : le train spécial lui est invisible en écriture';
+  exception when insufficient_privilege then
+    raise notice 'OK — caisse : modifier un train spécial lui est refusé';
+  end;
+
   -- (b) La caisse : le bandeau, les médias, la COMMANDE de son écran — et
   --     rien de l'exploitation ni des comptes (élargissement du 06/09/2026).
   perform set_config('request.jwt.claims',
@@ -405,7 +504,71 @@ begin
     raise notice 'OK — anonyme : l''écriture de l''affluence lui est refusée';
   end;
 
+  -- CIRCULATIONS : l'écran de gare lit la journée sans compte. Deux critères
+  -- SÉPARÉS, et c'est leur confusion qui avait laissé passer la fuite de
+  -- `affluence.maj_par` : « la colonne n'apparaît nulle part » n'est PAS le
+  -- critère — elle doit apparaître pour `authenticated`, c'est la supervision.
+  --
+  -- (a) l'écran lit ce qu'il affiche. Les colonnes sont énumérées comme le
+  --     front les énumère : un `select *` passerait ici et échouerait en gare.
+  select count(*) into n from (
+    select date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
+           terminus, statut, retard_min, motif, sans_voyageurs, supplementaire,
+           passages, depart_reel
+      from public.circulations where date = '2099-12-31' and numero = 9
+  ) x;
+  if n = 1 then raise notice 'OK — anonyme : l''écran de gare lit la circulation';
+  else raise exception 'ÉCHEC — anonyme : l''écran ne lit pas la circulation (% ligne(s))', n; end if;
+
+  -- (b) …mais PAS le commanditaire du train spécial. `anon`, c'est la clé
+  --     publiable : tout Internet saurait pour qui roule un train affrété.
+  begin
+    perform commanditaire from public.circulations where date = '2099-12-31' and numero = 9;
+    raise exception 'ÉCHEC — anonyme : a pu lire le commanditaire d''un train';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : le commanditaire lui est refusé';
+  end;
+
+  -- (c) `select *` doit ÉCHOUER pour l'anonyme, et c'est voulu : c'est ce qui
+  --     garantit qu'aucune colonne ajoutée plus tard ne lui parviendra par
+  --     inadvertance. Si ce contrôle passe un jour, c'est que le `revoke` a
+  --     été perdu — et le commanditaire avec lui.
+  begin
+    perform * from public.circulations where date = '2099-12-31' and numero = 9;
+    raise exception 'ÉCHEC — anonyme : lit la table entière (le revoke a disparu)';
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : la lecture en bloc lui est refusée';
+  end;
+
   execute 'set local role authenticated';
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+
+  -- Le COMMANDITAIRE, lui, se lit et s'écrit depuis un compte : c'est la
+  -- moitié qu'un contrôle « la colonne n'apparaît nulle part » aurait cassée
+  -- sans que rien ne le dise. On repasse sous les droits de la SUPERVISION —
+  -- la caisse n'écrit jamais dans `circulations`, et ce refus-là est déjà
+  -- contrôlé plus haut.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);
+  update public.circulations set commanditaire = 'Recette RLS'
+   where date = '2099-12-31' and numero = 9;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — supervision : renseigne le commanditaire';
+  else raise exception 'ÉCHEC — supervision : n''a pas pu renseigner le commanditaire'; end if;
+
+  select count(*) into n from public.circulations
+   where date = '2099-12-31' and numero = 9 and commanditaire = 'Recette RLS';
+  if n = 1 then raise notice 'OK — supervision : relit le commanditaire';
+  else raise exception 'ÉCHEC — supervision : ne relit pas le commanditaire'; end if;
+
+  -- Et le journal l'a tracé : c'est la donnée qu'on cherchera le jour où l'on
+  -- se demandera qui a demandé quoi.
+  select count(*) into n from public.journal_exploitation
+   where table_cible = 'circulations' and champ = 'commanditaire';
+  if n >= 1 then raise notice 'OK — journal : le commanditaire est tracé';
+  else raise exception 'ÉCHEC — journal : le changement de commanditaire n''est pas tracé'; end if;
+
   perform set_config('request.jwt.claims',
     json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
 

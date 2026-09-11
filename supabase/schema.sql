@@ -60,6 +60,15 @@ create table if not exists circulations (
   -- TRAIN SUPPLÉMENTAIRE : train de renfort absent de toute grille. Il porte
   -- donc SES PROPRES passages, au format des grilles JSON — sans quoi il
   -- serait invisible partout (docs/01 §2.7).
+  -- NATURE de la circulation. UN SEUL champ : deux booléens côte à côte
+  -- (`supplementaire` + `special`) rendraient représentable la combinaison
+  -- « sup ET spécial », qui n'existe pas en exploitation.
+  nature text not null default 'grille'
+    check (nature in ('grille', 'supplementaire', 'special')),
+  -- COLONNE DE COMPATIBILITÉ, dérivée de `nature` par `trg_circulations_nature`
+  -- et tenue par `circulations_nature_supplementaire`. Le front ne la lit ni
+  -- ne l'écrit plus depuis le 11/09/2026 ; RETRAIT PRÉVU saison 2027, quand
+  -- plus aucun poste ne pourra servir l'ancien bundle.
   supplementaire boolean not null default false,
   passages jsonb,
   -- DÉPART RÉEL constaté depuis le terminus (descente d'une rotation
@@ -68,11 +77,29 @@ create table if not exists circulations (
   -- passages de la descente ont été recalculés depuis elle. Conserve aussi
   -- la trace du départ, utile à l'exploitation.
   depart_reel time,
+  -- COMMANDITAIRE d'un train spécial : qui l'a affrété. INTERNE — jamais
+  -- servi aux écrans (le droit de SELECT est retiré à `anon`, plus bas).
+  -- Colonne PROPRE et non `motif` : celui-ci porte déjà la raison d'une
+  -- suppression et celle d'un retard ; un troisième sens en ferait le piège
+  -- qu'a été `terminus`, déjà payé par deux correctifs.
+  commanditaire text,
   maj timestamptz not null default now(),
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
   constraint circulations_sup_passages
-    check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
+    check ((supplementaire and passages is not null) or (not supplementaire and passages is null)),
+  constraint circulations_nature_supplementaire
+    check (supplementaire = (nature <> 'grille')),
+  -- PLAGES DE NUMÉROS, par nature. Ce n'était qu'une convention du front tant
+  -- que seule la supervision écrivait cette table ; elle devient porteuse dès
+  -- qu'admin peut y insérer des lignes 'special'. La parité reste liée au sens
+  -- dans toutes les plages : impair = montée, pair = descente.
+  constraint circulations_nature_numero
+    check (
+      (nature = 'grille' and numero between 1 and 99)
+      or (nature = 'supplementaire' and numero between 101 and 199)
+      or (nature = 'special' and numero >= 201)
+    )
 );
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
@@ -366,6 +393,10 @@ insert into onglets_par_role (role, onglet) values
   ('technique', 'ecrans'),
   ('technique', 'utilisateurs'),
   ('technique', 'journal'),
+  -- Onglet Circulations : l'admin y entre pour le TRAIN SPÉCIAL, et rien
+  -- d'autre — le reste de l'onglet lui est en lecture seule (droit
+  -- 'circulations.special', 11/09/2026).
+  ('admin', 'circulations'),
   ('admin', 'affluence'),
   ('admin', 'horaires'),
   ('admin', 'bandeau'),
@@ -571,6 +602,25 @@ $fn$;
 revoke all on function private.email_appelant() from public;
 grant execute on function private.email_appelant() to authenticated;
 
+-- NATURE : la colonne de compatibilité `supplementaire` en est dérivée, dans
+-- les deux sens. Voir migrations/2026-09-train-special-A.sql pour le détail —
+-- l'ancien front écrivait `supplementaire` sans connaître `nature`.
+create or replace function private.circulations_nature()
+returns trigger language plpgsql set search_path = '' as $fn$
+begin
+  if tg_op = 'INSERT' and new.nature = 'grille' and new.supplementaire then
+    new.nature := 'supplementaire';
+  end if;
+  new.supplementaire := (new.nature <> 'grille');
+  return new;
+end $fn$;
+revoke all on function private.circulations_nature() from public;
+
+drop trigger if exists trg_circulations_nature on circulations;
+create trigger trg_circulations_nature
+  before insert or update on circulations
+  for each row execute function private.circulations_nature();
+
 -- Rotation : la rame d'une montée est recopiée sur sa descente appariée
 -- (numero + 1) pour les exports — l'affichage la dérive déjà par jointure.
 create or replace function private.sync_rame_descente()
@@ -658,6 +708,22 @@ grant select, delete on profils to authenticated;
 grant insert (user_id, nom, email, actif) on profils to authenticated;
 grant update (nom, actif) on profils to authenticated;
 
+-- CIRCULATIONS : la table la plus lue du projet, et la seule dont une colonne
+-- doit rester INVISIBLE de la clé publiable. RLS ne filtre que des lignes ;
+-- retirer une colonne à `anon` n'a qu'un moyen, les droits de colonne — même
+-- traitement que `affluence.maj_par`. La liste est exactement celle que
+-- `getJour` demande, et rien de plus : ni `id`, ni `maj`, ni
+-- `commanditaire`. Toute colonne ajoutée à cette table devra être ajoutée
+-- ICI, sinon elle sera invisible des écrans — ou les éteindra si le front la
+-- demande. src/data/commanditaire.test.ts compare cette liste à celle du front.
+revoke all on circulations from anon;
+grant select (
+  date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
+  terminus, statut, retard_min, motif, sans_voyageurs, nature,
+  passages, depart_reel
+) on circulations to anon;
+grant select, insert, update, delete on circulations to authenticated;
+
 -- Lecture publique (les écrans lisent sans compte)
 create policy "lecture publique" on jours for select using (true);
 create policy "lecture publique" on circulations for select using (true);
@@ -694,6 +760,37 @@ create policy "roles: circulations ecriture" on circulations for all to authenti
 -- cascade de `jours`.
 create policy "roles: circulations regeneration" on circulations for insert to authenticated
   with check ((select private.a_le_role('technique')));
+
+-- TRAIN SPÉCIAL — l'admin, et le spécial SEUL (décision du 10/09/2026).
+--
+-- TROIS politiques et non une « for all » : le `using` d'une `for all`
+-- s'applique aussi au SELECT, ce qui affirmerait quelque chose de faux sur
+-- l'objet de la politique (la lecture est publique et le reste).
+--
+-- INSERT n'évalue que `with check`, sur la ligne NOUVELLE. UPDATE évalue
+-- `using` sur l'ANCIENNE et `with check` sur la nouvelle : les deux sont
+-- nécessaires — `using` tient l'admin à l'écart des circulations de grille,
+-- `with check` l'empêche de convertir un spécial en circulation de grille.
+-- Omettre le second laisserait exactement ce trou.
+--
+-- ⚠ L'application écrit par UPSERT (`on conflict (date, numero) do update`).
+-- La branche de conflit exige le `using` ET le `with check` de l'UPDATE : une
+-- politique écrite `for insert` seule passerait un INSERT à la main dans la
+-- recette et échouerait sur le vrai bouton. C'est la forme exacte de
+-- l'incident `affluence` du 10/09/2026 — la recette rejoue donc l'upsert.
+--
+-- La contrainte `circulations_nature_numero` complète ces politiques : sans
+-- elle, l'admin pourrait insérer un spécial numéroté 9, que l'écran
+-- annoncerait « TRAIN 9 ». Le `using` ne l'attrape pas — il n'y a pas
+-- d'ancienne ligne à l'INSERT.
+create policy "roles: circulations special" on circulations for insert to authenticated
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special maj" on circulations for update to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')))
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special retrait" on circulations for delete to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')));
+
 
 -- Médias : ouverts au guichet depuis le 06/09/2026. Retirer une affiche
 -- périmée ou en poser une n'a pas à remonter au chef d'exploitation. Cette
@@ -1383,7 +1480,8 @@ create trigger trg_journal_circulations
   after insert or update or delete on circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
-    'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif', 'sans_voyageurs'
+    'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
+    'sans_voyageurs', 'commanditaire', 'nature'
   );
 
 -- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du

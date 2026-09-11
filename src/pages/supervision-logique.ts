@@ -12,11 +12,13 @@ import type {
   Jour,
   Media,
   Message,
+  PassageGrille,
   Profil,
   Sens,
 } from '../core/types';
 import type { Onglet, VisibiliteOnglets } from '../core/types';
-import { ORDRE_GARES } from '../core/types';
+import type { NatureCirculation } from '../core/types';
+import { horsGrille, ORDRE_GARES } from '../core/types';
 import {
   LIBELLE_ROLE,
   ONGLETS,
@@ -25,7 +27,8 @@ import {
   ongletsVisibles,
   plafondOnglets,
 } from '../core/roles';
-import { origineReelle, sectionComplete, terminusReel } from '../core/horaires';
+import { heureVersSecondes, origineReelle, sectionComplete, terminusReel } from '../core/horaires';
+import type { FormeCourse } from '../core/train-sup';
 import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
 
@@ -363,6 +366,165 @@ export function dateEnToutesLettres(dateISO: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+// ============================================================================
+// Ordre d'affichage des rotations (onglet Circulations)
+// ============================================================================
+
+/**
+ * Heure de départ d'un train à son ORIGINE, en secondes depuis minuit, ou
+ * `null` si elle est indéterminable — passages absents (journée non ouverte),
+ * ou premier passage sans heure.
+ *
+ * On lit le premier passage et lui seul : c'est le départ de la course, celui
+ * qui situe la rotation dans la journée. Les heures sont THÉORIQUES, comme
+ * partout dans ce tableau — un retard ne déplace pas une ligne, il s'affiche
+ * dans sa colonne.
+ *
+ * Le paramètre est typé `PassageGrille`, c'est-à-dire CE QUE L'APPELANT PASSE
+ * (`montee.passages`). La forme anonyme `{ a?, d? }` qu'il portait d'abord
+ * était plus étroite que la réalité : elle refusait un passage complet, donc
+ * les cas d'essai réalistes — or c'est justement une course entière qui a
+ * attrapé la mutation « lire le dernier passage plutôt que le premier ».
+ */
+export function departOrigine(
+  passages: readonly PassageGrille[] | null | undefined,
+): number | null {
+  const premier = passages?.[0];
+  const heure = premier?.d ?? premier?.a;
+  if (heure === undefined) return null;
+  const secondes = heureVersSecondes(heure);
+  return Number.isFinite(secondes) ? secondes : null;
+}
+
+/** Une rotation à ranger : son numéro de MONTÉE, et l'heure de ce départ. */
+export interface RotationAOrdonner {
+  /** Numéro de la MONTÉE — c'est le rang de la rotation entière. */
+  numero: number;
+  /** Départ de la montée à son origine ; `null` = indéterminable. */
+  depart_s: number | null;
+}
+
+/**
+ * Numéros de montée, dans l'ordre où l'onglet Circulations doit les rendre.
+ *
+ * DÉFAUT CORRIGÉ LE 11/09/2026, relevé à la recette : le tableau était
+ * construit en DEUX blocs concaténés — toute la grille, puis les trains hors
+ * grille. Un renfort de 17 h se rangeait donc après le dernier train du soir,
+ * et un train spécial de 10 h 30 aussi. Ce n'est pas le train spécial qui l'a
+ * introduit : les renforts étaient affichés ainsi depuis toujours.
+ *
+ * Trois propriétés, et chacune a sa raison :
+ *
+ *  - le rang appartient à la ROTATION, pas à la ligne. Une descente ne se
+ *    trie jamais pour elle-même : elle suit sa montée, sans quoi l'appariement
+ *    — qui est la lecture même de ce tableau — se défait au premier renfort ;
+ *  - à heure égale, le NUMÉRO départage. Les trains de grille sont déjà
+ *    chronologiques et numérotés dans cet ordre : leur ordre relatif actuel
+ *    est ainsi reproduit exactement, sans dépendre de la stabilité du tri ;
+ *  - heure indéterminable → EN FIN de liste. Un tableau qui ne s'affiche pas
+ *    est pire qu'un train mal placé.
+ */
+export function ordreRotations(rotations: readonly RotationAOrdonner[]): number[] {
+  return [...rotations]
+    .sort((a, b) => {
+      const ha = a.depart_s ?? Number.POSITIVE_INFINITY;
+      const hb = b.depart_s ?? Number.POSITIVE_INFINITY;
+      return ha === hb ? a.numero - b.numero : ha - hb;
+    })
+    .map((r) => r.numero);
+}
+
+// ============================================================================
+// Train SPÉCIAL — création (docs/01 §2.9)
+// ============================================================================
+
+/**
+ * Formes proposées selon la nature. Un RENFORT ne connaît que l'aller-retour :
+ * il existe pour doubler une rotation de la grille, et l'exploitant n'a jamais
+ * demandé autre chose. Les trois formes sont la décision du 10/09/2026 sur le
+ * train SPÉCIAL — un groupe qu'on monte et qui redescend par ses propres
+ * moyens, un train affrété qui attend en haut plusieurs heures.
+ */
+export function formesPossibles(nature: NatureCirculation): FormeCourse[] {
+  return nature === 'special' ? ['rotation', 'aller-simple', 'stationnement'] : ['rotation'];
+}
+
+export interface ChampsFormulaireCourse {
+  /** Le choix de forme n'a de sens que quand il y en a plusieurs. */
+  forme: boolean;
+  /** Battement : seulement quand l'heure de la descente est ESTIMÉE. */
+  battement: boolean;
+  /** Heure de départ de la descente : seulement pour un stationnement long. */
+  departDescente: boolean;
+  /** Desserte de la descente : pas de descente, pas de desserte. */
+  garesDescente: boolean;
+  /** Commanditaire : le spécial, et lui seul. */
+  commanditaire: boolean;
+  /**
+   * Express et vélos : RÉGLAGES GARDÉS pour le spécial (décision du
+   * 10/09/2026). Un renfort ne les a jamais eus — il double une rotation de
+   * la grille et suit sa desserte.
+   */
+  express: boolean;
+  velos: boolean;
+}
+
+/**
+ * Quels champs le formulaire montre. PURE, parce que c'est la seule façon de
+ * verrouiller qu'un aller simple ne demande pas de battement et qu'un renfort
+ * ne demande pas de commanditaire — deux champs qui, laissés visibles,
+ * seraient remplis et ignorés.
+ */
+export function champsFormulaireCourse(
+  nature: NatureCirculation,
+  forme: FormeCourse,
+): ChampsFormulaireCourse {
+  const avecDescente = forme !== 'aller-simple';
+  return {
+    forme: formesPossibles(nature).length > 1,
+    battement: avecDescente && forme !== 'stationnement',
+    departDescente: avecDescente && forme === 'stationnement',
+    garesDescente: avecDescente,
+    commanditaire: nature === 'special',
+    express: nature === 'special',
+    velos: nature === 'special',
+  };
+}
+
+/**
+ * Terminus hors de ce que la journée dessert : AVERTISSEMENT, jamais refus.
+ *
+ * Décision de l'exploitant du 10/09/2026 : un train spécial n'a pas de limite
+ * de terminus, l'agent choisit. Mais se taire serait pire que refuser — il
+ * doit savoir ce que l'écran annoncera. On dit donc les deux cas où le train
+ * ne sera pas affiché comme il l'imagine, et on laisse passer.
+ */
+export function avertissementTerminusCourse(e: {
+  terminus: GareId;
+  gareDebut: GareId;
+  gareFin: GareId;
+  /** La bascule « terminus Bellevue » est-elle active ce jour ? */
+  terminusBellevue: boolean;
+  /** Noms officiels, qui viennent de la grille — jamais écrits en dur ici. */
+  nomGare: (g: GareId) => string;
+}): string | null {
+  const rang = (g: GareId): number => ORDRE_GARES.indexOf(g);
+  if (rang(e.terminus) > rang(e.gareFin) || rang(e.terminus) < rang(e.gareDebut)) {
+    return (
+      `Terminus hors de la section exploitée aujourd'hui (${e.nomGare(e.gareDebut)} → ` +
+      `${e.nomGare(e.gareFin)}). Les gares situées au-delà affichent « Ligne fermée » : ` +
+      `ce train n'y sera pas annoncé.`
+    );
+  }
+  if (e.terminusBellevue && rang(e.terminus) > rang('bellevue')) {
+    return (
+      'La journée est limitée à Bellevue : ce train sera signalé « à traiter » en supervision, ' +
+      "et l'écran du Nid d'Aigle reste en « tronçon fermé »."
+    );
+  }
+  return null;
 }
 
 // ============================================================================
@@ -805,7 +967,7 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
   // --- Train SUPPLÉMENTAIRE : le terminus vient des passages, jamais de la
   //     colonne. Montée → son terminus ; descente → sa gare de départ, qui
   //     n'est pas forcément Le Fayet (un renfort peut ne pas redescendre en bas).
-  if (c.supplementaire) {
+  if (horsGrille(c)) {
     const source =
       passagesEffectifs && passagesEffectifs.length > 0 ? { passages: passagesEffectifs } : c;
     const gare = montee ? terminusReel(source) : origineReelle(source);
@@ -913,7 +1075,7 @@ export function routageCirculations(
   const consommes = new Set<number>();
 
   for (const c of enAttente) {
-    if (!c.supplementaire || c.sens !== 'montee' || !neufs.has(c.numero)) continue;
+    if (!horsGrille(c) || c.sens !== 'montee' || !neufs.has(c.numero)) continue;
     const descente = enAttente.find((x) => x.numero === c.numero + 1);
     if (!descente) {
       throw new Error(
@@ -973,7 +1135,11 @@ export function resumeJournee(
 ): ResumeJournee {
   const facultatifs = jour.circulations.filter((c) => c.facultatif);
   const actifs = facultatifs.filter((c) => c.facultatif_actif).length;
-  const sups = jour.circulations.filter((c) => c.supplementaire && c.sens === 'montee').length;
+  // Les RENFORTS seulement : un train spécial n'est pas un renfort, et le
+  // compteur de la barre du jour annonce « renfort(s) ».
+  const sups = jour.circulations.filter(
+    (c) => c.nature === 'supplementaire' && c.sens === 'montee',
+  ).length;
 
   const etat: EtatJournee =
     jour.hors_saison === true

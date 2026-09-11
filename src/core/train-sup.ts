@@ -163,56 +163,108 @@ export function calculePassagesSup(
   return passages;
 }
 
-export interface OptionsRotationSup {
+/**
+ * FORME d'une course hors grille (décision de l'exploitant du 10/09/2026) :
+ *
+ *  - `rotation`      : montée puis descente, la descente repartant du terminus
+ *                      après un BATTEMENT estimé. La seule forme qu'un renfort
+ *                      connaisse.
+ *  - `aller-simple`  : la montée seule. Le train ne redescend pas en service.
+ *  - `stationnement` : montée puis descente, mais l'heure de départ de la
+ *                      descente est SAISIE — le train attend en haut, parfois
+ *                      des heures, et cette heure-là est convenue avec
+ *                      l'affréteur, pas déduite d'un battement.
+ */
+export type FormeCourse = 'rotation' | 'aller-simple' | 'stationnement';
+
+export interface OptionsCourse {
   /** Départ de la première gare de la montée, en secondes depuis minuit. */
   heureDepart_s: number;
   garesMontee: GareId[];
-  garesDescente: GareId[];
+  /** ABSENT = aller simple : il n'y a pas de descente à construire. */
+  garesDescente?: GareId[];
   /** Temps passé au terminus avant de repartir (défaut 5 min). */
   battement_s?: number;
+  /**
+   * Heure de départ de la descente, SAISIE — stationnement long. Prioritaire
+   * sur `battement_s` : c'est l'heure convenue, pas une estimation.
+   */
+  departDescente_s?: number;
 }
 
 export interface RotationSup {
   montee: PassageGrille[];
-  descente: PassageGrille[];
+  /** `null` pour un ALLER SIMPLE. */
+  descente: PassageGrille[] | null;
 }
 
 /**
- * Rotation complète d'un train supplémentaire : la montée, puis la descente
- * qui repart du terminus de la montée après `battement_s`.
+ * Course hors grille : la montée, et la descente s'il y en a une.
+ *
+ * GÉNÉRALISÉE le 11/09/2026 pour les trois formes du train spécial. Un seul
+ * chemin, et c'est voulu : les trois ne diffèrent que par la présence d'une
+ * descente et par la façon dont son heure de départ est obtenue. Deux
+ * fonctions auraient dupliqué le contrôle « la descente repart bien du
+ * terminus de la montée », qui vaut pour les deux formes qui en ont une.
+ *
+ * Le CONTRÔLE D'ORDRE est nouveau : jusqu'ici un battement négatif produisait
+ * en silence une descente partant avant l'arrivée de la montée. Personne ne
+ * pouvait le saisir tant que le formulaire ne demandait qu'une durée ; le
+ * stationnement long, qui demande une HEURE, le rend atteignable.
  */
-export function construitRotationSup(grille: Grille, options: OptionsRotationSup): RotationSup {
-  const battement = options.battement_s ?? 300;
+export function construitCourse(grille: Grille, options: OptionsCourse): RotationSup {
   const montee = calculePassagesSup(grille, 'montee', options.garesMontee, options.heureDepart_s);
   const derniere = montee[montee.length - 1];
   const arriveeTerminus = derniere?.a ?? derniere?.d;
   if (!arriveeTerminus) {
-    throw new Error('Montée sans heure d’arrivée au terminus : rotation impossible.');
+    throw new Error('Montée sans heure d’arrivée au terminus : course impossible.');
   }
+  // ALLER SIMPLE : rien d'autre à construire. Le numéro pair reste RÉSERVÉ
+  // malgré tout — voir `prochainNumeroHorsGrille()`.
+  if (options.garesDescente === undefined) return { montee, descente: null };
+
   const depuis = options.garesDescente[0];
   if (depuis !== derniere?.gare) {
     throw new Error(
       `La descente doit repartir du terminus de la montée (${derniere?.gare}), pas de ${depuis}.`,
     );
   }
-  const descente = calculePassagesSup(
-    grille,
-    'descente',
-    options.garesDescente,
-    heureVersSecondes(arriveeTerminus) + battement,
-  );
+  const arrivee_s = heureVersSecondes(arriveeTerminus);
+  const depart_s = options.departDescente_s ?? arrivee_s + (options.battement_s ?? 300);
+  if (depart_s < arrivee_s) {
+    throw new Error(
+      `Descente à ${formatHms(depart_s).slice(0, 5)} alors que la montée arrive au terminus à ` +
+        `${formatHms(arrivee_s).slice(0, 5)} : le train ne peut pas repartir avant d'être arrivé.`,
+    );
+  }
+  const descente = calculePassagesSup(grille, 'descente', options.garesDescente, depart_s);
   return { montee, descente };
 }
 
+/** Premier numéro d'une course SPÉCIALE (décision du 10/09/2026). */
+export const NUMERO_SPECIAL_MIN = 201;
+
 /**
- * Premier numéro impair libre ≥ 101 pour la montée d'un train sup. La
- * convention impair = montée / pair = descente est conservée, de sorte que
- * l'appariement de rame existant (descente n+1 hérite de la montée n)
- * fonctionne sans modification.
+ * Premier numéro impair libre de la série demandée, pour la MONTÉE d'une
+ * course hors grille. Séries distinctes (renforts ≥ 101, spéciaux ≥ 201) :
+ * mélangées, « SUP 2 » deviendrait ambigu.
+ *
+ * La convention impair = montée / pair = descente vaut dans TOUTES les plages.
+ * 201 est impair, elle tient.
+ *
+ * LE NUMÉRO PAIR EST RÉSERVÉ MÊME POUR UN ALLER SIMPLE, et ce n'est pas de la
+ * prudence décorative : `private.sync_rame_descente()` (schema.sql) recopie la
+ * rame de toute MONTÉE dans la ligne `numero + 1`, sans vérifier qu'elle
+ * appartient au même train. Deux allers simples numérotés 201 et 202 : le
+ * premier écraserait la rame du second. Les numéros ne coûtent rien,
+ * l'appariement si.
  */
-export function prochainNumeroSup(numerosPris: number[]): number {
+export function prochainNumeroHorsGrille(
+  numerosPris: number[],
+  nature: 'supplementaire' | 'special',
+): number {
   const pris = new Set(numerosPris);
-  let numero = NUMERO_SUP_MIN;
+  let numero = nature === 'special' ? NUMERO_SPECIAL_MIN : NUMERO_SUP_MIN;
   while (pris.has(numero) || pris.has(numero + 1)) numero += 2;
   return numero;
 }
