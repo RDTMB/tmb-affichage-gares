@@ -340,6 +340,20 @@ describe('l’admin crée un spécial, et RIEN d’autre', () => {
     ]) {
       expect(schema, bout).toContain(bout);
     }
+    // CHAQUE politique est bornée à `nature = 'special'`. Sans cette borne,
+    // l'INSERT ouvrirait à l'admin la création de N'IMPORTE QUELLE
+    // circulation — y compris une circulation de grille numérotée 9. C'est la
+    // moitié que le seul contrôle d'existence laissait passer.
+    for (const nom of [
+      'roles: circulations special',
+      'roles: circulations special maj',
+      'roles: circulations special retrait',
+    ]) {
+      const politique = new RegExp('create policy "' + nom + '"[^;]*;').exec(schema)?.[0] ?? '';
+      expect(politique, nom).not.toBe('');
+      expect(politique, nom + ' n’est plus bornée au spécial').toContain("nature = 'special'");
+    }
+
     // L'UPDATE porte les DEUX clauses : `using` tient l'admin à l'écart des
     // circulations de grille, `with check` l'empêche de convertir un spécial
     // en circulation de grille. Omettre la seconde laisse exactement ce trou.
