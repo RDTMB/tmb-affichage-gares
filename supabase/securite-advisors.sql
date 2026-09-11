@@ -77,6 +77,9 @@ drop policy if exists "roles: jours reinitialisation" on jours;
 drop policy if exists "roles: jours reinitialisation retrait" on jours;
 drop policy if exists "roles: circulations ecriture" on circulations;
 drop policy if exists "roles: circulations regeneration" on circulations;
+drop policy if exists "roles: circulations special" on circulations;
+drop policy if exists "roles: circulations special maj" on circulations;
+drop policy if exists "roles: circulations special retrait" on circulations;
 drop policy if exists "roles: medias" on medias;
 drop policy if exists "roles: messages" on messages;
 drop policy if exists "roles: machines" on machines;
@@ -166,6 +169,36 @@ create policy "roles: circulations ecriture" on circulations for all to authenti
   with check ((select private.a_le_role('supervision')));
 create policy "roles: circulations regeneration" on circulations for insert to authenticated
   with check ((select private.a_le_role('technique')));
+
+-- TRAIN SPÉCIAL — l'admin, et le spécial SEUL (décision du 10/09/2026).
+--
+-- TROIS politiques et non une « for all » : le `using` d'une `for all`
+-- s'applique aussi au SELECT, ce qui affirmerait quelque chose de faux sur
+-- l'objet de la politique (la lecture est publique et le reste).
+--
+-- INSERT n'évalue que `with check`, sur la ligne NOUVELLE. UPDATE évalue
+-- `using` sur l'ANCIENNE et `with check` sur la nouvelle : les deux sont
+-- nécessaires — `using` tient l'admin à l'écart des circulations de grille,
+-- `with check` l'empêche de convertir un spécial en circulation de grille.
+-- Omettre le second laisserait exactement ce trou.
+--
+-- ⚠ L'application écrit par UPSERT (`on conflict (date, numero) do update`).
+-- La branche de conflit exige le `using` ET le `with check` de l'UPDATE : une
+-- politique écrite `for insert` seule passerait un INSERT à la main dans la
+-- recette et échouerait sur le vrai bouton. C'est la forme exacte de
+-- l'incident `affluence` du 10/09/2026 — la recette rejoue donc l'upsert.
+--
+-- La contrainte `circulations_nature_numero` complète ces politiques : sans
+-- elle, l'admin pourrait insérer un spécial numéroté 9, que l'écran
+-- annoncerait « TRAIN 9 ». Le `using` ne l'attrape pas — il n'y a pas
+-- d'ancienne ligne à l'INSERT.
+create policy "roles: circulations special" on circulations for insert to authenticated
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special maj" on circulations for update to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')))
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special retrait" on circulations for delete to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')));
 
 create policy "roles: medias" on medias for all to authenticated
   using ((select private.a_un_des_roles(array['admin','supervision','caisse'])))

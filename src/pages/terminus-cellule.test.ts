@@ -21,7 +21,7 @@ import {
   terminusReel,
   trainsDuJour,
 } from '../core/horaires';
-import { construitRotationSup } from '../core/train-sup';
+import { construitCourse } from '../core/train-sup';
 import type { Circulation, GareId, Grille, Jour, Sens } from '../core/types';
 import { AIDE_TERMINUS_SUP, celluleTerminus } from './supervision-logique';
 
@@ -43,7 +43,7 @@ function rotationSup(
   garesMontee: GareId[],
   depart = '11:20',
 ): { montee: Circulation; descente: Circulation } {
-  const rotation = construitRotationSup(GRAND, {
+  const rotation = construitCourse(GRAND, {
     heureDepart_s: heureVersSecondes(depart),
     garesMontee,
     garesDescente: [...garesMontee].reverse(),

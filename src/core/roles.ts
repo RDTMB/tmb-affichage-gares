@@ -69,6 +69,17 @@ export const ATTRIBUABLE_PAR: Record<Role, readonly Role[]> = {
 export const DROITS = [
   /** Journées, circulations, terminus, section, trains supplémentaires, facultatifs. */
   'circulations',
+  /**
+   * Créer et modifier un TRAIN SPÉCIAL, et lui seul (docs/01 §2.9).
+   *
+   * Droit à part, et c'est le sujet : la décision de l'exploitant du
+   * 10/09/2026 ouvre la création à `admin`, qui n'a pas `circulations` et ne
+   * doit pas l'obtenir — la séparation « admin gère les comptes et
+   * l'exploitation, l'exploitation gère les circulations » (docs/01 §5.5) est
+   * délibérée. Trois politiques RLS dédiées le disent aussi en base, bornées
+   * aux lignes `nature = 'special'`.
+   */
+  'circulations.special',
   /** « Réinitialiser la journée depuis la grille » (suppression de la journée). */
   'journee.reinitialiser',
   /** Barre « Publier » et journal des publications. */
@@ -153,6 +164,12 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   admin: [
     'bandeau',
     'affluence',
+    // TRAIN SPÉCIAL seulement, JAMAIS `circulations` : la séparation entre
+    // « admin gère les comptes et l'exploitation » et « l'exploitation gère
+    // les circulations » (docs/01 §5.5) reste entière. Ce droit n'ouvre que
+    // les lignes `nature = 'special'`, et RLS le dit aussi — trois politiques
+    // dédiées, pas un élargissement de « roles: circulations ecriture ».
+    'circulations.special',
     'modeles',
     'medias',
     'parametres.exploitation',
@@ -165,6 +182,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   ],
   supervision: [
     'circulations',
+    'circulations.special',
     'affluence',
     'journee.reinitialiser',
     'grilles',
@@ -216,7 +234,12 @@ export type Onglet = (typeof ONGLETS)[number];
 
 /** Un onglet est visible dès qu'un droit qui l'habite est accordé. */
 const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
-  circulations: ['circulations'],
+  // DEUX droits, et ce n'est pas une entorse à « un onglet = un droit » : le
+  // second est un sous-ensemble STRICT du premier. `circulations.special`
+  // ouvre l'onglet à l'admin pour la SEULE commande « + Train supplémentaire
+  // ou spécial » ; tout le reste y est en lecture seule pour lui (voir
+  // `peutModifierCirculations()` en supervision).
+  circulations: ['circulations', 'circulations.special'],
   // UN ONGLET = UN DROIT, appliqué à la lettre : `affluence` et rien d'autre.
   // Il s'ouvre donc à admin, supervision et caisse — exactement la politique
   // RLS « roles: affluence » — et reste fermé au technique.

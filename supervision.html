@@ -236,7 +236,7 @@
                 <span class="compte" id="compte-facultatifs"></span>
               </span>
               <span class="reglage">
-                <button class="leger" id="btn-train-sup">+ Train supplémentaire</button>
+                <button class="leger" id="btn-train-sup">+ Train supplémentaire ou spécial</button>
                 <span class="compte" id="compte-sups"></span>
               </span>
             </div>
@@ -302,7 +302,32 @@
             </div>
           </div>
           <div class="carte-sup" id="form-train-sup" style="display: none">
-            <h3>Train supplémentaire</h3>
+            <h3 id="sup-titre">Train supplémentaire</h3>
+            <!-- NATURE d'abord : elle commande tout le reste du formulaire —
+                 les formes possibles, les terminus proposés, le commanditaire.
+                 Un formulaire par nature aurait dupliqué les gares, l'aperçu
+                 et la validation, qui sont identiques. -->
+            <div class="ligne">
+              <label
+                >Nature
+                <select id="sup-nature">
+                  <option value="supplementaire">Renfort (supplémentaire)</option>
+                  <option value="special">Spécial — train privé</option>
+                </select>
+              </label>
+              <label id="sup-champ-forme"
+                >Forme
+                <select id="sup-forme">
+                  <option value="rotation">Aller-retour</option>
+                  <option value="aller-simple">Aller simple</option>
+                  <option value="stationnement">Stationnement en haut</option>
+                </select>
+              </label>
+              <label id="sup-champ-commanditaire"
+                >Commanditaire
+                <input type="text" id="sup-commanditaire" maxlength="120" />
+              </label>
+            </div>
             <div class="ligne">
               <label
                 ><span id="sup-libelle-depart">Départ : Le Fayet</span>
@@ -312,10 +337,14 @@
                 >Terminus
                 <select id="sup-terminus"></select>
               </label>
-              <label
+              <label id="sup-champ-battement"
                 >Battement au terminus
                 <input type="number" id="sup-battement" min="1" max="60" /> min</label
               >
+              <label id="sup-champ-descente"
+                >Repart du terminus à
+                <input type="time" id="sup-depart-descente" step="30" />
+              </label>
               <label
                 >Rame
                 <select id="sup-rame"></select>
@@ -324,10 +353,14 @@
                 ><input type="checkbox" id="sup-sans-voyageurs" />monte sans voyageurs</label
               >
             </div>
+            <!-- AVERTISSEMENT NON BLOQUANT : le terminus choisi sort de la
+                 section du jour, ou dépasse Bellevue. L'exploitant choisit
+                 (décision du 10/09/2026) ; l'écran dit ce qu'il annoncera. -->
+            <div class="avert-sup" id="sup-avert-terminus" hidden></div>
             <div class="ligne gares-sup">
               <b>Montée dessert :</b> <span id="sup-gares-montee"></span>
             </div>
-            <div class="ligne gares-sup">
+            <div class="ligne gares-sup" id="sup-champ-gares-descente">
               <b>Descente dessert :</b> <span id="sup-gares-descente"></span>
             </div>
             <div class="apercu-sup" id="sup-apercu"></div>

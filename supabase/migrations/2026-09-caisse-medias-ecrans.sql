@@ -200,6 +200,9 @@ select
 --    contrôle rien est pire que pas de contrôle.
 with attendues(policyname) as (values
   ('roles: circulations ecriture'),   -- circulations : supervision seule
+  ('roles: circulations special'),    -- train spécial : admin AUSSI, et lui seul
+  ('roles: circulations special maj'),
+  ('roles: circulations special retrait'),
   ('roles: jours ecriture'),          -- journées : supervision seule
   ('roles: machines'),                -- listes d'exploitation : admin
   ('roles: motifs'),

@@ -27,7 +27,8 @@ import {
   terminusReel,
   serviceActif,
 } from '../core/horaires';
-import { construitRotationSup, prepareDepartSup, prochainNumeroSup } from '../core/train-sup';
+import { construitCourse, prepareDepartSup, prochainNumeroHorsGrille } from '../core/train-sup';
+import type { FormeCourse } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, horsGrille, ORDRE_GARES } from '../core/types';
 import type { NatureCirculation } from '../core/types';
@@ -138,6 +139,8 @@ import {
   messageDepuisFormulaire,
   traductionLocale,
   valeursFormulaireMessage,
+  avertissementTerminusCourse,
+  champsFormulaireCourse,
   enTeteAffluence,
   messageAucunDepart,
   saisieAffluence,
@@ -612,6 +615,15 @@ function affluenceDe(numero: number): NiveauAffluence | null {
  * (qui éteint les boutons) et pour l'écriture (qui refuse) : deux calculs
  * séparés auraient fini par diverger, et c'est l'écriture qui décide.
  */
+/**
+ * L'agent peut-il modifier les circulations de l'onglet ? `circulations` et
+ * lui seul — `circulations.special` n'ouvre QUE la création d'un train
+ * spécial, et la séparation entre les deux est la décision de docs/01 §5.5.
+ */
+function peutModifierCirculations(): boolean {
+  return aLeDroit(roles, 'circulations');
+}
+
 function saisieAffluenceCourante(): SaisieAffluence {
   return saisieAffluence({
     date: dateSel,
@@ -1278,14 +1290,28 @@ function rendreCirculations(): void {
   // exploitée : aperçu théorique en LECTURE SEULE (pas d'historique inventé).
   // Les dates à venir sont créées automatiquement à l'ouverture (provider).
   const horsSaison = jour.hors_saison === true;
-  const lectureSeule = !horsSaison && jour.enregistre === false;
+  // LECTURE SEULE de l'onglet, pour trois raisons distinctes :
+  //  - journée non enregistrée : rien à modifier tant qu'elle n'existe pas ;
+  //  - hors saison : rien ne circule ;
+  //  - DROITS : depuis le 11/09/2026, l'admin voit cet onglet sans avoir
+  //    `circulations`. Il n'y entre que pour créer un train SPÉCIAL — tout le
+  //    reste doit lui être inerte. Sans cette ligne, l'interface lui
+  //    proposerait des commandes que RLS refuse, ce qui est exactement le
+  //    défaut qu'on corrige ailleurs (« l'interface affiche le bouton, la
+  //    base refuse l'écriture »).
+  const lectureSeule = (!horsSaison && jour.enregistre === false) || !peutModifierCirculations();
   ($('chk-terminus') as HTMLInputElement).disabled = horsSaison || lectureSeule;
   ($('sel-terminus-train') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
   ($('btn-reinitialiser') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
   // « + Train supplémentaire » restait ACTIF sur une journée en lecture seule
   // ou hors saison, alors que son gestionnaire refuse d'ouvrir le formulaire :
   // une commande qui ne peut rien faire ne doit pas rester cliquable.
-  ($('btn-train-sup') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
+  // …SAUF cette commande : c'est la seule que l'admin peut actionner ici.
+  // Elle suit donc `circulations.special` et non `lectureSeule`.
+  ($('btn-train-sup') as HTMLButtonElement).disabled =
+    horsSaison ||
+    (!horsSaison && jour.enregistre === false) ||
+    !aLeDroit(roles, 'circulations.special');
 
   // RANG 1 — quelle journée : date en toutes lettres, service complet, état.
   // Tous les libellés viennent de `resumeJournee()`, PURE et testée.
@@ -1479,8 +1505,33 @@ function initCirculations(): void {
    * bascule Terminus Bellevue retire en plus ce qui est au-dessus de
    * Bellevue, puisque le train n'y circulerait pas.
    */
+  /** Nature choisie dans le formulaire. */
+  // Le type EXCLUT 'grille' : ce formulaire ne crée que des courses hors
+  // grille, et l'inclure ferait passer `prochainNumeroHorsGrille` pour une
+  // fonction qui sait numéroter un train de grille — elle ne le sait pas.
+  const natureChoisie = (): 'supplementaire' | 'special' =>
+    // Sans `circulations`, la seule nature accessible est le SPÉCIAL : un
+    // renfort est une circulation d'exploitation ordinaire, et RLS la refuse.
+    !peutModifierCirculations() || ($('sup-nature') as HTMLSelectElement).value === 'special'
+      ? 'special'
+      : 'supplementaire';
+
+  /** Forme choisie ; un renfort n'en a qu'une. */
+  const formeChoisie = (): FormeCourse => {
+    if (natureChoisie() !== 'special') return 'rotation';
+    const v = ($('sup-forme') as HTMLSelectElement).value;
+    return v === 'aller-simple' || v === 'stationnement' ? v : 'rotation';
+  };
+
   const terminusPossibles = (): GareId[] => {
     const section = sectionAffichee();
+    // SPÉCIAL : aucune limite, l'agent choisit (décision du 10/09/2026). On ne
+    // se tait pas pour autant — `avertissementTerminusCourse()` dit ce que
+    // l'écran annoncera, sans jamais bloquer.
+    if (natureChoisie() === 'special') {
+      const debut = ORDRE_GARES.indexOf(section.gare_debut);
+      return ORDRE_GARES.slice(debut + 1);
+    }
     const possibles = terminusPossiblesSup(section);
     if (jour?.terminus_bellevue === false) return possibles;
     const plafond = ORDRE_GARES.indexOf('bellevue');
@@ -1498,11 +1549,18 @@ function initCirculations(): void {
       return;
     }
     try {
-      const rotation = construitRotationSup(grille, {
+      const forme = formeChoisie();
+      const departDescente = ($('sup-depart-descente') as HTMLInputElement).value;
+      const rotation = construitCourse(grille, {
         heureDepart_s: heureVersSecondes(depart),
         garesMontee: garesCochees('sup-gares-montee'),
-        garesDescente: garesCochees('sup-gares-descente'),
-        battement_s: (Number(($('sup-battement') as HTMLInputElement).value) || 5) * 60,
+        // ALLER SIMPLE : pas de desserte de descente du tout. Passer un
+        // tableau vide ferait lever « au moins deux gares » et ressemblerait
+        // à une erreur de saisie ; l'absence dit ce qu'elle veut dire.
+        ...(forme === 'aller-simple' ? {} : { garesDescente: garesCochees('sup-gares-descente') }),
+        ...(forme === 'stationnement' && departDescente
+          ? { departDescente_s: heureVersSecondes(departDescente) }
+          : { battement_s: (Number(($('sup-battement') as HTMLInputElement).value) || 5) * 60 }),
       });
       const lignes = (titre: string, passages: PassageGrille[], sens: string): string =>
         `<div class="sens"><b>${titre}</b>${passages
@@ -1521,7 +1579,9 @@ function initCirculations(): void {
           .join('')}</div>`;
       conteneur.innerHTML =
         lignes('Montée', rotation.montee, 'montee') +
-        lignes('Descente', rotation.descente, 'descente');
+        (rotation.descente === null
+          ? '<div class="sens"><b>Descente</b><i>aucune — aller simple</i></div>'
+          : lignes('Descente', rotation.descente, 'descente'));
       conteneur.dataset.rotation = JSON.stringify(rotation);
     } catch (erreur) {
       // Aucune heure inventée : on dit pourquoi le calcul échoue.
@@ -1563,6 +1623,37 @@ function initCirculations(): void {
     const ordreDescente = [...ordreMontee].reverse();
     rendCasesGaresSup('sup-gares-montee', ordreMontee, [depart, terminus]);
     rendCasesGaresSup('sup-gares-descente', ordreDescente, [terminus, depart]);
+
+    // Les champs suivent la nature et la forme : un champ visible et ignoré
+    // est rempli de bonne foi, puis perdu sans que rien ne le dise.
+    const nature = natureChoisie();
+    const champs = champsFormulaireCourse(nature, formeChoisie());
+    const montre = (id: string, visible: boolean): void => {
+      $(id).hidden = !visible;
+    };
+    const selNature = $('sup-nature') as HTMLSelectElement;
+    selNature.value = nature;
+    selNature.disabled = !peutModifierCirculations();
+    montre('sup-champ-forme', champs.forme);
+    montre('sup-champ-battement', champs.battement);
+    montre('sup-champ-descente', champs.departDescente);
+    montre('sup-champ-gares-descente', champs.garesDescente);
+    montre('sup-champ-commanditaire', champs.commanditaire);
+    $('sup-titre').textContent = nature === 'special' ? 'Train spécial' : 'Train supplémentaire';
+
+    // Terminus hors section ou au-delà de Bellevue : on le DIT, on ne bloque
+    // jamais (décision du 10/09/2026).
+    const section = sectionAffichee();
+    const avert = $('sup-avert-terminus');
+    const message = avertissementTerminusCourse({
+      terminus,
+      gareDebut: section.gare_debut,
+      gareFin: section.gare_fin,
+      terminusBellevue: jour?.terminus_bellevue !== false,
+      nomGare: nomDeGare,
+    });
+    avert.textContent = message ?? '';
+    avert.hidden = message === null;
 
     const rame = $('sup-rame') as HTMLSelectElement;
     rame.innerHTML = (params?.machines ?? [])
@@ -1729,6 +1820,7 @@ function initCirculations(): void {
 
   $('btn-train-sup').addEventListener('click', () => {
     if (!jour || jour.hors_saison || jour.enregistre === false) return;
+    if (!aLeDroit(roles, 'circulations.special')) return;
     const bloc = $('form-train-sup');
     const ouvert = bloc.style.display !== 'none';
     bloc.style.display = ouvert ? 'none' : '';
@@ -1741,6 +1833,10 @@ function initCirculations(): void {
     $('form-train-sup').style.display = 'none';
   });
   $('sup-terminus').addEventListener('change', rendFormulaireSup);
+  // La nature change les terminus proposés : on repasse par le rendu complet.
+  $('sup-nature').addEventListener('change', rendFormulaireSup);
+  $('sup-forme').addEventListener('change', rendFormulaireSup);
+  $('sup-depart-descente').addEventListener('change', majApercuSup);
   $('sup-depart').addEventListener('change', majApercuSup);
   $('sup-battement').addEventListener('change', majApercuSup);
   $('sup-gares-montee').addEventListener('change', majApercuSup);
@@ -1756,6 +1852,7 @@ function initCirculations(): void {
     if (!brut) return;
     const rotation = JSON.parse(brut) as RotationSup;
     const liste = champ.dataset.sup === 'montee' ? rotation.montee : rotation.descente;
+    if (liste === null) return; // aller simple : il n'y a pas de descente à corriger
     const passage = liste[Number(champ.dataset.i)];
     if (passage) {
       const valeur = champ.value.length === 5 ? `${champ.value}:00` : champ.value;
@@ -1769,13 +1866,23 @@ function initCirculations(): void {
     // Même garde que l'ouverture du formulaire : sans elle, une journée en
     // lecture seule pouvait encore recevoir un renfort.
     if (!jour || jour.hors_saison || jour.enregistre === false) return;
+    if (!aLeDroit(roles, 'circulations.special')) return;
     const brut = $('sup-apercu').dataset.rotation;
     if (!brut) {
       toast('Horaires incalculables — vérifiez l’heure de départ et les gares desservies');
       return;
     }
     const rotation = JSON.parse(brut) as RotationSup;
-    const numero = prochainNumeroSup(jour.circulations.map((c) => c.numero));
+    const nature = natureChoisie();
+    const commanditaire = ($('sup-commanditaire') as HTMLInputElement).value.trim();
+    if (nature === 'special' && commanditaire === '') {
+      toast('Indiquez le commanditaire : un train affrété roule pour quelqu’un');
+      return;
+    }
+    const numero = prochainNumeroHorsGrille(
+      jour.circulations.map((c) => c.numero),
+      nature,
+    );
     const base: Circulation = {
       date: dateSel,
       numero,
@@ -1796,19 +1903,28 @@ function initCirculations(): void {
       retard_min: 0,
       motif: null,
       sans_voyageurs: ($('sup-sans-voyageurs') as HTMLInputElement).checked,
-      nature: 'supplementaire',
+      nature,
+      // Champ INTERNE : jamais servi aux écrans (droit de colonne retiré à
+      // `anon`). Vide pour un renfort — il ne roule pour personne en
+      // particulier.
+      commanditaire: nature === 'special' ? commanditaire : null,
       passages: rotation.montee,
     };
     stageCirculation(brouillonCirc, base);
-    stageCirculation(brouillonCirc, {
-      ...base,
-      numero: numero + 1,
-      sens: 'descente',
-      // Seule la MONTÉE peut être à vide : la descente ramène les voyageurs,
-      // c'est la raison d'être du train de renfort.
-      sans_voyageurs: false,
-      passages: rotation.descente,
-    });
+    // ALLER SIMPLE : aucune ligne de descente. Le numéro pair reste RÉSERVÉ
+    // (prochainNumeroHorsGrille) parce que `private.sync_rame_descente()`
+    // recopie la rame de toute montée dans `numero + 1`.
+    if (rotation.descente !== null) {
+      stageCirculation(brouillonCirc, {
+        ...base,
+        numero: numero + 1,
+        sens: 'descente',
+        // Seule la MONTÉE peut être à vide : la descente ramène les voyageurs,
+        // c'est la raison d'être du train de renfort.
+        sans_voyageurs: false,
+        passages: rotation.descente,
+      });
+    }
     brouillonSupSupprimes.get(dateSel)?.delete(numero);
     // MARQUE de nouveauté : c'est le seul endroit qui l'inscrit. La
     // publication s'en sert pour router la rotation vers `creerTrainSup()`
@@ -1819,8 +1935,10 @@ function initCirculations(): void {
     rafraichitJourEffectif();
     rendreCirculations();
     $('form-train-sup').style.display = 'none';
-    bumpEnAttente(`train supplémentaire ${numero}/${numero + 1} créé (en attente)`);
-    toast('Train supplémentaire créé — en attente de publication');
+    const quoi = nature === 'special' ? 'train spécial' : 'train supplémentaire';
+    const numeros = rotation.descente === null ? `${numero}` : `${numero}/${numero + 1}`;
+    bumpEnAttente(`${quoi} ${numeros} créé (en attente)`);
+    toast(`${quoi.charAt(0).toUpperCase()}${quoi.slice(1)} créé — en attente de publication`);
   });
 
   $('btn-reinitialiser').addEventListener('click', () => {
@@ -2405,6 +2523,11 @@ function lignesAffluence(gare: GareId | null, maintenant_s: number): LigneAfflue
   const lignes: LigneAffluence[] = [];
   for (const train of trainsDuJour(grille, jour)) {
     if (train.statut === 'supprime') continue;
+    // TRAIN SPÉCIAL : exclu du guichet (décision de l'exploitant du
+    // 10/09/2026). Il est affrété, ses places ne se vendent pas au comptoir —
+    // déclarer « complet » sur un train privé n'aurait aucun sens pour le
+    // voyageur qui lit l'écran.
+    if (train.nature === 'special') continue;
     const destination = terminusReel(train);
     if (destination === null) continue;
     const passage = gare === null ? train.passages[0] : train.passages.find((x) => x.gare === gare);

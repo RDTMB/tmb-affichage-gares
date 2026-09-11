@@ -145,8 +145,13 @@ describe('Onglets visibles', () => {
     expect(ongletsVisibles(['technique'])).not.toContain('parametres');
   });
 
-  it('admin : places, horaires, bandeau, médias, paramètres, utilisateurs, journal', () => {
+  it('admin : circulations (spécial seul), places, horaires, bandeau, médias, paramètres, utilisateurs, journal', () => {
+    // L'onglet Circulations s'ouvre à l'admin depuis le 11/09/2026, pour la
+    // SEULE création d'un train spécial : le droit est 'circulations.special',
+    // pas 'circulations', et tout le reste de l'onglet lui est en lecture
+    // seule. Sans cette ligne, le bouton n'aurait nulle part où s'afficher.
     expect(ongletsVisibles(['admin'])).toEqual([
+      'circulations',
       'affluence',
       'horaires',
       'bandeau',
@@ -229,6 +234,7 @@ describe('Onglets visibles', () => {
 
   it('le cumul réunit les onglets, dans l’ordre de la barre', () => {
     expect(ongletsVisibles(['technique', 'admin'])).toEqual([
+      'circulations',
       'affluence',
       'horaires',
       'bandeau',

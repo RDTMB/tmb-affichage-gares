@@ -108,9 +108,62 @@ begin
   end if;
 end $$;
 
+-- -----------------------------------------------------------------------------
+-- 3. Les POLITIQUES du train spécial. Elles arrivent après les contraintes :
+--    elles s'appuient sur `nature`, et une politique posée sur une colonne
+--    encore absente échouerait.
+--
+--    `drop` d'abord : ce script est rejouable, et `create policy` n'a pas de
+--    `if not exists`.
+-- -----------------------------------------------------------------------------
+drop policy if exists "roles: circulations special" on circulations;
+drop policy if exists "roles: circulations special maj" on circulations;
+drop policy if exists "roles: circulations special retrait" on circulations;
+
+-- TRAIN SPÉCIAL — l'admin, et le spécial SEUL (décision du 10/09/2026).
+--
+-- TROIS politiques et non une « for all » : le `using` d'une `for all`
+-- s'applique aussi au SELECT, ce qui affirmerait quelque chose de faux sur
+-- l'objet de la politique (la lecture est publique et le reste).
+--
+-- INSERT n'évalue que `with check`, sur la ligne NOUVELLE. UPDATE évalue
+-- `using` sur l'ANCIENNE et `with check` sur la nouvelle : les deux sont
+-- nécessaires — `using` tient l'admin à l'écart des circulations de grille,
+-- `with check` l'empêche de convertir un spécial en circulation de grille.
+-- Omettre le second laisserait exactement ce trou.
+--
+-- ⚠ L'application écrit par UPSERT (`on conflict (date, numero) do update`).
+-- La branche de conflit exige le `using` ET le `with check` de l'UPDATE : une
+-- politique écrite `for insert` seule passerait un INSERT à la main dans la
+-- recette et échouerait sur le vrai bouton. C'est la forme exacte de
+-- l'incident `affluence` du 10/09/2026 — la recette rejoue donc l'upsert.
+--
+-- La contrainte `circulations_nature_numero` complète ces politiques : sans
+-- elle, l'admin pourrait insérer un spécial numéroté 9, que l'écran
+-- annoncerait « TRAIN 9 ». Le `using` ne l'attrape pas — il n'y a pas
+-- d'ancienne ligne à l'INSERT.
+create policy "roles: circulations special" on circulations for insert to authenticated
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special maj" on circulations for update to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')))
+  with check (nature = 'special' and (select private.a_le_role('admin')));
+create policy "roles: circulations special retrait" on circulations for delete to authenticated
+  using (nature = 'special' and (select private.a_le_role('admin')));
+
 -- =============================================================================
 -- VÉRIFICATION — à lire, pas à survoler.
 -- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 0 bis. Les trois politiques sont posées, et leurs DEUX clauses sont
+--        renseignées là où elles doivent l'être. Attendu : trois lignes —
+--        insert (with check seul), update (les deux), delete (using seul).
+-- -----------------------------------------------------------------------------
+select policyname, cmd, qual is not null as a_using, with_check is not null as a_with_check
+  from pg_policies
+ where schemaname = 'public' and tablename = 'circulations'
+   and policyname like 'roles: circulations special%'
+ order by policyname;
 
 -- -----------------------------------------------------------------------------
 -- 0. Les contraintes sont posées. Attendu : trois lignes.

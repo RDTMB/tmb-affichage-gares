@@ -10,12 +10,12 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import { heureVersSecondes } from './horaires';
 import {
   calculePassagesSup,
-  construitRotationSup,
+  construitCourse,
   controleDepartSup,
   garesSautees,
   NUMERO_SUP_MIN,
   prepareDepartSup,
-  prochainNumeroSup,
+  prochainNumeroHorsGrille,
   recalculeDescenteSup,
   tempsDeGrille,
 } from './train-sup';
@@ -127,30 +127,30 @@ describe('Calcul des passages — cas de l’exploitant', () => {
 
 describe('Rotation complète', () => {
   it('la descente repart du terminus après le battement', () => {
-    const rotation = construitRotationSup(GRAND, {
+    const rotation = construitCourse(GRAND, {
       heureDepart_s: h('17:00:00'),
       garesMontee: ['le-fayet', 'col-de-voza'],
       garesDescente: ['col-de-voza', 'le-fayet'],
       battement_s: 5 * 60,
     });
     expect(heureA(rotation.montee, 'col-de-voza')).toBe('17:34:30');
-    expect(rotation.descente[0]).toEqual({ gare: 'col-de-voza', d: '17:39:30' });
-    expect(heureA(rotation.descente, 'le-fayet')).toBe('18:19:30');
+    expect(rotation.descente![0]).toEqual({ gare: 'col-de-voza', d: '17:39:30' });
+    expect(heureA(rotation.descente!, 'le-fayet')).toBe('18:19:30');
   });
 
   it('le battement est réglable', () => {
-    const rotation = construitRotationSup(GRAND, {
+    const rotation = construitCourse(GRAND, {
       heureDepart_s: h('17:00:00'),
       garesMontee: ['le-fayet', 'col-de-voza'],
       garesDescente: ['col-de-voza', 'le-fayet'],
       battement_s: 15 * 60,
     });
-    expect(rotation.descente[0]?.d).toBe('17:49:30');
+    expect(rotation.descente![0]?.d).toBe('17:49:30');
   });
 
   it('une descente qui ne repart pas du terminus est refusée', () => {
     expect(() =>
-      construitRotationSup(GRAND, {
+      construitCourse(GRAND, {
         heureDepart_s: h('17:00:00'),
         garesMontee: ['le-fayet', 'col-de-voza'],
         garesDescente: ['bellevue', 'le-fayet'],
@@ -189,18 +189,18 @@ describe('Garde-fous : aucune heure inventée', () => {
 
 describe('Numérotation : impair = montée, à partir de 101', () => {
   it('le premier train sup prend 101', () => {
-    expect(prochainNumeroSup([1, 2, 3, 25, 26])).toBe(NUMERO_SUP_MIN);
+    expect(prochainNumeroHorsGrille([1, 2, 3, 25, 26], 'supplementaire')).toBe(NUMERO_SUP_MIN);
     expect(NUMERO_SUP_MIN).toBe(101);
   });
 
   it('le suivant prend 103, la parité étant conservée', () => {
-    expect(prochainNumeroSup([1, 2, 101, 102])).toBe(103);
-    expect(prochainNumeroSup([101, 102, 103, 104])).toBe(105);
+    expect(prochainNumeroHorsGrille([1, 2, 101, 102], 'supplementaire')).toBe(103);
+    expect(prochainNumeroHorsGrille([101, 102, 103, 104], 'supplementaire')).toBe(105);
   });
 
   it('une descente déjà prise suffit à écarter le numéro impair', () => {
     // 102 pris sans 101 : la rotation 101/102 n'est pas disponible
-    expect(prochainNumeroSup([102])).toBe(103);
+    expect(prochainNumeroHorsGrille([102], 'supplementaire')).toBe(103);
   });
 });
 
@@ -287,7 +287,7 @@ describe('Grille hiver fictive : le calcul suit la grille', () => {
 
 /** Rotation de renfort, telle que la supervision la crée. */
 function rotation(garesMontee: GareId[] = ['le-fayet', 'col-de-voza'], depart = '15:00') {
-  const r = construitRotationSup(GRAND, {
+  const r = construitCourse(GRAND, {
     heureDepart_s: h(depart),
     garesMontee,
     garesDescente: [...garesMontee].reverse(),
@@ -298,11 +298,11 @@ function rotation(garesMontee: GareId[] = ['le-fayet', 'col-de-voza'], depart = 
 describe('Recalcul d’une descente sur son départ réel', () => {
   it('un départ 12 min plus tard décale TOUTES les heures de 12 min', () => {
     const { descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const recalcule = recalculeDescenteSup(GRAND, descente, h(estime) + 12 * 60);
-    expect(recalcule).toHaveLength(descente.passages.length);
+    expect(recalcule).toHaveLength(descente.passages!.length);
     recalcule.forEach((p, i) => {
-      const avant = descente.passages[i];
+      const avant = descente.passages![i];
       expect(p.gare).toBe(avant?.gare);
       if (avant?.d !== undefined) expect(h(p.d ?? '')).toBe(h(avant.d) + 12 * 60);
       if (avant?.a !== undefined) expect(h(p.a ?? '')).toBe(h(avant.a) + 12 * 60);
@@ -371,7 +371,7 @@ describe('Garde-fous du départ constaté', () => {
 
   it('une heure normale passe, sans avertissement', () => {
     const { montee, descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const r = controleDepartSup({
       montee,
       descente,
@@ -410,7 +410,7 @@ describe('Garde-fous du départ constaté', () => {
 
   it('écart de 45 min : ACCEPTÉ, mais averti — c’est le profil d’une faute de frappe', () => {
     const { montee, descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const r = controleDepartSup({
       montee,
       descente,
@@ -424,7 +424,7 @@ describe('Garde-fous du départ constaté', () => {
 
   it('30 min pile ne déclenche pas encore l’avertissement', () => {
     const { montee, descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const aEcart = (minutes: number) =>
       controleDepartSup({
         montee,
@@ -440,7 +440,7 @@ describe('Garde-fous du départ constaté', () => {
     // Reparti 40 min avant l'estimation, donc avant d'être arrivé : c'est le
     // refus qui doit sortir, pas un simple avertissement.
     const { montee, descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const r = controleDepartSup({
       montee,
       descente,
@@ -455,7 +455,7 @@ describe('Garde-fous du départ constaté', () => {
 describe('prepareDepartSup : ce que la confirmation affiche', () => {
   it('heure recevable : contrôle vert ET passages recalculés', () => {
     const { montee, descente } = rotation();
-    const estime = descente.passages[0]?.d ?? '';
+    const estime = descente.passages![0]?.d ?? '';
     const p = prepareDepartSup(GRAND, {
       montee,
       descente,

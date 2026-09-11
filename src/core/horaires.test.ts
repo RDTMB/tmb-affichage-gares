@@ -27,7 +27,7 @@ import {
   serviceActif,
   trainsDuJour,
 } from './horaires';
-import { construitRotationSup } from './train-sup';
+import { construitCourse } from './train-sup';
 import type { Circulation, Grille, Jour, PassageGare, TrainGrille } from './types';
 
 const GRAND = grandServiceJson as unknown as Grille;
@@ -809,7 +809,7 @@ describe('Trains supplémentaires dans le moteur', () => {
   /** Journée avec une rotation sup Le Fayet ⇄ Col de Voza (101 / 102). */
   function jourAvecSup(surcharge: Partial<Circulation> = {}): Jour {
     const jour = jourGrand();
-    const rotation = construitRotationSup(GRAND, {
+    const rotation = construitCourse(GRAND, {
       heureDepart_s: h('17:00:00'),
       garesMontee: ['le-fayet', 'col-de-voza'],
       garesDescente: ['col-de-voza', 'le-fayet'],
@@ -907,7 +907,7 @@ describe('Trains supplémentaires dans le moteur', () => {
 
   it('Terminus Bellevue : un train sup vers le Nid d’Aigle est tronqué', () => {
     const jour = jourGrand();
-    const rotation = construitRotationSup(GRAND, {
+    const rotation = construitCourse(GRAND, {
       heureDepart_s: h('17:00:00'),
       garesMontee: ['le-fayet', 'col-de-voza', 'bellevue', 'nid-daigle'],
       garesDescente: ['nid-daigle', 'bellevue', 'col-de-voza', 'le-fayet'],
