@@ -203,6 +203,62 @@ export function meteoHtml(params: Params, grille: Grille): string {
 }
 
 // ---------------------------------------------------------------------------
+// Bandeau de SIMULATION — heure simulée (?simule=) et journée simulée (?jour=)
+// ---------------------------------------------------------------------------
+
+const FORMAT_JOUR_FR = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'UTC',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+const FORMAT_JOUR_EN = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC',
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+export interface BandeauSimulation {
+  fr: string;
+  en: string;
+}
+
+/**
+ * Texte du bandeau permanent, ou `null` quand rien n'est simulé.
+ *
+ * Une journée simulée MENT PLUS QU'UNE HEURE simulée : un horaire décalé de
+ * trois heures se remarque au premier coup d'œil, la grille de demain a l'air
+ * parfaitement normale. Le bandeau doit donc dire LAQUELLE, en toutes lettres
+ * et dans les deux langues — pas seulement « affichage de test ».
+ *
+ * PURE : c'est le seul moyen de verrouiller la formulation par un test, et
+ * c'est la formulation qui porte l'honnêteté de l'écran.
+ */
+export function bandeauSimulation(e: {
+  heureSimulee: boolean;
+  jourSimule: string | null;
+}): BandeauSimulation | null {
+  if (!e.heureSimulee && e.jourSimule === null) return null;
+  if (e.jourSimule === null) {
+    // Formulation d'origine, conservée au mot près : elle est en gare.
+    return { fr: 'Heure simulée — affichage de test', en: 'Simulated time — test display' };
+  }
+  // Midi UTC : le formatage tombe sur le même jour toute l'année.
+  const quand = new Date(`${e.jourSimule}T12:00:00Z`);
+  const enLettresFr = FORMAT_JOUR_FR.format(quand);
+  const fr = e.heureSimulee ? 'Journée et heure simulées' : 'Journée simulée';
+  const en = e.heureSimulee ? 'Simulated day and time' : 'Simulated day';
+  return {
+    fr: `${fr} : ${enLettresFr} — affichage de test`,
+    en: `${en}: ${FORMAT_JOUR_EN.format(quand)} — test display`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Badge de fraîcheur — âge des données ET nature de la journée (F-16)
 // ---------------------------------------------------------------------------
 
@@ -244,9 +300,14 @@ export interface EtatBadgeFraicheur {
  *    état « aucun service aujourd'hui » ;
  *  - données fraîches sur une journée confirmée : rien à signaler.
  *
- * Les écrans n'affichent QUE la date courante (`heure.dateISO()`, aucun
- * paramètre `?date=`), donc le cas « date future consultée volontairement »
- * n'existe pas ici — vérifié, pas supposé.
+ * DATE FUTURE CONSULTÉE VOLONTAIREMENT. Ce cas n'existait pas quand ces
+ * lignes ont été écrites : les écrans n'affichaient que la date courante.
+ * `?jour=AAAA-MM-JJ` l'a créé le 11/09/2026. Le badge n'a PAS été adapté,
+ * parce qu'il dit déjà la vérité : une journée à venir non ouverte en
+ * supervision a `enregistre` à faux, et « Horaires théoriques — journée non
+ * confirmée » est exactement ce qu'il faut lire. Ouverte, elle passe à vrai et
+ * le badge se tait. Vérifié au navigateur, pas supposé. Le bandeau de
+ * simulation, lui, dit la DATE regardée — voir `bandeauSimulation()`.
  */
 export function badgeFraicheur(e: {
   ageMs: number | null;

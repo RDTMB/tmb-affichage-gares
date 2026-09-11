@@ -58,6 +58,7 @@ import {
   anneauSur,
   appliqueAffluence,
   badgeFraicheur,
+  bandeauSimulation,
   couleurSure,
   creeJournalHeartbeat,
   creeTicker,
@@ -111,14 +112,27 @@ function formatHeureEN(secondes: number): string {
 
 const url = new URLSearchParams(window.location.search);
 const gareParam = url.get('gare');
-const heure = creeSourceHeure(url.get('simule'));
+const heure = creeSourceHeure(url.get('simule'), url.get('jour'));
 
-// HEURE SIMULÉE : le drapeau existait dans horloge-source.ts mais aucune
-// page d'affichage ne le lisait — seule la supervision s'en servait. Un
-// écran lancé avec ?simule= affichait un tableau parfaitement crédible mais
+// SIMULATION : le drapeau existait dans horloge-source.ts mais aucune page
+// d'affichage ne le lisait — seule la supervision s'en servait. Un écran
+// lancé avec ?simule= affichait un tableau parfaitement crédible mais
 // décalé, sans aucune marque. Posé ICI, avant tout await : le bandeau est là
 // même si le démarrage échoue ensuite.
-if (heure.simulee) document.body.classList.add('mode-simule');
+//
+// ?jour= relève du MÊME bandeau, et c'est le cas le plus grave des deux : une
+// heure décalée de trois heures se remarque, la grille de demain a l'air
+// parfaitement normale. Le texte nomme donc la journée regardée.
+if (heure.simulee || heure.jourSimule) document.body.classList.add('mode-simule');
+const bandeau = bandeauSimulation({ heureSimulee: heure.simulee, jourSimule: heure.jourSimule });
+if (bandeau) {
+  const poser = (id: string, texte: string): void => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = texte;
+  };
+  poser('bandeau-simule-fr', bandeau.fr);
+  poser('bandeau-simule-en', bandeau.en);
+}
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 
