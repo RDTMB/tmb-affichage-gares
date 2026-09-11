@@ -42,12 +42,45 @@ function source(chemin: string): string {
 }
 
 const GRAND = grandServiceJson as unknown as Grille;
+
 const MONTEE: GareId[] = ['le-fayet', 'saint-gervais', 'motivon', 'col-de-voza', 'nid-daigle'];
 const DESCENTE: GareId[] = [...MONTEE].reverse();
 const h = (hhmm: string): number => {
   const [a = 0, b = 0] = hhmm.split(':').map(Number);
   return a * 3600 + b * 60;
 };
+
+/** Une journée qui porte UN train spécial, servie aux deux blocs de rendu. */
+const jourAvecSpecial = (): Jour => ({
+  date: '2026-07-15',
+  grille_version: GRAND.version,
+  terminus_bellevue: false,
+  gare_debut: 'le-fayet',
+  gare_fin: 'nid-daigle',
+  message_troncon_fr: null,
+  message_troncon_en: null,
+  enregistre: true,
+  circulations: [
+    {
+      date: '2026-07-15',
+      numero: 201,
+      sens: 'montee',
+      express: false,
+      facultatif: false,
+      facultatif_actif: false,
+      velos: false,
+      rame: 'Marie',
+      terminus: 'nid-daigle',
+      statut: 'ok',
+      retard_min: 0,
+      motif: null,
+      sans_voyageurs: false,
+      nature: 'special',
+      commanditaire: 'Comité d’entreprise',
+      passages: construitCourse(GRAND, { heureDepart_s: h('09:00'), garesMontee: MONTEE }).montee,
+    },
+  ],
+});
 
 // ============================================================================
 // 1. L'enum interdit la combinaison impossible
@@ -446,36 +479,6 @@ describe('la nature traverse le moteur sans se perdre', () => {
   // afficher « TRAIN SUP » et retirait la pastille « privé » — sans qu'aucun
   // test ne tombe, parce que tous les autres regardent la Circulation et non
   // le TrainJour qui en sort.
-  const jourAvecSpecial = (): Jour => ({
-    date: '2026-07-15',
-    grille_version: GRAND.version,
-    terminus_bellevue: false,
-    gare_debut: 'le-fayet',
-    gare_fin: 'nid-daigle',
-    message_troncon_fr: null,
-    message_troncon_en: null,
-    enregistre: true,
-    circulations: [
-      {
-        date: '2026-07-15',
-        numero: 201,
-        sens: 'montee',
-        express: false,
-        facultatif: false,
-        facultatif_actif: false,
-        velos: false,
-        rame: 'Marie',
-        terminus: 'nid-daigle',
-        statut: 'ok',
-        retard_min: 0,
-        motif: null,
-        sans_voyageurs: false,
-        nature: 'special',
-        commanditaire: 'Comité d’entreprise',
-        passages: construitCourse(GRAND, { heureDepart_s: h('09:00'), garesMontee: MONTEE }).montee,
-      },
-    ],
-  });
 
   it('un spécial reste un spécial dans `trainsDuJour()`', () => {
     const train = trainsDuJour(GRAND, jourAvecSpecial()).find((t) => t.numero === 201);
@@ -507,5 +510,53 @@ describe('la nature traverse le moteur sans se perdre', () => {
     expect(trainsDuJour(GRAND, renfort).find((t) => t.numero === 101)?.nature).toBe(
       'supplementaire',
     );
+  });
+});
+
+// ============================================================================
+// §5 — ce que l'écran montre, et ce qu'aucun test ne tenait
+// ============================================================================
+describe('la mention « privé » tient à l’écran', () => {
+  // Trois mutations ont survécu à la première campagne, toutes ici : le rendu
+  // n'était protégé que par l'ordre des pastilles, jamais par leur existence.
+  const ecran = source('src/pages/ecran.ts');
+
+  it('la pastille est POSÉE sur un spécial, et sur lui seul', () => {
+    expect(ecran).toContain("supprime || p.nature !== 'special'");
+    expect(ecran).toContain('<span class="pill-prive">Privé <small>Private</small></span>');
+  });
+
+  it('la note ne reprend « privé » que si la ligne est LIBRE', () => {
+    // Mesuré à 1280×720 : privé + express remplissent la ligne à 456,5 px pour
+    // 456,5 px disponibles. La pastille porte déjà l'information ; la mention
+    // express, elle, n'a pas d'autre endroit où aller.
+    expect(ecran).toContain("const noteLibre = !p.express && sansArret === '';");
+    expect(ecran).toContain("if (prive !== '' && !supprime && noteLibre)");
+  });
+
+  it('un SPÉCIAL garde son express ; un RENFORT n’en a jamais', () => {
+    // Le moteur forçait `express: false` sur tout train hors grille : la case
+    // du formulaire n'avait aucun effet à l'écran (relevé au navigateur).
+    const base = jourAvecSpecial();
+    const premiere = base.circulations[0];
+    if (!premiere) throw new Error('circulation absente');
+
+    const special: Jour = {
+      ...base,
+      circulations: [{ ...premiere, express: true, velos: true }],
+    };
+    const t = trainsDuJour(GRAND, special).find((x) => x.numero === 201);
+    expect(t?.express, 'le spécial a perdu son express').toBe(true);
+    expect(t?.velos, 'le spécial a perdu ses vélos').toBe(true);
+
+    const renfort: Jour = {
+      ...base,
+      circulations: [
+        { ...premiere, numero: 101, nature: 'supplementaire', express: true, velos: true },
+      ],
+    };
+    const r = trainsDuJour(GRAND, renfort).find((x) => x.numero === 101);
+    expect(r?.express, 'un renfort est devenu express').toBe(false);
+    expect(r?.velos, 'un renfort a gagné les vélos').toBe(false);
   });
 });
