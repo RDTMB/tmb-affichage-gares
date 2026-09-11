@@ -174,6 +174,42 @@ describe('le front demande EXACTEMENT ce qui lui est accordé', () => {
   });
 });
 
+describe('la recette RLS contrôle ce que la base fait vraiment', () => {
+  // Ce fichier-ci ne prouve que du TEXTE : la seule preuve du refus est
+  // PostgreSQL, et elle est dans supabase/tests/roles-rls.sql, jouée à la main
+  // sur la base de test. Vitest n'exécute pas ce script — si personne ne
+  // verrouille son contenu, il peut perdre un cas sans que rien ne tombe.
+  // C'est exactement ce qui s'était produit le 10/09 avec l'upsert de
+  // l'affluence : recette verte, production refusée.
+  const RECETTE = source('supabase/tests/roles-rls.sql');
+
+  it('elle vérifie que l’écran LIT la circulation', () => {
+    // La moitié qu'on oublie : un refus trop large casserait l'affichage en
+    // gare, et le script ne le dirait pas.
+    // Apostrophes DOUBLÉES : c'est du SQL, et la chaîne vit dans un
+    // `raise notice '…'`.
+    expect(RECETTE).toContain("OK — anonyme : l''écran de gare lit la circulation");
+  });
+
+  it('elle vérifie que l’anonyme NE LIT PAS le commanditaire', () => {
+    expect(RECETTE).toContain('perform commanditaire from public.circulations');
+    expect(RECETTE).toContain('OK — anonyme : le commanditaire lui est refusé');
+  });
+
+  it('elle vérifie que `select *` ÉCHOUE pour l’anonyme', () => {
+    // C'est ce refus-là qui protège les colonnes FUTURES : sans lui, une
+    // colonne ajoutée sans toucher au grant partirait sur Internet.
+    expect(RECETTE).toContain('perform * from public.circulations');
+    expect(RECETTE).toContain('OK — anonyme : la lecture en bloc lui est refusée');
+  });
+
+  it('elle vérifie que la supervision, elle, l’écrit et la relit', () => {
+    expect(RECETTE).toContain("update public.circulations set commanditaire = 'Recette RLS'");
+    expect(RECETTE).toContain('OK — supervision : relit le commanditaire');
+    expect(RECETTE).toContain('OK — journal : le commanditaire est tracé');
+  });
+});
+
 describe('le mock ne ment pas sur ce point', () => {
   it('il retire la colonne quand elle n’est pas demandée', () => {
     // La production ne la RETIRE pas : elle ne la lit pas, faute de droit. Le
@@ -184,6 +220,9 @@ describe('le mock ne ment pas sur ce point', () => {
     expect(mock).toContain('private filtreCommanditaire(');
     const corps = /private filtreCommanditaire\([\s\S]*?\n  }\n/.exec(mock)?.[0] ?? '';
     expect(corps).toContain('delete copie.commanditaire;');
+    // Le COMPORTEMENT, lui, est éprouvé dans src/data/mock.test.ts, qui
+    // porte l'environnement navigateur : ces contrôles de texte avaient
+    // laissé survivre la mutation « if (true) return jour ».
     // Les DEUX sorties de getJour passent par le filtre — la journée normale
     // et celle tronquée à Bellevue.
     expect([...mock.matchAll(/this\.filtreCommanditaire\(/g)]).toHaveLength(2);

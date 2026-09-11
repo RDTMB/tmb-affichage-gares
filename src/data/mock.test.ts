@@ -1324,3 +1324,50 @@ describe('MockProvider — affluence : écrire, remplacer, supprimer', () => {
     ).toHaveLength(1);
   });
 });
+
+describe('Commanditaire : le mock reproduit le droit de colonne (11/09/2026)', () => {
+  // La production ne RETIRE pas la colonne : elle ne la lit pas, faute de
+  // droit de SELECT pour `anon`. Le mock, lui, n'a pas de droits — s'il la
+  // servait à tout le monde, l'aperçu écran de la démo montrerait un nom
+  // d'affréteur que la gare ne verra jamais, et on ne s'en apercevrait qu'en
+  // production. Les tests de texte de src/data/commanditaire.test.ts ne
+  // suffisent pas : ils ont laissé survivre la mutation `if (true) return`.
+
+  async function avecUnCommanditaire(): Promise<MockProvider> {
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('supervision@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    const t5 = jour.circulations.find((c) => c.numero === 5);
+    if (!t5) throw new Error('TRAIN 5 absent');
+    await provider.saveCirculation({ ...t5, commanditaire: 'Comité d’entreprise' });
+    return provider;
+  }
+
+  it('sans l’option, la colonne n’est pas servie — comme pour un écran', async () => {
+    const provider = await avecUnCommanditaire();
+    const lu = await provider.getJour('2026-08-28');
+    const t5 = lu.circulations.find((c) => c.numero === 5);
+    expect(t5, 'TRAIN 5 absent de la relecture').toBeDefined();
+    expect(t5?.commanditaire, 'le commanditaire est servi sans être demandé').toBeUndefined();
+    // …et le reste de la circulation arrive normalement : on retire une
+    // colonne, on ne casse pas la lecture.
+    expect(t5?.numero).toBe(5);
+    expect(t5?.sens).toBe('montee');
+  });
+
+  it('avec l’option, la supervision la lit', async () => {
+    const provider = await avecUnCommanditaire();
+    const lu = await provider.getJour('2026-08-28', { avecCommanditaire: true });
+    expect(lu.circulations.find((c) => c.numero === 5)?.commanditaire).toBe('Comité d’entreprise');
+  });
+
+  it('une circulation SANS commanditaire est rendue telle quelle', async () => {
+    // Le filtre ne doit pas recopier tout le tableau pour rien, ni inventer
+    // une clé `commanditaire: undefined` là où il n'y en avait pas.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.signIn('supervision@demo', 'x');
+    const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
+    const t7 = jour.circulations.find((c) => c.numero === 7);
+    expect(t7 && 'commanditaire' in t7).toBe(false);
+  });
+});
