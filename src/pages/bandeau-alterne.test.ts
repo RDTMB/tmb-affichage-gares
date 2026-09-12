@@ -311,6 +311,27 @@ describe('creeTicker : aucune troncature silencieuse', () => {
     expect(el.innerHTML).toContain('class="en"');
   });
 
+  it('le créneau NORMAL pose TOUS ses messages, pas seulement le premier', () => {
+    // Survivante de la campagne du 12/09 : `contenuTicker(phase.messages)`
+    // réduit à `.slice(0, 1)` ne tombait nulle part. Tous les tests
+    // regardaient `cycleBandeau()`, qui range bien les trois messages dans
+    // leurs créneaux — aucun ne regardait ce qui est réellement POSÉ. C'est
+    // pourtant exactement le défaut réparé, déplacé d'un cran : le bandeau
+    // aurait de nouveau écarté des messages en silence.
+    const { el } = elementFactice(1424);
+    avecStylesFactices(() =>
+      creeTicker(el)([
+        message('a', 'Restez derrière la ligne jaune.'),
+        message('b', 'Trains vélos : 5 vélos maximum.'),
+        message('c', 'Réservation obligatoire.'),
+      ]),
+    );
+    for (const attendu of ['ligne jaune', 'vélos maximum', 'Réservation']) {
+      expect(el.innerHTML, `« ${attendu} » n’a pas été posé`).toContain(attendu);
+    }
+    expect(el.innerHTML.split('◆'), 'les messages ne sont plus séparés').toHaveLength(3);
+  });
+
   it('un jeu VIDE efface le bandeau et retire le mode immobile', () => {
     const { el } = elementFactice(1424);
     const maj = creeTicker(el);
@@ -340,6 +361,19 @@ describe('le cycle ne REDÉMARRE pas à chaque rafraîchissement', () => {
       signatureCycle(cycleBandeau([message('u', 'Urgent.'), jeu[1]!])),
       'un changement de priorité passe inaperçu',
     ).not.toBe(s1);
+  });
+
+  it('un message SEUL qui change de priorité change la signature', () => {
+    // Survivante de la campagne du 12/09 : sans la NATURE dans la signature,
+    // un cycle d'un seul message donnait la même empreinte en « importante »
+    // et en « normale » — mêmes id, même texte, même découpage. L'écran
+    // gardait donc son mode précédent (figé au lieu de défilant, ou
+    // l'inverse) jusqu'à ce qu'un AUTRE message bouge. Les jeux à deux
+    // messages ne le voyaient pas : le nombre de créneaux changeait avec eux.
+    const seul = message('u', 'Trafic interrompu.');
+    const importante = signatureCycle(cycleBandeau([{ ...seul, priorite: 'importante' }]));
+    const normale = signatureCycle(cycleBandeau([seul]));
+    expect(importante, 'la nature du créneau ne marque pas la signature').not.toBe(normale);
   });
 
   it('rappelé 60 fois avec le MÊME jeu, le bandeau n’est posé qu’une fois', () => {
