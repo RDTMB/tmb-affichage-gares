@@ -584,6 +584,14 @@ export interface ChampsFormulaireCourse {
   /** Commanditaire : le spécial, et lui seul. */
   commanditaire: boolean;
   /**
+   * ACCÈS (public / privé / mixte) : le spécial, et lui seul. Un RENFORT est
+   * créé pour absorber une affluence, c'est-à-dire pour VENDRE — lui proposer
+   * « privé » serait proposer un train qu'on n'aurait pas de raison de créer.
+   * Un train de GRILLE, lui, se privatise depuis l'onglet Circulations et non
+   * depuis ce formulaire, qui ne crée rien de tel.
+   */
+  acces: boolean;
+  /**
    * Express et vélos : RÉGLAGES GARDÉS pour le spécial (décision du
    * 10/09/2026). Un renfort ne les a jamais eus — il double une rotation de
    * la grille et suit sa desserte.
@@ -609,6 +617,7 @@ export function champsFormulaireCourse(
     departDescente: avecDescente && forme === 'stationnement',
     garesDescente: avecDescente,
     commanditaire: nature === 'special',
+    acces: nature === 'special',
     express: nature === 'special',
     velos: nature === 'special',
   };

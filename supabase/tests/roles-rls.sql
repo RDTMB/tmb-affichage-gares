@@ -393,6 +393,89 @@ begin
     raise notice 'OK — admin : convertir un spécial en grille lui est refusé';
   end;
 
+  -- =========================================================================
+  -- ACCÈS D'UNE COURSE (docs/01 §2.12) — le contrôle du 12/09/2026
+  -- =========================================================================
+  -- Le lot ouvre à l'admin la privatisation d'un train de GRILLE. Un droit
+  -- dont personne ne connaît l'étendue réelle n'est pas un droit, c'est un
+  -- pari : ce bloc mesure l'étendue, pas l'intention.
+  --
+  -- Ce qui doit MARCHER : admin privatise le TRAIN 11 par `definir_acces`.
+  -- Ce qui doit RESTER REFUSÉ, et qui est le vrai sujet : tout le reste de la
+  -- ligne. La fonction est SECURITY DEFINER — si elle écrivait une colonne de
+  -- trop, ou si une politique RLS avait été ajoutée « pour faire simple »,
+  -- c'est ici que ça se verrait.
+  begin
+    if public.definir_acces('2099-12-31', 11, 'prive', 'Comité d''entreprise') = 1 then
+      raise notice 'OK — admin : privatise le TRAIN 11 de grille par definir_acces';
+    else
+      raise exception 'ÉCHEC — admin : definir_acces n''a touché aucune ligne';
+    end if;
+  end;
+
+  -- La colonne a bien changé — la fonction n'a pas rendu 1 sans écrire.
+  if (select acces from public.circulations where date = '2099-12-31' and numero = 11) = 'prive'
+  then raise notice 'OK — l''accès du TRAIN 11 est bien « prive » en base';
+  else raise exception 'ÉCHEC — definir_acces a rendu 1 sans changer l''accès'; end if;
+
+  -- …et la course APPARIÉE n'a pas bougé : montée et descente se privatisent
+  -- séparément (décision du 12/09/2026). Une propagation « serviable » ferait
+  -- disparaître du guichet une descente que personne n'a affrétée.
+  if (select acces from public.circulations where date = '2099-12-31' and numero = 12) = 'public'
+  then raise notice 'OK — la descente appariée (12) reste publique';
+  else raise exception 'ÉCHEC — definir_acces a propagé à la course appariée'; end if;
+
+  -- ⚠ LE TEST QUI COMPTE, deuxième moitié. Admin a gagné le droit de
+  --   privatiser ; il ne doit RIEN avoir gagné d'autre sur cette ligne. Les
+  --   quatre colonnes ci-dessous sont celles qui décident de ce qui s'affiche
+  --   dans les six gares.
+  begin
+    update public.circulations set statut = 'retard', retard_min = 5, terminus = 'bellevue'
+     where date = '2099-12-31' and numero = 11;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — admin : privatiser lui a ouvert le STATUT d''un train de grille';
+    end if;
+    raise notice 'OK — admin : le statut du TRAIN 11 lui reste invisible en écriture';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : modifier le statut d''un train de grille lui est refusé';
+  end;
+
+  begin
+    update public.circulations set passages = '[]'::jsonb
+     where date = '2099-12-31' and numero = 11;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — admin : a pu réécrire les PASSAGES d''un train de grille';
+    end if;
+    raise notice 'OK — admin : les passages du TRAIN 11 lui restent fermés';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : réécrire les passages lui est refusé';
+  end;
+
+  -- Un UPDATE DIRECT de `acces`, hors de la fonction, doit échouer lui aussi :
+  -- c'est ce qui prouve qu'AUCUNE politique RLS n'a été ajoutée et que la
+  -- fonction est bien la seule porte.
+  begin
+    update public.circulations set acces = 'mixte'
+     where date = '2099-12-31' and numero = 11;
+    get diagnostics touchees = row_count;
+    if touchees > 0 then
+      raise exception 'ÉCHEC — admin : a écrit `acces` en direct, une politique RLS a été ajoutée';
+    end if;
+    raise notice 'OK — admin : l''écriture directe de `acces` ne trouve aucune ligne';
+  exception when insufficient_privilege then
+    raise notice 'OK — admin : l''écriture directe de `acces` lui est refusée';
+  end;
+
+  -- Valeur hors des trois états : refusée par la fonction, avant la contrainte.
+  begin
+    perform public.definir_acces('2099-12-31', 11, 'gratuit', null);
+    raise exception 'ÉCHEC — definir_acces a accepté un accès inconnu';
+  exception when others then
+    raise notice 'OK — definir_acces refuse un accès hors des trois états';
+  end;
+
   -- La SUPERVISION, elle, garde tout : elle écrit les spéciaux comme le reste.
   perform set_config('request.jwt.claims',
     json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);
@@ -401,6 +484,13 @@ begin
   get diagnostics touchees = row_count;
   if touchees = 1 then raise notice 'OK — supervision : modifie aussi un train spécial';
   else raise exception 'ÉCHEC — supervision : le train spécial lui échappe'; end if;
+
+  -- Elle emprunte la MÊME porte que l'admin pour l'accès, bien qu'elle pût
+  -- écrire directement : deux chemins pour la même commande, ce sont deux
+  -- règles à tenir d'accord, et l'une des deux finit par dériver.
+  if public.definir_acces('2099-12-31', 11, 'mixte', 'Comité d''entreprise') = 1
+  then raise notice 'OK — supervision : passe le TRAIN 11 en mixte par definir_acces';
+  else raise exception 'ÉCHEC — supervision : definir_acces lui est refusé'; end if;
 
   -- La CAISSE n'écrit toujours rien dans cette table, spécial compris.
   perform set_config('request.jwt.claims',
@@ -415,6 +505,26 @@ begin
     raise notice 'OK — caisse : le train spécial lui est invisible en écriture';
   exception when insufficient_privilege then
     raise notice 'OK — caisse : modifier un train spécial lui est refusé';
+  end;
+
+  -- …ET elle ne privatise rien non plus (§3 du lot du 12/09/2026). C'est la
+  -- raison d'être de la table `affluence` : le guichet n'écrit JAMAIS dans
+  -- `circulations`, d'où sortent tous les horaires affichés en gare. Le
+  -- refus vient du CORPS de la fonction, qui s'exécute avec les droits de son
+  -- propriétaire — RLS ne la protège plus, c'est donc le seul endroit où ce
+  -- contrôle puisse vivre, et le seul endroit où son absence se verrait.
+  begin
+    perform public.definir_acces('2099-12-31', 11, 'prive', 'Caisse');
+    raise exception 'ÉCHEC — caisse : a pu privatiser une course';
+  exception
+    when insufficient_privilege then
+      raise notice 'OK — caisse : privatiser une course lui est refusé';
+    when others then
+      if sqlerrm like '%permission denied: definir_acces%' then
+        raise notice 'OK — caisse : privatiser une course lui est refusé';
+      else
+        raise;
+      end if;
   end;
 
   -- (b) La caisse : le bandeau, les médias, la COMMANDE de son écran — et
@@ -679,6 +789,23 @@ begin
     raise exception 'ÉCHEC — technique : a pu déclarer un train complet';
   exception when insufficient_privilege then
     raise notice 'OK — technique : déclarer l''affluence lui est refusé';
+  end;
+
+  -- Privatiser une course non plus : c'est une décision commerciale, pas un
+  -- réglage d'infrastructure (décision du 12/09/2026 — admin et supervision,
+  -- ni la caisse ni le technique).
+  begin
+    perform public.definir_acces('2099-12-31', 9, 'prive', null);
+    raise exception 'ÉCHEC — technique : a pu privatiser une course';
+  exception
+    when insufficient_privilege then
+      raise notice 'OK — technique : privatiser une course lui est refusé';
+    when others then
+      if sqlerrm like '%permission denied: definir_acces%' then
+        raise notice 'OK — technique : privatiser une course lui est refusé';
+      else
+        raise;
+      end if;
   end;
 
   -- …mais il réinitialise une journée (supprimer puis régénérer).

@@ -2379,6 +2379,26 @@ tr.a-vide .sens-tag {
   line-height: 1.25;
 }
 
+/* ACCÈS d'une course (docs/01 §2.12). Le sélecteur se COLORE sur ses deux
+   états non ordinaires : « public » est le cas courant et n'a rien à
+   signaler, tandis qu'un train affrété se repère d'un balayage — c'est la
+   même logique que l'interrupteur « Sans voyageurs », qui ne dit rien au
+   repos. La couleur double le mot, elle ne le remplace pas : un sélecteur
+   rouge sans texte serait illisible pour qui distingue mal les teintes. */
+.sel-acces {
+  width: 100%;
+}
+
+.sel-acces.acces-prive {
+  color: var(--alerte);
+  font-weight: 700;
+}
+
+.sel-acces.acces-mixte {
+  color: var(--retard);
+  font-weight: 700;
+}
+
 /* Avertissement de rotation : jamais bloquant, seulement signalé */
 .note.avert-rotation {
   background: #fdf3e0;
@@ -3292,7 +3312,8 @@ td.cell-sens > .sens-groupe {
     grid-area: 1 / 2 / 2 / 3;
   }
 
-  #tab-circ tbody td:nth-child(7) {
+  /* Statut, désormais 8e cellule : la colonne Accès s'est intercalée en 7. */
+  #tab-circ tbody td:nth-child(8) {
     grid-area: 1 / 3 / 2 / 5;
   }
 
@@ -3312,8 +3333,13 @@ td.cell-sens > .sens-groupe {
     grid-area: 2 / 4 / 3 / 5;
   }
 
-  #tab-circ tbody td:nth-child(8) {
-    grid-area: 3 / 1 / 4 / 3;
+  /* Troisième rangée : l'accès à gauche, le motif sur le reste. */
+  #tab-circ tbody td:nth-child(7) {
+    grid-area: 3 / 1 / 4 / 2;
+  }
+
+  #tab-circ tbody td:nth-child(9) {
+    grid-area: 3 / 2 / 4 / 5;
   }
 
   /* « Aucun service ne circule à cette date. » : une seule cellule, sur
@@ -3349,7 +3375,11 @@ td.cell-sens > .sens-groupe {
     content: 'Sans voyageurs';
   }
 
-  #tab-circ tbody td:nth-child(8)::before {
+  #tab-circ tbody td:nth-child(7)::before {
+    content: 'Accès';
+  }
+
+  #tab-circ tbody td:nth-child(9)::before {
     content: 'Motif';
   }
 
@@ -3418,7 +3448,7 @@ td.cell-sens > .sens-groupe {
     grid-area: 1 / 1 / 2 / 2;
   }
 
-  #tab-circ tbody td:nth-child(7) {
+  #tab-circ tbody td:nth-child(8) {
     grid-area: 1 / 2 / 2 / 3;
   }
 
@@ -3426,7 +3456,7 @@ td.cell-sens > .sens-groupe {
     grid-area: 2 / 1 / 3 / 2;
   }
 
-  #tab-circ tbody td:nth-child(8) {
+  #tab-circ tbody td:nth-child(9) {
     grid-area: 2 / 2 / 3 / 3;
   }
 
@@ -3444,6 +3474,10 @@ td.cell-sens > .sens-groupe {
 
   #tab-circ tbody td:nth-child(6) {
     grid-area: 4 / 2 / 5 / 3;
+  }
+
+  #tab-circ tbody td:nth-child(7) {
+    grid-area: 5 / 1 / 6 / 3;
   }
 
   #tab-circ tbody td[colspan] {

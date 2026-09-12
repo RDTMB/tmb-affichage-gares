@@ -53,21 +53,93 @@ const REMISE_A_ZERO = 'migrations/2026-09-roles-multiples-remise-a-zero.sql';
 /** Scripts qui posent des politiques ou des fonctions d'habilitation. */
 const FICHIERS = ['schema.sql', 'securite-advisors.sql', MIGRATION_ROLES];
 
+/**
+ * Fonctions du schéma `public` autorisées à être SECURITY DEFINER.
+ *
+ * LA RÈGLE RESTE « AUCUNE », et cette liste est la seule dérogation. Elle a
+ * été ouverte le 12/09/2026 pour `definir_acces` (docs/01 §2.12), après avoir
+ * constaté que les deux autres mécanismes ne répondaient pas au besoin :
+ *
+ *  - les DROITS DE COLONNE ne distinguent pas nos rôles applicatifs — admin,
+ *    supervision et caisse sont le MÊME rôle PostgreSQL, `authenticated` ;
+ *  - une POLITIQUE RLS filtre des LIGNES et jamais des COLONNES : ouvrir à
+ *    l'admin la modification d'une circulation de grille lui ouvrirait du
+ *    même coup `statut`, `retard_min`, `terminus` et `passages`.
+ *
+ * Une fonction ne peut vivre ici QUE parce que PostgREST doit l'atteindre —
+ * seules les fonctions de `public` sont exposées en RPC. Les fonctions
+ * d'HABILITATION (a_le_role, roles_courants, peut_attribuer…) n'ont, elles,
+ * aucune raison d'être appelables depuis un navigateur, et la règle les vise :
+ * elles restent dans `private`, et cette liste ne s'ouvre pas à elles.
+ *
+ * Toute entrée doit satisfaire les TROIS obligations vérifiées plus bas —
+ * révoquée à `public` ET à `anon`, `search_path` verrouillé, et rôle
+ * applicatif contrôlé DANS le corps. Elles n'existaient pas avant ce lot :
+ * l'exception est plus exigeante que l'interdiction qu'elle perce.
+ */
+const DEFINER_PUBLIC_AUTORISES = ['definir_acces'] as const;
+
 describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
   for (const fichier of FICHIERS) {
-    it(`${fichier} : aucune fonction SECURITY DEFINER dans le schéma public`, () => {
+    it(`${fichier} : aucune fonction SECURITY DEFINER dans le schéma public, hors liste`, () => {
       const code = instructions(sql(fichier));
-      expect(code).not.toMatch(/create (or replace )?function public\./);
+      const publiques = [...code.matchAll(/create (?:or replace )?function public\.(\w+)/g)].map(
+        (m) => m[1] ?? '',
+      );
+      for (const nom of publiques) {
+        expect(
+          DEFINER_PUBLIC_AUTORISES as readonly string[],
+          `public.${nom} est SECURITY DEFINER et n'est pas dans la liste`,
+        ).toContain(nom);
+      }
       expect(code).toMatch(/create schema if not exists private/);
+    });
+
+    it(`${fichier} : chaque dérogation porte SES TROIS garanties`, () => {
+      const code = instructions(sql(fichier));
+      for (const nom of DEFINER_PUBLIC_AUTORISES) {
+        const declaration = new RegExp(`create or replace function public\\.${nom}\\(`);
+        if (!declaration.test(code)) continue;
+        // 1. Fermée à la clé publiable ET au rôle PUBLIC. Une fonction
+        //    SECURITY DEFINER exposée en RPC et exécutable par `anon`, c'est
+        //    la base ouverte à quiconque lit le bundle.
+        expect(code, `${nom} : exécutable par public`).toMatch(
+          new RegExp(`revoke all on function public\\.${nom}\\([^)]*\\) from public`),
+        );
+        expect(code, `${nom} : exécutable par anon`).toMatch(
+          new RegExp(`revoke all on function public\\.${nom}\\([^)]*\\) from anon`),
+        );
+        expect(code, `${nom} : non accordée à authenticated`).toMatch(
+          new RegExp(`grant execute on function public\\.${nom}\\([^)]*\\) to authenticated`),
+        );
+        // 2. Le corps contrôle LUI-MÊME le rôle applicatif : la fonction
+        //    s'exécute avec les droits de son propriétaire, donc RLS ne la
+        //    protège plus. Sans cette ligne, tout agent connecté — la caisse
+        //    comprise — écrirait par elle.
+        const corps = new RegExp(`create or replace function public\\.${nom}[\\s\\S]*?\\$fn\\$;`);
+        const texte = corps.exec(code)?.[0] ?? '';
+        expect(texte, `${nom} : corps introuvable`).not.toBe('');
+        expect(texte, `${nom} : ne vérifie aucun rôle applicatif`).toMatch(
+          /private\.(a_le_role|a_un_des_roles)\(/,
+        );
+        expect(texte, `${nom} : ne refuse rien`).toMatch(/raise exception/);
+      }
     });
 
     it(`${fichier} : search_path verrouillé sur chaque fonction`, () => {
       const code = instructions(sql(fichier));
-      const fonctions = [...code.matchAll(/create or replace function [^\n]*\n?[^\n]*/g)].map(
+      // L'EN-TÊTE ENTIER, jusqu'au corps — et non deux lignes. Une signature
+      // qui tient sur plusieurs lignes (paramètres nommés) échappait à la
+      // lecture sur deux lignes : la règle ne s'appliquait qu'aux
+      // déclarations courtes, sans que rien ne le dise.
+      const fonctions = [...code.matchAll(/create or replace function [\s\S]*?\sas \$fn\$/g)].map(
         (m) => m[0],
       );
       expect(fonctions.length).toBeGreaterThan(0);
-      for (const f of fonctions) expect(f).toMatch(/set search_path = ''/);
+      for (const f of fonctions) {
+        const nom = /function ([\w.]+)/.exec(f)?.[1] ?? '?';
+        expect(f, `${nom} : search_path non verrouillé`).toMatch(/set search_path = ''/);
+      }
     });
   }
 });

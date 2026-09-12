@@ -80,6 +80,29 @@ export const DROITS = [
    * aux lignes `nature = 'special'`.
    */
   'circulations.special',
+  /**
+   * Poser l'ACCÈS d'une course — public, privé ou mixte (docs/01 §2.12), et
+   * le commanditaire qui va avec. SUR N'IMPORTE QUELLE course, y compris une
+   * circulation de GRILLE : c'est tout l'objet du droit.
+   *
+   * Droit à part, et pour la même raison que 'circulations.special' : la
+   * décision du 12/09/2026 ouvre la privatisation à 'admin', qui n'a pas
+   * 'circulations' et ne doit pas l'obtenir. Mais 'circulations.special' ne
+   * pouvait pas servir — il est borné en base aux lignes
+   * nature = 'special' par trois politiques RLS, et un TRAIN 11 de grille
+   * n'en est pas une.
+   *
+   * CE DROIT N'OUVRE AUCUNE POLITIQUE RLS NOUVELLE. C'est délibéré, et c'est
+   * la forme la plus étroite disponible : les droits de colonne PostgreSQL ne
+   * savent pas distinguer nos rôles applicatifs (admin, supervision et caisse
+   * sont tous le MÊME rôle PostgreSQL, 'authenticated' — seul 'anon' s'en
+   * sépare), et une politique RLS ne sait pas borner les COLONNES écrites.
+   * Une politique « admin peut modifier une circulation de grille » lui
+   * ouvrirait donc aussi statut, retard_min, terminus et passages. L'écriture
+   * passe par une fonction SECURITY DEFINER, 'public.definir_acces', qui
+   * n'écrit que deux colonnes — par construction, pas par convention.
+   */
+  'circulations.acces',
   /** « Réinitialiser la journée depuis la grille » (suppression de la journée). */
   'journee.reinitialiser',
   /** Barre « Publier » et journal des publications. */
@@ -170,6 +193,9 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
     // les lignes `nature = 'special'`, et RLS le dit aussi — trois politiques
     // dédiées, pas un élargissement de « roles: circulations ecriture ».
     'circulations.special',
+    // Privatiser une course, spécial comme train de GRILLE (12/09/2026). Il
+    // n'y gagne rien d'autre sur circulations : voir le commentaire du droit.
+    'circulations.acces',
     'modeles',
     'medias',
     'parametres.exploitation',
@@ -183,6 +209,7 @@ const DROITS_PAR_ROLE: Record<Role, readonly Droit[]> = {
   supervision: [
     'circulations',
     'circulations.special',
+    'circulations.acces',
     'affluence',
     'journee.reinitialiser',
     'grilles',
@@ -239,7 +266,7 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   // ouvre l'onglet à l'admin pour la SEULE commande « + Train supplémentaire
   // ou spécial » ; tout le reste y est en lecture seule pour lui (voir
   // `peutModifierCirculations()` en supervision).
-  circulations: ['circulations', 'circulations.special'],
+  circulations: ['circulations', 'circulations.special', 'circulations.acces'],
   // UN ONGLET = UN DROIT, appliqué à la lettre : `affluence` et rien d'autre.
   // Il s'ouvre donc à admin, supervision et caisse — exactement la politique
   // RLS « roles: affluence » — et reste fermé au technique.

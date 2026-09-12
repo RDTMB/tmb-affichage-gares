@@ -31,6 +31,7 @@ import {
 } from '../core/roles';
 import { paramsValides } from '../core/params';
 import type {
+  AccesCourse,
   Affluence,
   Circulation,
   EcranInfo,
@@ -1194,6 +1195,46 @@ export class MockProvider implements DataProvider {
     };
     trace(etat, 'jours', date, avant, propre, Object.keys(propre), date);
     etatJour.section = propre;
+    ecritEtat(etat);
+  }
+
+  /**
+   * ACCÈS d'une course. Le mock REJOUE le refus de la base plutôt que de le
+   * supposer : `definir_acces` vérifie elle-même le rôle applicatif, donc la
+   * démonstration doit refuser l'écriture à la caisse et au technique. Un
+   * mock qui accepterait tout ferait croire la commande ouverte à tous, et
+   * c'est exactement le piège qui avait fait passer `getJour` pour une
+   * fonction que n'importe quelle session pouvait appeler.
+   *
+   * UNE SEULE LIGNE, jamais la course appariée : le cas « affrété à la montée
+   * seulement » est la raison d'être du lot.
+   */
+  async setAccesCourse(
+    date: string,
+    numero: number,
+    acces: AccesCourse,
+    commanditaire: string | null,
+  ): Promise<void> {
+    if (!aLeDroit(this.rolesDeLaSession(), 'circulations.acces')) {
+      throw new Error('permission denied: definir_acces');
+    }
+    const avant = await this.circulationAvant(date, numero);
+    if (!avant) throw new Error(`Accès non enregistré pour le train ${numero} du ${date}`);
+    const etat = litEtat();
+    etat.jours[date] ??= { terminus: null, circulations: {} };
+    const jour = etat.jours[date];
+    if (!jour) return;
+    const apres: Circulation = { ...avant, acces, commanditaire };
+    trace(
+      etat,
+      'circulations',
+      `${date} ${numero}`,
+      avant,
+      apres,
+      ['acces', 'commanditaire'],
+      date,
+    );
+    jour.circulations[String(numero)] = apres;
     ecritEtat(etat);
   }
 

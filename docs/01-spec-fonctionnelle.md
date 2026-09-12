@@ -532,6 +532,95 @@ _(Décision de l'exploitant du 12/09/2026. Migration
 production AVANT la fusion : le front demande `libelle` nommément et PostgREST
 refuse la requête entière si la colonne manque.)_
 
+### 2.12 Accès d'une course — public, privé, mixte (`circulations.acces`)
+
+> Numérotée **2.12** parce qu'elle suit le lot « bandeau alterné », qui prend
+> le 2.11. Si celui-ci n'est pas fusionné d'abord, renuméroter — les renvois
+> du code disent « docs/01 §2.12 ».
+
+« D'où vient ce train » (`nature` : grille, renfort, spécial) et « à qui il est
+vendu » (`acces` : public, privé, mixte) sont **deux questions indépendantes**.
+Jusqu'au 12/09/2026 elles n'en faisaient qu'une : « Privé » se **déduisait** de
+`nature = 'special'`. Un spécial était donc forcément privé, et un privé
+forcément spécial — or l'exploitation connaît deux cas que ce modèle ne savait
+pas dire :
+
+1. un **spécial partiellement ouvert** : une partie de la rame réservée, le
+   reste en vente au guichet. Il était annoncé « Privé » en gare et retiré du
+   comptoir — des places invendues, et un voyageur à qui l'écran dit de ne pas
+   monter ;
+2. la **privatisation d'un train de grille** : le TRAIN 11 de ce mercredi est
+   affrété, à la montée seulement, ou à la descente, ou aux deux. C'était
+   **impossible** — `circulations_nature_numero` borne `special` aux numéros
+   ≥ 201, et cette plage porte le sens ; elle n'est pas relâchée.
+
+D'où une colonne propre, sur **toute** circulation quelle que soit sa nature.
+**Un champ à trois états, jamais deux booléens** — même raison que `nature` :
+« privé ET mixte » n'existe pas en exploitation et rien ne l'empêcherait.
+
+La montée et la descente sont **déjà** deux lignes (`numero`, `numero + 1`) :
+« affrété à la montée seulement » se représente sans rien inventer, et rien
+n'est propagé automatiquement à la course appariée.
+
+| Point | Règle |
+| --- | --- |
+| Création d'un spécial | L'accès est un **choix obligatoire**, sans défaut : le formulaire refuse tant qu'il n'est pas fait. Un défaut à « public » ferait partir au guichet un train affrété ; un défaut à « privé » retirerait de la vente des places qui se vendent. |
+| Renfort | Toujours public, sans choix : il est créé pour absorber une affluence, c'est-à-dire pour vendre. |
+| Privatiser un train de grille | Onglet **Circulations**, colonne « Accès », sur la ligne du train. |
+| Montée / descente | **Chaque ligne indépendamment.** |
+| Droits | **admin et supervision.** Ni la caisse, ni le technique. |
+| Commanditaire | Saisissable aussi sur un train de grille privatisé — même champ interne, jamais lisible en gare. |
+| Écran, `prive` | Le train **reste affiché**, avec la pastille « Privé / Private ». Un trou de quarante minutes dans les départs inquiète plus qu'une pastille. |
+| Écran, `mixte` | **Rien de particulier** : il s'affiche comme les autres, avec sa pastille « Complet » ou « Dernières places » si elle est déclarée. Le voyageur peut monter, rien ne doit lui dire le contraire. |
+| Onglet Places | `public` et `mixte` présents, `prive` absent. |
+| Libellé libre | Reste réservé aux courses hors grille : un train de grille privatisé garde **« TRAIN 11 »**. |
+
+**La déclaration d'affluence SURVIT à la privatisation.** Elle est seulement
+masquée tant que la course est `prive`, et reparaît telle quelle si elle
+redevient publique. *Écart assumé* avec la réinitialisation d'une journée, qui
+refuse au contraire de reconduire un « complet » : la différence est le temps
+écoulé — ici le guichet a compté ses places il y a une heure et l'affrètement
+peut être annulé dans la foulée ; là, c'est une journée entière régénérée.
+
+**La caisse n'écrit toujours pas dans `circulations`.** C'est la raison d'être
+de la table `affluence` (§2.8) et ce lot ne l'ouvre pas : le guichet voit la
+course privatisée quitter son onglet Places, et c'est tout.
+
+#### Comment l'écriture est bornée
+
+`admin` possède le droit de privatiser mais **pas** `circulations`, et cette
+séparation est délibérée (§5.5). Aucun des deux mécanismes habituels ne
+convenait :
+
+- les **droits de colonne** ne distinguent pas nos rôles applicatifs — admin,
+  supervision et caisse sont le **même** rôle PostgreSQL (`authenticated`),
+  seul `anon` s'en sépare ;
+- une **politique RLS** filtre des lignes, jamais des colonnes : « admin peut
+  modifier une circulation de grille » lui ouvrirait du même coup `statut`,
+  `retard_min`, `terminus` et `passages`, c'est-à-dire les horaires des six
+  gares.
+
+L'écriture passe donc par `public.definir_acces`, `SECURITY DEFINER`, qui
+vérifie le rôle applicatif dans son corps et n'écrit que `acces` et
+`commanditaire`. **Aucune politique RLS n'est ajoutée à `circulations`** — un
+UPDATE direct de l'admin sur un train de grille reste refusé, et la recette
+`supabase/tests/roles-rls.sql` l'éprouve. La supervision emprunte la même
+porte, bien qu'elle pût écrire directement : deux chemins pour la même
+commande, ce sont deux règles à tenir d'accord, et l'une des deux finit par
+dériver.
+
+C'est la **seule** dérogation à la règle « aucune fonction `SECURITY DEFINER`
+dans le schéma `public` », parce que seules les fonctions de `public` sont
+exposées en RPC par PostgREST. Elle porte en contrepartie trois garanties
+vérifiées par `src/data/securite.test.ts` : révoquée à `public` **et** à
+`anon`, `search_path` verrouillé, contrôle du rôle applicatif dans le corps.
+
+_(Décision de l'exploitant du 12/09/2026. Migration `2026-09-acces-course.sql`,
+ADDITIVE, à passer en production AVANT la fusion — le front demande `acces`
+nommément. Les trains spéciaux DÉJÀ en base y sont repris en `prive` : ils
+portaient la pastille par déduction, et les laisser `public` les ferait
+reparaître au guichet.)_
+
 ## 3. Écran de gare (`ecran.html`)
 
 Reproduit `maquettes/ecran-gare.html`, à une exception documentée : la
@@ -849,7 +938,7 @@ hiérarchie linéaire ne sait dire aucune de ces trois situations.
 | Rôle | Pour qui | Ce qu'il ouvre |
 | --- | --- | --- |
 | **Technique** | Responsable informatique, prestataire | Grilles horaires ; identité des écrans (déclarer, oublier) ; rechargement et veille d'un poste ; veille de nuit globale et durée du cache ; réinitialisation d'une journée ; comptes techniques ; journal, y compris les lignes de rôles, et sa purge |
-| **Administrateur** | Chef d'exploitation | Comptes d'exploitation ; bibliothèque de modèles ; médias et cycle d'affichage ; machines, motifs, états du ciel, délai « à quai » ; grilles horaires ; bandeau ; journal, y compris les lignes de rôles |
+| **Administrateur** | Chef d'exploitation | Comptes d'exploitation ; bibliothèque de modèles ; médias et cycle d'affichage ; machines, motifs, états du ciel, délai « à quai » ; grilles horaires ; bandeau ; **accès d'une course** (§2.12) ; journal, y compris les lignes de rôles |
 | **Supervision** | Exploitation courante | Circulations et journées ; grilles horaires ; bandeau ; médias ; rechargement et veille d'un poste ; réinitialisation d'une journée ; publication |
 | **Caisse** | Guichet | Bandeau voyageurs : messages, météo du sommet, vitesse de défilement ; médias et cycle d'affichage ; rechargement et veille d'un poste ; journal ; grille du jour en lecture |
 

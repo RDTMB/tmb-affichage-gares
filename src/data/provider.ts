@@ -2,6 +2,7 @@
 // hors de src/data/. Implémentations : MockProvider (démo/tests), puis
 // SupabaseProvider (phase 1, étape 5) et ApiProvider (phase 2, étape 10).
 import type {
+  AccesCourse,
   Affluence,
   Circulation,
   EcranInfo,
@@ -185,6 +186,26 @@ export interface DataProvider {
     numeroDescente: number,
     departReel: string,
     passages: PassageGrille[],
+  ): Promise<void>;
+  /**
+   * ACCÈS d'une course (docs/01 §2.12), et le commanditaire qui l'accompagne.
+   *
+   * PORTE UNIQUE, pour les deux rôles autorisés. Elle n'écrit QUE ces deux
+   * colonnes : côté base c'est une fonction SECURITY DEFINER, seule voie par
+   * laquelle `admin` — qui n'a aucune politique RLS sur une circulation de
+   * grille — peut privatiser un TRAIN 11. Faire passer la supervision par la
+   * même porte n'est pas une précaution de plus : c'est ce qui évite d'avoir
+   * DEUX règles d'écriture à tenir d'accord pour la même commande.
+   *
+   * UNE SEULE LIGNE : la montée et la descente se privatisent séparément
+   * (décision du 12/09/2026), et propager à la course appariée retirerait
+   * justement le cas qui motive le lot.
+   */
+  setAccesCourse(
+    date: string,
+    numero: number,
+    acces: AccesCourse,
+    commanditaire: string | null,
   ): Promise<void>;
   setTerminusBellevue(date: string, v: TerminusFlag): Promise<void>;
   /**

@@ -216,22 +216,23 @@ describe('sous 768 px — la circulation devient une carte par train (§A.3)', (
     expect(colonnes.get('#tab-circ tbody tr')).toBe('repeat(4, minmax(0, 1fr))');
     const zones = parSelecteur(corpsTelephone, 'grid-area');
     expect(zones.get('#tab-circ tbody td:nth-child(1)')).toMatch(/^1 \/ 1 \//);
-    expect(zones.get('#tab-circ tbody td:nth-child(7)')).toMatch(/^1 \/ 3 \//);
+    expect(zones.get('#tab-circ tbody td:nth-child(8)')).toMatch(/^1 \/ 3 \//);
 
     const colonnesEtroit = parSelecteur(etroit?.corps ?? '', 'grid-template-columns');
     expect(colonnesEtroit.get('#tab-circ tbody tr')).toBe('minmax(0, 1fr) minmax(0, 1.6fr)');
     const zonesEtroit = parSelecteur(etroit?.corps ?? '', 'grid-area');
     expect(zonesEtroit.get('#tab-circ tbody td:nth-child(1)')).toMatch(/^1 \/ 1 \//);
-    expect(zonesEtroit.get('#tab-circ tbody td:nth-child(7)')).toMatch(/^1 \/ 2 \//);
+    expect(zonesEtroit.get('#tab-circ tbody td:nth-child(8)')).toMatch(/^1 \/ 2 \//);
   });
 
-  it('les huit cellules ont une zone, et la cellule « aucun service » prend toute la largeur', () => {
-    // Retour à HUIT : « Remplissage » a quitté ce tableau pour l'onglet
-    // « Places » (10/09/2026). Une colonne sans zone se placerait toute
-    // seule et casserait la carte sans rien dire.
+  it('les NEUF cellules ont une zone, et la cellule « aucun service » prend toute la largeur', () => {
+    // Huit depuis que « Remplissage » a quitté ce tableau (10/09/2026), neuf
+    // depuis que « Accès » l'a rejoint (12/09/2026). Une colonne sans zone se
+    // placerait toute seule et casserait la carte sans rien dire — c'est
+    // précisément ce que produit l'ajout d'une colonne si l'on oublie la CSS.
     for (const corps of [corpsTelephone, etroit?.corps ?? '']) {
       const zones = parSelecteur(corps, 'grid-area');
-      for (let i = 1; i <= 8; i++) {
+      for (let i = 1; i <= 9; i++) {
         expect(zones.get(`#tab-circ tbody td:nth-child(${i})`), `cellule ${i}`).toBeDefined();
       }
       expect(zones.get('#tab-circ tbody td[colspan]')).toBe('auto / 1 / auto / -1');
@@ -250,16 +251,22 @@ describe('sous 768 px — la circulation devient une carte par train (§A.3)', (
       'Terminus',
       'Facultatif',
       'Sans voyageurs',
+      'Accès',
       'Statut',
       'Motif',
     ]);
     const contenu = parSelecteur(corpsTelephone, 'content');
-    for (const i of [3, 4, 5, 6, 8]) {
+    // « Accès » (7) a rejoint les étiquetées : un sélecteur qui affiche
+    // « Public » sans en-tête ne se comprend pas — et il s'est INTERCALÉ,
+    // décalant statut de 7 à 8 et motif de 8 à 9. C'est précisément le genre
+    // de renumérotation qui casse une carte en silence.
+    for (const i of [3, 4, 5, 6, 7, 9]) {
       expect(contenu.get(`#tab-circ tbody td:nth-child(${i})::before`), `cellule ${i}`).toBe(
         `'${entetes[i - 1]}'`,
       );
     }
-    for (const i of [1, 2, 7]) {
+    // L'heure, le sens et les trois boutons de statut se lisent sans étiquette.
+    for (const i of [1, 2, 8]) {
       expect(contenu.has(`#tab-circ tbody td:nth-child(${i})::before`), `cellule ${i}`).toBe(false);
     }
   });

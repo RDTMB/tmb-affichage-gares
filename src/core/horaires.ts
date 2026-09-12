@@ -2,7 +2,7 @@
 // L'heure courante est TOUJOURS injectée (en secondes depuis minuit) pour
 // permettre l'heure simulée ?simule=HH:MM et des tests déterministes.
 
-import { horsGrille } from './types';
+import { accesValide, horsGrille } from './types';
 import type {
   Circulation,
   CompteARebours,
@@ -486,6 +486,10 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
         motif: circulation?.motif ?? null,
         terminusExceptionnel: false,
         nature: 'grille',
+        // ACCÈS : un train de GRILLE peut être affrété (docs/01 §2.12). C'est
+        // tout l'objet de ce lot — la colonne se lit ICI aussi, et pas
+        // seulement sur les courses hors grille.
+        acces: accesValide(circulation?.acces),
         // Un train de GRILLE n'a pas de départ à constater : ses heures sont
         // celles du document d'exploitation, pas une estimation.
         departConfirme: false,
@@ -534,6 +538,7 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
       // mention « privé » sur l'écran de gare.
       nature: circulation.nature,
       libelle: circulation.libelle,
+      acces: accesValide(circulation.acces),
       // Départ CONSTATÉ depuis le terminus : seule une descente de renfort
       // peut en porter un. Ce n'est pas un retard, l'écran le dit en neutre.
       departConfirme: circulation.sens === 'descente' && Boolean(circulation.depart_reel),
@@ -779,6 +784,7 @@ export function passagesPourGare(
       terminusExceptionnel: train.terminusExceptionnel,
       nature: train.nature,
       libelle: train.libelle,
+      acces: train.acces,
       departConfirme: train.departConfirme,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,
       depart_s: passage.depart_s === null ? null : passage.depart_s + decalage,
