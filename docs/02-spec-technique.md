@@ -115,6 +115,13 @@ create table circulations (
                                   -- `supplementaire` survit en colonne de
                                   -- COMPATIBILITÉ, dérivée par déclencheur et
                                   -- tenue par contrainte ; retrait saison 2027.
+  libelle text,                   -- NOM D'AFFICHAGE d'une course hors grille
+                                  -- (facultatif, docs/01 §2.10). Remplace
+                                  -- « SPÉ n » / « SUP n » VERBATIM. Il MASQUE
+                                  -- le numéro, qui reste dans sa plage.
+                                  -- Contrairement à commanditaire, il
+                                  -- S'AFFICHE EN GARE : il est donc dans le
+                                  -- grant de anon.
   commanditaire text,             -- TRAIN SPÉCIAL : qui l'a affrété. INTERNE —
                                   -- jamais servi aux écrans (droit de SELECT
                                   -- retiré à anon, voir RLS). Colonne PROPRE
@@ -126,6 +133,11 @@ create table circulations (
     check ((supplementaire and passages is not null) or (not supplementaire and passages is null))
 );
 -- Ajout sur base existante : supabase/migrations/2026-08-train-supplementaire.sql
+-- `libelle` : supabase/migrations/2026-09-libelle-course.sql — ADDITIVE, une
+--   seule migration (elle n'enlève rien : une colonne s'ajoute, un
+--   `grant select (colonne)` s'ajoute). À passer en PRODUCTION AVANT la
+--   fusion : le front demande `libelle` nommément et PostgREST refuse la
+--   requête ENTIÈRE si la colonne manque.
 -- `commanditaire` : supabase/migrations/2026-09-train-special-A.sql (colonne +
 --   journal, n'enlève rien) puis -B.sql (droits de colonne). DEUX fichiers :
 --   A → déploiement du front → B, sans quoi soit les six écrans s'éteignent
@@ -348,7 +360,8 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   écrans affichent — `revoke all … from anon` puis `grant select (date,
   numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus,
   statut, retard_min, motif, sans_voyageurs, nature, passages,
-  depart_reel) … to anon`. `commanditaire` (qui a affrété un train spécial)
+  depart_reel, libelle) … to anon` — `libelle` ajoutée le 12/09/2026 par un
+  `grant` ADDITIF, puisqu'elle s'affiche en gare. `commanditaire` (qui a affrété un train spécial)
   en est EXCLU, comme `affluence.maj_par` : RLS ne filtre que des lignes,
   seuls les droits de colonne retirent une colonne à la clé publiable.
   Conséquence à ne pas perdre de vue : `getJour` énumère ces colonnes et

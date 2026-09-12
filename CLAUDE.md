@@ -169,6 +169,21 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   `anon` par droit de colonne). EXCLU de l'onglet « Places » et sans pastille
   de remplissage à l'écran : un train affrété ne vend pas ses places au
   comptoir, et les deux pastilles ne tiendraient pas ensemble (mesuré).
+- **Libellé LIBRE** d'une course hors grille (`circulations.libelle`, docs/01
+  §2.10) : nom d'affichage FACULTATIF qui remplace VERBATIM « SPÉ n » / « SUP n »
+  partout — supervision, grille du jour, badge de l'écran. Il MASQUE le numéro,
+  qui reste dans sa plage. `libelleTrain()` et `libelleTrainCourt()` restent les
+  SEULES sources du nom : ne pas fabriquer un troisième chemin. Borne en
+  LARGEUR et non en caractères (4,9 em mesurés à la police RÉELLE du badge ;
+  plafond CSS 5 em en filet) — « MARIAGE » et « 12345678 » ont huit caractères
+  et pas la même largeur. La police doit être CHARGÉE avant de mesurer : un
+  repli est faux dans le sens qui laisse passer (Arial rend « WWWWII » plus
+  étroit que Lato) ; si elle manque, on refuse le LIBELLÉ, jamais la création
+  du train. Unique dans la journée, comparaison sur la forme COURTE contre
+  `jour.circulations` (et non `trainsDuJour()`, qui écarte les facultatifs non
+  activés), insensible à la casse et aux espaces de bord.
+  Les CASES DE DESSERTE suivent « express » — cochée, Voza et Bellevue se
+  décochent ; décochée, elles se recochent — sans jamais être verrouillées.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir
