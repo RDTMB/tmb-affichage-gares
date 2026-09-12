@@ -170,7 +170,8 @@ du Nid d'Aigle à 14:13:30). Effets écrans : voir §3.
 alors que le français, sans séparateur ni bloc anglais — on ne fabrique
 JAMAIS de faux anglais, ni « [EN] français », ni du franglais mot à mot),
 `cible` = toutes | liste de gares | numéro de train,
-`priorite` normale (défilement) / importante (bandeau fixe), `expire_at`,
+`priorite` normale (défile avec les autres) / importante (seule à l'écran
+deux temps sur trois, voir §2.11), `expire_at`,
 `actif`. Un message ciblé « train » ne s'affiche que dans les gares encore
 desservies par ce train, tant qu'il n'est pas passé. **Les messages sont
 modifiables après création** (édition en place). **La traduction anglaise
@@ -532,6 +533,55 @@ _(Décision de l'exploitant du 12/09/2026. Migration
 production AVANT la fusion : le front demande `libelle` nommément et PostgREST
 refuse la requête entière si la colonne manque.)_
 
+### 2.11 Cycle du bandeau — l'important, puis les autres
+
+Le bandeau du pied d'écran **alterne** dès qu'un message « importante » est en
+cours :
+
+- **chaque** message important occupe SEUL toute la largeur pendant **deux
+  parts** du cycle ;
+- les messages normaux défilent ensemble pendant **une part** ;
+- puis on recommence. Deux tiers / un tiers, décidé par l'exploitant le
+  09/09/2026.
+
+L'unité d'une part est **un passage complet** du contenu normal, jamais une
+durée arbitraire : un créneau qui s'arrêterait au milieu d'une course couperait
+le message. Un créneau important qui défile fait donc un nombre ENTIER de ses
+propres passages, le plus proche de sa part.
+
+Deux défauts que ce cycle répare, relevés à la recette du 09/09/2026 :
+
+1. un seul message important **écartait** tous les autres du bandeau — un avis
+   posé le matin effaçait l'information sur les vélos jusqu'à ce que quelqu'un
+   pense à le désactiver ;
+2. un message important trop long était **tronqué en silence** par
+   `overflow: hidden` (1 645,8 px perdus, mesurés à 1920 × 1080 ; la moitié
+   anglaise n'apparaissait jamais). Le voyageur lisait « Circulation
+   interrompue entre Col de Voza et Bellevue — service de substitution par
+   route depuis Sa » et croyait savoir.
+
+D'où la règle : **le mode immobile n'est accordé qu'à ce qui TIENT.** Un
+message important trop long défile, comme les autres — visuellement moins
+saillant, mais entier. La largeur se mesure sur le RENDU (`debordeBandeau()`,
+`src/pages/affichage-commun.ts`), jamais sur un modèle : la place offerte
+dépend du pavé météo, qui varie, et le texte mêle deux graisses (français 700,
+anglais 400).
+
+**PLUSIEURS IMPORTANTS** : chacun reçoit son créneau et le cycle s'allonge. On
+ne partage pas un créneau entre eux (cinq messages lus à un cinquième, c'est
+aucun des cinq) et on ne plafonne pas leur nombre (faire disparaître le
+cinquième recréerait le défaut nº 1). Les messages normaux reviennent alors
+moins souvent : c'est le coût VISIBLE d'un abus de la priorité, corrigible par
+l'exploitation plutôt que caché par le code.
+
+**En supervision** (onglet Bandeau) : l'aperçu appelle la MÊME fonction que les
+écrans, il montre donc le cycle réel, bilingue, expirations comprises. Il est
+dimensionné en **modèle réduit de l'écran de gare le plus étroit** (30,9 em,
+minimum mesuré 30,94 em à 1024 × 768 ; un 16/9 en offre 45,47), ce qui lui
+permet de rendre le même verdict « immobile ou défile ». Le champ de saisie dit
+en direct si le message tiendra — **information, jamais refus** : un message
+long n'est pas une faute, et si la mesure est impossible le champ se tait.
+
 ## 3. Écran de gare (`ecran.html`)
 
 Reproduit `maquettes/ecran-gare.html`, à une exception documentée : la
@@ -602,12 +652,12 @@ qui avait été validé à l'époque.
 3. **Prochaine arrivée** : « HH:MM — <Rame en SA couleur> (train n° X), en
    provenance de … ». Marguerite (blanche) : léger halo rouge pour rester
    lisible.
-4. **Pied rouge** : messages défilants FR • EN — la durée d'un tour est
-   CALCULÉE (durée = largeur du texte ÷ `vitesse_ticker_px_s`), de sorte que
-   la vitesse de lecture reste constante quelle que soit la longueur du
-   bandeau ; un message sans traduction s'affiche en français seul, sans
-   séparateur. Un bandeau de priorité « importante » est fixe, donc non
-   concerné. Pavé météo sommet (température + ciel, saisi en supervision).
+4. **Pied rouge** : messages FR • EN — la durée d'un tour est CALCULÉE
+   (durée = largeur du texte ÷ `vitesse_ticker_px_s`), de sorte que la vitesse
+   de lecture reste constante quelle que soit la longueur du bandeau ; un
+   message sans traduction s'affiche en français seul, sans séparateur. Le
+   bandeau ALTERNE quand un message important est en cours — voir §2.11. Pavé
+   météo sommet (température + ciel, saisi en supervision).
 5. **États spéciaux** (plein tableau, logo blanc affiché dessous) :
    - Fin de service : « Service terminé — premier départ demain à HH:MM »
      bilingue (premier départ lu dans la grille du lendemain) — affiché dès

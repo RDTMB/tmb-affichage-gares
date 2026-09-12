@@ -11,6 +11,7 @@ import {
   CACHE_MAX_MINUTES,
   CACHE_MIN_MINUTES,
   contenuTicker,
+  cycleBandeau,
   creeJournalHeartbeat,
   dureeCacheMinutes,
   INTERVALLE_HEARTBEAT_MS,
@@ -303,5 +304,45 @@ describe('avecDelai : une première synchronisation ne bloque jamais la page', (
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+// ============================================================================
+// §7.1 — le test qui ÉCHOUE sur le code d'avant
+// ============================================================================
+describe('un message important n’en écarte plus aucun autre', () => {
+  const important = {
+    ...message('u', 'Circulation interrompue.', 'Service suspended.'),
+    priorite: 'importante' as const,
+  };
+  const normal1 = message('a', 'Restez derrière la ligne jaune.', 'Stand behind the yellow line.');
+  const normal2 = message('b', 'Trains vélos : 5 vélos maximum.', 'Bike trains: 5 bikes maximum.');
+
+  it('les TROIS messages sont présents dans le cycle', () => {
+    // Défaut relevé par l'exploitant le 09/09/2026 : un seul message
+    // « importante » faisait disparaître tous les autres du bandeau. Un avis
+    // posé le matin effaçait l'information sur les vélos jusqu'à ce que
+    // quelqu'un pense à le désactiver.
+    const phases = cycleBandeau([important, normal1, normal2]);
+    const tous = phases.flatMap((ph) => ph.messages.map((m) => m.id));
+    expect(tous, 'un message a été écarté du cycle').toEqual(
+      expect.arrayContaining(['u', 'a', 'b']),
+    );
+    expect(tous).toHaveLength(3);
+  });
+
+  it('l’important a son créneau SEUL, les normaux le leur', () => {
+    const phases = cycleBandeau([important, normal1, normal2]);
+    expect(phases).toHaveLength(2);
+    expect(phases[0]?.nature).toBe('important');
+    expect(phases[0]?.messages.map((m) => m.id)).toEqual(['u']);
+    expect(phases[1]?.nature).toBe('normaux');
+    expect(phases[1]?.messages.map((m) => m.id)).toEqual(['a', 'b']);
+  });
+
+  it('DEUX tiers pour l’important, UN pour les normaux', () => {
+    const phases = cycleBandeau([important, normal1]);
+    expect(phases[0]?.parts).toBe(2);
+    expect(phases[1]?.parts).toBe(1);
   });
 });
