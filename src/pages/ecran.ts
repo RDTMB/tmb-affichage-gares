@@ -379,9 +379,15 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // Badge du numéro DEVANT le nom de la gare de destination : c'est là que
   // l'œil du voyageur va déjà. « TRAIN 11 » reste le libellé canonique en
   // supervision et dans la grille du jour ; ici on écrit « T11 ».
-  const badge = `<span class="badge-train">${echapper(
-    libelleTrainCourt({ numero: p.numero, nature: p.nature }, [...trains.values()]),
-  )}</span>`;
+  // Le texte vit dans un ENFANT du badge, et c'est ce qui permet de le
+  // plafonner sans toucher au badge lui-même : celui-ci reste `inline-flex`,
+  // donc l'alignement vertical du 11/09 (badge, nom, pastille, picto sur un
+  // même axe) est intact. Mesuré : centres identiques à 0 px près.
+  const badge = `<span class="badge-train"><span class="badge-txt">${echapper(
+    libelleTrainCourt({ numero: p.numero, nature: p.nature, libelle: p.libelle }, [
+      ...trains.values(),
+    ]),
+  )}</span></span>`;
 
   return `<div class="gridrow rangee${supprime ? ' supprime' : ''}">
     <div class="r-dep">${depart}</div>

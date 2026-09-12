@@ -437,6 +437,127 @@ export function ordreRotations(rotations: readonly RotationAOrdonner[]): number[
 }
 
 // ============================================================================
+// LIBELLÉ LIBRE d'une course hors grille (docs/01 §2.10)
+// ============================================================================
+
+/**
+ * Police du badge de l'écran de gare, à une taille de RÉFÉRENCE de 100 px.
+ *
+ * Elle doit rester identique à `.badge-train` dans src/styles/ecran.css —
+ * `libelle-course.test.ts` compare les deux. Mesurer avec une autre police
+ * n'est pas « approximatif », c'est FAUX dans le sens qui laisse passer :
+ * relevé le 12/09/2026, Arial rend « WWWWII » plus ÉTROIT que Lato (4,778 em
+ * contre 4,924), si bien qu'un repli accepterait un libellé que Lato déborde.
+ */
+export const POLICE_BADGE = '900 100px Lato, "Segoe UI", Arial, sans-serif';
+
+/** Famille et graisse exigées, pour le contrôle de chargement. */
+export const POLICE_BADGE_CHARGEMENT = '900 1em Lato';
+
+/**
+ * Largeur maximale d'un libellé, en em de la police du badge.
+ *
+ * MESURÉE le 12/09/2026 sur la ligne la plus chargée qui existe (« Nid
+ * d'Aigle » + pastille « Privé / Private » + picto express), à 1280×720 et
+ * 1920×1080. Le plafond CSS de `.badge-txt` est à 5 em ; cette borne-ci est
+ * juste en dessous, pour que l'ellipse ne se déclenche JAMAIS sur un libellé
+ * que la saisie a accepté.
+ *
+ * La marge de 0,1 em est ~20 fois l'écart mesuré entre le canevas et le rendu
+ * (≤ 0,05 %), et ~2 px à 1280×720 — de quoi absorber l'arrondi sous-pixel.
+ *
+ * POURQUOI PAS UN NOMBRE DE CARACTÈRES. La largeur dépend des glyphes, pas du
+ * compte : six capitales larges débordent là où neuf chiffres tiennent. Une
+ * borne en caractères accepterait « MARIAGE » et rognerait le picto en gare.
+ */
+export const LARGEUR_BADGE_MAX_EM = 4.9;
+
+/**
+ * Largeur d'un texte dans la police du badge, en em.
+ *
+ * La mesure est INJECTÉE, comme l'heure l'est dans `src/core/` : cette
+ * fonction reste pure et testable, et le seul appelant qui sait mesurer (le
+ * navigateur, par un canevas) le fait chez lui.
+ */
+export function largeurLibelleEm(libelle: string, mesure: (texte: string) => number): number {
+  return mesure(libelle.trim());
+}
+
+/** Ce que la saisie répond, et pourquoi. */
+export interface ControleLibelle {
+  /** Libellé retenu (rogné de ses espaces de bord), ou `null` s'il est vide. */
+  valeur: string | null;
+  /** Refus en une phrase, ou `null` si le libellé est acceptable. */
+  refus: string | null;
+}
+
+/**
+ * Forme COMPARABLE d'un libellé : sans espaces de bord, sans casse, espaces
+ * internes réduits. « t17 », « T17 » et « T17 » (avec une espace finale) sont
+ * le même nom — deux trains ainsi nommés seraient indiscernables en gare.
+ */
+export function formeComparable(libelle: string): string {
+  return libelle.trim().replace(/\s+/g, ' ').toLocaleLowerCase('fr');
+}
+
+/**
+ * Le libellé est-il utilisable ? PURE : c'est la seule façon de verrouiller
+ * que ce que la saisie accepte s'affiche ENTIER (le test compare cette borne
+ * au plafond CSS, qui est le filet).
+ *
+ * `dejaPris` porte les libellés COURTS de tous les trains de la journée —
+ * grille comprise, et y compris ce qui ne circule pas encore (facultatifs non
+ * activés, courses à vide). Comparer à la seule liste de ce qui circule
+ * laisserait entrer un libellé qui entrerait en collision le jour où
+ * l'exploitant active le facultatif.
+ */
+export function controleLibelle(e: {
+  saisi: string;
+  /** Largeur en em, ou `null` quand la mesure est impossible (police absente). */
+  largeurEm: number | null;
+  dejaPris: readonly string[];
+}): ControleLibelle {
+  const valeur = e.saisi.trim();
+  // FACULTATIF (décision de l'exploitant du 12/09/2026) : sans libellé, le
+  // badge affiche « SPÉ n » / « SUP n », ce qui est parfaitement valide.
+  if (valeur === '') return { valeur: null, refus: null };
+
+  if (e.largeurEm === null) {
+    return { valeur: null, refus: REFUS_POLICE };
+  }
+  if (e.largeurEm > LARGEUR_BADGE_MAX_EM) {
+    return { valeur: null, refus: REFUS_TROP_LARGE };
+  }
+  const forme = formeComparable(valeur);
+  if (e.dejaPris.some((pris) => formeComparable(pris) === forme)) {
+    return { valeur: null, refus: `« ${valeur} » est déjà porté par un train de cette journée.` };
+  }
+  return { valeur, refus: null };
+}
+
+/**
+ * Refus de largeur. Il dit ce qu'il refuse ET donne un exemple de ce qui
+ * tient : un compteur de caractères mentirait, puisque la largeur dépend des
+ * glyphes (« SCOLAIRE » tient, « WWWWWWWW » non, à nombre égal).
+ */
+export const REFUS_TROP_LARGE =
+  'Trop large pour le badge de l’écran de gare — « SCOLAIRE » tient, « MARIAGE MARTIN » non.';
+
+/**
+ * La police du badge n'est pas chargée : la mesure serait fausse, et fausse
+ * DANS LE SENS QUI LAISSE PASSER (un repli plus étroit accepte un libellé que
+ * Lato déborde). On refuse donc le LIBELLÉ — jamais la création du train.
+ *
+ * Le libellé est facultatif ; bloquer une course d'exploitation pour une
+ * police qui n'a pas chargé ferait payer un souci d'affichage à un matin de
+ * perturbation. L'agent crée son train, qui s'appellera « SPÉ n », et le
+ * nomme plus tard s'il y tient.
+ */
+export const REFUS_POLICE =
+  'Mesure impossible : la police du badge n’est pas chargée. Le train s’appellera ' +
+  '« SPÉ n » ; vous pourrez le renommer une fois la page rechargée.';
+
+// ============================================================================
 // Train SPÉCIAL — création (docs/01 §2.9)
 // ============================================================================
 
@@ -491,6 +612,31 @@ export function champsFormulaireCourse(
     express: nature === 'special',
     velos: nature === 'special',
   };
+}
+
+/**
+ * Gares PRÉ-COCHÉES d'une desserte, selon que la course est express ou non.
+ *
+ * Décision de l'exploitant du 12/09/2026 : les cases SUIVENT « express » —
+ * cochée, Col de Voza et Bellevue se décochent ; décochée, elles se recochent.
+ * C'est la définition même d'un express sur cette ligne (docs/01 : « passages
+ * absents à col-de-voza et bellevue »), et la ressaisir à la main à chaque
+ * création était une corvée qui finissait par être oubliée.
+ *
+ * Mais c'est une AIDE À LA SAISIE, pas une barrière : l'appelant rend des
+ * cases modifiables, et l'agent peut recocher Bellevue sur un express.
+ *
+ * Les gares OBLIGATOIRES l'emportent : si le terminus choisi EST Bellevue, la
+ * course doit y aller, express ou non — la décocher produirait une desserte
+ * qui n'atteint pas son propre terminus.
+ */
+export function garesPrecochees(e: {
+  ordre: readonly GareId[];
+  obligatoires: readonly GareId[];
+  express: boolean;
+}): GareId[] {
+  const sautees: GareId[] = ['col-de-voza', 'bellevue'];
+  return e.ordre.filter((g) => e.obligatoires.includes(g) || !e.express || !sautees.includes(g));
 }
 
 /**

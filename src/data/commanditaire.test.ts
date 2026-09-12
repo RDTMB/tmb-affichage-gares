@@ -63,6 +63,8 @@ const SCHEMA = source('supabase/schema.sql');
 // « column commanditaire does not exist ».
 const MIGRATION_A = source('supabase/migrations/2026-09-train-special-A.sql');
 const MIGRATION_B = source('supabase/migrations/2026-09-train-special-B.sql');
+// Le libellé libre (12/09/2026) : additif, une seule migration.
+const MIGRATION_LIBELLE = source('supabase/migrations/2026-09-libelle-course.sql');
 const SUPABASE = source('src/data/supabase.ts');
 
 describe('la colonne existe, et elle est PROPRE', () => {
@@ -164,10 +166,41 @@ describe('`anon` ne lit PAS le commanditaire', () => {
     }
   });
 
-  it('les deux copies accordent EXACTEMENT les mêmes colonnes', () => {
+  it('la SÉQUENCE des migrations reconstitue exactement le grant de schema.sql', () => {
     // Élargir ici sans élargir là-bas donne le pire résultat : la base de test
     // et la production ne se comportent pas pareil.
-    expect(colonnesAccordeesAAnon(SCHEMA)).toEqual(colonnesAccordeesAAnon(MIGRATION_B));
+    //
+    // Ce n'est plus une comparaison à UNE migration mais à leur SUITE : B a
+    // posé les seize colonnes du 11/09, `2026-09-libelle-course.sql` en ajoute
+    // une dix-septième par un `grant` ADDITIF. Une base à jour a donc reçu
+    // l'union des deux, dans cet ordre — et c'est cette union que
+    // `schema.sql` doit décrire pour une installation neuve.
+    expect(colonnesAccordeesAAnon(SCHEMA)).toEqual([
+      ...colonnesAccordeesAAnon(MIGRATION_B),
+      ...colonnesAccordeesAAnon(MIGRATION_LIBELLE),
+    ]);
+  });
+
+  it('la migration du libellé n’enlève RIEN : elle n’a pas à être coupée en deux', () => {
+    // C'est ce qui la distingue de B : un `grant select (colonne)` s'ajoute aux
+    // droits de colonne existants sans en révoquer un seul, donc aucune fenêtre
+    // d'écran noir. L'ordre reste pourtant le même — la migration passe en
+    // production AVANT la fusion, parce que le front demande `libelle`
+    // nommément et que PostgREST refuse la requête ENTIÈRE si elle manque.
+    expect(MIGRATION_LIBELLE, 'la migration du libellé révoque').not.toMatch(
+      /revoke[^;]*\son circulations/,
+    );
+    expect(colonnesAccordeesAAnon(MIGRATION_LIBELLE)).toEqual(['libelle']);
+    expect(MIGRATION_LIBELLE).toContain('add column if not exists libelle');
+    // La séquence est écrite là où on l'exécute.
+    for (const etape of [
+      'sur la base de TEST',
+      'déploiement du front',
+      'en PRODUCTION',
+      'FUSION',
+    ]) {
+      expect(MIGRATION_LIBELLE, `étape « ${etape} » absente`).toContain(etape);
+    }
   });
 
   it('ni `id` ni `maj` : on n’accorde que ce qui est affiché', () => {

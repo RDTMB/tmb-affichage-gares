@@ -18,6 +18,7 @@ import {
   heureVersSecondes,
   gareHorsSection,
   libelleTrain,
+  libelleTrainCourt,
   messageTronconDefaut,
   sectionComplete,
   sectionDuJour,
@@ -140,12 +141,17 @@ import {
   traductionLocale,
   valeursFormulaireMessage,
   avertissementTerminusCourse,
+  controleLibelle,
+  garesPrecochees,
+  POLICE_BADGE,
+  POLICE_BADGE_CHARGEMENT,
   departOrigine,
   ordreRotations,
   champsFormulaireCourse,
   enTeteAffluence,
   messageAucunDepart,
   saisieAffluence,
+  type ControleLibelle,
   type FormulaireMessage,
   type SaisieAffluence,
 } from './supervision-logique';
@@ -626,6 +632,70 @@ function peutModifierCirculations(): boolean {
   return aLeDroit(roles, 'circulations');
 }
 
+/**
+ * Mesure d'un texte dans la police du BADGE de l'écran de gare, en em.
+ *
+ * Le canevas est un oracle fidèle : comparé au texte réellement rendu dans le
+ * badge, l'écart est ≤ 0,05 % sur neuf chaînes, `font-variant-numeric:
+ * tabular-nums` compris (12/09/2026). Et la mesure en em est INVARIANTE —
+ * « WWWWII » vaut 4,924 em à 1280×720 comme à 1920×1080 — donc valider à une
+ * taille vaut pour toutes.
+ *
+ * `null` quand la police n'est pas chargée : un repli n'est pas une
+ * approximation, il est FAUX dans le sens qui laisse passer (Arial rend
+ * « WWWWII » plus étroit que Lato). L'appelant refuse alors le LIBELLÉ, jamais
+ * la création du train.
+ */
+let canevasBadge: CanvasRenderingContext2D | null = null;
+function largeurEnEm(texte: string): number | null {
+  if (!document.fonts.check(POLICE_BADGE_CHARGEMENT)) return null;
+  if (!canevasBadge) {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) return null;
+    canevasBadge = ctx;
+  }
+  canevasBadge.font = POLICE_BADGE;
+  // La police de référence est déclarée à 100 px : diviser rend des em.
+  return canevasBadge.measureText(texte).width / 100;
+}
+
+/**
+ * Les libellés COURTS déjà portés ce jour-là — grille comprise, et y compris
+ * ce qui ne circule pas encore (facultatifs non activés, courses à vide).
+ *
+ * `jour.circulations` et NON `trainsDuJour()` : ce dernier écarte justement
+ * ces trains-là, et un libellé jugé unique contre lui entrerait en collision
+ * le jour où l'exploitant active le facultatif.
+ */
+function libellesDuJour(saufNumero?: number): string[] {
+  const tous = trainsPourLibelle();
+  return tous.filter((c) => c.numero !== saufNumero).map((c) => libelleTrainCourt(c, tous));
+}
+
+/**
+ * Les trains du jour dans la forme qu'attendent `libelleTrain()` et
+ * `libelleTrainCourt()`. UN SEUL endroit qui sait de quoi ils ont besoin :
+ * ces champs se sont ajoutés deux fois en deux jours (`nature` le 11/09,
+ * `libelle` le 12), et chaque site d'appel oublié donnait un libellé faux à
+ * un seul endroit de l'écran — le genre de défaut qu'on ne voit pas.
+ *
+ * `jour.circulations` et non `trainsDuJour()` : la journée ENTIÈRE, y
+ * compris les facultatifs non activés et les courses à vide. Un rang calculé
+ * sur une liste partielle changerait le jour où l'exploitant active un
+ * facultatif.
+ */
+function trainsPourLibelle(): {
+  numero: number;
+  nature: NatureCirculation;
+  libelle?: string | null;
+}[] {
+  return (jour?.circulations ?? []).map((c) => ({
+    numero: c.numero,
+    nature: c.nature,
+    libelle: c.libelle,
+  }));
+}
+
 function saisieAffluenceCourante(): SaisieAffluence {
   return saisieAffluence({
     date: dateSel,
@@ -669,8 +739,12 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
   }
   if (affluenceDe(numero) === niveau) return; // rien à écrire
   const libelle = libelleTrain(
-    { numero, nature: circulationDe(numero)?.nature ?? 'grille' },
-    (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
+    {
+      numero,
+      nature: circulationDe(numero)?.nature ?? 'grille',
+      libelle: circulationDe(numero)?.libelle,
+    },
+    trainsPourLibelle(),
   );
   try {
     await provider.setAffluence(date, numero, niveau);
@@ -1172,15 +1246,14 @@ function ligneCirculation(
     aVide ? 'a-vide' : ''
   }${marqueurAffluence} ${montee ? '' : 'paire-fin'}">
     <td class="h-dep">${heure}<small>${echapper(
-      libelleTrain(
-        { numero: n, nature: c.nature },
-        (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
-      ),
+      libelleTrain({ numero: n, nature: c.nature, libelle: c.libelle }, trainsPourLibelle()),
     )}</small>${
       horsGrille(c)
         ? `<span class="badge-sup">${c.nature === 'special' ? 'SPÉCIAL' : 'SUP'}</span>${
             montee && !lectureSeule
-              ? `<button class="leger btn-sup-suppr" data-action="sup-supprimer" data-numero="${n}">Supprimer ce train</button>`
+              ? `<button class="leger" data-action="renommer" data-numero="${n}">${
+                  (c.libelle ?? '').trim() === '' ? 'Nommer' : 'Renommer'
+                }</button><button class="leger btn-sup-suppr" data-action="sup-supprimer" data-numero="${n}">Supprimer ce train</button>`
               : ''
           }`
         : ''
@@ -1503,12 +1576,21 @@ function initCirculations(): void {
       .map((c) => c.value as GareId);
 
   /** Cases d'un sens : origine et terminus toujours cochés ET verrouillés. */
-  const rendCasesGaresSup = (id: string, ordre: GareId[], obligatoires: GareId[]): void => {
+  const rendCasesGaresSup = (
+    id: string,
+    ordre: GareId[],
+    obligatoires: GareId[],
+    cochees: readonly GareId[],
+  ): void => {
     $(id).innerHTML = ordre
       .map((g) => {
         const impose = obligatoires.includes(g);
-        return `<label><input type="checkbox" value="${echapper(g)}" ${
-          impose ? 'checked disabled' : 'checked'
+        // Cochée ou non selon « express » (garesPrecochees), mais JAMAIS
+        // verrouillée hors des gares obligatoires : le réglage automatique est
+        // une aide à la saisie, pas une barrière (décision du 12/09/2026).
+        const cochee = impose || cochees.includes(g);
+        return `<label><input type="checkbox" value="${echapper(g)}" ${cochee ? 'checked' : ''}${
+          impose ? ' disabled' : ''
         } /> ${echapper(nomDeGare(g))}</label>`;
       })
       .join('');
@@ -1608,6 +1690,36 @@ function initCirculations(): void {
     }
   };
 
+  /**
+   * Contrôle du libellé À LA FRAPPE : l'agent doit savoir ce qui est refusé au
+   * moment où il l'écrit, pas après avoir cliqué « Créer le train ».
+   *
+   * `saufNumero` exclut la course en cours de modification de sa propre
+   * comparaison d'unicité — sinon renommer un train buterait sur lui-même.
+   */
+  const controleLibelleSaisi = (
+    champId = 'sup-libelle',
+    refusId = 'sup-refus-libelle',
+    saufNumero?: number,
+  ): ControleLibelle => {
+    const champ = $(champId) as HTMLInputElement;
+    const saisi = champ.value;
+    const controle = controleLibelle({
+      saisi,
+      largeurEm: saisi.trim() === '' ? 0 : largeurEnEm(saisi.trim()),
+      dejaPris: libellesDuJour(saufNumero),
+    });
+    const refus = $(refusId);
+    refus.textContent = controle.refus ?? '';
+    refus.hidden = controle.refus === null;
+    // Police absente : le champ se DÉSACTIVE, et le reste du formulaire
+    // continue de marcher. Le libellé est facultatif ; bloquer une course
+    // d'exploitation pour une police qui n'a pas chargé ferait payer un souci
+    // d'affichage à un matin de perturbation.
+    champ.disabled = !document.fonts.check(POLICE_BADGE_CHARGEMENT);
+    return controle;
+  };
+
   const rendFormulaireSup = (): void => {
     const grille = grilleDuJour();
     if (!grille) return;
@@ -1637,8 +1749,32 @@ function initCirculations(): void {
       ORDRE_GARES.indexOf(terminus) + 1,
     );
     const ordreDescente = [...ordreMontee].reverse();
-    rendCasesGaresSup('sup-gares-montee', ordreMontee, [depart, terminus]);
-    rendCasesGaresSup('sup-gares-descente', ordreDescente, [terminus, depart]);
+    // Les dessertes suivent « express », montée ET descente. La case n'existe
+    // que pour le spécial : pour un renfort, `express` est faux et rien ne
+    // bouge — ce qui est aussi ce qu'on veut, un renfort double une rotation
+    // de la grille et la dessert comme elle.
+    const expressCoche =
+      natureChoisie() === 'special' && ($('sup-express') as HTMLInputElement).checked;
+    rendCasesGaresSup(
+      'sup-gares-montee',
+      ordreMontee,
+      [depart, terminus],
+      garesPrecochees({
+        ordre: ordreMontee,
+        obligatoires: [depart, terminus],
+        express: expressCoche,
+      }),
+    );
+    rendCasesGaresSup(
+      'sup-gares-descente',
+      ordreDescente,
+      [terminus, depart],
+      garesPrecochees({
+        ordre: ordreDescente,
+        obligatoires: [terminus, depart],
+        express: expressCoche,
+      }),
+    );
 
     // Les champs suivent la nature et la forme : un champ visible et ignoré
     // est rempli de bonne foi, puis perdu sans que rien ne le dise.
@@ -1654,6 +1790,9 @@ function initCirculations(): void {
     montre('sup-champ-battement', champs.battement);
     montre('sup-champ-descente', champs.departDescente);
     montre('sup-champ-gares-descente', champs.garesDescente);
+    // Le libellé vaut pour les DEUX natures (décision du 12/09/2026) : un
+    // renfort se nomme aussi bien qu'un spécial.
+    montre('sup-champ-libelle', true);
     montre('sup-champ-commanditaire', champs.commanditaire);
     montre('sup-champ-express', champs.express);
     montre('sup-champ-velos', champs.velos);
@@ -1854,7 +1993,14 @@ function initCirculations(): void {
   // La nature change les terminus proposés : on repasse par le rendu complet.
   $('sup-nature').addEventListener('change', rendFormulaireSup);
   $('sup-forme').addEventListener('change', rendFormulaireSup);
+  // Cocher « express » décoche Voza et Bellevue, le décocher les recoche — et
+  // l'aperçu des horaires se recalcule, puisque la desserte a changé.
+  $('sup-express').addEventListener('change', rendFormulaireSup);
   $('sup-depart-descente').addEventListener('change', majApercuSup);
+  // « input » et non « change » : le refus doit suivre la frappe.
+  $('sup-libelle').addEventListener('input', () => {
+    controleLibelleSaisi();
+  });
   $('sup-depart').addEventListener('change', majApercuSup);
   $('sup-battement').addEventListener('change', majApercuSup);
   $('sup-gares-montee').addEventListener('change', majApercuSup);
@@ -1892,6 +2038,11 @@ function initCirculations(): void {
     }
     const rotation = JSON.parse(brut) as RotationSup;
     const nature = natureChoisie();
+    const libelle = controleLibelleSaisi();
+    if (libelle.refus !== null) {
+      toast(libelle.refus);
+      return;
+    }
     const commanditaire = ($('sup-commanditaire') as HTMLInputElement).value.trim();
     if (nature === 'special' && commanditaire === '') {
       toast('Indiquez le commanditaire : un train affrété roule pour quelqu’un');
@@ -1930,6 +2081,10 @@ function initCirculations(): void {
       // `anon`). Vide pour un renfort — il ne roule pour personne en
       // particulier.
       commanditaire: nature === 'special' ? commanditaire : null,
+      // Le libellé est porté par les DEUX lignes de la rotation : montée et
+      // descente sont le même train, et le voyageur doit lire le même nom des
+      // deux côtés.
+      libelle: libelle.valeur,
       passages: rotation.montee,
     };
     stageCirculation(brouillonCirc, base);
@@ -1961,6 +2116,67 @@ function initCirculations(): void {
     const numeros = rotation.descente === null ? `${numero}` : `${numero}/${numero + 1}`;
     bumpEnAttente(`${quoi} ${numeros} créé (en attente)`);
     toast(`${quoi.charAt(0).toUpperCase()}${quoi.slice(1)} créé — en attente de publication`);
+  });
+
+  // -------------------------------------------------------------------------
+  // RENOMMER une course hors grille (docs/01 §2.10, décision du 12/09/2026)
+  //
+  // Même contrôle que la création — `controleLibelle` — parce qu'une seconde
+  // règle finirait par diverger de la première, et que c'est le même badge qui
+  // doit contenir le résultat.
+  // -------------------------------------------------------------------------
+  /** Montée en cours de renommage, `null` quand le panneau est fermé. */
+  let numeroRenomme: number | null = null;
+
+  const fermeRenommage = (): void => {
+    numeroRenomme = null;
+    $('form-renommer').style.display = 'none';
+  };
+
+  const ouvreRenommage = (numero: number): void => {
+    const c = circulationDe(numero);
+    if (!c || !horsGrille(c)) return;
+    numeroRenomme = numero;
+    const champ = $('renom-libelle') as HTMLInputElement;
+    champ.value = (c.libelle ?? '').trim();
+    $('renom-titre').textContent =
+      champ.value === ''
+        ? `Nommer la course ${numero}`
+        : `Renommer « ${champ.value} » (course ${numero})`;
+    $('form-renommer').style.display = '';
+    // Le refus s'affiche d'emblée sur une valeur déjà en base qui ne tiendrait
+    // plus (police changée, libellé écrit directement en SQL).
+    controleLibelleSaisi('renom-libelle', 'renom-refus', numero);
+    champ.focus();
+  };
+
+  $('renom-libelle').addEventListener('input', () => {
+    controleLibelleSaisi('renom-libelle', 'renom-refus', numeroRenomme ?? undefined);
+  });
+  $('btn-renom-annuler').addEventListener('click', fermeRenommage);
+
+  $('btn-renom-valider').addEventListener('click', () => {
+    if (numeroRenomme === null || !jour || jour.hors_saison || jour.enregistre === false) return;
+    if (!aLeDroit(roles, 'circulations.special')) return;
+    const numero = numeroRenomme;
+    const controle = controleLibelleSaisi('renom-libelle', 'renom-refus', numero);
+    if (controle.refus !== null) {
+      toast(controle.refus);
+      return;
+    }
+    // Les DEUX lignes de la rotation : montée et descente sont le même train,
+    // et le voyageur doit lire le même nom des deux côtés.
+    for (const n of [numero, numero + 1]) {
+      const c = circulationDe(n);
+      if (!c || !horsGrille(c)) continue;
+      stageCirculation(brouillonCirc, { ...c, libelle: controle.valeur });
+    }
+    rafraichitJourEffectif();
+    rendreCirculations();
+    fermeRenommage();
+    const quoi = controle.valeur === null ? `course ${numero} sans nom` : `« ${controle.valeur} »`;
+    bumpEnAttente(`${quoi} (en attente)`);
+    toast('Nom enregistré — en attente de publication');
   });
 
   $('btn-reinitialiser').addEventListener('click', () => {
@@ -2171,10 +2387,16 @@ function initCirculations(): void {
           : 'Train facultatif désactivé, en attente de publication',
       );
       proposeAppariementFacultatif(numero, actif);
+    } else if (action === 'renommer') {
+      ouvreRenommage(numero);
     } else if (action === 'sup-supprimer') {
       const libelle = libelleTrain(
-        { numero, nature: circulationDe(numero)?.nature ?? 'supplementaire' },
-        (jour?.circulations ?? []).map((x) => ({ numero: x.numero, nature: x.nature })),
+        {
+          numero,
+          nature: circulationDe(numero)?.nature ?? 'supplementaire',
+          libelle: circulationDe(numero)?.libelle,
+        },
+        trainsPourLibelle(),
       );
       if (
         !window.confirm(
@@ -2518,6 +2740,8 @@ function retientGareCaisse(gare: GareId | null): void {
 interface LigneAffluence {
   numero: number;
   nature: NatureCirculation;
+  /** Libellé libre, pour que le guichet lise le même nom que la gare. */
+  libelle?: string | null;
   sens: Sens;
   express: boolean;
   rame: string;
@@ -2559,6 +2783,7 @@ function lignesAffluence(gare: GareId | null, maintenant_s: number): LigneAfflue
     lignes.push({
       numero: train.numero,
       nature: train.nature,
+      libelle: train.libelle,
       sens: train.sens,
       express: train.express,
       rame: train.rame,
@@ -2658,10 +2883,7 @@ function rendreAffluence(): void {
     return;
   }
 
-  const tousLesTrains = (jour.circulations ?? []).map((c) => ({
-    numero: c.numero,
-    nature: c.nature,
-  }));
+  const tousLesTrains = trainsPourLibelle();
   // `disabled` sur chaque bouton : un sélecteur qui a l'air cliquable et ne
   // fait rien est pire qu'un sélecteur éteint. Le gestionnaire refuse aussi
   // (un attribut se retire dans l'inspecteur, pas le contrôle).
@@ -2674,7 +2896,10 @@ function rendreAffluence(): void {
         const niveau = declaration?.niveau ?? null;
         // « TRAIN 9 » : le libellé CANONIQUE. « T9 » n'existe que sur
         // l'écran de gare, où la place manque — jamais en supervision.
-        const nom = libelleTrain({ numero: l.numero, nature: l.nature }, tousLesTrains);
+        const nom = libelleTrain(
+          { numero: l.numero, nature: l.nature, libelle: l.libelle },
+          tousLesTrains,
+        );
         const machine = machineDe(l.rame);
         const quand = heureSignature(declaration?.maj_le);
         const qui = declaration?.maj_par ?? '';

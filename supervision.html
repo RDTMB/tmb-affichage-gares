@@ -323,6 +323,10 @@
                   <option value="stationnement">Stationnement en haut</option>
                 </select>
               </label>
+              <label id="sup-champ-libelle"
+                >Nom affiché
+                <input type="text" id="sup-libelle" placeholder="facultatif — ex. SCOLAIRE" />
+              </label>
               <label id="sup-champ-commanditaire"
                 >Commanditaire
                 <input type="text" id="sup-commanditaire" maxlength="120" />
@@ -359,6 +363,7 @@
                 ><input type="checkbox" id="sup-velos" />vélos acceptés</label
               >
             </div>
+            <div class="avert-sup" id="sup-refus-libelle" hidden></div>
             <!-- AVERTISSEMENT NON BLOQUANT : le terminus choisi sort de la
                  section du jour, ou dépasse Bellevue. L'exploitant choisit
                  (décision du 10/09/2026) ; l'écran dit ce qu'il annoncera. -->
@@ -379,6 +384,24 @@
             <div class="ligne">
               <button class="principal leger" id="btn-sup-valider">Créer le train</button>
               <button class="leger" id="btn-sup-annuler">Annuler</button>
+            </div>
+          </div>
+          <!-- RENOMMER une course hors grille. Le même contrôle que la
+               création (controleLibelle) : une seule règle, un seul message. -->
+          <div class="carte-sup" id="form-renommer" style="display: none">
+            <h3 id="renom-titre">Nommer la course</h3>
+            <div class="ligne">
+              <label
+                >Nom affiché
+                <input type="text" id="renom-libelle" placeholder="facultatif — ex. SCOLAIRE" />
+              </label>
+              <button class="principal leger" id="btn-renom-valider">Enregistrer</button>
+              <button class="leger" id="btn-renom-annuler">Annuler</button>
+            </div>
+            <div class="avert-sup" id="renom-refus" hidden></div>
+            <div class="note">
+              Vide, le train reprend son nom d'origine (« SPÉ n » ou « SUP n »). Le nom s'affiche
+              tel quel sur le badge de l'écran de gare : il doit y tenir.
             </div>
           </div>
           <h2>

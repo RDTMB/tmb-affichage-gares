@@ -83,6 +83,12 @@ create table if not exists circulations (
   -- suppression et celle d'un retard ; un troisième sens en ferait le piège
   -- qu'a été `terminus`, déjà payé par deux correctifs.
   commanditaire text,
+  -- LIBELLÉ D'AFFICHAGE d'une course hors grille (facultatif, docs/01 §2.10).
+  -- Remplace « SPÉ n » / « SUP n » partout où le train est nommé. Il MASQUE le
+  -- numéro, il ne le remplace pas : celui-ci reste dans sa plage
+  -- (circulations_nature_numero). Contrairement à commanditaire, il
+  -- S'AFFICHE EN GARE — d'où sa présence dans le grant de anon.
+  libelle text,
   maj timestamptz not null default now(),
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
@@ -720,7 +726,7 @@ revoke all on circulations from anon;
 grant select (
   date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
   terminus, statut, retard_min, motif, sans_voyageurs, nature,
-  passages, depart_reel
+  passages, depart_reel, libelle
 ) on circulations to anon;
 grant select, insert, update, delete on circulations to authenticated;
 
@@ -1481,7 +1487,7 @@ create trigger trg_journal_circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
     'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
-    'sans_voyageurs', 'commanditaire', 'nature'
+    'sans_voyageurs', 'commanditaire', 'nature', 'libelle'
   );
 
 -- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du

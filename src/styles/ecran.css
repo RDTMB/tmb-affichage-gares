@@ -327,6 +327,33 @@ main {
   justify-content: center;
 }
 
+/* PLAFOND DE LARGEUR du texte du badge — le FILET, pas le mécanisme normal.
+   Le libellé libre (docs/01 §2.10) est saisi par l'agent : rien n'empêcherait
+   « MARIAGE MARTIN » de pousser le picto express hors de la colonne.
+
+   Mesuré le 12/09/2026 sur la ligne la plus chargée qui existe (« Nid
+   d'Aigle » + pastille « Privé » + picto) : sans plafond, un libellé de six
+   capitales larges débordait déjà de 1 px à 1280×720, et « MARIAGE 12h » de
+   30 px à 1920×1080. Avec ce plafond, la réserve avant le bord ne descend
+   JAMAIS sous 11,8 px (1280×720) ni sous 17,7 px (1920×1080) — au-dessus du
+   seuil de 10 px retenu le 10/09.
+
+   L'ellipse ne doit JAMAIS se déclencher en usage normal : la saisie refuse
+   au-delà de 4,9 em (LARGEUR_BADGE_MAX_EM), mesurée avec la police RÉELLE de
+   ce badge. Elle ne reste que pour ce que la validation n'a pas vu — un
+   libellé écrit directement en base, ou une police changée un jour.
+   src/pages/libelle-course.test.ts tient la relation entre les deux bornes.
+
+   Pas de transcription dans le bloc ≤ 4/3 : em suit la taille de police,
+   qui est déjà transcrite. */
+.badge-train > .badge-txt {
+  display: block;
+  max-width: 5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Le nom de la gare de destination occupe une LARGEUR PLANCHER, pour que la
    pastille d'affluence commence toujours au même endroit.
 
