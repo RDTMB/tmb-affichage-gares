@@ -20,7 +20,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { libelleTrain, libelleTrainCourt } from '../core/horaires';
+import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import { libelleTrain, libelleTrainCourt, passagesPourGare, trainsDuJour } from '../core/horaires';
 import {
   controleLibelle,
   formeComparable,
@@ -31,7 +32,9 @@ import {
   REFUS_POLICE,
   REFUS_TROP_LARGE,
 } from './supervision-logique';
-import type { GareId } from '../core/types';
+import type { GareId, Grille, Jour } from '../core/types';
+
+const GRAND = grandServiceJson as unknown as Grille;
 
 /** Fins de ligne normalisées : poste en CRLF, coureur d'intégration en LF. */
 function source(chemin: string): string {
@@ -390,5 +393,108 @@ describe('les secondes de l’aperçu restent', () => {
     expect(html).toContain('id="sup-depart" step="30"');
     const sup = source('src/pages/supervision.ts');
     expect(sup).toContain('type="time" step="1"');
+  });
+});
+
+// ============================================================================
+// Ce qui a survécu à la première campagne
+// ============================================================================
+describe('le libellé traverse le moteur jusqu’à l’écran', () => {
+  // Mutation survivante : retirer `libelle: train.libelle` de
+  // `passagesPourGare()` laissait la supervision et la grille du jour afficher
+  // le nom, et l'écran de gare seul revenir à « SPÉ n » — sans qu'un test ne
+  // tombe, tous regardant la Circulation et non le PassageGare.
+  const jourNomme = (libelle: string | null): Jour => ({
+    date: '2026-07-15',
+    grille_version: GRAND.version,
+    terminus_bellevue: false,
+    gare_debut: 'le-fayet',
+    gare_fin: 'nid-daigle',
+    message_troncon_fr: null,
+    message_troncon_en: null,
+    enregistre: true,
+    circulations: [
+      {
+        date: '2026-07-15',
+        numero: 201,
+        sens: 'montee',
+        express: false,
+        facultatif: false,
+        facultatif_actif: false,
+        velos: false,
+        rame: 'Marie',
+        terminus: 'nid-daigle',
+        statut: 'ok',
+        retard_min: 0,
+        motif: null,
+        sans_voyageurs: false,
+        nature: 'special',
+        libelle,
+        passages: [
+          { gare: 'le-fayet', d: '09:00:00' },
+          { gare: 'saint-gervais', a: '09:12:00', d: '09:13:00' },
+          { gare: 'nid-daigle', a: '10:03:30' },
+        ],
+      },
+    ],
+  });
+
+  it('il survit à `trainsDuJour()` PUIS à `passagesPourGare()`', () => {
+    const train = trainsDuJour(GRAND, jourNomme('SCOLAIRE')).find((t) => t.numero === 201);
+    expect(train?.libelle, 'le libellé se perd dans trainsDuJour()').toBe('SCOLAIRE');
+
+    const p = passagesPourGare(GRAND, jourNomme('SCOLAIRE'), 'saint-gervais').find(
+      (x) => x.numero === 201,
+    );
+    expect(p, 'le spécial ne passe pas à Saint-Gervais').toBeDefined();
+    expect(p?.libelle, 'le libellé se perd entre le train et le passage').toBe('SCOLAIRE');
+    // C'est cette valeur-là que le badge de l'écran de gare rend.
+    expect(
+      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille', libelle: p?.libelle }, []),
+    ).toBe('SCOLAIRE');
+  });
+
+  it('sans libellé, le passage n’en invente pas', () => {
+    const p = passagesPourGare(GRAND, jourNomme(null), 'saint-gervais').find(
+      (x) => x.numero === 201,
+    );
+    expect((p?.libelle ?? null) === null, 'un libellé est apparu').toBe(true);
+    expect(
+      libelleTrainCourt({ numero: 201, nature: 'special', libelle: p?.libelle }, [
+        { numero: 201, nature: 'special' },
+      ]),
+    ).toBe('SPÉ');
+  });
+});
+
+describe('la mesure REFUSE de mesurer sans la police', () => {
+  it('le contrôle de chargement est DANS la mesure, pas seulement sur le champ', () => {
+    // Mutation survivante : retirer le `fonts.check` de `largeurEnEm` laissait
+    // le champ se désactiver correctement, mais toute mesure faite malgré tout
+    // (au collage, au chargement d'un libellé existant) retombait sur le repli
+    // — plus étroit que Lato, donc acceptant ce que Lato déborde.
+    const sup = source('src/pages/supervision.ts');
+    const corps = /function largeurEnEm\([\s\S]*?\n}\n/.exec(sup)?.[0] ?? '';
+    expect(corps, 'largeurEnEm introuvable').not.toBe('');
+    expect(corps, 'la mesure ne contrôle pas le chargement de la police').toContain(
+      'document.fonts.check(POLICE_BADGE_CHARGEMENT)',
+    );
+    // Le contrôle passe AVANT la mesure : mesurer puis jeter serait déjà faux
+    // si quelqu'un réutilisait la valeur.
+    expect(corps.indexOf('fonts.check')).toBeLessThan(corps.indexOf('measureText'));
+    expect(corps).toContain('return null');
+  });
+});
+
+describe('renommer ne bute pas sur son propre nom', () => {
+  it('les DEUX chemins du renommage s’excluent eux-mêmes', () => {
+    // Mutation survivante : retirer `numero` d'UN des deux appels laissait
+    // l'autre satisfaire le test. L'ouverture du panneau affiche le refus,
+    // la validation le prononce — les deux doivent exclure la course.
+    const sup = source('src/pages/supervision.ts');
+    expect(
+      [...sup.matchAll(/controleLibelleSaisi\('renom-libelle', 'renom-refus', numero\)/g)],
+      'un des deux chemins de renommage ne s’exclut plus lui-même',
+    ).toHaveLength(2);
   });
 });
