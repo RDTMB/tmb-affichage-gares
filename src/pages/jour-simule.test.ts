@@ -31,9 +31,20 @@ function source(chemin: string): string {
 
 describe('`?jour=` déplace la JOURNÉE, pas l’horloge', () => {
   it('`dateISO()` suit le paramètre, au jour près', () => {
-    const source = creeSourceHeure(null, '2026-09-12');
-    expect(source.dateISO()).toBe('2026-09-12');
-    expect(source.jourSimule).toBe('2026-09-12');
+    // La date d'essai est DÉDUITE de l'horloge, pas écrite en dur. Une date
+    // fixe finit par tomber sur aujourd'hui — celle qui était ici, le
+    // 2026-09-12, l'a fait exactement trois jours après avoir été écrite, et
+    // la mutation « dateISO() ignore le paramètre » a resurvécu sans que rien
+    // ne tombe : le paramètre et la réalité donnaient le même résultat.
+    const reel = creeSourceHeure(null);
+    const [a = 0, m = 0, j = 0] = reel.dateISO().split('-').map(Number);
+    const lointain = new Date(Date.UTC(a + 1, m - 1, j)).toISOString().slice(0, 10);
+    expect(lointain, 'la date d’essai est aujourd’hui').not.toBe(reel.dateISO());
+
+    const source = creeSourceHeure(null, lointain);
+    expect(source.dateISO()).toBe(lointain);
+    expect(source.dateISO(), 'le paramètre est ignoré').not.toBe(reel.dateISO());
+    expect(source.jourSimule).toBe(lointain);
   });
 
   it('`maintenantMs()` n’est PAS décalé — c’est tout l’intérêt', () => {
