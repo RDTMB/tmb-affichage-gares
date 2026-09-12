@@ -332,13 +332,13 @@ export class SupabaseProvider implements DataProvider {
       options?.avecCommanditaire === true
         ? table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, commanditaire',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle, commanditaire',
             )
             .eq('date', date)
             .order('numero')
         : table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle',
             )
             .eq('date', date)
             .order('numero'),

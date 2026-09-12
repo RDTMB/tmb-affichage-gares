@@ -533,6 +533,7 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
       // et c'est elle qui décide du libellé (« SPÉCIAL 1 ») comme de la
       // mention « privé » sur l'écran de gare.
       nature: circulation.nature,
+      libelle: circulation.libelle,
       // Départ CONSTATÉ depuis le terminus : seule une descente de renfort
       // peut en porter un. Ce n'est pas un retard, l'écran le dit en neutre.
       departConfirme: circulation.sens === 'descente' && Boolean(circulation.depart_reel),
@@ -664,9 +665,11 @@ export function terminusReel(train: { passages?: SuiteDePassages }): GareId | nu
  * il doit rester le même partout et d'un rafraîchissement à l'autre.
  */
 export function libelleTrain(
-  train: Pick<TrainJour, 'numero' | 'nature'>,
-  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
+  train: Pick<TrainJour, 'numero' | 'nature' | 'libelle'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature' | 'libelle'>[],
 ): string {
+  const libre = libelleLibre(train);
+  if (libre !== null) return libre;
   if (!horsGrille(train)) return `TRAIN ${train.numero}`;
   const rang = rangDansSaSerie(train, tousLesTrainsDuJour);
   const mot = train.nature === 'special' ? 'SPÉCIAL' : 'TRAIN SUP';
@@ -685,9 +688,11 @@ export function libelleTrain(
  * les deux fonctions le tirent de `rangSup()`.
  */
 export function libelleTrainCourt(
-  train: Pick<TrainJour, 'numero' | 'nature'>,
-  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
+  train: Pick<TrainJour, 'numero' | 'nature' | 'libelle'>,
+  tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature' | 'libelle'>[],
 ): string {
+  const libre = libelleLibre(train);
+  if (libre !== null) return libre;
   if (!horsGrille(train)) return `T${train.numero}`;
   const rang = rangDansSaSerie(train, tousLesTrainsDuJour);
   const mot = train.nature === 'special' ? 'SPÉ' : 'SUP';
@@ -702,6 +707,25 @@ export function libelleTrainCourt(
  * L'ordre suit les NUMÉROS, pas l'ordre d'affichage : le rang doit rester le
  * même partout et d'un rafraîchissement à l'autre.
  */
+/**
+ * LIBELLÉ LIBRE utilisable, ou `null`. Facultatif (décision de l'exploitant du
+ * 12/09/2026), et rendu VERBATIM : l'agent a écrit « T17 », on affiche
+ * « T17 ». Aucun préfixe ajouté, aucun reformatage — sinon le nom qu'il a
+ * choisi ne serait plus celui qu'il lit en gare.
+ *
+ * Une chaîne vide ou blanche vaut ABSENCE : la base accepte `''` comme elle
+ * accepte `null`, et « un train nommé rien » ne serait ni lisible ni
+ * identifiable. C'est la seule normalisation, et elle ne touche pas au texte
+ * retenu.
+ *
+ * Les deux libellés, long et court, passent par ici : c'est ce qui garantit
+ * qu'il n'existe pas de TROISIÈME chemin de nommage.
+ */
+function libelleLibre(train: Pick<TrainJour, 'libelle'>): string | null {
+  const brut = (train.libelle ?? '').trim();
+  return brut === '' ? null : brut;
+}
+
 function rangDansSaSerie(
   train: Pick<TrainJour, 'numero' | 'nature'>,
   tousLesTrainsDuJour: Pick<TrainJour, 'numero' | 'nature'>[],
@@ -754,6 +778,7 @@ export function passagesPourGare(
       destination,
       terminusExceptionnel: train.terminusExceptionnel,
       nature: train.nature,
+      libelle: train.libelle,
       departConfirme: train.departConfirme,
       arrivee_s: passage.arrivee_s === null ? null : passage.arrivee_s + decalage,
       depart_s: passage.depart_s === null ? null : passage.depart_s + decalage,

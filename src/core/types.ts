@@ -256,6 +256,17 @@ export interface Circulation {
    * suppression et celle d'un retard.
    */
   commanditaire?: string | null;
+  /**
+   * LIBELLÉ D'AFFICHAGE, facultatif (docs/01 §2.10). Quand il existe, il
+   * remplace VERBATIM ce que rendent `libelleTrain()` et
+   * `libelleTrainCourt()` : l'agent a écrit « T17 », on affiche « T17 » —
+   * aucun préfixe ajouté, aucun reformatage.
+   *
+   * Il MASQUE le numéro technique, il ne le remplace pas : celui-ci reste
+   * dans sa plage (spécial ≥ 201, renfort 101–199) et continue d'apparier la
+   * montée à sa descente.
+   */
+  libelle?: string | null;
 }
 
 export interface Jour {
@@ -322,6 +333,8 @@ export interface TrainJour {
   terminusExceptionnel: boolean;
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
+  /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
+  libelle?: string | null;
   /**
    * Descente supplémentaire dont le départ du terminus a été CONSTATÉ : ses
    * heures ne sont plus une estimation. Ce n'est PAS un retard — l'écran le
@@ -348,6 +361,8 @@ export interface PassageGare {
   terminusExceptionnel: boolean;
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
+  /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
+  libelle?: string | null;
   /** Descente supplémentaire au départ CONSTATÉ (mention neutre, jamais « retard »). */
   departConfirme: boolean;
   /** Heures réelles (retard inclus) ; un supprimé garde ses heures théoriques (affichées barrées). */

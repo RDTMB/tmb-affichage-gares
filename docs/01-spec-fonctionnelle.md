@@ -433,6 +433,13 @@ tait pas : si le terminus sort de la section du jour, ou dépasse Bellevue un
 jour de bascule, un **avertissement non bloquant** dit ce que l'écran
 annoncera (« Ligne fermée » au-delà, ou signalement « à traiter »).
 
+**Les dessertes suivent « express »** (décision du 12/09/2026) : cocher la case
+décoche Col de Voza et Bellevue — c'est la définition d'un express sur cette
+ligne — et la décocher les recoche, sur la montée comme sur la descente. Les
+cases restent MODIFIABLES : c'est une aide à la saisie, pas une barrière, et
+l'agent peut recocher Bellevue sur un express. Une gare de terminus l'emporte
+toujours : une course qui finit à Bellevue y va, express ou non.
+
 **Réglages gardés** : rame imposée, express, vélos. **Facultatif retiré** — un
 train affrété qu'on n'activerait pas n'a pas de sens. Un spécial reste soumis
 à `sans_voyageurs` : une course à vide ne s'affiche nulle part, spéciale ou
@@ -466,6 +473,64 @@ débordement à 1920×1080, qui tronqueraient le nom de la gare.
 _(Décisions de l'exploitant du 10/09/2026 ; mise en œuvre du 11/09/2026.
 Migrations `2026-09-train-special-A.sql` puis `-B.sql`, à jouer de part et
 d'autre du déploiement du front.)_
+
+### 2.10 Libellé libre d'une course hors grille (`circulations.libelle`)
+
+Un train spécial ou un renfort peut porter un **nom d'affichage** choisi par
+l'agent — « SCOLAIRE », « NAVETTE », « T17 » — à la place de « SPÉ n » ou
+« SUP n ».
+
+**FACULTATIF.** Sans libellé, le badge affiche « SPÉ n » / « SUP n » comme
+avant : rien ne change pour qui n'en veut pas.
+
+**VERBATIM.** Quand il existe, il remplace mot pour mot ce que rendent
+`libelleTrain()` et `libelleTrainCourt()` — en supervision, sur la grille du
+jour et sur le badge de l'écran de gare. Aucun préfixe ajouté, aucun
+reformatage : l'agent a écrit « T17 », la gare affiche « T17 ». Sinon le nom
+qu'il a choisi ne serait pas celui qu'il lit. Les deux fonctions restent les
+seules sources du nom ; il n'existe pas de troisième chemin.
+
+**Il MASQUE le numéro, il ne le remplace pas.** Le numéro technique reste dans
+sa plage (spécial ≥ 201, renfort 101–199, contrainte `circulations_nature_numero`)
+et continue d'apparier la montée à sa descente. Les deux lignes d'une rotation
+portent le même libellé : c'est le même train, et le voyageur doit lire le même
+nom des deux côtés.
+
+**Une borne en LARGEUR, pas en caractères.** Le badge de l'écran de gare est
+étroit, et la largeur dépend des glyphes : « MARIAGE » et « 12345678 » ont huit
+caractères et pas la même largeur. Mesuré le 12/09/2026 sur la ligne la plus
+chargée (« Nid d'Aigle » + pastille « Privé » + picto express), six capitales
+larges débordaient là où neuf chiffres tenaient. La saisie mesure donc le texte
+avec la **police réelle du badge** et refuse au-delà de **4,9 em** ; la CSS
+plafonne à 5 em avec ellipse, en **filet** — l'ellipse ne doit jamais se
+déclencher sur un libellé accepté, un badge tronqué étant un identifiant à
+moitié affiché.
+
+_(Deux « MARIAGE MARTIN » et « MARIAGE DUPONT » tronqués s'afficheraient
+identiques : le badge ne remplirait plus sa seule fonction, distinguer un train
+d'un autre.)_
+
+**La police doit être chargée.** Un repli n'est pas une approximation : Arial
+rend « WWWWII » plus **étroit** que Lato, donc une mesure tombée sur le repli
+accepterait un libellé que Lato déborde. Si la police manque, c'est le
+**libellé** qui est refusé — jamais la création du train. Le libellé est
+facultatif, et bloquer une course d'exploitation pour un souci d'affichage se
+produirait un matin de perturbation, au pire moment.
+
+**UNIQUE dans la journée.** Deux trains du même jour ne peuvent pas porter le
+même nom, comparaison faite sur la forme **courte** (celle du badge), sans
+tenir compte de la casse ni des espaces de bord : « t17 » et « T17 » sont le
+même nom. La comparaison couvre la journée **entière** — y compris les
+facultatifs non activés et les courses à vide, sans quoi un libellé jugé unique
+entrerait en collision le jour où l'exploitant active le facultatif.
+
+**Modifiable après création**, dans la ligne de la course (bouton « Nommer » /
+« Renommer »), avec la même validation. Vidé, le train reprend « SPÉ n ».
+
+_(Décision de l'exploitant du 12/09/2026. Migration
+`2026-09-libelle-course.sql`, ADDITIVE — elle n'enlève rien — à passer en
+production AVANT la fusion : le front demande `libelle` nommément et PostgREST
+refuse la requête entière si la colonne manque.)_
 
 ## 3. Écran de gare (`ecran.html`)
 
