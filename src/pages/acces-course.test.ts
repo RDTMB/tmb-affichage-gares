@@ -234,6 +234,26 @@ describe('aucun spécial ne part avec un accès que personne n’a décidé', ()
     expect(corps, 'un repli a été introduit').not.toMatch(/\?\?\s*'public'/);
   });
 
+  it('le champ est RÉELLEMENT montré — sans lui, le refus devient un blocage', () => {
+    // Survivante de la campagne du 12/09 : remplacer `champs.acces` par
+    // `false` dans l'appel à `montre()` ne faisait rougir personne. Le champ
+    // disparaissait, l'agent ne pouvait plus choisir, et la validation
+    // refusait indéfiniment un train qu'aucun geste ne permettait de créer.
+    // Un choix obligatoire dont le champ est caché n'est pas une exigence,
+    // c'est une impasse.
+    expect(ts).toContain("montre('sup-champ-acces', champs.acces);");
+    // La famille entière : chaque champ du formulaire suit `champs.*` et non
+    // une constante. C'est la même mutation, sur n'importe lequel d'entre eux.
+    const appels = [...ts.matchAll(/montre\('sup-champ-([\w-]+)', ([^)]+)\)/g)];
+    expect(appels.length, 'les appels à montre() sont introuvables').toBeGreaterThan(4);
+    for (const [, champ, valeur] of appels) {
+      // `sup-champ-libelle` est le seul à `true` assumé : le libellé vaut
+      // pour les deux natures (décision du 12/09/2026).
+      if (champ === 'libelle') continue;
+      expect(valeur, `sup-champ-${champ} : figé à « ${valeur} »`).toMatch(/^champs\./);
+    }
+  });
+
   it('un RENFORT ne se voit pas proposer le choix : il est créé pour vendre', () => {
     expect(champsFormulaireCourse('special', 'rotation').acces).toBe(true);
     expect(champsFormulaireCourse('supplementaire', 'rotation').acces).toBe(false);
@@ -351,6 +371,27 @@ describe('qui peut privatiser une course, et ce qu’il ne gagne pas d’autre',
     ]) {
       expect(recette, `recette : « ${attendu} » absent`).toContain(attendu);
     }
+  });
+
+  it('le refus est calculé UNE fois, et sert au rendu COMME à l’écriture', () => {
+    // Deux survivantes de la campagne du 12/09, et c'est la même : retirer la
+    // garde de `changeAcces`, ou celle du sélecteur, ne faisait rougir
+    // personne. La base refuse dans les deux cas — mais `disabled` se retire
+    // dans l'inspecteur, et la caisse recevrait alors un « permission denied »
+    // brut de PostgREST là où une phrase dit quoi faire. C'est exactement la
+    // règle déjà posée pour l'affluence (`saisieAffluence`, docs/01 §2.8) :
+    // un seul calcul, deux usages.
+    const ts = source('src/pages/supervision.ts');
+    const ecriture = /async function changeAcces\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(ecriture, 'changeAcces introuvable').not.toBe('');
+    expect(ecriture, 'l’écriture ne vérifie plus le droit').toContain('if (!peutChangerAcces())');
+    expect(ts, 'le sélecteur ne verrouille plus sur le droit').toContain(
+      "const verrouAcces = lectureSeule || !peutChangerAcces() ? ' disabled' : '';",
+    );
+    // …et le prédicat lit bien le droit du lot, pas un autre.
+    const predicat = /function peutChangerAcces\(\)[\s\S]*?\n}/.exec(ts)?.[0] ?? '';
+    expect(predicat, 'peutChangerAcces introuvable').not.toBe('');
+    expect(predicat).toContain("aLeDroit(roles, 'circulations.acces')");
   });
 
   it('le mock REJOUE le refus, il ne l’invente pas', () => {
@@ -555,6 +596,28 @@ describe('`acces` voyage jusqu’au guichet et jusqu’à l’écran', () => {
       expect(bloc, `${fichier} : déclencheur introuvable`).not.toBe('');
       expect(bloc, `${fichier} : « acces » n’est pas surveillée`).toContain("'acces'");
     }
+  });
+
+  it('la contrainte des TROIS ÉTATS est la même dans les deux copies', () => {
+    // Survivante de la campagne du 12/09 : remplacer le `check (acces in …)`
+    // de `schema.sql` par un `check (acces is not null)` ne faisait rougir
+    // personne. La base d'une installation neuve aurait alors accepté
+    // « gratuit », et le front serait retombé sur `public` sans rien dire —
+    // une course affrétée vendue au guichet.
+    //
+    // Les deux copies doivent rester identiques, comme pour les contraintes
+    // de forme de `params` (src/data/securite.test.ts).
+    const etats = /check \(acces in \(([^)]*)\)\)/;
+    const lues = ['supabase/schema.sql', 'supabase/migrations/2026-09-acces-course.sql'].map(
+      (f) => etats.exec(source(f))?.[1]?.replace(/\s+/g, ' ').trim() ?? '',
+    );
+    for (const [i, v] of lues.entries()) {
+      expect(v, `copie ${i} : contrainte des trois états absente`).not.toBe('');
+    }
+    expect(lues[0], 'les deux copies divergent').toBe(lues[1]);
+    // …et ce sont bien les trois états du type, ni un de plus ni un de moins.
+    const declares = (lues[0] ?? '').split(',').map((s) => s.trim().replace(/'/g, ''));
+    expect([...declares].sort()).toEqual([...ACCES_COURSE].sort());
   });
 
   it('la migration REPREND les spéciaux déjà en base', () => {
