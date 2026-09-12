@@ -1403,10 +1403,18 @@ tr.paire-fin td {
    une alerte et volait la priorité à la seule action de la page.
    Réduit à un ÉCHANTILLON : plafonné en largeur, plus court, texte à la
    taille du bandeau réel. */
+/* MODÈLE RÉDUIT de l'écran de gare LE PLUS ÉTROIT, à l'échelle exacte :
+   30,9 em de large (`BUDGET_BANDEAU_MIN_EM`, mesuré — voir affichage-commun.ts)
+   pour une police de 12 px, soit 370,8 px. La largeur n'est donc PAS un choix
+   de maquette : c'est elle qui fait que `debordeBandeau()`, appelé ici sur
+   l'aperçu, rend le même verdict qu'en gare. La changer sans changer la
+   constante ferait mentir l'aperçu — `bandeau-alterne.test.ts` compare les deux.
+   Elle ne se rétracte pas non plus sous la pression du flex (`flex: 0 0 auto`) :
+   un aperçu rétréci annoncerait « défilera » pour un message qui tient. */
 .apercu-ticker {
-  flex: 0 1 420px;
-  min-width: 200px;
-  max-width: 420px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  width: 30.9em;
   overflow: hidden;
   background: var(--rouge);
   color: #fff;
@@ -1416,19 +1424,57 @@ tr.paire-fin td {
   align-items: center;
 }
 
+/* Hors champ mais RENDUE : `display: none` donnerait scrollWidth = 0 et la
+   sonde répondrait « ça tient » pour n'importe quelle longueur. */
+.sonde-ticker {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  visibility: hidden;
+}
+
 .apercu-ticker-inner {
   display: inline-block;
   white-space: nowrap;
   font-weight: 700;
-  font-size: 12px;
   padding-left: 100%;
   animation: apercu-defile 20s linear infinite;
+}
+
+/* Mêmes règles typographiques qu'en gare : l'anglais en 400 face au français
+   en 700. Elles ne sont pas décoratives — deux graisses, deux largeurs, et
+   c'est le rendu qui sert d'oracle. */
+.apercu-ticker-inner .sep {
+  opacity: 0.55;
+  margin: 0 0.7em;
+}
+
+.apercu-ticker-inner .en {
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+/* Message important qui TIENT : immobile, exactement comme sur l'écran. */
+.apercu-ticker-inner.fixe {
+  animation: none;
+  padding-left: 0.7em;
 }
 
 @keyframes apercu-defile {
   to {
     transform: translateX(-100%);
   }
+}
+
+/* Verdict de largeur affiché sous le champ du message (information, jamais
+   refus : la saisie reste entièrement ouverte). */
+.msg-largeur {
+  font-size: 12px;
+  color: var(--sec);
+}
+
+.msg-largeur.tient {
+  color: var(--ok);
 }
 
 /* Bibliothèque de messages */

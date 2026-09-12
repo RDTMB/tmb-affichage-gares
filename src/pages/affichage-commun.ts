@@ -1,7 +1,7 @@
 // Éléments d'affichage partagés entre l'écran de gare et la grille du jour :
 // échappement HTML, pied de page (messages défilants + météo sommet).
 import type { Affluence, GareId, Grille, Message, Params, PassageGare } from '../core/types';
-import { dureeDefilementS, vitesseTickerValide } from '../core/ticker';
+import { dureeDefilementS, VITESSE_TICKER_DEFAUT, vitesseTickerValide } from '../core/ticker';
 
 // ---------------------------------------------------------------------------
 // Affluence — la jointure (date, numéro), hors du moteur horaires
@@ -88,6 +88,18 @@ export function anneauSur(v: string | null | undefined): string | null {
 }
 
 /**
+ * Le message est-il diffusable À CET INSTANT, indépendamment de toute gare ?
+ *
+ * Extrait de `messagesVisibles()` pour l'aperçu de la supervision, qui n'a pas
+ * de gare : il montrait jusqu'ici les messages `actif` SANS regarder leur
+ * expiration, et annonçait donc un message que plus aucun écran ne portait.
+ */
+export function messageEnCours(m: Message, maintenantMs: number): boolean {
+  if (!m.actif) return false;
+  return !(m.expire_at && new Date(m.expire_at).getTime() < maintenantMs);
+}
+
+/**
  * Messages visibles pour une gare (cible toutes / gares / train encore
  * desservi, non expirés à l'heure simulable). `gare` null (grille sans
  * paramètre) : seuls les messages « toutes » s'affichent.
@@ -99,8 +111,7 @@ export function messagesVisibles(
   maintenantMs: number,
 ): Message[] {
   return messages.filter((m) => {
-    if (!m.actif) return false;
-    if (m.expire_at && new Date(m.expire_at).getTime() < maintenantMs) return false;
+    if (!messageEnCours(m, maintenantMs)) return false;
     if (m.cible_type === 'gares') return gare !== null && (m.gares ?? []).includes(gare);
     if (m.cible_type === 'train') {
       return gare !== null && passagesRestants.some((p) => p.numero === m.train_numero);
@@ -110,11 +121,23 @@ export function messagesVisibles(
 }
 
 /**
+ * Ce dont le bandeau a besoin pour composer une ligne : les deux textes, rien
+ * d'autre. La supervision mesure la largeur d'un message EN COURS DE SAISIE,
+ * qui n'est pas encore un `Message` (ni id, ni cible, ni priorité) — c'est le
+ * TYPE qui s'ouvre à ce qu'il lit vraiment, pas l'appelant qui forge une
+ * coquille de `Message` pour satisfaire une signature trop large.
+ */
+export interface TexteBilingue {
+  texte_fr: string;
+  texte_en: string;
+}
+
+/**
  * Contenu du bandeau : « FR • EN » quand la traduction existe, français SEUL
  * sinon — pas de séparateur « • » orphelin ni de bloc anglais vide (la
  * traduction indisponible ne doit jamais produire de faux anglais).
  */
-export function contenuTicker(affiches: Message[]): string {
+export function contenuTicker(affiches: readonly TexteBilingue[]): string {
   return affiches
     .map((m) => {
       const en = m.texte_en.trim();
@@ -124,57 +147,317 @@ export function contenuTicker(affiches: Message[]): string {
     .join('<span class="sep">◆</span>');
 }
 
+// ---------------------------------------------------------------------------
+// Bandeau ALTERNÉ : l'important, puis les autres (docs/01 §2.11)
+// ---------------------------------------------------------------------------
+
 /**
- * Bandeau de messages : défilement lent FR • EN (priorité « importante » =
- * bandeau fixe). Reconstruit uniquement quand le contenu change, pour ne pas
- * réinitialiser l'animation CSS à chaque seconde.
+ * Largeur réellement offerte au bandeau, à cet instant, en pixels.
+ *
+ * Elle se LIT sur le parent, jamais sur une constante : elle dépend du pavé
+ * météo, qui varie (la température fait un ou trois caractères, le nom du ciel
+ * change), et de la résolution de l'écran.
+ */
+export function largeurBandeau(element: HTMLElement): number {
+  return element.parentElement?.clientWidth ?? 0;
+}
+
+/**
+ * LE contenu posé dans `element` déborde-t-il de la place offerte ?
+ *
+ * SEUL ORACLE de « ça tient » dans tout le projet — les écrans de gare, la
+ * grille du jour et l'aperçu de la supervision l'appellent tous les trois. Un
+ * second oracle (un modèle au canevas, par exemple) serait faux par
+ * construction : le texte du bandeau mêle deux graisses — le français en 700,
+ * l'anglais en 400 — et une mesure à police unique se tromperait là où le
+ * navigateur, lui, a déjà tout mis en page.
+ *
+ * `scrollWidth` inclut le rembourrage ; on le retire pour ne comparer que le
+ * texte. Sans cela, le `padding-left: 100vw` du mode défilant ferait conclure
+ * « déborde » pour n'importe quel texte, même vide.
+ *
+ * LARGEUR NON MESURABLE (élément dans un onglet masqué, feuille de style pas
+ * encore là) : on répond « déborde ». L'inverse — répondre « ça tient » à une
+ * largeur de zéro — accorderait le mode immobile à N'IMPORTE QUELLE longueur,
+ * et c'est exactement la troncature silencieuse que ce lot supprime. Le doute
+ * doit faire DÉFILER, jamais figer.
+ */
+export function debordeBandeau(element: HTMLElement): boolean {
+  const large = largeurBandeau(element);
+  if (large <= 0) return true;
+  const rembourrage = parseFloat(getComputedStyle(element).paddingLeft) || 0;
+  return element.scrollWidth - rembourrage > large;
+}
+
+/**
+ * Place offerte au bandeau sur l'écran de gare LE PLUS ÉTROIT, en em de sa
+ * propre police. Mesurée au navigateur le 12/09/2026 sur `ecran.html` :
+ *
+ * | Écran       | Rapport | Bandeau  | Police   | Budget     |
+ * | ----------- | ------- | -------- | -------- | ---------- |
+ * | 1920 × 1080 | 16/9    | 1424 px  | 31,32 px | 45,47 em   |
+ * | 1366 × 768  | 16/9    | 1013 px  | 22,27 px | 45,48 em   |
+ * | 1280 × 1024 | 5/4     |  862 px  | 27,84 px | 30,96 em   |
+ * | 1024 × 768  | 4/3     |  689 px  | 22,27 px | **30,94 em** |
+ * |  800 × 600  | 4/3     |  539 px  | 17,40 px | 30,98 em   |
+ *
+ * Deux régimes seulement, et chacun INVARIANT par résolution : c'est le bloc
+ * de transcription `--u` de `ecran.css` (≤ 4/3) qui fait la marche. On retient
+ * 30,9 em, arrondi VERS LE BAS du minimum mesuré — l'arrondi doit se tromper
+ * dans le sens qui annonce « défilera » à tort, jamais « tient » à tort.
+ *
+ * Sert à la supervision, qui n'a aucun écran de gare sous la main : son aperçu
+ * est un MODÈLE RÉDUIT à cette échelle (`.apercu-ticker`, supervision.css), ce
+ * qui lui permet d'appeler le même `debordeBandeau()` et d'obtenir le même
+ * verdict que l'écran le plus étroit. Verrouillé par `bandeau-alterne.test.ts`.
+ */
+export const BUDGET_BANDEAU_MIN_EM = 30.9;
+
+/** Un créneau du cycle du bandeau. */
+export interface PhaseBandeau {
+  /** Messages de ce créneau, dans l'ordre. */
+  messages: Message[];
+  /** `important` = un message prioritaire seul ; `normaux` = tous les autres. */
+  nature: 'important' | 'normaux';
+  /**
+   * Part du cycle. DEUX pour un créneau important, UNE pour les normaux :
+   * c'est la règle des deux tiers / un tiers, décidée par l'exploitant le
+   * 09/09/2026. Elle est définie PAR MESSAGE IMPORTANT, pas globalement —
+   * voir `cycleBandeau()`.
+   */
+  parts: number;
+}
+
+/**
+ * Composition du cycle du bandeau.
+ *
+ * DÉFAUT CORRIGÉ (relevé par l'exploitant le 09/09/2026) : un seul message
+ * « importante » faisait DISPARAÎTRE tous les autres du bandeau —
+ * `importantes.length > 0 ? importantes : visibles` les écartait purement et
+ * simplement. Un avis posé le matin effaçait donc l'information sur les vélos
+ * jusqu'à ce que quelqu'un pense à le désactiver.
+ *
+ * Le bandeau ALTERNE désormais : chaque message important occupe seul toute la
+ * largeur pendant deux parts, les messages normaux défilent pendant une part,
+ * puis on recommence. Rien n'est perdu, et l'urgent revient toutes les
+ * quelques secondes au lieu d'une fois par minute.
+ *
+ * PLUSIEURS IMPORTANTS : chacun reçoit son propre créneau de deux parts, et le
+ * cycle s'ALLONGE. On ne partage pas un créneau unique entre eux — un message
+ * d'urgence lu à moitié ne sert à rien, et diviser le temps par cinq
+ * reviendrait à ne montrer aucun des cinq. On ne plafonne pas non plus leur
+ * nombre : faire disparaître le cinquième serait recréer exactement le défaut
+ * qu'on répare. La conséquence — les messages normaux reviennent moins souvent
+ * — est le coût VISIBLE d'un abus de la priorité, et c'est ce qui le rend
+ * corrigible par l'exploitation plutôt que caché par le code.
+ *
+ * PURE : c'est elle qui garantit que la supervision et les écrans montrent le
+ * même cycle (l'aperçu de la supervision l'appelle aussi).
+ */
+export function cycleBandeau(visibles: Message[]): PhaseBandeau[] {
+  const importants = visibles.filter((m) => m.priorite === 'importante');
+  const normaux = visibles.filter((m) => m.priorite !== 'importante');
+  if (importants.length === 0) {
+    // Comportement d'avant, inchangé : un seul créneau qui défile.
+    return normaux.length === 0 ? [] : [{ messages: normaux, nature: 'normaux', parts: 1 }];
+  }
+  const phases: PhaseBandeau[] = importants.map((m) => ({
+    messages: [m],
+    nature: 'important' as const,
+    parts: 2,
+  }));
+  if (normaux.length > 0) phases.push({ messages: normaux, nature: 'normaux', parts: 1 });
+  return phases;
+}
+
+/**
+ * Signature du CONTENU du cycle — jamais de la phase en cours.
+ *
+ * Le bandeau est rafraîchi toutes les secondes : si la signature changeait au
+ * fil du cycle, celui-ci redémarrerait à chaque seconde et ne montrerait
+ * jamais que son premier créneau. C'est le piège concret de ce lot.
+ */
+export function signatureCycle(phases: readonly PhaseBandeau[]): string {
+  return phases
+    .map(
+      (p) =>
+        `${p.nature}:${p.parts}:` +
+        p.messages.map((m) => `§${m.id}§${m.texte_fr}§${m.texte_en}`).join(''),
+    )
+    .join('||');
+}
+
+/**
+ * Durée d'un créneau, en secondes.
+ *
+ * L'UNITÉ DU CYCLE EST UN PASSAGE COMPLET, jamais une durée arbitraire : un
+ * créneau qui s'arrêterait au milieu de la course d'un message le couperait,
+ * et ce serait le même défaut que celui qu'on répare, déplacé d'un cran. La
+ * durée suit donc la vitesse paramétrée (`vitesse_ticker_px_s`) par
+ * l'intermédiaire de `dureeDefilementS()`.
+ *
+ *  - créneau NORMAUX : exactement un passage ;
+ *  - créneau IMPORTANT immobile : deux passages des normaux — c'est la règle
+ *    des deux tiers, et le message ne bouge pas, donc rien à terminer ;
+ *  - créneau IMPORTANT qui DÉFILE : le nombre ENTIER de ses propres passages
+ *    qui atteint ou dépasse deux passages des normaux. Jamais coupé, et
+ *    toujours au moins aussi long que sa part.
+ *  - aucun message normal : il n'y a rien à alterner, mais les importants
+ *    tournent entre eux — deux passages du créneau lui-même.
+ */
+export function dureePhaseS(e: {
+  nature: 'important' | 'normaux';
+  /** Durée d'UN passage complet du contenu de cette phase. */
+  passageS: number;
+  /** Durée d'un passage complet du contenu NORMAL, `null` s'il n'y en a pas. */
+  passageNormauxS: number | null;
+  /** Cette phase défile-t-elle (le texte déborde) ? */
+  defile: boolean;
+}): number {
+  if (e.nature === 'normaux') return e.passageS;
+  const cible = 2 * (e.passageNormauxS ?? e.passageS);
+  if (!e.defile) return cible;
+  // ARRONDI AU PLUS PROCHE, pas au supérieur : mesuré le 15/09, un message
+  // important de 56,2 s par passage contre 30 s pour les normaux donnait, en
+  // arrondissant au supérieur, deux passages soit 112 s — 79 % du cycle au
+  // lieu des deux tiers décidés. Au plus proche, un passage suffit et le
+  // partage retombe à 65 / 35. Le plancher d'UN passage garantit qu'un
+  // message n'est jamais coupé en route, ce qui reste la règle intouchable.
+  const passages = Math.max(1, Math.round(cible / Math.max(e.passageS, 0.001)));
+  return passages * e.passageS;
+}
+
+/**
+ * Bandeau de messages : le cycle ALTERNÉ (docs/01 §2.11).
+ *
+ * Reconstruit uniquement quand le CONTENU change — jamais au fil du cycle —
+ * pour ne pas réinitialiser l'animation à chaque seconde. Un cycle relancé
+ * toutes les secondes ne montrerait jamais que son premier créneau.
+ *
+ * La décision « immobile ou défile » est prise SUR LE RENDU, pas sur un
+ * modèle : on compare la largeur réelle du contenu à celle réellement offerte
+ * par le bandeau. Cette largeur dépend du pavé météo, qui varie (la
+ * température fait un ou trois caractères, le nom du ciel change) — une
+ * constante mentirait. Et le texte mêle deux graisses (le français en 700,
+ * l'anglais en 400) : un modèle au canevas, avec une seule police, se
+ * tromperait là où le navigateur, lui, a déjà tout mis en page.
  */
 export function creeTicker(
   element: HTMLElement,
 ): (visibles: Message[], vitessePxS?: unknown) => void {
   let derniereSignature: string | null = null;
-  let derniereVitesse: number | null = null;
-  let fixe = false;
+  let derniereVitesse = VITESSE_TICKER_DEFAUT;
+  let phases: PhaseBandeau[] = [];
+  let indexPhase = 0;
+  let minuterie: ReturnType<typeof setTimeout> | null = null;
 
-  /** Durée d'animation recalculée d'après la largeur RÉELLE du contenu. */
-  const ajusteDuree = (vitesse: number): void => {
-    if (fixe) {
-      element.style.animationDuration = '';
-      return;
-    }
-    element.style.animationDuration = `${dureeDefilementS(element.offsetWidth, vitesse)}s`;
+  /** Largeur réellement offerte au bandeau, à cet instant. */
+  const largeurDisponible = (): number => largeurBandeau(element);
+
+  /** Le contenu POSÉ déborde-t-il ? Oracle UNIQUE — voir `debordeBandeau()`. */
+  const deborde = (): boolean => debordeBandeau(element);
+
+  /** Durée d'UN passage complet du contenu posé, à la vitesse en vigueur. */
+  const passageS = (defile: boolean): number =>
+    defile
+      ? // Le défilement translate l'élément de sa PROPRE largeur
+        // (`translateX(-100%)`), rembourrage compris : c'est donc elle, la
+        // distance parcourue.
+        dureeDefilementS(element.offsetWidth, derniereVitesse)
+      : // Immobile : le temps qu'il METTRAIT à traverser. Il suit la même
+        // vitesse de lecture, donc le même réglage d'exploitation.
+        dureeDefilementS(element.scrollWidth + largeurDisponible(), derniereVitesse);
+
+  /** Pose une phase et rend la durée de son créneau. */
+  const poseLaPhase = (phase: PhaseBandeau, passageNormauxS: number | null): number => {
+    element.classList.remove('fixe');
+    element.innerHTML = contenuTicker(phase.messages);
+    // AUCUNE TRONCATURE SILENCIEUSE : le mode immobile n'est accordé qu'à ce
+    // qui tient. Un message d'urgence à moitié affiché est pire qu'absent — le
+    // voyageur lit « Circulation interrompue entre Voza et » et croit savoir.
+    const immobile = phase.nature === 'important' && !deborde();
+    element.classList.toggle('fixe', immobile);
+    const duree = passageS(!immobile);
+    element.style.animationDuration = immobile ? '' : `${duree}s`;
+    return dureePhaseS({
+      nature: phase.nature,
+      passageS: duree,
+      passageNormauxS,
+      defile: !immobile,
+    });
+  };
+
+  /**
+   * Durée d'un passage des messages NORMAUX — l'unité du cycle. Mesurée en
+   * posant leur contenu hors écran : le créneau des importants vaut deux fois
+   * celui-là (règle des deux tiers), et il faut donc le connaître avant de
+   * poser la première phase.
+   */
+  const mesurePassageNormaux = (): number | null => {
+    const normaux = phases.find((p) => p.nature === 'normaux');
+    if (!normaux) return null;
+    const etatClasse = element.className;
+    const etatHtml = element.innerHTML;
+    element.classList.remove('fixe');
+    element.innerHTML = contenuTicker(normaux.messages);
+    const mesure = dureeDefilementS(element.offsetWidth, derniereVitesse);
+    element.className = etatClasse;
+    element.innerHTML = etatHtml;
+    return mesure;
+  };
+
+  const avance = (): void => {
+    if (phases.length === 0) return;
+    const phase = phases[indexPhase % phases.length];
+    if (!phase) return;
+    const duree = poseLaPhase(phase, mesurePassageNormaux());
+    // UN SEUL créneau : rien à alterner, donc aucune minuterie — le bandeau
+    // se comporte exactement comme avant ce lot.
+    if (phases.length < 2) return;
+    minuterie = setTimeout(() => {
+      indexPhase = (indexPhase + 1) % phases.length;
+      avance();
+    }, duree * 1000);
   };
 
   // Les polices arrivent après le premier rendu : la largeur change, donc la
   // durée doit être recalculée (sinon la vitesse serait fausse au démarrage).
   if (typeof ResizeObserver !== 'undefined') {
     new ResizeObserver(() => {
-      if (derniereVitesse !== null) ajusteDuree(derniereVitesse);
+      if (derniereSignature !== null && !element.classList.contains('fixe')) {
+        element.style.animationDuration = `${dureeDefilementS(element.offsetWidth, derniereVitesse)}s`;
+      }
     }).observe(element);
   }
 
   return (visibles, vitessePxS) => {
     const vitesse = vitesseTickerValide(vitessePxS);
-    const importantes = visibles.filter((m) => m.priorite === 'importante');
-    const affiches = importantes.length > 0 ? importantes : visibles;
-    const signature =
-      (importantes.length > 0 ? 'fixe' : 'defile') +
-      affiches.map((m) => `§${m.id}§${m.texte_fr}§${m.texte_en}`).join('');
+    const prochaines = cycleBandeau(visibles);
+    const signature = signatureCycle(prochaines);
 
     if (signature !== derniereSignature) {
       derniereSignature = signature;
-      fixe = importantes.length > 0;
-      element.classList.toggle('fixe', fixe);
-      element.innerHTML = contenuTicker(affiches);
       derniereVitesse = vitesse;
-      ajusteDuree(vitesse);
+      phases = prochaines;
+      indexPhase = 0;
+      if (minuterie !== null) clearTimeout(minuterie);
+      minuterie = null;
+      if (phases.length === 0) {
+        element.classList.remove('fixe');
+        element.innerHTML = '';
+        return;
+      }
+      avance();
       return;
     }
     // Contenu inchangé : la vitesse peut avoir été modifiée en supervision
-    // (prise en compte sans rechargement de l'écran).
+    // (prise en compte sans rechargement de l'écran). Le cycle, lui, NE
+    // REDÉMARRE PAS — c'est tout l'objet de la signature.
     if (vitesse !== derniereVitesse) {
       derniereVitesse = vitesse;
-      ajusteDuree(vitesse);
+      if (!element.classList.contains('fixe')) {
+        element.style.animationDuration = `${dureeDefilementS(element.offsetWidth, vitesse)}s`;
+      }
     }
   };
 }
