@@ -476,6 +476,52 @@ begin
     raise notice 'OK — definir_acces refuse un accès hors des trois états';
   end;
 
+  -- -----------------------------------------------------------------------
+  -- LE COMMANDITAIRE NE S'EFFACE PAS PAR OMISSION (relecture du 12/09/2026)
+  -- -----------------------------------------------------------------------
+  -- La fonction écrit DEUX colonnes. Tant que `p_commanditaire` portait
+  -- `default null`, un appel à trois arguments réussissait et effaçait la
+  -- seconde — sans erreur, sans trace lisible, et sans que rien ne le montre
+  -- avant le jour où l'on chercherait qui avait affrété la course.
+  --
+  -- (a) La valeur transmise est CONSERVÉE.
+  perform public.definir_acces('2099-12-31', 11, 'prive', 'Comité d''entreprise');
+  if (select commanditaire from public.circulations where date = '2099-12-31' and numero = 11)
+     = 'Comité d''entreprise'
+  then raise notice 'OK — le commanditaire transmis est conservé';
+  else raise exception 'ÉCHEC — definir_acces a effacé le commanditaire qu''on lui a passé'; end if;
+
+  -- (b) Changer l'accès en REPASSANT le commanditaire courant ne le perd pas.
+  perform public.definir_acces('2099-12-31', 11, 'mixte',
+    (select commanditaire from public.circulations where date = '2099-12-31' and numero = 11));
+  if (select commanditaire from public.circulations where date = '2099-12-31' and numero = 11)
+     = 'Comité d''entreprise'
+  then raise notice 'OK — changer l''accès laisse le commanditaire intact';
+  else raise exception 'ÉCHEC — definir_acces a effacé le commanditaire en changeant l''accès'; end if;
+
+  -- (c) …et l'EFFACEMENT VOULU reste possible : un train qui cesse d'être
+  --     affrété doit pouvoir perdre son commanditaire. On ne remplace pas une
+  --     perte silencieuse par une valeur ineffaçable — une trace FAUSSE est
+  --     pire qu'une trace absente.
+  perform public.definir_acces('2099-12-31', 11, 'public', null);
+  if (select commanditaire from public.circulations where date = '2099-12-31' and numero = 11) is null
+  then raise notice 'OK — un commanditaire peut être effacé quand on le demande';
+  else raise exception 'ÉCHEC — le commanditaire est devenu ineffaçable'; end if;
+
+  -- (d) LA MOITIÉ QUI COMPTE : l'appel à trois arguments ne doit plus
+  --     EXISTER. `pronargdefaults` le dit sans avoir à tenter l'appel — un
+  --     `perform` à trois arguments échouerait de la même façon avant et
+  --     après le correctif (avant : il réussit et efface ; après : « function
+  --     does not exist »), et ne distinguerait donc rien.
+  if (select pronargdefaults from pg_proc
+       where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0
+  then raise notice 'OK — definir_acces n''a aucun paramètre à valeur par défaut';
+  else raise exception 'ÉCHEC — definir_acces accepte un appel qui OMET le commanditaire : cet appel l''efface';
+  end if;
+
+  -- On remet la course dans l'état attendu par la suite de la recette.
+  perform public.definir_acces('2099-12-31', 11, 'prive', 'Comité d''entreprise');
+
   -- La SUPERVISION, elle, garde tout : elle écrit les spéciaux comme le reste.
   perform set_config('request.jwt.claims',
     json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);

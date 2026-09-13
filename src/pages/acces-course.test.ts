@@ -30,7 +30,7 @@ import { construitCourse } from '../core/train-sup';
 import { passagesPourGare, trainsDuJour } from '../core/horaires';
 import { aLeDroit } from '../core/roles';
 import { accesValide, courseFermee, ACCES_COURSE } from '../core/types';
-import { champsFormulaireCourse } from './supervision-logique';
+import { champsFormulaireCourse, commanditairePourAcces } from './supervision-logique';
 import type { AccesCourse, Circulation, GareId, Grille, Jour, Role } from '../core/types';
 
 /** Fins de ligne normalisées : poste en CRLF, coureur d'intégration en LF. */
@@ -460,6 +460,94 @@ describe('privatiser masque le remplissage, ne l’efface pas', () => {
       /function lignesAffluence\([\s\S]*?\n}/.exec(source('src/pages/supervision.ts'))?.[0] ?? '';
     expect(corps).toContain('ÉCART ASSUMÉ');
     expect(corps).toContain('réinitialisation');
+  });
+});
+
+// ===========================================================================
+// Le COMMANDITAIRE ne s'efface pas par omission (relevé à la relecture)
+// ===========================================================================
+describe('privatiser une course ne perd jamais son commanditaire', () => {
+  const ts = source('src/pages/supervision.ts');
+
+  it('la colonne LUE est transmise telle quelle', () => {
+    const d = commanditairePourAcces({ commanditaire: 'Comité d’entreprise' });
+    expect(d.ok, d.ok ? '' : d.refus).toBe(true);
+    expect(d.ok && d.valeur).toBe('Comité d’entreprise');
+  });
+
+  it('une course SANS commanditaire s’écrit bien `null` — l’effacement reste possible', () => {
+    // On ne remplace pas une perte silencieuse par une valeur qu'on ne peut
+    // plus corriger : un train qui cesse d'être affrété doit pouvoir perdre
+    // son commanditaire. Un `coalesce(p_commanditaire, commanditaire)` côté
+    // base l'aurait rendu ineffaçable, et une trace FAUSSE est pire qu'une
+    // trace absente.
+    const d = commanditairePourAcces({ commanditaire: null });
+    expect(d.ok).toBe(true);
+    expect(d.ok && d.valeur).toBeNull();
+  });
+
+  it('une colonne NON LUE fait REFUSER l’écriture, jamais écrire `null`', () => {
+    // LE défaut. `c.commanditaire ?? null` était une OMISSION DÉGUISÉE EN
+    // VALEUR : quand la journée n'a pas été lue avec `avecCommanditaire`, la
+    // clé est absente (`undefined`) et le `??` la transformait en effacement.
+    // Personne ne l'aurait vu — ni l'agent, qui voit l'accès changer, ni
+    // l'écran, qui n'affiche jamais cette colonne. Le jour où l'on chercherait
+    // qui a affrété la course, la réponse aurait disparu.
+    //
+    // Ce que le front calculait, reproduit ici pour que la comparaison soit
+    // lisible plutôt que affirmée :
+    const calculDAvant = (c: { commanditaire?: string | null }): string | null =>
+      c.commanditaire ?? null;
+    expect(calculDAvant({}), 'la perte silencieuse n’était pas celle-là').toBeNull();
+
+    const d = commanditairePourAcces({});
+    expect(d.ok, 'une colonne non lue passe encore pour un effacement voulu').toBe(false);
+    expect(!d.ok && d.refus).toMatch(/commanditaire/i);
+  });
+
+  it('le front passe par cette décision, et n’écrit plus `?? null`', () => {
+    const corps = /async function changeAcces\([\s\S]*?\n}\n/.exec(ts)?.[0] ?? '';
+    expect(corps, 'changeAcces introuvable').not.toBe('');
+    expect(corps).toContain('commanditairePourAcces(c)');
+    expect(corps, 'l’omission déguisée en valeur est revenue').not.toContain(
+      'c.commanditaire ?? null',
+    );
+  });
+
+  it('la fonction SQL n’a plus de valeur par DÉFAUT sur `p_commanditaire`', () => {
+    // Sans `default`, un appel à trois arguments n'existe plus : PostgreSQL
+    // refuse « function does not exist », bruyamment et au premier essai. Avec
+    // lui, le même appel réussissait et effaçait la colonne.
+    for (const fichier of [
+      'supabase/schema.sql',
+      'supabase/migrations/2026-09-acces-course.sql',
+    ] as const) {
+      // Commentaires retirés : ils PARLENT du défaut supprimé (« avec
+      // `default null`, … »). Les lire reviendrait à mesurer une explication
+      // au lieu d'une signature.
+      const entete = (
+        /create or replace function public\.definir_acces\(([\s\S]*?)\)\s*\nreturns/.exec(
+          source(fichier),
+        )?.[1] ?? ''
+      )
+        .split('\n')
+        .filter((l) => !l.trimStart().startsWith('--'))
+        .join('\n');
+      expect(entete, `${fichier} : en-tête de definir_acces introuvable`).not.toBe('');
+      expect(entete, `${fichier} : p_commanditaire a repris une valeur par défaut`).not.toMatch(
+        /default/i,
+      );
+      // …et les quatre paramètres sont toujours là, dans l'ordre.
+      expect(entete.replace(/\s+/g, ' ').trim()).toBe(
+        'p_date date, p_numero int, p_acces text, p_commanditaire text',
+      );
+    }
+  });
+
+  it('la recette éprouve les deux moitiés sur une vraie base', () => {
+    const recette = source('supabase/tests/roles-rls.sql');
+    expect(recette).toContain('ÉCHEC — definir_acces a effacé le commanditaire');
+    expect(recette).toContain('pronargdefaults');
   });
 });
 

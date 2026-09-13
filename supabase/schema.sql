@@ -834,7 +834,17 @@ create or replace function public.definir_acces(
   p_date date,
   p_numero int,
   p_acces text,
-  p_commanditaire text default null
+  -- PAS DE VALEUR PAR DÉFAUT, et c'est le sujet. Avec `default null`, un
+  -- appel à trois arguments réussissait et EFFAÇAIT le commanditaire : la
+  -- perte ne se serait vue que le jour où l'on aurait cherché qui avait
+  -- affrété la course. Sans défaut, ce même appel n'existe plus — PostgreSQL
+  -- refuse « function does not exist », bruyamment et au premier essai.
+  --
+  -- `null` reste ÉCRIVABLE : un train qui cesse d'être affrété doit pouvoir
+  -- perdre son commanditaire. Un `coalesce(p_commanditaire, commanditaire)`
+  -- l'aurait rendu ineffaçable, et une trace FAUSSE est pire qu'une trace
+  -- absente. Ce qu'on supprime, c'est l'OMISSION, pas l'effacement voulu.
+  p_commanditaire text
 )
 returns int language plpgsql security definer set search_path = '' as $fn$
 declare
@@ -861,6 +871,32 @@ end $fn$;
 revoke all on function public.definir_acces(date, int, text, text) from public;
 revoke all on function public.definir_acces(date, int, text, text) from anon;
 grant execute on function public.definir_acces(date, int, text, text) to authenticated;
+
+-- PROPRIÉTAIRE EXPLICITE — quatrième garantie de la dérogation.
+--
+-- Une fonction SECURITY DEFINER s'exécute avec les droits de SON
+-- PROPRIÉTAIRE. Sans la ligne ci-dessous, ce propriétaire est « celui qui a
+-- collé le script dans l'éditeur SQL », donc `postgres` : le rôle le plus
+-- puissant du projet. Ce n'est pas une faille ici — le corps n'écrit que deux
+-- colonnes d'une table — mais c'est un PARI sur la procédure de déploiement,
+-- et un pari que le prochain corps de fonction pourrait perdre.
+--
+-- `service_role` est le rôle le plus ÉTROIT qui suffise :
+--
+--  - il contourne RLS (attribut `bypassrls`), ce dont la fonction a besoin :
+--    aucune politique n'ouvre une circulation de grille à l'admin, et c'est
+--    délibéré ;
+--  - il est NOLOGIN et ne POSSÈDE aucun objet. Si le corps dérivait un jour
+--    vers un `drop`, un `alter`, ou une lecture de `auth.users`, il ne
+--    pourrait pas. `postgres`, lui, le pourrait sans rien dire.
+--
+-- Les deux droits ci-dessous sont exactement ce qu'il lui manque. Le premier
+-- est déjà couvert par les droits par défaut de Supabase — il est écrit pour
+-- que le script reste autonome sur une base nue, pas pour restreindre quoi
+-- que ce soit (un `grant` n'a jamais rétréci un droit).
+grant select, update on circulations to service_role;
+grant execute on function private.a_un_des_roles(text[]) to service_role;
+alter function public.definir_acces(date, int, text, text) owner to service_role;
 
 
 -- Médias : ouverts au guichet depuis le 06/09/2026. Retirer une affiche

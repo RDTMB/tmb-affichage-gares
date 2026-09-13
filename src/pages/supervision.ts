@@ -157,6 +157,7 @@ import {
   departOrigine,
   ordreRotations,
   champsFormulaireCourse,
+  commanditairePourAcces,
   enTeteAffluence,
   messageAucunDepart,
   saisieAffluence,
@@ -831,12 +832,22 @@ async function changeAcces(numero: number, valeur: string): Promise<void> {
     rendreCirculations();
     return;
   }
+  // `definir_acces` écrit DEUX colonnes : on ne l'appelle donc qu'en sachant
+  // ce qu'on écrit dans la seconde. Voir `commanditairePourAcces()` — un
+  // `?? null` ici effaçait le commanditaire quand la colonne n'avait pas été
+  // lue, sans que rien ni personne ne le signale.
+  const commanditaire = commanditairePourAcces(c);
+  if (!commanditaire.ok) {
+    toast(commanditaire.refus);
+    rendreCirculations();
+    return;
+  }
   const libelle = libelleTrain(
     { numero, nature: c.nature, libelle: c.libelle },
     trainsPourLibelle(),
   );
   try {
-    await provider.setAccesCourse(date, numero, acces, c.commanditaire ?? null);
+    await provider.setAccesCourse(date, numero, acces, commanditaire.valeur);
     if (date !== dateSel) return; // l'agent a changé de date entre-temps
     await rechargeJour();
     afficheEchecPublication([]);

@@ -72,10 +72,10 @@ const FICHIERS = ['schema.sql', 'securite-advisors.sql', MIGRATION_ROLES];
  * aucune raison d'être appelables depuis un navigateur, et la règle les vise :
  * elles restent dans `private`, et cette liste ne s'ouvre pas à elles.
  *
- * Toute entrée doit satisfaire les TROIS obligations vérifiées plus bas —
- * révoquée à `public` ET à `anon`, `search_path` verrouillé, et rôle
- * applicatif contrôlé DANS le corps. Elles n'existaient pas avant ce lot :
- * l'exception est plus exigeante que l'interdiction qu'elle perce.
+ * Toute entrée doit satisfaire les QUATRE obligations vérifiées plus bas —
+ * révoquée à `public` ET à `anon`, `search_path` verrouillé, rôle applicatif
+ * contrôlé DANS le corps, et PROPRIÉTAIRE NOMMÉ. Elles n'existaient pas avant
+ * ce lot : l'exception est plus exigeante que l'interdiction qu'elle perce.
  */
 const DEFINER_PUBLIC_AUTORISES = ['definir_acces'] as const;
 
@@ -95,7 +95,7 @@ describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
       expect(code).toMatch(/create schema if not exists private/);
     });
 
-    it(`${fichier} : chaque dérogation porte SES TROIS garanties`, () => {
+    it(`${fichier} : chaque dérogation porte SES QUATRE garanties`, () => {
       const code = instructions(sql(fichier));
       for (const nom of DEFINER_PUBLIC_AUTORISES) {
         const declaration = new RegExp(`create or replace function public\\.${nom}\\(`);
@@ -123,6 +123,24 @@ describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
           /private\.(a_le_role|a_un_des_roles)\(/,
         );
         expect(texte, `${nom} : ne refuse rien`).toMatch(/raise exception/);
+        // 3. Le PROPRIÉTAIRE est NOMMÉ. Une fonction SECURITY DEFINER
+        //    s'exécute avec les droits de son propriétaire ; sans cette
+        //    ligne, celui-ci est « qui a collé le script dans l'éditeur
+        //    SQL », donc `postgres`. Ce n'est pas une faille tant que le
+        //    corps reste étroit — c'est un PARI sur la procédure de
+        //    déploiement, et le prochain corps de fonction pourrait le
+        //    perdre.
+        expect(code, `${nom} : propriétaire implicite`).toMatch(
+          new RegExp(`alter function public\\.${nom}\\([^)]*\\) owner to (\\w+);`),
+        );
+        // …et ce propriétaire n'est pas le rôle le plus puissant du projet :
+        // le nommer `postgres` reviendrait à écrire le pari au lieu de le
+        // corriger.
+        const proprietaire = new RegExp(
+          `alter function public\\.${nom}\\([^)]*\\) owner to (\\w+);`,
+        ).exec(code)?.[1];
+        expect(proprietaire, `${nom} : propriétaire trop puissant`).not.toBe('postgres');
+        expect(proprietaire, `${nom} : propriétaire inattendu`).toBe('service_role');
       }
     });
 

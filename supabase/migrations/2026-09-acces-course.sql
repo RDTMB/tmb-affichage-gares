@@ -119,7 +119,17 @@ create or replace function public.definir_acces(
   p_date date,
   p_numero int,
   p_acces text,
-  p_commanditaire text default null
+  -- PAS DE VALEUR PAR DÉFAUT, et c'est le sujet. Avec `default null`, un
+  -- appel à trois arguments réussissait et EFFAÇAIT le commanditaire : la
+  -- perte ne se serait vue que le jour où l'on aurait cherché qui avait
+  -- affrété la course. Sans défaut, ce même appel n'existe plus — PostgreSQL
+  -- refuse « function does not exist », bruyamment et au premier essai.
+  --
+  -- `null` reste ÉCRIVABLE : un train qui cesse d'être affrété doit pouvoir
+  -- perdre son commanditaire. Un `coalesce(p_commanditaire, commanditaire)`
+  -- l'aurait rendu ineffaçable, et une trace FAUSSE est pire qu'une trace
+  -- absente. Ce qu'on supprime, c'est l'OMISSION, pas l'effacement voulu.
+  p_commanditaire text
 )
 returns int language plpgsql security definer set search_path = '' as $fn$
 declare
@@ -159,6 +169,32 @@ revoke all on function public.definir_acces(date, int, text, text) from public;
 revoke all on function public.definir_acces(date, int, text, text) from anon;
 grant execute on function public.definir_acces(date, int, text, text) to authenticated;
 
+-- PROPRIÉTAIRE EXPLICITE — quatrième garantie de la dérogation.
+--
+-- Une fonction SECURITY DEFINER s'exécute avec les droits de SON
+-- PROPRIÉTAIRE. Sans la ligne ci-dessous, ce propriétaire est « celui qui a
+-- collé le script dans l'éditeur SQL », donc `postgres` : le rôle le plus
+-- puissant du projet. Ce n'est pas une faille ici — le corps n'écrit que deux
+-- colonnes d'une table — mais c'est un PARI sur la procédure de déploiement,
+-- et un pari que le prochain corps de fonction pourrait perdre.
+--
+-- `service_role` est le rôle le plus ÉTROIT qui suffise :
+--
+--  - il contourne RLS (attribut `bypassrls`), ce dont la fonction a besoin :
+--    aucune politique n'ouvre une circulation de grille à l'admin, et c'est
+--    délibéré ;
+--  - il est NOLOGIN et ne POSSÈDE aucun objet. Si le corps dérivait un jour
+--    vers un `drop`, un `alter`, ou une lecture de `auth.users`, il ne
+--    pourrait pas. `postgres`, lui, le pourrait sans rien dire.
+--
+-- Les deux droits ci-dessous sont exactement ce qu'il lui manque. Le premier
+-- est déjà couvert par les droits par défaut de Supabase — il est écrit pour
+-- que le script reste autonome sur une base nue, pas pour restreindre quoi
+-- que ce soit (un `grant` n'a jamais rétréci un droit).
+grant select, update on circulations to service_role;
+grant execute on function private.a_un_des_roles(text[]) to service_role;
+alter function public.definir_acces(date, int, text, text) owner to service_role;
+
 comment on function public.definir_acces(date, int, text, text) is
   'Pose l''accès (et le commanditaire) d''UNE course. SEULE voie par laquelle admin — qui n''a aucune politique RLS sur une circulation de grille — peut privatiser un train de grille. N''écrit que deux colonnes, par construction.';
 
@@ -185,7 +221,7 @@ commit;
 -- L'éditeur SQL de Supabase n'affiche PAS les `notice` : « Success. No rows
 -- returned » ne prouve rien à lui seul. Ce bloc RETOURNE des lignes.
 --
--- Attendu : sept lignes, toutes en « OK ».
+-- Attendu : DIX lignes, toutes en « OK ».
 with controles as (
   select 'colonne acces' as controle,
          (select count(*) from information_schema.columns
@@ -230,6 +266,27 @@ with controles as (
   select 'definir_acces existe et n''est pas ouverte à anon',
          exists (select 1 from pg_proc where proname = 'definir_acces')
          and not has_function_privilege('anon', 'public.definir_acces(date, int, text, text)', 'execute')
+  union all
+  -- Le PROPRIÉTAIRE est nommé, et non hérité de qui a collé le script.
+  select 'definir_acces appartient à service_role',
+         (select r.rolname from pg_proc p join pg_roles r on r.oid = p.proowner
+           where p.oid = 'public.definir_acces(date, int, text, text)'::regprocedure)
+         = 'service_role'
+  union all
+  -- …et ce propriétaire contourne bien RLS. C'est l'HYPOTHÈSE du choix : si
+  -- elle est fausse sur ce projet, l'UPDATE serait filtré, la fonction
+  -- rendrait 0, et le front dirait « Accès non enregistré ». Panne franche et
+  -- sans dégât — mais autant la voir ICI, sur TEST, plutôt qu'au premier
+  -- clic. Si cette ligne échoue : remettre le propriétaire à `postgres` et
+  -- le dire dans la PR, plutôt que d'accorder `bypassrls` à un rôle.
+  select 'service_role contourne RLS (hypothèse du choix de propriétaire)',
+         coalesce((select rolbypassrls from pg_roles where rolname = 'service_role'), false)
+  union all
+  -- Aucun paramètre à valeur par défaut : un appel qui OMET le commanditaire
+  -- l'effacerait, et cet appel ne doit plus exister.
+  select 'definir_acces n''a aucun paramètre par défaut',
+         (select pronargdefaults from pg_proc
+           where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0
 )
 select case when ok then 'OK' else '*** ÉCHEC ***' end as resultat, controle
   from controles
