@@ -90,10 +90,57 @@ export function courseFermee(t: { acces?: AccesCourse | null }): boolean {
 }
 
 /**
- * Accès retenu d'une ligne venue de la base. L'ABSENCE vaut `public` : un
- * instantané en cache d'avant le déploiement n'a pas la colonne, et faire
- * disparaître du guichet tous les trains d'une journée en cache serait pire
- * que de les y laisser.
+ * Accès retenu d'une ligne venue de la base. L'ABSENCE vaut `public`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * TOLÉRANCE DATÉE — décision du 14/09/2026, avec sa condition de levée.
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * C'est la forme qui a produit le défaut du 13/09 sur `commanditaire` :
+ * confondre « clé absente » et « valeur absente » ne se voit que le jour où un
+ * consommateur a besoin de les distinguer. La question a donc été reprise, et
+ * MESURÉE plutôt que reconduite.
+ *
+ * PAR OÙ UNE CIRCULATION SANS `acces` PEUT-ELLE ENCORE ARRIVER ?
+ *
+ *  • par le RÉSEAU : non. Les deux `select` de `getJour` nomment `acces`, et
+ *    la colonne est `not null default 'public'` — PostgREST ne peut pas la
+ *    rendre absente ;
+ *  • par la SUPERVISION : non, et elle n'a aucun cache — `creeSynchronisation`
+ *    n'apparaît que dans `ecran.ts` et `grille.ts` ;
+ *  • par un INSTANTANÉ d'écran écrit par un bundle d'AVANT le déploiement du
+ *    13/09 : oui, et c'est le seul chemin.
+ *
+ * CE CHEMIN EST BORNÉ, ANNONCÉ, ET IL SE REFERME TOUT SEUL :
+ *
+ *  • il se referme à la PREMIÈRE synchronisation réussie de chaque poste, qui
+ *    réécrit l'instantané avec la colonne ;
+ *  • l'instantané n'est AFFICHÉ que `duree_cache_min` après la dernière
+ *    synchronisation (défaut 15 min, plafond `CACHE_MAX_MINUTES` = 60) ;
+ *    au-delà, l'écran passe en NEUTRE ;
+ *  • il est ANNONCÉ dès 2 min (`SEUIL_BADGE_MS`) par le badge « données de
+ *    HH:MM » ;
+ *  • et il est REJETÉ d'office au-delà de `AGE_MAX_INSTANTANE_MS` (24 h).
+ *
+ * POURQUOI ON NE REND PAS `acces` OBLIGATOIRE PARTOUT (comme `commanditaire`
+ * le 13/09) : le type ne contraint pas du JSON relu de `localStorage`. Retirer
+ * ce repli ne ferait pas disparaître de train — `undefined !== 'prive'`, donc
+ * la course resterait publique et visible — mais il remplacerait un repli
+ * NOMMÉ et typé par un `undefined` qui circule dans un champ que le type
+ * déclare obligatoire. C'est la leçon du 13/09 prise à l'envers.
+ *
+ * POURQUOI PAS DE SIGNAL À LA `paramsAvecCorrections` : il ne pourrait pas
+ * atteindre. L'absence n'existe que dans un instantané d'ÉCRAN, et rien ne
+ * doit s'afficher en gare ; la supervision, elle, n'a pas de cache et
+ * rapporterait donc toujours zéro. Et surtout, la condition est DÉJÀ annoncée
+ * par un signal plus fort : un instantané d'avant le déploiement est, par
+ * définition, périmé — le badge de fraîcheur le dit, puis l'écran neutre prend
+ * la main. Un second signal, plus faible, pour le même fait, serait du bruit.
+ *
+ * CE QUI ROUVRIRAIT LA QUESTION : que l'un des trois plafonds ci-dessus soit
+ * relevé, ou qu'un consommateur se mette à distinguer « absent » de
+ * « public ». Le test « la tolérance repose sur des plafonds qui la referment »
+ * (`tolerance-acces.test.ts`) monte la garde sur les trois.
  */
 export function accesValide(v: unknown): AccesCourse {
   return v === 'prive' || v === 'mixte' ? v : 'public';

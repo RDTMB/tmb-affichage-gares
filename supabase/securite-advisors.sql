@@ -349,9 +349,12 @@ commit;
 --
 --     select r.rolname from pg_proc p join pg_roles r on r.oid = p.proowner
 --      where p.oid = 'public.definir_acces(date, int, text, text)'::regprocedure;
---     -> `postgres` attendu, et c'est aussi le propriétaire de `circulations` :
---        c'est CETTE égalité qui fait marcher l'UPDATE (un propriétaire de
---        table contourne RLS), pas le nom en lui-même.
+--     -> `postgres` attendu, et c'est aussi le propriétaire de `circulations`.
+--        DEUX RAISONS, et non une, font marcher l'UPDATE malgré RLS : cette
+--        égalité (un propriétaire de table n'est pas soumis à ses propres
+--        politiques) ET `rolbypassrls = true` sur `postgres`, mesuré le
+--        13/09/2026. Chacune suffirait ; les écrire toutes les deux évite de
+--        croire l'autre acquise en changeant de propriétaire.
 --
 --     `service_role`, plus étroit, a été tenté et MESURÉ le 13/09/2026 : il
 --     contourne bien RLS, mais n'a pas `CREATE` sur le schéma `public`, droit

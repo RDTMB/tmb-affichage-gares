@@ -669,9 +669,13 @@ nouveau propriétaire** lors d'un `alter function … owner to` — le script
 s'arrêtait sur « permission denied for schema public », message trompeur
 puisque l'exécutant, lui, a ce droit. On ne lui accorde pas `CREATE` pour
 autant : ce droit survivrait de loin à la raison qui l'aurait motivé, sur un
-rôle qui contourne déjà RLS. Ce qui compte n'est d'ailleurs pas le nom
-`postgres` mais le fait qu'il **possède `circulations`** — un propriétaire de
-table contourne RLS, et c'est cette égalité que le bloc VÉRIFICATION contrôle.
+rôle qui contourne déjà RLS.
+
+**Deux raisons, et non une, font marcher l'UPDATE malgré RLS** : `postgres`
+**possède `circulations`** (un propriétaire de table n'est pas soumis à ses
+propres politiques) **et** il porte `rolbypassrls = true`. Chacune suffirait.
+Le bloc VÉRIFICATION contrôle la première, parce que c'est elle qu'un
+changement de propriétaire casserait le plus discrètement.
 
 _(Décision de l'exploitant du 12/09/2026. Migration `2026-09-acces-course.sql`,
 ADDITIVE, à passer en production AVANT la fusion — le front demande `acces`
