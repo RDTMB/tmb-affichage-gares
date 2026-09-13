@@ -696,9 +696,16 @@ export function commanditairePourAcces(c: {
  * Les bornes viennent de `src/core/params.ts`, qui borne aussi la lecture.
  */
 export function dureeHoraireSaisie(brut: string): number | null {
-  const texte = brut.trim();
-  if (texte === '') return null;
-  const n = Number(texte);
+  // Pas de garde explicite sur la chaîne vide : `Number('')` et
+  // `Number('   ')` valent 0, que la borne basse rejette déjà. Elle y était,
+  // et la campagne de mutation du 13/09 l'a montrée REDONDANTE — aucun test
+  // ne pouvait distinguer sa présence de son absence.
+  //
+  // ⚠ Elle redeviendrait nécessaire si `DUREE_HORAIRES_MIN_S` descendait à 0 :
+  // la chaîne vide serait alors une durée valide. Le test
+  // « la chaîne vide n'est refusée QUE parce que zéro est hors bornes » monte
+  // la garde sur cette hypothèse.
+  const n = Number(brut.trim());
   if (!Number.isFinite(n) || !Number.isInteger(n)) return null;
   if (n < DUREE_HORAIRES_MIN_S || n > DUREE_HORAIRES_MAX_S) return null;
   return n;

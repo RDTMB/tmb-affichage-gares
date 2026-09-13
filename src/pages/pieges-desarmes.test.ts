@@ -66,6 +66,24 @@ describe('la durée d’affichage se refuse à la saisie, plus seulement à la l
     }
   });
 
+  it('la chaîne vide n’est refusée QUE parce que zéro est hors bornes', () => {
+    // Une garde explicite sur la chaîne vide existait ; la campagne de
+    // mutation du 13/09 l'a montrée REDONDANTE — `Number('')` vaut 0, que la
+    // borne basse rejette déjà, et aucun test ne pouvait distinguer sa
+    // présence de son absence. Elle a donc été retirée.
+    //
+    // Ce test monte la garde sur l'hypothèse qui la rendrait nécessaire :
+    // si la borne basse descendait à 0, la chaîne vide deviendrait une durée
+    // valide, et il faudrait la rétablir.
+    expect(Number('')).toBe(0);
+    expect(
+      DUREE_HORAIRES_MIN_S,
+      'la borne basse est descendue à 0 : rétablir le refus explicite de la chaîne vide',
+    ).toBeGreaterThan(0);
+    expect(dureeHoraireSaisie('')).toBeNull();
+    expect(dureeHoraireSaisie('   ')).toBeNull();
+  });
+
   it('les bornes du CHAMP sont celles de la LECTURE — une seule source', () => {
     // Le cœur du point : deux constantes recopiées finiraient par diverger.
     // On vérifie que la lecture emploie les mêmes symboles, pas les mêmes
@@ -228,7 +246,13 @@ describe('les avis du Security Advisor examinés sont écrits', () => {
     // forme des contrôles (a)…(g) existants.
     const bloc = advisors.slice(advisors.indexOf('AVIS DU SECURITY ADVISOR'));
     expect(bloc, 'section des avis triés introuvable').not.toBe('');
-    expect(bloc).toContain('has_function_privilege');
+    // CHAÎNE EXACTE : `has_function_privilege` apparaît deux fois dans
+    // l'entrée (h), et n'en lire que le nom laissait retirer la ligne qui
+    // compte — celle qui contrôle `anon`. Survivante du 13/09.
+    expect(bloc).toContain(
+      "--     select has_function_privilege('anon',\n" +
+        "--              'public.definir_acces(date, int, text, text)', 'execute') as anon_execute,",
+    );
     expect(bloc).toContain('information_schema.column_privileges');
     for (const marque of ['-- (h)', '-- (i)']) {
       expect(bloc, `entrée ${marque} absente`).toContain(marque);
