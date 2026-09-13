@@ -80,7 +80,12 @@ const FICHIERS = ['schema.sql', 'securite-advisors.sql', MIGRATION_ROLES];
 const DEFINER_PUBLIC_AUTORISES = ['definir_acces'] as const;
 
 describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
-  for (const fichier of FICHIERS) {
+  // LA RÈGLE PORTE SUR TOUS LES SCRIPTS, pas sur les trois qui définissent le
+  // schéma. Une survivante de la campagne du 12/09 l'a montré : la migration
+  // de l'accès — celle que l'exploitant EXÉCUTE, et la seule qui touche une
+  // base existante — n'était lue par aucune de ces vérifications. On pouvait
+  // y retirer le propriétaire ou ses droits sans que rien ne tombe.
+  for (const fichier of tousLesScripts()) {
     it(`${fichier} : aucune fonction SECURITY DEFINER dans le schéma public, hors liste`, () => {
       const code = instructions(sql(fichier));
       const publiques = [...code.matchAll(/create (?:or replace )?function public\.(\w+)/g)].map(
@@ -92,7 +97,6 @@ describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
           `public.${nom} est SECURITY DEFINER et n'est pas dans la liste`,
         ).toContain(nom);
       }
-      expect(code).toMatch(/create schema if not exists private/);
     });
 
     it(`${fichier} : chaque dérogation porte SES QUATRE garanties`, () => {
@@ -126,22 +130,31 @@ describe('Fonctions SECURITY DEFINER hors de portée de PostgREST', () => {
         // 3. Le PROPRIÉTAIRE est NOMMÉ. Une fonction SECURITY DEFINER
         //    s'exécute avec les droits de son propriétaire ; sans cette
         //    ligne, celui-ci est « qui a collé le script dans l'éditeur
-        //    SQL », donc `postgres`. Ce n'est pas une faille tant que le
-        //    corps reste étroit — c'est un PARI sur la procédure de
-        //    déploiement, et le prochain corps de fonction pourrait le
-        //    perdre.
-        expect(code, `${nom} : propriétaire implicite`).toMatch(
-          new RegExp(`alter function public\\.${nom}\\([^)]*\\) owner to (\\w+);`),
-        );
-        // …et ce propriétaire n'est pas le rôle le plus puissant du projet :
-        // le nommer `postgres` reviendrait à écrire le pari au lieu de le
-        // corriger.
+        //    SQL ». La sécurité de la fonction dépendrait alors d'une
+        //    procédure de déploiement et non du script.
+        //
+        //    La garantie porte sur le fait de NOMMER, pas sur un rôle
+        //    particulier. Elle a d'abord exigé `service_role`, plus étroit —
+        //    et refusé `postgres` — jusqu'à ce que la mesure sur la base de
+        //    TEST (13/09/2026) montre que `service_role` n'a pas `CREATE` sur
+        //    le schéma `public`, droit que PostgreSQL exige DU NOUVEAU
+        //    PROPRIÉTAIRE. Le raisonnement et la mesure sont écrits au-dessus
+        //    de l'`alter function`, dans les deux copies du SQL ; ce test ne
+        //    rejoue pas ce choix, il exige seulement qu'un choix ait été fait.
         const proprietaire = new RegExp(
           `alter function public\\.${nom}\\([^)]*\\) owner to (\\w+);`,
         ).exec(code)?.[1];
-        expect(proprietaire, `${nom} : propriétaire trop puissant`).not.toBe('postgres');
-        expect(proprietaire, `${nom} : propriétaire inattendu`).toBe('service_role');
+        expect(proprietaire, `${nom} : propriétaire implicite`).toBeDefined();
+        expect(proprietaire, `${nom} : propriétaire vide`).not.toBe('');
       }
+    });
+  }
+
+  // Le schéma `private` n'est posé que par les scripts qui DÉFINISSENT le
+  // schéma : l'exiger d'une migration additive n'aurait aucun sens.
+  for (const fichier of FICHIERS) {
+    it(`${fichier} : le schéma private est bien créé`, () => {
+      expect(instructions(sql(fichier))).toMatch(/create schema if not exists private/);
     });
 
     it(`${fichier} : search_path verrouillé sur chaque fonction`, () => {

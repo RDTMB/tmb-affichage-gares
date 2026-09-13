@@ -591,9 +591,7 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
       'revoke all on function public.definir_acces(date, int, text, text) from public;',
       'revoke all on function public.definir_acces(date, int, text, text) from anon;',
       'grant execute on function public.definir_acces(date, int, text, text) to authenticated;',
-      'grant select, update on circulations to service_role;',
-      'grant execute on function private.a_un_des_roles(text[]) to service_role;',
-      'alter function public.definir_acces(date, int, text, text) owner to service_role;',
+      'alter function public.definir_acces(date, int, text, text) owner to postgres;',
     ]) {
       expect(schema, `schema.sql : « ${instruction} » absent`).toContain(instruction);
       expect(migration, `migration : « ${instruction} » absent`).toContain(instruction);
@@ -610,13 +608,8 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
     for (const [quoi, attendu] of [
       [
         'propriétaire nommé',
-        'alter function public.definir_acces(date, int, text, text) owner to service_role;',
+        'alter function public.definir_acces(date, int, text, text) owner to postgres;',
       ],
-      [
-        'exécution de la fonction d’habilitation pour ce propriétaire',
-        'grant execute on function private.a_un_des_roles(text[]) to service_role;',
-      ],
-      ['droits de table du propriétaire', 'grant select, update on circulations to service_role;'],
       [
         'révocation à anon',
         'revoke all on function public.definir_acces(date, int, text, text) from anon;',
@@ -633,8 +626,11 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
     // Et son bloc VÉRIFICATION contrôle ce que le script vient de poser : le
     // propriétaire, l'hypothèse qui le justifie, et l'absence de défaut.
     for (const controle of [
-      "select 'definir_acces appartient à service_role',",
-      'rolbypassrls',
+      "select 'definir_acces appartient à postgres',",
+      // Le contrôle qui COMPTE : c'est l'égalité entre le propriétaire de la
+      // fonction et celui de la table qui fait marcher l'UPDATE, pas le nom
+      // « postgres » en lui-même.
+      "select 'definir_acces appartient au propriétaire de circulations',",
       'pronargdefaults',
     ]) {
       expect(migration, `migration : contrôle « ${controle} » absent`).toContain(controle);

@@ -656,9 +656,22 @@ dériver.
 
 C'est la **seule** dérogation à la règle « aucune fonction `SECURITY DEFINER`
 dans le schéma `public` », parce que seules les fonctions de `public` sont
-exposées en RPC par PostgREST. Elle porte en contrepartie trois garanties
-vérifiées par `src/data/securite.test.ts` : révoquée à `public` **et** à
-`anon`, `search_path` verrouillé, contrôle du rôle applicatif dans le corps.
+exposées en RPC par PostgREST. Elle porte en contrepartie **quatre** garanties
+vérifiées par `src/data/securite.test.ts` sur **tous** les scripts SQL du dépôt
+— migrations comprises, puisque c'est une migration que l'on exécute : révoquée
+à `public` **et** à `anon`, `search_path` verrouillé, contrôle du rôle
+applicatif dans le corps, et **propriétaire nommé**.
+
+Le propriétaire est `postgres`. `service_role`, plus étroit, a été tenté et
+**mesuré sur la base de test le 13/09/2026** : il contourne bien RLS, mais il
+n'a pas `CREATE` sur le schéma `public`, droit que PostgreSQL exige **du
+nouveau propriétaire** lors d'un `alter function … owner to` — le script
+s'arrêtait sur « permission denied for schema public », message trompeur
+puisque l'exécutant, lui, a ce droit. On ne lui accorde pas `CREATE` pour
+autant : ce droit survivrait de loin à la raison qui l'aurait motivé, sur un
+rôle qui contourne déjà RLS. Ce qui compte n'est d'ailleurs pas le nom
+`postgres` mais le fait qu'il **possède `circulations`** — un propriétaire de
+table contourne RLS, et c'est cette égalité que le bloc VÉRIFICATION contrôle.
 
 _(Décision de l'exploitant du 12/09/2026. Migration `2026-09-acces-course.sql`,
 ADDITIVE, à passer en production AVANT la fusion — le front demande `acces`

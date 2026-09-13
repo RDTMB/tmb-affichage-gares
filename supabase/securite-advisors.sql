@@ -338,13 +338,26 @@ commit;
 --     de grille, peut privatiser un TRAIN 11 sans qu'on lui ouvre en même
 --     temps `statut`, `retard_min`, `terminus` et `passages` (une politique
 --     RLS filtre des LIGNES, jamais des COLONNES). Elle porte en contrepartie
---     trois garanties, vérifiées par src/data/securite.test.ts : révoquée à
---     `public` ET à `anon`, `search_path` verrouillé, et contrôle du rôle
---     applicatif DANS son corps. La vérifier ici :
+--     QUATRE garanties, vérifiées par src/data/securite.test.ts sur TOUS les
+--     scripts SQL du dépôt : révoquée à `public` ET à `anon`, `search_path`
+--     verrouillé, contrôle du rôle applicatif DANS son corps, et
+--     PROPRIÉTAIRE NOMMÉ. Les vérifier ici :
 --
 --     select has_function_privilege('anon',
 --              'public.definir_acces(date, int, text, text)', 'execute');
 --     -> false attendu.
+--
+--     select r.rolname from pg_proc p join pg_roles r on r.oid = p.proowner
+--      where p.oid = 'public.definir_acces(date, int, text, text)'::regprocedure;
+--     -> `postgres` attendu, et c'est aussi le propriétaire de `circulations` :
+--        c'est CETTE égalité qui fait marcher l'UPDATE (un propriétaire de
+--        table contourne RLS), pas le nom en lui-même.
+--
+--     `service_role`, plus étroit, a été tenté et MESURÉ le 13/09/2026 : il
+--     contourne bien RLS, mais n'a pas `CREATE` sur le schéma `public`, droit
+--     que PostgreSQL exige DU NOUVEAU PROPRIÉTAIRE lors d'un
+--     `alter function … owner to`. Ne pas le lui accorder pour faire passer un
+--     script : ce droit survivrait de loin à la raison qui l'aurait motivé.
 --
 -- (b) Un anonyme ne peut plus déclarer d'écran :
 --     set local role anon;

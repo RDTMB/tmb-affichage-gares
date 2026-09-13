@@ -875,28 +875,42 @@ grant execute on function public.definir_acces(date, int, text, text) to authent
 -- PROPRIÉTAIRE EXPLICITE — quatrième garantie de la dérogation.
 --
 -- Une fonction SECURITY DEFINER s'exécute avec les droits de SON
--- PROPRIÉTAIRE. Sans la ligne ci-dessous, ce propriétaire est « celui qui a
--- collé le script dans l'éditeur SQL », donc `postgres` : le rôle le plus
--- puissant du projet. Ce n'est pas une faille ici — le corps n'écrit que deux
--- colonnes d'une table — mais c'est un PARI sur la procédure de déploiement,
--- et un pari que le prochain corps de fonction pourrait perdre.
+-- PROPRIÉTAIRE. Sans la ligne ci-dessous, ce propriétaire serait « celui qui a
+-- collé le script dans l'éditeur SQL » : la sécurité de la fonction
+-- dépendrait d'une procédure de déploiement, pas du script. On le NOMME donc,
+-- même quand la valeur nommée est celle qu'on aurait eue par défaut — c'est la
+-- différence entre un choix et un hasard.
 --
--- `service_role` est le rôle le plus ÉTROIT qui suffise :
+-- CE QUI A ÉTÉ TENTÉ, ET POURQUOI ÇA NE MARCHE PAS. Le candidat naturel était
+-- `service_role`, plus étroit que `postgres` : NOLOGIN, ne POSSÉDANT aucun
+-- objet — un corps qui dériverait vers un `drop`, un `alter` ou une lecture
+-- de `auth.users` échouerait, là où `postgres` réussirait sans rien dire.
+-- Il contourne bien RLS, ce dont la fonction a besoin puisque aucune politique
+-- n'ouvre une circulation de grille à l'admin.
 --
---  - il contourne RLS (attribut `bypassrls`), ce dont la fonction a besoin :
---    aucune politique n'ouvre une circulation de grille à l'admin, et c'est
---    délibéré ;
---  - il est NOLOGIN et ne POSSÈDE aucun objet. Si le corps dérivait un jour
---    vers un `drop`, un `alter`, ou une lecture de `auth.users`, il ne
---    pourrait pas. `postgres`, lui, le pourrait sans rien dire.
+-- Mesuré sur la base de TEST le 13/09/2026 :
 --
--- Les deux droits ci-dessous sont exactement ce qu'il lui manque. Le premier
--- est déjà couvert par les droits par défaut de Supabase — il est écrit pour
--- que le script reste autonome sur une base nue, pas pour restreindre quoi
--- que ce soit (un `grant` n'a jamais rétréci un droit).
-grant select, update on circulations to service_role;
-grant execute on function private.a_un_des_roles(text[]) to service_role;
-alter function public.definir_acces(date, int, text, text) owner to service_role;
+--     service_role_peut_creer_dans_public : false
+--     service_role_peut_utiliser_public   : true
+--     service_role_contourne_rls          : true
+--
+-- L'hypothèse est tombée, mais pas où on l'attendait : `bypassrls` est bien
+-- là. C'est `CREATE` sur le schéma `public` qui manque, et PostgreSQL l'exige
+-- DU NOUVEAU PROPRIÉTAIRE lors d'un `alter function … owner to`. Le script
+-- s'arrêtait sur « permission denied for schema public » — message trompeur,
+-- puisque l'exécutant, lui, a ce droit.
+--
+-- NE PAS ACCORDER `CREATE` SUR `public` À `service_role` pour faire passer ce
+-- script : ce droit survivrait de loin à la raison qui l'aurait motivé, sur un
+-- rôle qui contourne déjà RLS. Décision de l'exploitant du 13/09/2026 — le
+-- propriétaire reste `postgres`.
+--
+-- Ce que `postgres` apporte et qu'il fallait de toute façon : il POSSÈDE
+-- `circulations`, et un propriétaire de table contourne RLS (aucun
+-- `force row level security` dans ce schéma). Le bloc VÉRIFICATION contrôle
+-- donc que la fonction appartient bien au propriétaire de la table — c'est
+-- CETTE égalité qui fait marcher l'UPDATE, pas le nom `postgres` en lui-même.
+alter function public.definir_acces(date, int, text, text) owner to postgres;
 
 
 -- Médias : ouverts au guichet depuis le 06/09/2026. Retirer une affiche
