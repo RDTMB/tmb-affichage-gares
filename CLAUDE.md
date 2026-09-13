@@ -184,6 +184,29 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   activés), insensible à la casse et aux espaces de bord.
   Les CASES DE DESSERTE suivent « express » — cochée, Voza et Bellevue se
   décochent ; décochée, elles se recochent — sans jamais être verrouillées.
+- **Accès d'une course** (`circulations.acces`, docs/01 §2.12) : `public` |
+  `prive` | `mixte`, sur TOUTE circulation quelle que soit sa nature. AXE
+  INDÉPENDANT de `nature` — « d'où vient ce train » et « à qui il est vendu »
+  sont deux questions, et les confondre était le défaut d'origine : « privé »
+  se DÉDUISAIT de `nature = 'special'`, donc un spécial était forcément privé
+  et un train de GRILLE affrété impossible à dire (la plage ≥ 201 porte le
+  sens). Un champ à trois états, jamais deux booléens. La pastille
+  « Privé / Private » et l'exclusion de l'onglet Places suivent `acces`, plus
+  `nature` (`courseFermee()` — SEULE lecture, ne pas en fabriquer une
+  deuxième) ; `mixte` ne change RIEN à l'écran, le voyageur peut monter.
+  Montée et descente se privatisent SÉPARÉMENT — jamais de propagation à la
+  course appariée. Choix OBLIGATOIRE à la création d'un spécial, sans valeur
+  par défaut. Droits : admin et supervision, ni la caisse ni le technique. La
+  déclaration d'affluence SURVIT à la privatisation (masquée, pas effacée) —
+  écart assumé avec la réinitialisation d'une journée, écrit dans le code.
+  **L'écriture passe par `public.definir_acces`** (SECURITY DEFINER, deux
+  colonnes) et par elle SEULE : aucune politique RLS n'est ajoutée à
+  `circulations`, parce qu'une politique filtre des LIGNES et jamais des
+  COLONNES — en ouvrir une à l'admin lui donnerait `statut`, `retard_min`,
+  `terminus` et `passages`. Les droits de colonne ne pouvaient pas servir :
+  admin, supervision et caisse sont le MÊME rôle PostgreSQL. C'est la seule
+  dérogation à « aucun SECURITY DEFINER dans `public` », et elle porte trois
+  garanties vérifiées par `src/data/securite.test.ts`.
 - **Terminus par train** : chaque montée (hors express) peut être limitée à
   Bellevue individuellement (colonne Terminus) ; sa descente appariée part
   alors de Bellevue. La bascule « Terminus Bellevue » s'exprime « à partir

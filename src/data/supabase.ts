@@ -7,6 +7,7 @@ import { createClient, type RealtimeChannel, type SupabaseClient } from '@supaba
 import { datePrecedente, generationJour, sectionReportee, serviceActif } from '../core/horaires';
 import { ecartDepuisEntete } from '../core/horloge';
 import type {
+  AccesCourse,
   Affluence,
   Circulation,
   EcranInfo,
@@ -332,13 +333,13 @@ export class SupabaseProvider implements DataProvider {
       options?.avecCommanditaire === true
         ? table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle, commanditaire',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle, acces, commanditaire',
             )
             .eq('date', date)
             .order('numero')
         : table
             .select(
-              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle',
+              'date, numero, sens, express, facultatif, facultatif_actif, velos, rame, terminus, statut, retard_min, motif, sans_voyageurs, nature, passages, depart_reel, libelle, acces',
             )
             .eq('date', date)
             .order('numero'),
@@ -917,6 +918,48 @@ export class SupabaseProvider implements DataProvider {
    * Conséquence utile de la différence : réappliquer la MÊME plage n'écrit
    * plus rien du tout, donc ne peut plus effacer un geste de l'agent.
    */
+  /**
+   * ACCÈS d'une course — PAR APPEL DE FONCTION, jamais par un update direct.
+   *
+   * C'est le point de sécurité du lot, et il tient à une propriété de
+   * PostgreSQL qu'il vaut mieux écrire que redécouvrir : `admin`,
+   * `supervision` et `caisse` sont le MÊME rôle PostgreSQL, `authenticated` —
+   * la distinction est applicative (`profils_roles`, `private.a_le_role()`).
+   * Un `grant update (acces)` ne saurait donc pas viser l'un d'eux, et une
+   * politique RLS, qui filtre des LIGNES, ne sait pas borner les COLONNES
+   * écrites. Une politique « admin peut modifier une circulation de grille »
+   * lui ouvrirait du même coup `statut`, `retard_min`, `terminus` et
+   * `passages`.
+   *
+   * `public.definir_acces` est SECURITY DEFINER : elle vérifie elle-même le
+   * rôle applicatif et n'écrit que `acces` et `commanditaire`. Aucune
+   * politique RLS nouvelle n'est posée sur `circulations` — admin n'y gagne
+   * pas une ligne de plus.
+   */
+  async setAccesCourse(
+    date: string,
+    numero: number,
+    acces: AccesCourse,
+    commanditaire: string | null,
+  ): Promise<void> {
+    const { data, error } = await this.client.rpc('definir_acces', {
+      p_date: date,
+      p_numero: numero,
+      p_acces: acces,
+      p_commanditaire: commanditaire,
+    });
+    verifie(error);
+    // La fonction rend le nombre de lignes touchées. Zéro n'est PAS un succès
+    // silencieux : la circulation a disparu, ou la journée n'est pas celle
+    // qu'on croit. Sans ce contrôle, l'agent verrait « privatisé » sur une
+    // ligne que personne n'a écrite — c'est la leçon de `saveCirculations`.
+    if (data !== 1) {
+      throw new Error(
+        `Accès non enregistré pour le train ${numero} du ${date} — rechargez la page et vérifiez`,
+      );
+    }
+  }
+
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     await this.assureJour(date);
 

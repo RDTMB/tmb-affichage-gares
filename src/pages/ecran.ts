@@ -36,7 +36,7 @@ import {
 import type { FermetureGare } from '../core/horaires';
 import { vitesseTickerEffective } from '../core/ticker';
 import { paramsValides } from '../core/params';
-import { horsGrille, ORDRE_GARES } from '../core/types';
+import { courseFermee, horsGrille, ORDRE_GARES } from '../core/types';
 import type {
   Affluence,
   FinDeService,
@@ -292,8 +292,16 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   //    pas chez eux.
   // « Private » se lit bien au-delà de l'anglais ; « charter » non, d'où le
   // couple entier plutôt que le seul mot anglais.
-  const prive =
-    p.nature === 'special' ? '<span class="prive">Train privé / Private charter</span>' : '';
+  //
+  // DÉFAUT CORRIGÉ (12/09/2026) : la mention se déduisait de
+  // `nature === 'special'`. « Privé » n'était donc pas une donnée mais une
+  // conséquence de l'origine du train, alors que la pastille a toujours voulu
+  // dire « ce train n'est pas pour vous » et jamais « ce train a été créé hors
+  // grille ». Elle suit désormais `acces` (docs/01 §2.12), ce qui couvre les
+  // deux cas que le modèle ne savait pas représenter : un TRAIN 11 de grille
+  // affrété pour la journée, et un spécial `mixte` dont une partie de la rame
+  // reste en vente.
+  const prive = courseFermee(p) ? '<span class="prive">Train privé / Private charter</span>' : '';
   let note = p.express
     ? '<span class="exp">EXPRESS — sans arrêt / non-stop : Col de Voza &amp; Bellevue</span>'
     : sansArret !== ''
@@ -358,19 +366,24 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   //
   // Rien sur un train SUPPRIMÉ : il n'existe plus pour le voyageur.
   const priveHtml =
-    supprime || p.nature !== 'special'
+    supprime || !courseFermee(p)
       ? ''
       : '<span class="pill-prive">Privé <small>Private</small></span>';
 
-  // …et JAMAIS de pastille de remplissage sur un spécial. Deux raisons, et
-  // la seconde est mesurée : un train affrété ne vend pas ses places au
+  // …et JAMAIS de pastille de remplissage sur une course FERMÉE. Deux raisons,
+  // et la seconde est mesurée : un train affrété ne vend pas ses places au
   // comptoir (il est exclu de l'onglet « Places », docs/01 §2.8), et les deux
   // pastilles ne tiennent PAS ensemble — « PRIVÉ » + « DERNIÈRES PLACES » +
   // picto déborde de 140 px à 1920×1080, ce qui tronquerait le nom de la gare
   // de destination. L'interface ne peut pas produire ce cas ; une ligne
   // écrite à la main en base, si. Mesuré le 11/09/2026.
+  //
+  // Le critère est `acces`, pas `nature` : un spécial `mixte` VEND ses places
+  // restantes, et sa pastille de remplissage est exactement ce dont le
+  // voyageur a besoin. Il ne porte pas « Privé », donc les deux ne se
+  // rencontrent pas — la mesure de collision reste tenue.
   const affluenceHtml =
-    supprime || p.nature === 'special' || !p.affluence
+    supprime || courseFermee(p) || !p.affluence
       ? ''
       : p.affluence === 'complet'
         ? '<span class="pill-affluence complet">Complet <small>Full</small></span>'

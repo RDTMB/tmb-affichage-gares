@@ -331,6 +331,19 @@
                 >Commanditaire
                 <input type="text" id="sup-commanditaire" maxlength="120" />
               </label>
+              <!-- ACCÈS : la première option est VIDE et sélectionnée. Ce
+                   n'est pas un oubli — c'est le choix obligatoire du
+                   12/09/2026 : aucun train ne part avec un accès que personne
+                   n'a décidé. -->
+              <label id="sup-champ-acces"
+                >Accès
+                <select id="sup-acces">
+                  <option value="">à choisir…</option>
+                  <option value="public">Public — places en vente</option>
+                  <option value="prive">Privé — entièrement affrété</option>
+                  <option value="mixte">Mixte — une partie en vente</option>
+                </select>
+              </label>
             </div>
             <div class="ligne">
               <label
@@ -425,6 +438,9 @@
                   <th style="width: 150px">Terminus</th>
                   <th style="width: 140px">Facultatif</th>
                   <th style="width: 132px">Sans voyageurs</th>
+                  <!-- ACCÈS : qui peut monter. Colonne distincte de « Sans
+                       voyageurs », qui dit que PERSONNE ne monte. -->
+                  <th style="width: 124px">Accès</th>
                   <th>Statut</th>
                   <th style="width: 160px">Motif</th>
                 </tr>

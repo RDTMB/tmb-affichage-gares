@@ -77,6 +77,9 @@ const jourAvecSpecial = (): Jour => ({
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      libelle: null,
+      acces: 'prive' as const,
       nature: 'special',
       commanditaire: 'Comité d’entreprise',
       passages: construitCourse(GRAND, { heureDepart_s: h('09:00'), garesMontee: MONTEE }).montee,
@@ -246,14 +249,14 @@ describe('deux séries, qui ne se mélangent pas', () => {
 
   it('« SPÉCIAL n » en toutes lettres, « SPÉ n » sur le badge', () => {
     const deux = [
-      { numero: 201, nature: 'special' as const },
-      { numero: 203, nature: 'special' as const },
+      { numero: 201, nature: 'special' as const, libelle: null },
+      { numero: 203, nature: 'special' as const, libelle: null },
     ];
     expect(libelleTrain(deux[0]!, deux)).toBe('SPÉCIAL 1');
     expect(libelleTrain(deux[1]!, deux)).toBe('SPÉCIAL 2');
     expect(libelleTrainCourt(deux[0]!, deux)).toBe('SPÉ 1');
     // Un seul spécial : pas de rang, comme « TRAIN SUP » sans numéro.
-    const seul = [{ numero: 201, nature: 'special' as const }];
+    const seul = [{ numero: 201, nature: 'special' as const, libelle: null }];
     expect(libelleTrain(seul[0]!, seul)).toBe('SPÉCIAL');
     expect(libelleTrainCourt(seul[0]!, seul)).toBe('SPÉ');
   });
@@ -262,10 +265,10 @@ describe('deux séries, qui ne se mélangent pas', () => {
     // « SUP 2 » et « SPÉCIAL 2 » sont deux trains différents. Compter les deux
     // ensemble ferait sauter un rang dès que l'autre série gagne une rotation.
     const melange = [
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 103, nature: 'supplementaire' as const },
-      { numero: 201, nature: 'special' as const },
-      { numero: 203, nature: 'special' as const },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
+      { numero: 201, nature: 'special' as const, libelle: null },
+      { numero: 203, nature: 'special' as const, libelle: null },
     ];
     expect(libelleTrain(melange[1]!, melange)).toBe('TRAIN SUP 2');
     expect(libelleTrain(melange[3]!, melange)).toBe('SPÉCIAL 2');
@@ -349,7 +352,7 @@ describe('l’admin crée un spécial, et RIEN d’autre', () => {
     // Le mapping onglet → droits n'est pas exporté : on le lit à la source,
     // qui est aussi ce qu'une relecture ira vérifier.
     expect(source('src/core/roles.ts')).toContain(
-      "circulations: ['circulations', 'circulations.special'],",
+      "circulations: ['circulations', 'circulations.special', 'circulations.acces'],",
     );
   });
 
@@ -437,20 +440,38 @@ describe('l’admin crée un spécial, et RIEN d’autre', () => {
 // 6 et 7. Commanditaire, et absence de Places
 // ============================================================================
 describe('le spécial n’entre pas au guichet', () => {
-  it('la liste de l’onglet Places l’écarte', () => {
+  // ⚠ CES DEUX TESTS ONT CHANGÉ DE SUJET le 12/09/2026, ils n'ont pas été
+  // affaiblis. Ils affirmaient « un spécial est exclu du guichet » ; ils
+  // affirment maintenant « une course FERMÉE est exclue du guichet »
+  // (docs/01 §2.12). L'ancienne règle se trompait dans les deux sens — elle
+  // retenait au comptoir un TRAIN 11 de grille affrété, et en écartait un
+  // spécial `mixte` dont une partie de la rame se vend. Ce que le lot du
+  // 10/09 voulait dire, « un train affrété ne vend pas ses places », est
+  // exactement ce qui est tenu ici ; ce qu'il disait par raccourci — « un
+  // spécial » — ne l'est plus, parce que c'était faux.
+  //
+  // Le CAS D'ORIGINE reste couvert : un spécial créé par le formulaire naît
+  // avec l'accès que l'agent a choisi, et un spécial déjà en base a été repris
+  // en `prive` par la migration (voir `2026-09-acces-course.sql`).
+  it('la liste de l’onglet Places écarte les courses FERMÉES', () => {
     const corps = /function lignesAffluence\([\s\S]*?\n}/.exec(
       source('src/pages/supervision.ts'),
     )?.[0];
     expect(corps, 'lignesAffluence introuvable').toBeDefined();
-    expect(corps).toContain("if (train.nature === 'special') continue;");
+    expect(corps).toContain('if (courseFermee(train)) continue;');
+    expect(corps, 'le filtre est resté sur la NATURE').not.toContain("train.nature === 'special'");
   });
 
-  it('et l’écran ne lui pose aucune pastille de remplissage', () => {
+  it('et l’écran ne pose aucune pastille de remplissage sur une course fermée', () => {
     // Mesuré : privé + « DERNIÈRES PLACES » + picto déborde de 140 px à
     // 1920×1080 et tronquerait le nom de la gare. L'interface ne peut pas
     // produire ce cas ; une ligne écrite à la main en base, si.
+    //
+    // La mesure reste valable telle quelle : les deux pastilles ne se
+    // rencontrent toujours pas, puisque « Privé » et « Complet » sont
+    // désormais commandés par le MÊME critère, en sens inverse.
     const ecran = source('src/pages/ecran.ts');
-    expect(ecran).toMatch(/const affluenceHtml =\s*\n?\s*supprime \|\| p\.nature === 'special'/);
+    expect(ecran).toMatch(/const affluenceHtml =\s*\n?\s*supprime \|\| courseFermee\(p\)/);
   });
 
   it('le commanditaire est exigé à la création d’un spécial', () => {
@@ -495,8 +516,8 @@ describe('la nature traverse le moteur sans se perdre', () => {
     expect(p?.nature, 'la nature se perd entre le train et le passage').toBe('special');
     // C'est cette valeur qui décide de la pastille « privé » et du libellé.
     expect(
-      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille' }, [
-        { numero: 201, nature: 'special' },
+      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille', libelle: null }, [
+        { numero: 201, nature: 'special', libelle: null },
       ]),
     ).toBe('SPÉ');
   });
@@ -523,8 +544,18 @@ describe('la mention « privé » tient à l’écran', () => {
   // n'était protégé que par l'ordre des pastilles, jamais par leur existence.
   const ecran = source('src/pages/ecran.ts');
 
-  it('la pastille est POSÉE sur un spécial, et sur lui seul', () => {
-    expect(ecran).toContain("supprime || p.nature !== 'special'");
+  it('la pastille est POSÉE sur une course FERMÉE, et sur elle seule', () => {
+    // ⚠ CHANGEMENT DE SUJET du 12/09/2026, pas un affaiblissement : la
+    // pastille suivait `nature === 'special'`. Elle a toujours voulu dire
+    // « ce train n'est pas pour vous », jamais « ce train a été créé hors
+    // grille » — et un TRAIN 11 de grille affrété ne pouvait pas la porter.
+    // La règle affirmée ici est plus forte que l'ancienne : elle nomme la
+    // donnée au lieu de la déduire. Le détail du critère est éprouvé sur le
+    // MOTEUR par acces-course.test.ts, qui ne lit pas la source.
+    expect(ecran).toContain('supprime || !courseFermee(p)');
+    expect(ecran, 'la pastille se déduit encore de la nature').not.toContain(
+      "p.nature !== 'special'",
+    );
     expect(ecran).toContain('<span class="pill-prive">Privé <small>Private</small></span>');
   });
 

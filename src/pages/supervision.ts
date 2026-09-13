@@ -31,9 +31,18 @@ import {
 import { construitCourse, prepareDepartSup, prochainNumeroHorsGrille } from '../core/train-sup';
 import type { FormeCourse } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
-import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, horsGrille, ORDRE_GARES } from '../core/types';
+import {
+  ACCES_COURSE,
+  accesValide,
+  courseFermee,
+  GARE_DEBUT_DEFAUT,
+  GARE_FIN_DEFAUT,
+  horsGrille,
+  ORDRE_GARES,
+} from '../core/types';
 import type { NatureCirculation } from '../core/types';
 import type {
+  AccesCourse,
   Affluence,
   Circulation,
   Sens,
@@ -155,6 +164,7 @@ import {
   departOrigine,
   ordreRotations,
   champsFormulaireCourse,
+  commanditairePourAcces,
   enTeteAffluence,
   messageAucunDepart,
   saisieAffluence,
@@ -694,7 +704,7 @@ function libellesDuJour(saufNumero?: number): string[] {
 function trainsPourLibelle(): {
   numero: number;
   nature: NatureCirculation;
-  libelle?: string | null;
+  libelle: string | null;
 }[] {
   return (jour?.circulations ?? []).map((c) => ({
     numero: c.numero,
@@ -749,7 +759,7 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
     {
       numero,
       nature: circulationDe(numero)?.nature ?? 'grille',
-      libelle: circulationDe(numero)?.libelle,
+      libelle: circulationDe(numero)?.libelle ?? null,
     },
     trainsPourLibelle(),
   );
@@ -781,6 +791,90 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
     );
     rendreCirculations();
     rendreAffluence();
+  }
+}
+
+/** Libellés de la colonne Accès — courts : la cellule fait 124 px. */
+const LIBELLE_ACCES: Record<AccesCourse, string> = {
+  public: 'Public',
+  prive: 'Privé',
+  mixte: 'Mixte',
+};
+
+/** Accès effectif d'une circulation, brouillon compris. */
+function accesDe(c: Circulation): AccesCourse {
+  return accesValide(c.acces);
+}
+
+/** L'agent connecté peut-il privatiser une course ? */
+function peutChangerAcces(): boolean {
+  return aLeDroit(roles, 'circulations.acces');
+}
+
+/**
+ * ACCÈS d'une course — écriture IMMÉDIATE, hors brouillon et hors « Publier ».
+ *
+ * TROISIÈME EXCEPTION ASSUMÉE à la règle du brouillon, après `depart_reel` et
+ * l'affluence, et la raison n'est PAS l'urgence — c'est la seule des trois qui
+ * ne l'invoque pas. Elle est structurelle : `admin` possède le droit de
+ * privatiser mais AUCUNE politique RLS ne lui ouvre une circulation de
+ * grille, donc la publication du brouillon — un upsert de la ligne entière —
+ * échouerait pour lui et pour lui seul. Mettre l'accès au brouillon donnerait
+ * une commande qui marche pour la supervision et refuse pour l'admin, sans
+ * que rien ne le dise avant le clic sur « Publier ».
+ *
+ * Les deux rôles passent donc par la MÊME porte, `definir_acces`, qui n'écrit
+ * que `acces` et `commanditaire`. En contrepartie, comme pour les deux autres
+ * exceptions, l'échec est dit FRANCHEMENT — message persistant — et le
+ * sélecteur reprend sa valeur précédente puisqu'on ne l'a jamais avancée.
+ */
+async function changeAcces(numero: number, valeur: string): Promise<void> {
+  const date = dateSel;
+  const c = circulationDe(numero);
+  if (!c) return;
+  const acces = ACCES_COURSE.find((a) => a === valeur);
+  if (!acces || acces === accesDe(c)) return;
+  if (!peutChangerAcces()) {
+    toast('Vos rôles ne permettent pas de changer l’accès d’une course');
+    rendreCirculations();
+    return;
+  }
+  // `definir_acces` écrit DEUX colonnes : on ne l'appelle donc qu'en sachant
+  // ce qu'on écrit dans la seconde. Voir `commanditairePourAcces()` — un
+  // `?? null` ici effaçait le commanditaire quand la colonne n'avait pas été
+  // lue, sans que rien ni personne ne le signale.
+  const commanditaire = commanditairePourAcces(c);
+  if (!commanditaire.ok) {
+    toast(commanditaire.refus);
+    rendreCirculations();
+    return;
+  }
+  const libelle = libelleTrain(
+    { numero, nature: c.nature, libelle: c.libelle },
+    trainsPourLibelle(),
+  );
+  try {
+    await provider.setAccesCourse(date, numero, acces, commanditaire.valeur);
+    if (date !== dateSel) return; // l'agent a changé de date entre-temps
+    await rechargeJour();
+    afficheEchecPublication([]);
+    rendreCirculations();
+    rendreAffluence(); // une course privatisée quitte l'onglet Places
+    toast(
+      acces === 'prive'
+        ? `${libelle} privatisé — la mention « Privé » est en gare, et il quitte l’onglet Places`
+        : `${libelle} → ${LIBELLE_ACCES[acces].toLocaleLowerCase('fr')} — les écrans sont à jour`,
+    );
+  } catch (erreur) {
+    afficheEchecPublication(
+      [
+        `${libelle} : ${
+          erreur instanceof Error ? erreur.message : String(erreur)
+        } — l’accès précédent reste celui qui s’affiche en gare.`,
+      ],
+      'Accès non enregistré',
+    );
+    rendreCirculations();
   }
 }
 
@@ -1230,6 +1324,22 @@ function ligneCirculation(
     aVide ? 'checked' : ''
   }${verrou} />${aVide ? 'Sans voyageurs' : ''}</label>`;
 
+  // ACCÈS de la course (docs/01 §2.12). Sur CHAQUE ligne, montée et descente
+  // indépendamment : « affrété à la montée seulement » est un cas réel, et
+  // appliquer automatiquement à la course appariée priverait l'exploitation du
+  // seul cas qui justifie deux lignes.
+  //
+  // Le droit est `circulations.acces` : il s'ouvre à admin, qui n'a pourtant
+  // PAS `circulations`. Admin ne peut donc rien changer d'autre sur un train
+  // de grille — ni statut, ni retard, ni terminus, ni passages — et ce n'est
+  // pas l'interface qui le tient, c'est la base (aucune politique RLS ne lui
+  // ouvre ces lignes ; l'écriture passe par `definir_acces`).
+  const acces = accesDe(c);
+  const verrouAcces = lectureSeule || !peutChangerAcces() ? ' disabled' : '';
+  const celluleAcces = `<select class="sel-acces acces-${acces}" data-action="acces" data-numero="${n}"${verrouAcces}>${ACCES_COURSE.map(
+    (a) => `<option value="${a}"${a === acces ? ' selected' : ''}>${LIBELLE_ACCES[a]}</option>`,
+  ).join('')}</select>`;
+
   const statut = inactif
     ? // #B4C4D4 sur blanc : illisible. L'atténuation est juste dans son
       // principe — la ligne ne circule pas — mais un texte qu'on ne peut pas
@@ -1282,6 +1392,7 @@ function ligneCirculation(
         ? '<small class="a-vide-note">ne circule pas pour les voyageurs — absent des écrans</small>'
         : ''
     }</td>
+    <td>${celluleAcces}</td>
     <td>${statut}</td>
     <td><select data-action="motif" data-numero="${n}" ${inactif || lectureSeule ? 'disabled' : ''}>${optionsMotifs(c.motif ?? null)}</select></td>
   </tr>`;
@@ -1625,6 +1736,18 @@ function initCirculations(): void {
       ? 'special'
       : 'supplementaire';
 
+  /**
+   * ACCÈS choisi, ou `null` tant que personne n'a tranché.
+   *
+   * Le `null` est la valeur utile : c'est lui qui permet de REFUSER la
+   * création. Retomber sur `'public'` ici rendrait le choix obligatoire
+   * impossible à tenir — le formulaire validerait en silence.
+   */
+  const accesChoisi = (): AccesCourse | null => {
+    const v = ($('sup-acces') as HTMLSelectElement).value;
+    return ACCES_COURSE.find((a) => a === v) ?? null;
+  };
+
   /** Forme choisie ; un renfort n'en a qu'une. */
   const formeChoisie = (): FormeCourse => {
     if (natureChoisie() !== 'special') return 'rotation';
@@ -1805,6 +1928,7 @@ function initCirculations(): void {
     // renfort se nomme aussi bien qu'un spécial.
     montre('sup-champ-libelle', true);
     montre('sup-champ-commanditaire', champs.commanditaire);
+    montre('sup-champ-acces', champs.acces);
     montre('sup-champ-express', champs.express);
     montre('sup-champ-velos', champs.velos);
     $('sup-titre').textContent = nature === 'special' ? 'Train spécial' : 'Train supplémentaire';
@@ -2059,6 +2183,17 @@ function initCirculations(): void {
       toast('Indiquez le commanditaire : un train affrété roule pour quelqu’un');
       return;
     }
+    // ACCÈS : CHOIX OBLIGATOIRE sur un spécial, sans valeur par défaut
+    // (décision de l'exploitant du 12/09/2026). Le sélecteur s'ouvre sur une
+    // option vide, et la création est refusée tant que personne n'a tranché.
+    // Un défaut à « public » ferait partir au guichet un train affrété ; un
+    // défaut à « privé » retirerait de la vente des places qui se vendent.
+    // Aucune des deux erreurs ne se voit avant le jour même.
+    const acces = accesChoisi();
+    if (nature === 'special' && acces === null) {
+      toast('Choisissez l’accès : public, privé ou mixte — aucun train ne part sans');
+      return;
+    }
     const numero = prochainNumeroHorsGrille(
       jour.circulations.map((c) => c.numero),
       nature,
@@ -2086,12 +2221,20 @@ function initCirculations(): void {
       statut: 'ok',
       retard_min: 0,
       motif: null,
+      // Une course qu'on CRÉE n'a pas encore de départ constaté : la valeur
+      // est `null`, pas absente. La distinction a coûté un défaut de recette.
+      depart_reel: null,
       sans_voyageurs: ($('sup-sans-voyageurs') as HTMLInputElement).checked,
       nature,
       // Champ INTERNE : jamais servi aux écrans (droit de colonne retiré à
       // `anon`). Vide pour un renfort — il ne roule pour personne en
       // particulier.
       commanditaire: nature === 'special' ? commanditaire : null,
+      // Un RENFORT est toujours public : il est créé pour absorber une
+      // affluence, c'est-à-dire pour vendre. Le formulaire ne lui propose donc
+      // pas le choix, et `acces` ne vaut `null` ici que pour un renfort — le
+      // refus ci-dessus a déjà arrêté un spécial sans choix.
+      acces: nature === 'special' ? (acces ?? 'public') : 'public',
       // Le libellé est porté par les DEUX lignes de la rotation : montée et
       // descente sont le même train, et le voyageur doit lire le même nom des
       // deux côtés.
@@ -2405,7 +2548,7 @@ function initCirculations(): void {
         {
           numero,
           nature: circulationDe(numero)?.nature ?? 'supplementaire',
-          libelle: circulationDe(numero)?.libelle,
+          libelle: circulationDe(numero)?.libelle ?? null,
         },
         trainsPourLibelle(),
       );
@@ -2428,6 +2571,8 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
       rendreCirculations();
       bumpEnAttente(`${libelle} supprimé (en attente)`);
       toast(`${libelle} supprimé — en attente de publication`);
+    } else if (action === 'acces') {
+      void changeAcces(numero, (cible as HTMLSelectElement).value);
     } else if (action === 'sans-voyageurs') {
       // COPIE volontaire (conservée) : le brouillon garde son propre objet,
       // distinct de `c`, pour ne jamais dépendre d'une mutation partagée.
@@ -2753,7 +2898,7 @@ interface LigneAffluence {
   numero: number;
   nature: NatureCirculation;
   /** Libellé libre, pour que le guichet lise le même nom que la gare. */
-  libelle?: string | null;
+  libelle: string | null;
   sens: Sens;
   express: boolean;
   rame: string;
@@ -2781,11 +2926,26 @@ function lignesAffluence(gare: GareId | null, maintenant_s: number): LigneAfflue
   const lignes: LigneAffluence[] = [];
   for (const train of trainsDuJour(grille, jour)) {
     if (train.statut === 'supprime') continue;
-    // TRAIN SPÉCIAL : exclu du guichet (décision de l'exploitant du
-    // 10/09/2026). Il est affrété, ses places ne se vendent pas au comptoir —
-    // déclarer « complet » sur un train privé n'aurait aucun sens pour le
-    // voyageur qui lit l'écran.
-    if (train.nature === 'special') continue;
+    // COURSE FERMÉE : exclue du guichet (décision de l'exploitant du
+    // 10/09/2026, élargie le 12/09). Elle est affrétée, ses places ne se
+    // vendent pas au comptoir — déclarer « complet » sur un train privé
+    // n'aurait aucun sens pour le voyageur qui lit l'écran.
+    //
+    // Le critère est l'ACCÈS, plus la NATURE : un spécial `mixte` garde une
+    // partie de sa rame en vente et doit donc rester au guichet, tandis qu'un
+    // TRAIN 11 de GRILLE affrété doit en sortir. `nature === 'special'` se
+    // trompait dans les deux sens.
+    //
+    // La déclaration d'affluence existante, elle, N'EST PAS EFFACÉE quand on
+    // privatise : elle est seulement masquée, et reparaît telle quelle si le
+    // train redevient public. ÉCART ASSUMÉ avec la réinitialisation d'une
+    // journée, qui refuse au contraire de reconduire un « complet » (« cela
+    // affirmerait un fait que personne n'a constaté depuis »). La différence
+    // est le temps écoulé : ici le guichet a compté ses places il y a une
+    // heure et l'affrètement peut être annulé dans la foulée ; là, on parle
+    // d'une journée entière régénérée. Ce n'est pas un oubli — décision de
+    // l'exploitant du 12/09/2026.
+    if (courseFermee(train)) continue;
     const destination = terminusReel(train);
     if (destination === null) continue;
     const passage = gare === null ? train.passages[0] : train.passages.find((x) => x.gare === gare);

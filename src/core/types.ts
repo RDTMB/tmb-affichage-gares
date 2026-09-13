@@ -51,6 +51,54 @@ export function horsGrille(t: { nature: NatureCirculation }): boolean {
   return t.nature !== 'grille';
 }
 
+/**
+ * ACCÈS d'une course — à qui ses places sont vendues (docs/01 §2.12).
+ *
+ * AXE INDÉPENDANT de `nature`. « D'où vient ce train » (grille, renfort,
+ * spécial) et « à qui il est vendu » (public, affrété, mixte) sont deux
+ * questions distinctes, et les confondre a été le défaut d'origine : la
+ * pastille « Privé / Private » se déduisait de `nature === 'special'`, si bien
+ * qu'un spécial était forcément privé et un privé forcément spécial.
+ * L'exploitation connaît pourtant les deux cas manquants — un spécial dont une
+ * partie seulement de la rame est réservée, et un TRAIN 11 de grille affrété
+ * pour la journée. Le second était même IMPOSSIBLE à représenter : la
+ * contrainte `circulations_nature_numero` borne `special` aux numéros ≥ 201,
+ * et cette plage porte le sens depuis le 11/09/2026.
+ *
+ * UN champ à trois états, jamais deux booléens — même raison que pour
+ * `nature` : deux booléens rendraient représentable « privé ET mixte », qui
+ * n'existe pas en exploitation et que rien n'empêcherait en base.
+ *
+ * La montée et la descente sont DÉJÀ deux lignes (`numero`, `numero + 1`) :
+ * « affrété à la montée seulement » se représente sans rien inventer.
+ */
+export type AccesCourse = 'public' | 'prive' | 'mixte';
+
+/** Les trois valeurs, dans l'ordre où l'interface les propose. */
+export const ACCES_COURSE: readonly AccesCourse[] = ['public', 'prive', 'mixte'];
+
+/**
+ * La course est-elle FERMÉE au voyageur ? Seul `prive` l'est.
+ *
+ * `mixte` ne vaut PAS « à moitié fermé » : le voyageur peut monter, donc
+ * l'écran ne doit rien lui dire de contraire et le guichet doit pouvoir
+ * vendre. C'est la seule lecture qui rende `mixte` utile plutôt que
+ * décoratif — décision de l'exploitant du 12/09/2026.
+ */
+export function courseFermee(t: { acces?: AccesCourse | null }): boolean {
+  return t.acces === 'prive';
+}
+
+/**
+ * Accès retenu d'une ligne venue de la base. L'ABSENCE vaut `public` : un
+ * instantané en cache d'avant le déploiement n'a pas la colonne, et faire
+ * disparaître du guichet tous les trains d'une journée en cache serait pire
+ * que de les y laisser.
+ */
+export function accesValide(v: unknown): AccesCourse {
+  return v === 'prive' || v === 'mixte' ? v : 'public';
+}
+
 export const GARE_DEBUT_DEFAUT: GareId = 'le-fayet';
 export const GARE_FIN_DEFAUT: GareId = 'nid-daigle';
 
@@ -244,7 +292,7 @@ export interface Circulation {
    * choisi à la création) ; renseignée = l'agent a constaté l'heure de
    * départ, et `passages` a été recalculé depuis elle.
    */
-  depart_reel?: string | null;
+  depart_reel: string | null;
   /**
    * COMMANDITAIRE d'un train SPÉCIAL : qui l'a affrété. Champ INTERNE —
    * visible en supervision et dans le journal, JAMAIS servi aux écrans. Le
@@ -255,7 +303,7 @@ export interface Circulation {
    * Colonne propre et non `motif` : celui-ci porte déjà la raison d'une
    * suppression et celle d'un retard.
    */
-  commanditaire?: string | null;
+  commanditaire: string | null;
   /**
    * LIBELLÉ D'AFFICHAGE, facultatif (docs/01 §2.10). Quand il existe, il
    * remplace VERBATIM ce que rendent `libelleTrain()` et
@@ -266,7 +314,16 @@ export interface Circulation {
    * dans sa plage (spécial ≥ 201, renfort 101–199) et continue d'apparier la
    * montée à sa descente.
    */
-  libelle?: string | null;
+  libelle: string | null;
+  /**
+   * ACCÈS de la course : à qui ses places sont vendues (docs/01 §2.12).
+   * INDÉPENDANT de `nature` — un train de GRILLE peut être affrété.
+   *
+   * Facultatif côté type parce qu'un instantané en cache d'avant le
+   * déploiement ne porte pas la colonne ; `accesValide()` retombe alors sur
+   * `public`, qui est exactement le comportement d'avant ce lot.
+   */
+  acces: AccesCourse;
 }
 
 export interface Jour {
@@ -334,7 +391,9 @@ export interface TrainJour {
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
   /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
-  libelle?: string | null;
+  libelle: string | null;
+  /** Accès de la course (docs/01 §2.12) — jamais déduit de `nature`. */
+  acces: AccesCourse;
   /**
    * Descente supplémentaire dont le départ du terminus a été CONSTATÉ : ses
    * heures ne sont plus une estimation. Ce n'est PAS un retard — l'écran le
@@ -362,7 +421,12 @@ export interface PassageGare {
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
   /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
-  libelle?: string | null;
+  libelle: string | null;
+  /**
+   * Accès de la course (docs/01 §2.12). C'est LUI qui décide de la pastille
+   * « Privé / Private », jamais `nature`.
+   */
+  acces: AccesCourse;
   /** Descente supplémentaire au départ CONSTATÉ (mention neutre, jamais « retard »). */
   departConfirme: boolean;
   /** Heures réelles (retard inclus) ; un supprimé garde ses heures théoriques (affichées barrées). */

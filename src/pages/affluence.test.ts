@@ -49,6 +49,8 @@ function passage(numero: number, reste: Partial<PassageGare> = {}): PassageGare 
     destination: 'nid-daigle',
     terminusExceptionnel: false,
     nature: 'grille' as const,
+    acces: 'public' as const,
+    libelle: null,
     departConfirme: false,
     arrivee_s: null,
     depart_s: 36000,
@@ -460,7 +462,11 @@ describe('le remplissage se déclare dans « Places », et nulle part ailleurs',
   it('la colonne a QUITTÉ le tableau Circulations', () => {
     expect(html).not.toContain('>Remplissage</th>');
     expect(ts).not.toContain('data-action="affluence-');
-    // Les huit en-têtes d'avant, ni un de plus ni un de moins.
+    // Les en-têtes, au mot près : « Remplissage » n'y est plus, et « Accès »
+    // n'est pas son retour déguisé. Les deux répondent à des questions
+    // différentes — « reste-t-il des places » se déclare au guichet dans
+    // l'onglet Places, « qui peut monter » est une décision d'exploitation
+    // (docs/01 §2.12) et ne se saisit pas au comptoir.
     const thead = /<table id="tab-circ">\s*<thead>([\s\S]*?)<\/thead>/.exec(html)?.[1] ?? '';
     expect([...thead.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((m) => (m[1] ?? '').trim())).toEqual([
       'Train',
@@ -469,6 +475,7 @@ describe('le remplissage se déclare dans « Places », et nulle part ailleurs',
       'Terminus',
       'Facultatif',
       'Sans voyageurs',
+      'Accès',
       'Statut',
       'Motif',
     ]);

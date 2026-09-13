@@ -584,6 +584,14 @@ export interface ChampsFormulaireCourse {
   /** Commanditaire : le spécial, et lui seul. */
   commanditaire: boolean;
   /**
+   * ACCÈS (public / privé / mixte) : le spécial, et lui seul. Un RENFORT est
+   * créé pour absorber une affluence, c'est-à-dire pour VENDRE — lui proposer
+   * « privé » serait proposer un train qu'on n'aurait pas de raison de créer.
+   * Un train de GRILLE, lui, se privatise depuis l'onglet Circulations et non
+   * depuis ce formulaire, qui ne crée rien de tel.
+   */
+  acces: boolean;
+  /**
    * Express et vélos : RÉGLAGES GARDÉS pour le spécial (décision du
    * 10/09/2026). Un renfort ne les a jamais eus — il double une rotation de
    * la grille et suit sa desserte.
@@ -609,6 +617,7 @@ export function champsFormulaireCourse(
     departDescente: avecDescente && forme === 'stationnement',
     garesDescente: avecDescente,
     commanditaire: nature === 'special',
+    acces: nature === 'special',
     express: nature === 'special',
     velos: nature === 'special',
   };
@@ -630,6 +639,49 @@ export function champsFormulaireCourse(
  * course doit y aller, express ou non — la décocher produirait une desserte
  * qui n'atteint pas son propre terminus.
  */
+/**
+ * Ce que `definir_acces` doit écrire dans `commanditaire`, ou le refus.
+ *
+ * `ok: false` n'est pas une précaution de style : c'est la seule réponse juste
+ * quand la colonne n'a pas été LUE.
+ */
+export type CommanditairePourAcces =
+  { ok: true; valeur: string | null } | { ok: false; refus: string };
+
+/**
+ * DÉFAUT CORRIGÉ (relecture du 12/09/2026) : `c.commanditaire ?? null` était
+ * une OMISSION DÉGUISÉE EN VALEUR.
+ *
+ * `commanditaire` est retiré à `anon` par droit de colonne, et n'est lu que
+ * lorsque la journée est demandée avec `avecCommanditaire`. Quand elle ne
+ * l'est pas, la clé est ABSENTE — `undefined`, pas `null` — et le `??` la
+ * transformait en un effacement franc de la colonne en base.
+ *
+ * Personne ne l'aurait vu : l'agent voit l'accès changer, l'écran n'affiche
+ * jamais cette colonne, et le journal d'exploitation consignerait
+ * l'effacement sans que quiconque le lise. Le défaut n'apparaîtrait que le
+ * jour où l'on chercherait qui a affrété la course — c'est-à-dire trop tard,
+ * et sur la seule question à laquelle cette colonne sert à répondre.
+ *
+ * `null` reste une valeur ÉCRIVABLE, et c'est délibéré : un train qui cesse
+ * d'être affrété doit pouvoir perdre son commanditaire. Refuser d'écrire
+ * `null` aurait échangé une perte silencieuse contre une valeur ineffaçable,
+ * et une trace FAUSSE est pire qu'une trace absente. Ce qu'on supprime, c'est
+ * l'OMISSION — pas l'effacement voulu.
+ */
+export function commanditairePourAcces(c: {
+  commanditaire?: string | null;
+}): CommanditairePourAcces {
+  if (c.commanditaire === undefined) {
+    return {
+      ok: false,
+      refus:
+        'Commanditaire non chargé pour cette course : rechargez la page avant de changer son accès (l’enregistrer maintenant l’effacerait).',
+    };
+  }
+  return { ok: true, valeur: c.commanditaire };
+}
+
 export function garesPrecochees(e: {
   ordre: readonly GareId[];
   obligatoires: readonly GareId[];

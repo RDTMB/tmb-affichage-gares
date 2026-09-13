@@ -128,16 +128,16 @@ describe('les deux bornes ne peuvent pas dériver l’une de l’autre', () => {
 // ============================================================================
 describe('le libellé remplace le nom, et rien d’autre', () => {
   const deuxSpeciaux = [
-    { numero: 201, nature: 'special' as const },
-    { numero: 203, nature: 'special' as const },
+    { numero: 201, nature: 'special' as const, libelle: null },
+    { numero: 203, nature: 'special' as const, libelle: null },
   ];
 
   it('SANS libellé, le comportement d’hier ne bouge pas', () => {
     expect(libelleTrainCourt(deuxSpeciaux[0]!, deuxSpeciaux)).toBe('SPÉ 1');
     expect(libelleTrain(deuxSpeciaux[1]!, deuxSpeciaux)).toBe('SPÉCIAL 2');
-    const renfort = [{ numero: 101, nature: 'supplementaire' as const }];
+    const renfort = [{ numero: 101, nature: 'supplementaire' as const, libelle: null }];
     expect(libelleTrainCourt(renfort[0]!, renfort)).toBe('SUP');
-    expect(libelleTrain({ numero: 9, nature: 'grille' }, [])).toBe('TRAIN 9');
+    expect(libelleTrain({ numero: 9, nature: 'grille', libelle: null }, [])).toBe('TRAIN 9');
   });
 
   it('AVEC libellé, il s’affiche VERBATIM — long comme court', () => {
@@ -145,7 +145,7 @@ describe('le libellé remplace le nom, et rien d’autre', () => {
     // affiche « T17 ». Sinon le nom qu'il a choisi n'est pas celui qu'il lit.
     const nomme = [
       { numero: 201, nature: 'special' as const, libelle: 'T17' },
-      { numero: 203, nature: 'special' as const },
+      { numero: 203, nature: 'special' as const, libelle: null },
     ];
     expect(libelleTrainCourt(nomme[0]!, nomme)).toBe('T17');
     expect(libelleTrain(nomme[0]!, nomme)).toBe('T17');
@@ -157,7 +157,12 @@ describe('le libellé remplace le nom, et rien d’autre', () => {
   it('un libellé VIDE ou blanc vaut ABSENCE', () => {
     // La base accepte `''` comme elle accepte `null` ; « un train nommé rien »
     // ne serait ni lisible ni identifiable.
-    for (const libelle of ['', '   ', null, undefined]) {
+    // `undefined` a QUITTÉ cette liste le 13/09/2026, et c'est un gain : le
+    // type ne l'admet plus (`libelle: string | null`), donc le cas ne se
+    // construit plus. Une absence de CLÉ et une absence de VALEUR étaient
+    // confondues, et cette confusion a coûté un défaut de recette ailleurs —
+    // sur `commanditaire`, où un consommateur les distinguait.
+    for (const libelle of ['', '   ', null]) {
       const t = { numero: 201, nature: 'special' as const, libelle };
       expect(libelleTrainCourt(t, [t]), String(libelle)).toBe('SPÉ');
     }
@@ -428,6 +433,9 @@ describe('le libellé traverse le moteur jusqu’à l’écran', () => {
         retard_min: 0,
         motif: null,
         sans_voyageurs: false,
+        depart_reel: null,
+        commanditaire: null,
+        acces: 'public' as const,
         nature: 'special',
         libelle,
         passages: [
@@ -450,7 +458,10 @@ describe('le libellé traverse le moteur jusqu’à l’écran', () => {
     expect(p?.libelle, 'le libellé se perd entre le train et le passage').toBe('SCOLAIRE');
     // C'est cette valeur-là que le badge de l'écran de gare rend.
     expect(
-      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille', libelle: p?.libelle }, []),
+      libelleTrainCourt(
+        { numero: 201, nature: p?.nature ?? 'grille', libelle: p?.libelle ?? null },
+        [],
+      ),
     ).toBe('SCOLAIRE');
   });
 
@@ -460,8 +471,8 @@ describe('le libellé traverse le moteur jusqu’à l’écran', () => {
     );
     expect((p?.libelle ?? null) === null, 'un libellé est apparu').toBe(true);
     expect(
-      libelleTrainCourt({ numero: 201, nature: 'special', libelle: p?.libelle }, [
-        { numero: 201, nature: 'special' },
+      libelleTrainCourt({ numero: 201, nature: 'special', libelle: p?.libelle ?? null }, [
+        { numero: 201, nature: 'special', libelle: null },
       ]),
     ).toBe('SPÉ');
   });

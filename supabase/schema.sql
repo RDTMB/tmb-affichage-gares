@@ -89,6 +89,21 @@ create table if not exists circulations (
   -- (circulations_nature_numero). Contrairement à commanditaire, il
   -- S'AFFICHE EN GARE — d'où sa présence dans le grant de anon.
   libelle text,
+  -- ACCÈS de la course : à qui ses places sont vendues (docs/01 §2.12).
+  -- AXE INDÉPENDANT de `nature`, et c'est tout le sujet : « privé » se
+  -- DÉDUISAIT de nature = 'special' jusqu'au 12/09/2026, si bien qu'un
+  -- spécial était forcément privé et un privé forcément spécial. Deux cas
+  -- réels n'étaient pas représentables — un spécial dont une partie de la
+  -- rame reste en vente, et un TRAIN 11 de GRILLE affrété pour la journée
+  -- (impossible : circulations_nature_numero borne 'special' aux numéros
+  -- ≥ 201, et cette plage porte le sens).
+  -- Un champ à trois états, JAMAIS deux booléens : « privé ET mixte »
+  -- n'existe pas en exploitation et rien ne l'empêcherait.
+  -- La montée et la descente sont déjà deux lignes (numero, numero + 1) :
+  -- « affrété à la montée seulement » se représente sans rien inventer.
+  -- S'AFFICHE EN GARE (pastille « Privé / Private ») — d'où sa présence dans
+  -- le grant de anon, contrairement à commanditaire.
+  acces text not null default 'public',
   maj timestamptz not null default now(),
   unique (date, numero),
   -- Un train sup a forcément ses passages ; un train de grille n'en a jamais.
@@ -105,7 +120,8 @@ create table if not exists circulations (
       (nature = 'grille' and numero between 1 and 99)
       or (nature = 'supplementaire' and numero between 101 and 199)
       or (nature = 'special' and numero >= 201)
-    )
+    ),
+  constraint circulations_acces check (acces in ('public', 'prive', 'mixte'))
 );
 
 -- AFFLUENCE : le remplissage constaté, par train et par jour. Table à part et
@@ -726,7 +742,7 @@ revoke all on circulations from anon;
 grant select (
   date, numero, sens, express, facultatif, facultatif_actif, velos, rame,
   terminus, statut, retard_min, motif, sans_voyageurs, nature,
-  passages, depart_reel, libelle
+  passages, depart_reel, libelle, acces
 ) on circulations to anon;
 grant select, insert, update, delete on circulations to authenticated;
 
@@ -796,6 +812,105 @@ create policy "roles: circulations special maj" on circulations for update to au
   with check (nature = 'special' and (select private.a_le_role('admin')));
 create policy "roles: circulations special retrait" on circulations for delete to authenticated
   using (nature = 'special' and (select private.a_le_role('admin')));
+
+-- ACCÈS D'UNE COURSE (docs/01 §2.12) — AUCUNE POLITIQUE ICI, et c'est la
+-- décision du lot du 12/09/2026.
+--
+-- `admin` doit pouvoir privatiser un TRAIN 11 de GRILLE. Aucune des trois
+-- politiques ci-dessus ne le couvre — elles sont bornées à
+-- `nature = 'special'` — et lui en ajouter une le mettrait en mesure de
+-- changer `statut`, `retard_min`, `terminus` et `passages` sur les horaires
+-- des six gares : une politique RLS filtre des LIGNES, jamais des COLONNES.
+-- Les droits de colonne ne peuvent pas davantage servir : `admin`,
+-- `supervision` et `caisse` sont le MÊME rôle PostgreSQL (`authenticated`),
+-- seul `anon` s'en sépare.
+--
+-- L'écriture passe donc par `public.definir_acces`, SECURITY DEFINER, qui
+-- vérifie le rôle applicatif et n'écrit que deux colonnes. La supervision
+-- emprunte la même porte bien qu'elle pût écrire directement : deux chemins
+-- pour la même commande, ce sont deux règles à tenir d'accord.
+
+create or replace function public.definir_acces(
+  p_date date,
+  p_numero int,
+  p_acces text,
+  -- PAS DE VALEUR PAR DÉFAUT, et c'est le sujet. Avec `default null`, un
+  -- appel à trois arguments réussissait et EFFAÇAIT le commanditaire : la
+  -- perte ne se serait vue que le jour où l'on aurait cherché qui avait
+  -- affrété la course. Sans défaut, ce même appel n'existe plus — PostgreSQL
+  -- refuse « function does not exist », bruyamment et au premier essai.
+  --
+  -- `null` reste ÉCRIVABLE : un train qui cesse d'être affrété doit pouvoir
+  -- perdre son commanditaire. Un `coalesce(p_commanditaire, commanditaire)`
+  -- l'aurait rendu ineffaçable, et une trace FAUSSE est pire qu'une trace
+  -- absente. Ce qu'on supprime, c'est l'OMISSION, pas l'effacement voulu.
+  p_commanditaire text
+)
+returns int language plpgsql security definer set search_path = '' as $fn$
+declare
+  v_touchees int;
+begin
+  -- Le rôle applicatif se vérifie ICI : la fonction s'exécute avec les droits
+  -- de son propriétaire, donc RLS ne la protège plus.
+  if not private.a_un_des_roles(array['admin', 'supervision']) then
+    raise exception 'permission denied: definir_acces' using errcode = '42501';
+  end if;
+  if p_acces not in ('public', 'prive', 'mixte') then
+    raise exception 'acces invalide: %', p_acces using errcode = '22023';
+  end if;
+  -- UNE SEULE LIGNE : montée et descente se privatisent séparément.
+  update public.circulations
+     set acces = p_acces,
+         commanditaire = p_commanditaire
+   where date = p_date and numero = p_numero;
+  get diagnostics v_touchees = row_count;
+  -- Rendu au front : zéro n'est pas un succès silencieux.
+  return v_touchees;
+end $fn$;
+
+revoke all on function public.definir_acces(date, int, text, text) from public;
+revoke all on function public.definir_acces(date, int, text, text) from anon;
+grant execute on function public.definir_acces(date, int, text, text) to authenticated;
+
+-- PROPRIÉTAIRE EXPLICITE — quatrième garantie de la dérogation.
+--
+-- Une fonction SECURITY DEFINER s'exécute avec les droits de SON
+-- PROPRIÉTAIRE. Sans la ligne ci-dessous, ce propriétaire serait « celui qui a
+-- collé le script dans l'éditeur SQL » : la sécurité de la fonction
+-- dépendrait d'une procédure de déploiement, pas du script. On le NOMME donc,
+-- même quand la valeur nommée est celle qu'on aurait eue par défaut — c'est la
+-- différence entre un choix et un hasard.
+--
+-- CE QUI A ÉTÉ TENTÉ, ET POURQUOI ÇA NE MARCHE PAS. Le candidat naturel était
+-- `service_role`, plus étroit que `postgres` : NOLOGIN, ne POSSÉDANT aucun
+-- objet — un corps qui dériverait vers un `drop`, un `alter` ou une lecture
+-- de `auth.users` échouerait, là où `postgres` réussirait sans rien dire.
+-- Il contourne bien RLS, ce dont la fonction a besoin puisque aucune politique
+-- n'ouvre une circulation de grille à l'admin.
+--
+-- Mesuré sur la base de TEST le 13/09/2026 :
+--
+--     service_role_peut_creer_dans_public : false
+--     service_role_peut_utiliser_public   : true
+--     service_role_contourne_rls          : true
+--
+-- L'hypothèse est tombée, mais pas où on l'attendait : `bypassrls` est bien
+-- là. C'est `CREATE` sur le schéma `public` qui manque, et PostgreSQL l'exige
+-- DU NOUVEAU PROPRIÉTAIRE lors d'un `alter function … owner to`. Le script
+-- s'arrêtait sur « permission denied for schema public » — message trompeur,
+-- puisque l'exécutant, lui, a ce droit.
+--
+-- NE PAS ACCORDER `CREATE` SUR `public` À `service_role` pour faire passer ce
+-- script : ce droit survivrait de loin à la raison qui l'aurait motivé, sur un
+-- rôle qui contourne déjà RLS. Décision de l'exploitant du 13/09/2026 — le
+-- propriétaire reste `postgres`.
+--
+-- Ce que `postgres` apporte et qu'il fallait de toute façon : il POSSÈDE
+-- `circulations`, et un propriétaire de table contourne RLS (aucun
+-- `force row level security` dans ce schéma). Le bloc VÉRIFICATION contrôle
+-- donc que la fonction appartient bien au propriétaire de la table — c'est
+-- CETTE égalité qui fait marcher l'UPDATE, pas le nom `postgres` en lui-même.
+alter function public.definir_acces(date, int, text, text) owner to postgres;
 
 
 -- Médias : ouverts au guichet depuis le 06/09/2026. Retirer une affiche
@@ -1487,7 +1602,7 @@ create trigger trg_journal_circulations
   for each row execute function private.tracer_ecriture(
     'date,numero', 'date',
     'statut', 'retard_min', 'motif', 'rame', 'terminus', 'facultatif_actif',
-    'sans_voyageurs', 'commanditaire', 'nature', 'libelle'
+    'sans_voyageurs', 'commanditaire', 'nature', 'libelle', 'acces'
   );
 
 -- Affluence : « qui » et « quand », posés côté SERVEUR. L'adresse vient du

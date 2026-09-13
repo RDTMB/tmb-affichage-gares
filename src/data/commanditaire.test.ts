@@ -65,6 +65,9 @@ const MIGRATION_A = source('supabase/migrations/2026-09-train-special-A.sql');
 const MIGRATION_B = source('supabase/migrations/2026-09-train-special-B.sql');
 // Le libellé libre (12/09/2026) : additif, une seule migration.
 const MIGRATION_LIBELLE = source('supabase/migrations/2026-09-libelle-course.sql');
+// L'accès d'une course (12/09/2026) : additif lui aussi, et il ajoute la
+// DIX-HUITIÈME colonne lisible par `anon`.
+const MIGRATION_ACCES = source('supabase/migrations/2026-09-acces-course.sql');
 const SUPABASE = source('src/data/supabase.ts');
 
 describe('la colonne existe, et elle est PROPRE', () => {
@@ -75,7 +78,11 @@ describe('la colonne existe, et elle est PROPRE', () => {
     expect(MIGRATION_A).toContain(
       'alter table circulations add column if not exists commanditaire',
     );
-    expect(source('src/core/types.ts')).toContain('commanditaire?: string | null;');
+    // OBLIGATOIRE depuis le 13/09/2026, et non plus facultatif : un champ
+    // optionnel laissait `tsc` valider toute construction qui l'omettait, et
+    // quatre d'entre elles l'omettaient — dont `generationJour()`, d'où le
+    // défaut trouvé à la recette.
+    expect(source('src/core/types.ts')).toContain('commanditaire: string | null;');
   });
 
   it('les deux migrations sont REJOUABLES', () => {
@@ -178,7 +185,32 @@ describe('`anon` ne lit PAS le commanditaire', () => {
     expect(colonnesAccordeesAAnon(SCHEMA)).toEqual([
       ...colonnesAccordeesAAnon(MIGRATION_B),
       ...colonnesAccordeesAAnon(MIGRATION_LIBELLE),
+      ...colonnesAccordeesAAnon(MIGRATION_ACCES),
     ]);
+  });
+
+  it('`acces` est accordée à anon — et `commanditaire` reste fermée', () => {
+    // Les DEUX moitiés du contrôle. La première est celle qu'on pense à
+    // faire : sans elle, la pastille « Privé » disparaît des six écrans. La
+    // seconde est celle qu'on oublie — un lot qui ouvre une colonne est
+    // justement le moment où l'on peut en ouvrir une autre par mégarde.
+    const colonnes = colonnesAccordeesAAnon(SCHEMA);
+    expect(colonnes, 'la pastille « Privé » ne s’affichera pas en gare').toContain('acces');
+    expect(colonnes, 'le commanditaire a fui vers la clé publiable').not.toContain('commanditaire');
+    expect(colonnesAccordeesAAnon(MIGRATION_ACCES)).toEqual(['acces']);
+  });
+
+  it('la migration de l’accès n’enlève RIEN non plus', () => {
+    // Même forme que celle du libellé : additive, donc aucune fenêtre d'écran
+    // noir. L'ordre reste pourtant celui-là — production AVANT la fusion,
+    // parce que le front demande `acces` nommément.
+    expect(MIGRATION_ACCES, 'la migration de l’accès révoque').not.toMatch(
+      /revoke[^;]*\son circulations/,
+    );
+    expect(MIGRATION_ACCES).toContain('add column if not exists acces');
+    for (const etape of ['sur la base de TEST', 'déploiement du front', 'en PRODUCTION']) {
+      expect(MIGRATION_ACCES, `séquence : « ${etape} » absent`).toContain(etape);
+    }
   });
 
   it('la migration du libellé n’enlève RIEN : elle n’a pas à être coupée en deux', () => {
