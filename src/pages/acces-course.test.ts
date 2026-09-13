@@ -665,11 +665,15 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
       // fonction et celui de la table qui fait marcher l'UPDATE, pas le nom
       // « postgres » en lui-même.
       "select 'definir_acces appartient au propriétaire de circulations',",
-      // CHAÎNE EXACTE, et non le seul mot `pronargdefaults` : survivante de la
-      // campagne du 13/09, on pouvait neutraliser la condition en la préfixant
-      // d'un `true and` sans que le mot disparaisse. C'est la deuxième fois
-      // que ce genre d'assertion laisse passer une mutation.
-      "         (select pronargdefaults from pg_proc\n           where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0",
+      // LA LIGNE ENTIÈRE, libellé ET condition, d'un seul tenant. Deux
+      // survivantes successives ont montré qu'il n'y a pas de demi-mesure :
+      // `toContain('pronargdefaults')` survivait à un `true and` préfixé
+      // devant la condition, et ne lire que la condition survivait au même
+      // `true and` glissé entre le libellé et elle. Seule la ligne complète
+      // ferme les deux.
+      "  select 'definir_acces n''a aucun paramètre par défaut',\n" +
+        '         (select pronargdefaults from pg_proc\n' +
+        "           where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0",
     ]) {
       expect(migration, `migration : contrôle « ${controle} » absent`).toContain(controle);
     }
