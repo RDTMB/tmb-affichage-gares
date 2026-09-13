@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest';
 
 import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import { construitCourse } from '../core/train-sup';
-import { passagesPourGare, trainsDuJour } from '../core/horaires';
+import { generationJour, passagesPourGare, trainsDuJour } from '../core/horaires';
 import { aLeDroit } from '../core/roles';
 import { accesValide, courseFermee, ACCES_COURSE } from '../core/types';
 import { champsFormulaireCourse, commanditairePourAcces } from './supervision-logique';
@@ -77,6 +77,8 @@ function jour(options: { special?: AccesCourse; train11?: AccesCourse } = {}): J
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      libelle: null,
       nature: 'special',
       commanditaire: 'Comité d’entreprise',
       acces: options.special,
@@ -99,6 +101,9 @@ function jour(options: { special?: AccesCourse; train11?: AccesCourse } = {}): J
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      commanditaire: null,
+      libelle: null,
       nature: 'grille',
       acces: options.train11,
     });
@@ -940,5 +945,151 @@ describe('les renvois de la spécification pointent vers une section qui existe'
         expect(numeros, `${f} : renvoi vers §${m[1]}, qui n’existe pas`).toContain(m[1]);
       }
     }
+  });
+});
+
+// ===========================================================================
+// DÉFAUT DE RECETTE (TEST, 13/09/2026) — la journée FRAÎCHEMENT GÉNÉRÉE
+// ===========================================================================
+describe('une journée issue de `generationJour()` laisse changer l’accès', () => {
+  // CE QUE CE TEST AURAIT DÛ EXISTER POUR ATTRAPER. Changer l'accès d'une
+  // course refusait avec « Commanditaire non chargé » sur une journée que la
+  // supervision venait de générer, pour un agent qui portait admin ET
+  // supervision. Trouvé à la recette sur la base de TEST — pas ici.
+  //
+  // `generationJour()` construisait ses circulations SANS les clés
+  // `commanditaire`, `acces` et `libelle`. Et `getJour()` renvoie cet objet
+  // synthétique dans deux cas : une date jamais exploitée, et — celui qui
+  // mordait — juste après `genererJour(date)`, où il retourne
+  // `generationJour(...)` au lieu de relire ce qu'il vient d'écrire. Les
+  // lignes existaient en base avec `commanditaire = null` ; l'objet en mémoire
+  // n'avait pas la clé. `commanditairePourAcces()` voyait `undefined`,
+  // concluait « non chargé », et refusait.
+  //
+  // POURQUOI RIEN NE L'A VU : ces champs étaient OPTIONNELS dans le type, donc
+  // toute construction qui les omettait était valide pour `tsc`, et aucun test
+  // ne partait d'une journée fraîchement générée — la recette RLS travaillait
+  // sur des lignes posées à la main.
+  const genere = generationJour(GRAND, '2026-07-15');
+
+  it('le commanditaire est CONSTRUIT à null, jamais absent', () => {
+    for (const c of genere.circulations) {
+      expect(
+        Object.prototype.hasOwnProperty.call(c, 'commanditaire'),
+        `TRAIN ${c.numero} : la clé commanditaire n’existe pas`,
+      ).toBe(true);
+      expect(c.commanditaire).toBeNull();
+    }
+  });
+
+  it('changer l’accès d’une de ses courses est ACCEPTÉ', () => {
+    const c = genere.circulations.find((x) => x.numero === 11);
+    expect(c, 'TRAIN 11 absent de la journée générée').toBeDefined();
+    const d = commanditairePourAcces(c ?? {});
+    expect(d.ok, d.ok ? '' : d.refus).toBe(true);
+    expect(d.ok && d.valeur, 'un commanditaire est apparu de nulle part').toBeNull();
+  });
+
+  it('l’accès est CONSTRUIT à « public » — l’interface ne ment pas sur l’état réel', () => {
+    // La colonne est `not null default 'public'` en base : un objet qui ne la
+    // porte pas laisserait croire à un état indéterminé là où la base, elle,
+    // a tranché.
+    for (const c of genere.circulations) {
+      expect(
+        Object.prototype.hasOwnProperty.call(c, 'acces'),
+        `TRAIN ${c.numero} : la clé acces n’existe pas`,
+      ).toBe(true);
+      expect(c.acces).toBe('public');
+    }
+    expect(courseFermee(genere.circulations[0] ?? {})).toBe(false);
+  });
+
+  it('le libellé est CONSTRUIT à null : un train de grille n’en a pas', () => {
+    for (const c of genere.circulations) {
+      expect(
+        Object.prototype.hasOwnProperty.call(c, 'libelle'),
+        `TRAIN ${c.numero} : la clé libelle n’existe pas`,
+      ).toBe(true);
+      expect(c.libelle).toBeNull();
+    }
+  });
+
+  it('les DESCENTES aussi — il y a deux constructions, pas une', () => {
+    // Le défaut se serait réparé à moitié si l'on n'avait corrigé que la
+    // première boucle : les descentes paires sont construites séparément.
+    const descentes = genere.circulations.filter((c) => c.sens === 'descente');
+    expect(descentes.length, 'aucune descente dans la journée générée').toBeGreaterThan(0);
+    for (const c of descentes) {
+      expect(c.commanditaire, `TRAIN ${c.numero}`).toBeNull();
+      expect(c.acces, `TRAIN ${c.numero}`).toBe('public');
+      expect(c.libelle, `TRAIN ${c.numero}`).toBeNull();
+    }
+  });
+});
+
+// ===========================================================================
+// Le TYPE ferme la classe — c'est lui, le correctif
+// ===========================================================================
+describe('aucun de ces quatre champs n’est plus optionnel', () => {
+  // Le correctif retenu par l'exploitant : fermer la CLASSE, pas le cas.
+  //
+  // `commanditaire?: string | null` rendait valide, pour `tsc`, toute
+  // construction qui l'omettait — et QUATRE l'omettaient : les deux boucles de
+  // `generationJour()`, la création d'une course hors grille en supervision, et
+  // huit fixtures de test. Une seule avait des conséquences visibles, parce
+  // qu'elle seule alimentait un consommateur qui DISTINGUE `undefined` de
+  // `null`. Les trois autres attendaient le prochain consommateur qui le
+  // ferait.
+  const types = source('src/core/types.ts');
+
+  /** Corps d'une interface, sans ses voisines — les signatures ne comptent pas. */
+  const corpsDe = (nom: string): string =>
+    new RegExp(`export interface ${nom} \\{([\\s\\S]*?)\\n\\}`).exec(types)?.[1] ?? '';
+
+  it('aucun champ optionnel dans les trois interfaces qui portent une course', () => {
+    // On lit les INTERFACES et non le fichier entier : les prédicats
+    // `courseFermee()` et `commanditairePourAcces()` déclarent volontairement
+    // des paramètres TOLÉRANTS (`{ acces?: … }`), parce qu'ils sont appelés sur
+    // des objets issus d'une CONVERSION qui peut mentir. Confondre les deux
+    // ferait tomber ce test sur la garde elle-même.
+    for (const nom of ['Circulation', 'TrainJour', 'PassageGare'] as const) {
+      const corps = corpsDe(nom);
+      expect(corps, `interface ${nom} introuvable`).not.toBe('');
+      for (const champ of ['commanditaire', 'libelle', 'acces', 'depart_reel'] as const) {
+        // Tous ne vivent pas dans les trois interfaces ; ceux qui y sont ne
+        // doivent plus être facultatifs.
+        expect(corps, `${nom}.${champ} est redevenu optionnel`).not.toContain(`${champ}?:`);
+      }
+    }
+  });
+
+  it('les trois champs à valeur absente sont `string | null`', () => {
+    const circulation = corpsDe('Circulation');
+    for (const champ of ['depart_reel', 'commanditaire', 'libelle'] as const) {
+      expect(circulation, `${champ} n'est plus total`).toContain(`${champ}: string | null;`);
+    }
+  });
+
+  it('`acces` refuse `null`, à la différence des trois autres', () => {
+    // Ce n'est pas une coquetterie de typage : c'est la base qui le dit. Une
+    // course a TOUJOURS un accès ; elle peut n'avoir aucun commanditaire,
+    // aucun libellé, aucun départ constaté.
+    expect(types, 'acces admet null alors que la colonne est not null').not.toContain(
+      'acces: AccesCourse | null;',
+    );
+    expect(source('supabase/schema.sql')).toContain("acces text not null default 'public',");
+  });
+
+  it('la GARDE reste, et elle a toujours un objet', () => {
+    // §4 : elle vise le cas où la journée est lue SANS `avecCommanditaire`.
+    // Celui-là existe toujours — `getJour()` a deux `select` distincts, et le
+    // fournisseur CONVERTIT sa réponse en `Circulation[]`. La conversion peut
+    // donc mentir sur un champ que le type déclare obligatoire, et la garde
+    // est le filet qui rattrape ce mensonge au moment où il coûterait une
+    // colonne effacée.
+    expect(commanditairePourAcces({}).ok).toBe(false);
+    // Le mock reproduit fidèlement ce retrait : sans lui, plus rien n'exercerait
+    // la garde et elle passerait pour du code mort.
+    expect(source('src/data/mock.ts')).toContain('delete copie.commanditaire;');
   });
 });

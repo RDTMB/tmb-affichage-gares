@@ -292,7 +292,7 @@ export interface Circulation {
    * choisi à la création) ; renseignée = l'agent a constaté l'heure de
    * départ, et `passages` a été recalculé depuis elle.
    */
-  depart_reel?: string | null;
+  depart_reel: string | null;
   /**
    * COMMANDITAIRE d'un train SPÉCIAL : qui l'a affrété. Champ INTERNE —
    * visible en supervision et dans le journal, JAMAIS servi aux écrans. Le
@@ -303,7 +303,7 @@ export interface Circulation {
    * Colonne propre et non `motif` : celui-ci porte déjà la raison d'une
    * suppression et celle d'un retard.
    */
-  commanditaire?: string | null;
+  commanditaire: string | null;
   /**
    * LIBELLÉ D'AFFICHAGE, facultatif (docs/01 §2.10). Quand il existe, il
    * remplace VERBATIM ce que rendent `libelleTrain()` et
@@ -314,7 +314,7 @@ export interface Circulation {
    * dans sa plage (spécial ≥ 201, renfort 101–199) et continue d'apparier la
    * montée à sa descente.
    */
-  libelle?: string | null;
+  libelle: string | null;
   /**
    * ACCÈS de la course : à qui ses places sont vendues (docs/01 §2.12).
    * INDÉPENDANT de `nature` — un train de GRILLE peut être affrété.
@@ -323,7 +323,7 @@ export interface Circulation {
    * déploiement ne porte pas la colonne ; `accesValide()` retombe alors sur
    * `public`, qui est exactement le comportement d'avant ce lot.
    */
-  acces?: AccesCourse | null;
+  acces: AccesCourse;
 }
 
 export interface Jour {
@@ -391,7 +391,7 @@ export interface TrainJour {
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
   /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
-  libelle?: string | null;
+  libelle: string | null;
   /** Accès de la course (docs/01 §2.12) — jamais déduit de `nature`. */
   acces: AccesCourse;
   /**
@@ -421,7 +421,7 @@ export interface PassageGare {
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
   /** Libellé d'affichage libre, quand l'agent en a donné un (docs/01 §2.10). */
-  libelle?: string | null;
+  libelle: string | null;
   /**
    * Accès de la course (docs/01 §2.12). C'est LUI qui décide de la pastille
    * « Privé / Private », jamais `nature`.

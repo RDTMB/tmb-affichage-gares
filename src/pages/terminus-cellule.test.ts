@@ -62,6 +62,10 @@ function rotationSup(
     retard_min: 0,
     motif: null,
     sans_voyageurs: false,
+    depart_reel: null,
+    commanditaire: null,
+    libelle: null,
+    acces: 'public' as const,
     nature: 'supplementaire' as const,
     passages: rotation.montee,
   };

@@ -77,6 +77,9 @@ const jourAvecSpecial = (): Jour => ({
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      libelle: null,
+      acces: 'prive' as const,
       nature: 'special',
       commanditaire: 'Comité d’entreprise',
       passages: construitCourse(GRAND, { heureDepart_s: h('09:00'), garesMontee: MONTEE }).montee,
@@ -246,14 +249,14 @@ describe('deux séries, qui ne se mélangent pas', () => {
 
   it('« SPÉCIAL n » en toutes lettres, « SPÉ n » sur le badge', () => {
     const deux = [
-      { numero: 201, nature: 'special' as const },
-      { numero: 203, nature: 'special' as const },
+      { numero: 201, nature: 'special' as const, libelle: null },
+      { numero: 203, nature: 'special' as const, libelle: null },
     ];
     expect(libelleTrain(deux[0]!, deux)).toBe('SPÉCIAL 1');
     expect(libelleTrain(deux[1]!, deux)).toBe('SPÉCIAL 2');
     expect(libelleTrainCourt(deux[0]!, deux)).toBe('SPÉ 1');
     // Un seul spécial : pas de rang, comme « TRAIN SUP » sans numéro.
-    const seul = [{ numero: 201, nature: 'special' as const }];
+    const seul = [{ numero: 201, nature: 'special' as const, libelle: null }];
     expect(libelleTrain(seul[0]!, seul)).toBe('SPÉCIAL');
     expect(libelleTrainCourt(seul[0]!, seul)).toBe('SPÉ');
   });
@@ -262,10 +265,10 @@ describe('deux séries, qui ne se mélangent pas', () => {
     // « SUP 2 » et « SPÉCIAL 2 » sont deux trains différents. Compter les deux
     // ensemble ferait sauter un rang dès que l'autre série gagne une rotation.
     const melange = [
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 103, nature: 'supplementaire' as const },
-      { numero: 201, nature: 'special' as const },
-      { numero: 203, nature: 'special' as const },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
+      { numero: 201, nature: 'special' as const, libelle: null },
+      { numero: 203, nature: 'special' as const, libelle: null },
     ];
     expect(libelleTrain(melange[1]!, melange)).toBe('TRAIN SUP 2');
     expect(libelleTrain(melange[3]!, melange)).toBe('SPÉCIAL 2');
@@ -513,8 +516,8 @@ describe('la nature traverse le moteur sans se perdre', () => {
     expect(p?.nature, 'la nature se perd entre le train et le passage').toBe('special');
     // C'est cette valeur qui décide de la pastille « privé » et du libellé.
     expect(
-      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille' }, [
-        { numero: 201, nature: 'special' },
+      libelleTrainCourt({ numero: 201, nature: p?.nature ?? 'grille', libelle: null }, [
+        { numero: 201, nature: 'special', libelle: null },
       ]),
     ).toBe('SPÉ');
   });

@@ -704,7 +704,7 @@ function libellesDuJour(saufNumero?: number): string[] {
 function trainsPourLibelle(): {
   numero: number;
   nature: NatureCirculation;
-  libelle?: string | null;
+  libelle: string | null;
 }[] {
   return (jour?.circulations ?? []).map((c) => ({
     numero: c.numero,
@@ -759,7 +759,7 @@ async function changeAffluence(numero: number, niveau: NiveauAffluence | null): 
     {
       numero,
       nature: circulationDe(numero)?.nature ?? 'grille',
-      libelle: circulationDe(numero)?.libelle,
+      libelle: circulationDe(numero)?.libelle ?? null,
     },
     trainsPourLibelle(),
   );
@@ -2221,6 +2221,9 @@ function initCirculations(): void {
       statut: 'ok',
       retard_min: 0,
       motif: null,
+      // Une course qu'on CRÉE n'a pas encore de départ constaté : la valeur
+      // est `null`, pas absente. La distinction a coûté un défaut de recette.
+      depart_reel: null,
       sans_voyageurs: ($('sup-sans-voyageurs') as HTMLInputElement).checked,
       nature,
       // Champ INTERNE : jamais servi aux écrans (droit de colonne retiré à
@@ -2545,7 +2548,7 @@ function initCirculations(): void {
         {
           numero,
           nature: circulationDe(numero)?.nature ?? 'supplementaire',
-          libelle: circulationDe(numero)?.libelle,
+          libelle: circulationDe(numero)?.libelle ?? null,
         },
         trainsPourLibelle(),
       );
@@ -2895,7 +2898,7 @@ interface LigneAffluence {
   numero: number;
   nature: NatureCirculation;
   /** Libellé libre, pour que le guichet lise le même nom que la gare. */
-  libelle?: string | null;
+  libelle: string | null;
   sens: Sens;
   express: boolean;
   rame: string;

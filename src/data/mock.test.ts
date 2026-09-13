@@ -1366,10 +1366,23 @@ describe('Commanditaire : le mock reproduit le droit de colonne (11/09/2026)', (
   it('une circulation SANS commanditaire est rendue telle quelle', async () => {
     // Le filtre ne doit pas recopier tout le tableau pour rien, ni inventer
     // une clé `commanditaire: undefined` là où il n'y en avait pas.
+    //
+    // ⚠ CE TEST A CHANGÉ DE SUJET le 13/09/2026, et il VERROUILLAIT LE DÉFAUT.
+    // Il exigeait que la clé soit ABSENTE (`'commanditaire' in t7` faux) d'une
+    // journée fraîchement générée — c'est exactement ce qui faisait refuser un
+    // changement d'accès en recette, la garde `commanditairePourAcces()` lisant
+    // `undefined` comme « colonne non chargée ». Écrit dans l'autre sens, il
+    // aurait attrapé le défaut ; écrit ainsi, il le protégeait.
+    //
+    // Ce qu'il tient désormais : la clé EXISTE et vaut `null`, et le filtre
+    // rend l'objet SANS LE RECOPIER quand il n'y a rien à retirer.
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.signIn('supervision@demo', 'x');
     const jour = await provider.getJour('2026-08-28', { creerSiAbsent: true });
     const t7 = jour.circulations.find((c) => c.numero === 7);
-    expect(t7 && 'commanditaire' in t7).toBe(false);
+    expect(t7 && 'commanditaire' in t7, 'la clé a de nouveau disparu').toBe(true);
+    expect(t7?.commanditaire, 'un commanditaire est apparu de nulle part').toBeNull();
+    // …et aucune clé `undefined` fabriquée par le filtre.
+    expect(Object.values(t7 ?? {}).includes(undefined)).toBe(false);
   });
 });

@@ -671,9 +671,18 @@ export class MockProvider implements DataProvider {
       ...jour,
       circulations: jour.circulations.map((c) => {
         if (c.commanditaire === undefined || c.commanditaire === null) return c;
-        const copie = { ...c };
+        // LE RETRAIT EST DÉLIBÉRÉ, et la conversion aussi. PostgREST ne rend
+        // PAS la clé quand le `select` ne la demande pas : l'objet réel n'a
+        // pas la propriété, alors que le type de `Circulation` la déclare
+        // obligatoire — parce que le fournisseur CONVERTIT sa réponse.
+        //
+        // Le mock reproduit donc le mensonge de cette conversion plutôt que
+        // de l'effacer. C'est exactement la situation contre laquelle
+        // `commanditairePourAcces()` garde, et un mock qui rendrait `null`
+        // ici masquerait le seul cas où cette garde sert encore.
+        const copie: Record<string, unknown> = { ...c };
         delete copie.commanditaire;
-        return copie;
+        return copie as unknown as Circulation;
       }),
     };
   }

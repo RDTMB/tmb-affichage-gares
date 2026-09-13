@@ -50,6 +50,7 @@ function passage(numero: number, reste: Partial<PassageGare> = {}): PassageGare 
     terminusExceptionnel: false,
     nature: 'grille' as const,
     acces: 'public' as const,
+    libelle: null,
     departConfirme: false,
     arrivee_s: null,
     depart_s: 36000,

@@ -137,6 +137,22 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       sans_voyageurs: false,
       nature: 'grille',
       passages: null,
+      // CES QUATRE CLÉS SONT POSÉES, et non omises. Défaut trouvé à la
+      // RECETTE sur la base de TEST le 13/09/2026 : elles manquaient, et
+      // `getJour()` renvoie cet objet synthétique JUSTE APRÈS
+      // `genererJour(date)` — il ne relit pas ce qu'il vient d'écrire. Les
+      // lignes existaient en base (`commanditaire = null`, `acces = 'public'`)
+      // mais l'objet en mémoire n'avait pas les clés, et la garde
+      // `commanditairePourAcces()` concluait « non chargé » sur une journée
+      // que la supervision venait de générer.
+      //
+      // Le type les rend maintenant OBLIGATOIRES : une construction qui les
+      // oublie ne compile plus. C'est ce qui ferme la classe, et non le seul
+      // cas — trois autres constructions les omettaient aussi.
+      depart_reel: null,
+      commanditaire: null,
+      libelle: null,
+      acces: 'public',
     });
   });
 
@@ -158,6 +174,22 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       sans_voyageurs: false,
       nature: 'grille',
       passages: null,
+      // CES QUATRE CLÉS SONT POSÉES, et non omises. Défaut trouvé à la
+      // RECETTE sur la base de TEST le 13/09/2026 : elles manquaient, et
+      // `getJour()` renvoie cet objet synthétique JUSTE APRÈS
+      // `genererJour(date)` — il ne relit pas ce qu'il vient d'écrire. Les
+      // lignes existaient en base (`commanditaire = null`, `acces = 'public'`)
+      // mais l'objet en mémoire n'avait pas les clés, et la garde
+      // `commanditairePourAcces()` concluait « non chargé » sur une journée
+      // que la supervision venait de générer.
+      //
+      // Le type les rend maintenant OBLIGATOIRES : une construction qui les
+      // oublie ne compile plus. C'est ce qui ferme la classe, et non le seul
+      // cas — trois autres constructions les omettaient aussi.
+      depart_reel: null,
+      commanditaire: null,
+      libelle: null,
+      acces: 'public',
     });
   }
 
@@ -490,6 +522,11 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
         // tout l'objet de ce lot — la colonne se lit ICI aussi, et pas
         // seulement sur les courses hors grille.
         acces: accesValide(circulation?.acces),
+        // Un train de grille n'a pas de libellé libre — mais la clé est POSÉE,
+        // comme partout depuis le 13/09 : une absence de clé et une absence de
+        // valeur sont deux choses, et confondre les deux a coûté un défaut de
+        // recette.
+        libelle: circulation?.libelle ?? null,
         // Un train de GRILLE n'a pas de départ à constater : ses heures sont
         // celles du document d'exploitation, pas une estimation.
         departConfirme: false,

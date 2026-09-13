@@ -78,7 +78,11 @@ describe('la colonne existe, et elle est PROPRE', () => {
     expect(MIGRATION_A).toContain(
       'alter table circulations add column if not exists commanditaire',
     );
-    expect(source('src/core/types.ts')).toContain('commanditaire?: string | null;');
+    // OBLIGATOIRE depuis le 13/09/2026, et non plus facultatif : un champ
+    // optionnel laissait `tsc` valider toute construction qui l'omettait, et
+    // quatre d'entre elles l'omettaient — dont `generationJour()`, d'où le
+    // défaut trouvé à la recette.
+    expect(source('src/core/types.ts')).toContain('commanditaire: string | null;');
   });
 
   it('les deux migrations sont REJOUABLES', () => {

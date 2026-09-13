@@ -29,6 +29,10 @@ function circulation(partiel: Partial<Circulation> = {}): Circulation {
     retard_min: 0,
     motif: null,
     sans_voyageurs: false,
+    depart_reel: null,
+    commanditaire: null,
+    libelle: null,
+    acces: 'public' as const,
     nature: 'grille' as const,
     ...partiel,
   };

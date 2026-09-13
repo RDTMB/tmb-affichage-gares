@@ -829,6 +829,10 @@ describe('Trains supplémentaires dans le moteur', () => {
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      commanditaire: null,
+      libelle: null,
+      acces: 'public' as const,
       nature: 'supplementaire' as const,
       passages: rotation.montee,
     };
@@ -927,6 +931,10 @@ describe('Trains supplémentaires dans le moteur', () => {
       retard_min: 0,
       motif: null,
       sans_voyageurs: false,
+      depart_reel: null,
+      commanditaire: null,
+      libelle: null,
+      acces: 'public' as const,
       nature: 'supplementaire' as const,
       passages: rotation.montee,
     };
@@ -958,92 +966,100 @@ describe('Trains supplémentaires dans le moteur', () => {
 
 describe('libelleTrain — source unique du libellé', () => {
   const grilleTrains = [
-    { numero: 9, nature: 'grille' as const },
-    { numero: 10, nature: 'grille' as const },
+    { numero: 9, nature: 'grille' as const, libelle: null },
+    { numero: 10, nature: 'grille' as const, libelle: null },
   ];
 
   it('un train de grille garde « TRAIN 9 »', () => {
-    expect(libelleTrain({ numero: 9, nature: 'grille' as const }, grilleTrains)).toBe('TRAIN 9');
+    expect(
+      libelleTrain({ numero: 9, nature: 'grille' as const, libelle: null }, grilleTrains),
+    ).toBe('TRAIN 9');
   });
 
   it('un seul train sup dans la journée : « TRAIN SUP », sans numéro', () => {
     const tous = [
       ...grilleTrains,
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 102, nature: 'supplementaire' as const },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 102, nature: 'supplementaire' as const, libelle: null },
     ];
-    expect(libelleTrain({ numero: 101, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP',
-    );
+    expect(
+      libelleTrain({ numero: 101, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP');
     // La descente appariée porte le MÊME libellé : c'est la même rotation
-    expect(libelleTrain({ numero: 102, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP',
-    );
+    expect(
+      libelleTrain({ numero: 102, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP');
   });
 
   it('deux trains sup : « TRAIN SUP 1 » et « TRAIN SUP 2 », dans l’ordre des numéros', () => {
     const tous = [
       ...grilleTrains,
-      { numero: 103, nature: 'supplementaire' as const },
-      { numero: 104, nature: 'supplementaire' as const },
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 102, nature: 'supplementaire' as const },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
+      { numero: 104, nature: 'supplementaire' as const, libelle: null },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 102, nature: 'supplementaire' as const, libelle: null },
     ];
-    expect(libelleTrain({ numero: 101, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP 1',
-    );
-    expect(libelleTrain({ numero: 102, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP 1',
-    );
-    expect(libelleTrain({ numero: 103, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP 2',
-    );
-    expect(libelleTrain({ numero: 104, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP 2',
-    );
+    expect(
+      libelleTrain({ numero: 101, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP 1');
+    expect(
+      libelleTrain({ numero: 102, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP 1');
+    expect(
+      libelleTrain({ numero: 103, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP 2');
+    expect(
+      libelleTrain({ numero: 104, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP 2');
   });
 });
 
 describe('libelleTrainCourt — écriture compacte du badge de l’écran de gare', () => {
   const grilleTrains = [
-    { numero: 11, nature: 'grille' as const },
-    { numero: 12, nature: 'grille' as const },
+    { numero: 11, nature: 'grille' as const, libelle: null },
+    { numero: 12, nature: 'grille' as const, libelle: null },
   ];
 
   it('un train de grille : « T11 »', () => {
-    expect(libelleTrainCourt({ numero: 11, nature: 'grille' as const }, grilleTrains)).toBe('T11');
+    expect(
+      libelleTrainCourt({ numero: 11, nature: 'grille' as const, libelle: null }, grilleTrains),
+    ).toBe('T11');
   });
 
   it('un seul train sup dans la journée : « SUP », sans numéro', () => {
     const tous = [
       ...grilleTrains,
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 102, nature: 'supplementaire' as const },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 102, nature: 'supplementaire' as const, libelle: null },
     ];
-    expect(libelleTrainCourt({ numero: 101, nature: 'supplementaire' as const }, tous)).toBe('SUP');
-    expect(libelleTrainCourt({ numero: 102, nature: 'supplementaire' as const }, tous)).toBe('SUP');
+    expect(
+      libelleTrainCourt({ numero: 101, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP');
+    expect(
+      libelleTrainCourt({ numero: 102, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP');
   });
 
   it('deux rotations sup : « SUP 1 » et « SUP 2 », la descente partageant le rang de sa montée', () => {
     const tous = [
       ...grilleTrains,
-      { numero: 103, nature: 'supplementaire' as const },
-      { numero: 104, nature: 'supplementaire' as const },
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 102, nature: 'supplementaire' as const },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
+      { numero: 104, nature: 'supplementaire' as const, libelle: null },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 102, nature: 'supplementaire' as const, libelle: null },
     ];
-    expect(libelleTrainCourt({ numero: 101, nature: 'supplementaire' as const }, tous)).toBe(
-      'SUP 1',
-    );
-    expect(libelleTrainCourt({ numero: 102, nature: 'supplementaire' as const }, tous)).toBe(
-      'SUP 1',
-    );
-    expect(libelleTrainCourt({ numero: 103, nature: 'supplementaire' as const }, tous)).toBe(
-      'SUP 2',
-    );
-    expect(libelleTrainCourt({ numero: 104, nature: 'supplementaire' as const }, tous)).toBe(
-      'SUP 2',
-    );
+    expect(
+      libelleTrainCourt({ numero: 101, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP 1');
+    expect(
+      libelleTrainCourt({ numero: 102, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP 1');
+    expect(
+      libelleTrainCourt({ numero: 103, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP 2');
+    expect(
+      libelleTrainCourt({ numero: 104, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP 2');
   });
 
   it('le rang est le MÊME que celui de libelleTrain, sur les mêmes entrées', () => {
@@ -1052,11 +1068,11 @@ describe('libelleTrainCourt — écriture compacte du badge de l’écran de gar
     // désigner un train au téléphone.
     const tous = [
       ...grilleTrains,
-      { numero: 105, nature: 'supplementaire' as const },
-      { numero: 106, nature: 'supplementaire' as const },
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 102, nature: 'supplementaire' as const },
-      { numero: 103, nature: 'supplementaire' as const },
+      { numero: 105, nature: 'supplementaire' as const, libelle: null },
+      { numero: 106, nature: 'supplementaire' as const, libelle: null },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 102, nature: 'supplementaire' as const, libelle: null },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
     ];
     for (const t of tous) {
       const long = libelleTrain(t, tous);
@@ -1071,13 +1087,15 @@ describe('libelleTrainCourt — écriture compacte du badge de l’écran de gar
   it('un train sup absent de la liste retombe sur « SUP », comme le libellé long', () => {
     const tous = [
       ...grilleTrains,
-      { numero: 101, nature: 'supplementaire' as const },
-      { numero: 103, nature: 'supplementaire' as const },
+      { numero: 101, nature: 'supplementaire' as const, libelle: null },
+      { numero: 103, nature: 'supplementaire' as const, libelle: null },
     ];
     // 201 n'appartient pas à la journée : aucun rang à lui donner.
-    expect(libelleTrainCourt({ numero: 201, nature: 'supplementaire' as const }, tous)).toBe('SUP');
-    expect(libelleTrain({ numero: 201, nature: 'supplementaire' as const }, tous)).toBe(
-      'TRAIN SUP',
-    );
+    expect(
+      libelleTrainCourt({ numero: 201, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('SUP');
+    expect(
+      libelleTrain({ numero: 201, nature: 'supplementaire' as const, libelle: null }, tous),
+    ).toBe('TRAIN SUP');
   });
 });
