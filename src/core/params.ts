@@ -73,6 +73,23 @@ function nombre(brut: unknown): number | null {
 }
 
 /** Entier borné, ou le défaut si la valeur est inutilisable. */
+/**
+ * BORNES de la durée d'affichage de l'écran horaires, en secondes.
+ *
+ * EXPORTÉES parce qu'elles servent DEUX FOIS : ici, à la lecture, et dans le
+ * champ de saisie de la supervision, qui doit refuser ce que cette fonction
+ * corrigerait en silence. Une borne recopiée dans l'interface est une borne
+ * qui divergera — c'est exactement ce qui s'était produit, le champ portant
+ * `min="5" max="600"` en dur dans le HTML pendant que la valeur réellement
+ * écrite, elle, ne passait par aucun contrôle.
+ *
+ * Il n'y a délibérément PAS de contrainte SQL : elle exposerait à l'agent une
+ * erreur PostgreSQL brute. C'est donc au CHAMP de refuser, et à la lecture de
+ * rattraper ce qui serait entré autrement (une écriture directe en base).
+ */
+export const DUREE_HORAIRES_MIN_S = 5;
+export const DUREE_HORAIRES_MAX_S = 600;
+
 function entierBorne(brut: unknown, min: number, max: number, defaut: number): number {
   const n = nombre(brut);
   if (n === null) return defaut;
@@ -137,6 +154,88 @@ function tableau<T>(brut: unknown): T[] {
 }
 
 /**
+ * Un paramètre que l'assainissement a CORRIGÉ : ce qu'il a reçu, ce qu'il a
+ * retenu.
+ */
+export interface CorrectionParam {
+  /** Nom du paramètre, tel qu'il est stocké en base. */
+  cle: string;
+  /** Valeur REÇUE, rendue lisible (une valeur aberrante n'est pas toujours un nombre). */
+  recu: string;
+  /** Valeur RETENUE à la place. */
+  retenu: string;
+}
+
+/** Rend une valeur inconnue lisible dans un message, sans jamais lever. */
+function lisible(v: unknown): string {
+  if (v === null) return 'null';
+  if (v === undefined) return 'absent';
+  if (typeof v === 'object') {
+    try {
+      return JSON.stringify(v) ?? String(v);
+    } catch {
+      return '[objet]';
+    }
+  }
+  return String(v);
+}
+
+/**
+ * Paramètres sûrs À AFFICHER, ET la liste de ce qui a dû être corrigé.
+ *
+ * POURQUOI DEUX PORTES ET UNE SEULE FONCTION. L'assainissement remplaçait une
+ * valeur aberrante par son défaut SANS RIEN DIRE À PERSONNE : la panne était
+ * réparée, mais muette — donc sa cause demeurait, et le cas se reproduisait
+ * sans que quiconque sache qu'il s'était produit.
+ *
+ * `paramsValides()` reste PURE et sa signature ne change pas : elle est
+ * appelée aussi bien par les écrans de gare que par la supervision, et les
+ * écrans n'ont rien à faire de cette liste — un voyageur ne corrige pas un
+ * paramètre. C'est l'APPELANT qui décide d'en faire un signal, et seule la
+ * supervision le fait, là où quelqu'un peut agir.
+ *
+ * Une SEULE fonction calcule les deux : deux fonctions qui borneraient
+ * séparément finiraient par ne plus borner pareil.
+ */
+export function paramsAvecCorrections(brut: unknown): {
+  params: Params;
+  corriges: CorrectionParam[];
+} {
+  const o = objet(brut) ?? {};
+  const corriges: CorrectionParam[] = [];
+  /** Note une correction — seulement si la valeur reçue EXISTAIT. */
+  const note = (cle: string, recu: unknown, retenu: unknown): void => {
+    if (recu === undefined) return; // paramètre jamais posé : ce n'est pas une correction
+    if (lisible(recu) === lisible(retenu)) return;
+    corriges.push({ cle, recu: lisible(recu), retenu: lisible(retenu) });
+  };
+  const params = paramsValides(o);
+  note('duree_horaires_s', o.duree_horaires_s, params.duree_horaires_s);
+  note('duree_cache_min', o.duree_cache_min, params.duree_cache_min);
+  note('a_quai_origine_s', o.a_quai_origine_s, params.a_quai_origine_s);
+  note('vitesse_ticker_px_s', o.vitesse_ticker_px_s, params.vitesse_ticker_px_s);
+  note('mode_medias', o.mode_medias, params.mode_medias);
+  // Veille : les deux bornes sont reprises ENSEMBLE, donc la correction se
+  // note sur la paire — la moitié d'une plage ne veut rien dire.
+  note('veille_nuit', o.veille_nuit, params.veille_nuit);
+  // Température : `NaN` est le « rien à afficher » voulu. On ne le signale que
+  // si une valeur AVAIT été posée, sinon chaque base neuve crierait au loup.
+  const tRecue = objet(o.meteo_sommet)?.t;
+  // `NaN` REÇU n'est pas une correction : c'est déjà « rien à afficher », et
+  // c'est la valeur du défaut du projet (`PARAMS_DEFAUT.meteo_sommet.t`).
+  // Sans cette réserve, toute base au défaut aurait crié au loup.
+  const tDejaVide = typeof tRecue === 'number' && Number.isNaN(tRecue);
+  if (tRecue !== undefined && !tDejaVide && Number.isNaN(params.meteo_sommet.t)) {
+    corriges.push({
+      cle: 'meteo_sommet.t',
+      recu: lisible(tRecue),
+      retenu: 'aucune température affichée',
+    });
+  }
+  return { params, corriges };
+}
+
+/**
  * Paramètres sûrs à afficher, quelle que soit la forme des données reçues.
  * N'altère jamais l'objet d'entrée.
  */
@@ -145,7 +244,12 @@ export function paramsValides(brut: unknown): Params {
   return {
     meteo_sommet: meteoValide(o.meteo_sommet),
     veille_nuit: veilleValide(o.veille_nuit),
-    duree_horaires_s: entierBorne(o.duree_horaires_s, 5, 600, PARAMS_DEFAUT.duree_horaires_s),
+    duree_horaires_s: entierBorne(
+      o.duree_horaires_s,
+      DUREE_HORAIRES_MIN_S,
+      DUREE_HORAIRES_MAX_S,
+      PARAMS_DEFAUT.duree_horaires_s,
+    ),
     // Gouverne l'écran neutre : une valeur non numérique le DÉSACTIVAIT
     // (`age > NaN` est toujours faux), laissant des horaires périmés à
     // l'écran indéfiniment. Borne basse à 3 min pour qu'un écran vivant ne

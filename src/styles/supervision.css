@@ -3530,3 +3530,17 @@ td.cell-sens > .sens-groupe {
     grid-area: auto / 1 / auto / -1;
   }
 }
+
+/* Mention des demi-minutes dans le formulaire de création d'une course hors
+   grille (docs/01, création d'un train supplémentaire ou spécial). Elle
+   INFORME : discrète, jamais en rouge — ce n'est ni une erreur ni un refus. */
+.note-30s {
+  margin-top: 8px;
+  padding: 7px 11px;
+  border-left: 3px solid var(--bord);
+  background: #f7f9fb;
+  border-radius: 0 6px 6px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sec);
+}

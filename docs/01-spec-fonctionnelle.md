@@ -847,7 +847,22 @@ accessibles (§5.5 ci-dessous, et docs/02 sécurité).
    puis à la descente (origine et terminus toujours cochés et verrouillés),
    le battement au terminus (défaut 5 min), la rame et une case « monte sans
    voyageurs ». L'aperçu montre les horaires CALCULÉS, chacun modifiable
-   avant validation. Le train apparaît ensuite dans la liste avec un badge
+   avant validation.
+
+   **Les 30 secondes ne sont pas un défaut de calcul.** Un train créé à une
+   heure ronde passe à `:30` dès Motivon, et le `:30` ne repart plus ; à la
+   descente il est présent dès le Nid d'Aigle. Ce sont les temps de parcours du
+   DOCUMENT D'EXPLOITATION qui les portent :
+   `2026-05-29-JMC-1-Horaires été 2026-exploit-v1.xlsx`, feuille « Grand
+   service » — Train 1, départ Saint-Gervais 07:15:00, arrivée Motivon
+   07:26:30. Vérifié le 13/09/2026 sur les deux services et sur TOUTES les
+   montées : Saint-Gervais → Motivon vaut **11 min 30 s partout, sans
+   exception** (690 s ; 13 montées au grand service, 8 au petit). Les heures
+   sont rondes au Fayet et à Saint-Gervais parce que ce sont les points de
+   départ ; le décalage apparaît au premier temps de parcours.
+   On ne corrige donc rien : le calcul est exact, et chaque heure proposée
+   reste modifiable avant validation. _(Question de l'exploitant tranchée sur
+   pièce le 13/09/2026.)_ Le train apparaît ensuite dans la liste avec un badge
    « SUP » et, seul de tous les trains, un bouton « Supprimer ce train » avec
    confirmation — les trains de grille ne se suppriment pas, ils se mettent
    au statut « Supprimé ». Création et suppression passent par le brouillon
@@ -1081,6 +1096,45 @@ cartes suivent la même règle. Ce n'est qu'un confort : la base refuse de toute
 façon ce qu'elle doit refuser.
 
 _(Modèle validé par l'exploitant le 05/09/2026 ; détail technique docs/02 §5.)_
+### 5.6 Brouillon et publication — rien ne part tout seul
+
+**Les onglets Bandeau et Circulations passent par un BROUILLON.** Rien
+n'atteint la base — donc les écrans — tant que « Publier » n'a pas été cliqué.
+Introduit le 29/08/2026 ; `src/pages/brouillon.ts` le porte, et la barre de
+publication en donne l'état permanent.
+
+**Ce qui est mis en attente** (onglet Circulations) : rame, terminus, statut,
+retard, motif, activation d'un facultatif, « sans voyageurs », **l'action
+groupée sur les facultatifs**, la bascule « Terminus Bellevue », la section
+exploitée, ainsi que la **création** et la **suppression** d'un train hors
+grille. Côté Bandeau : messages, météo du sommet, vitesse du bandeau.
+
+**Ce qui part IMMÉDIATEMENT**, et pourquoi — trois exceptions, toutes assumées
+et toutes documentées là où elles vivent :
+
+| Écriture | Raison |
+| --- | --- |
+| **Départ réel** d'une descente supplémentaire (§2.7) | On corrige l'heure au moment où le train s'en va, avec des voyageurs qui attendent en bas ; un clic de publication de plus laisserait une heure fausse à l'écran pendant ce temps. |
+| **Affluence** — complet / dernières places (§2.8) | On constate au guichet qu'on ne vend plus, avec des voyageurs déjà sur le quai. |
+| **Accès** d'une course (§2.12) | Raison STRUCTURELLE et non d'urgence : l'administrateur n'a aucune politique RLS sur une circulation de grille, donc la publication du brouillon — un upsert de la ligne entière — échouerait pour lui seul, et rien ne le dirait avant le clic sur « Publier ». |
+
+Les trois partagent la même contrepartie : **l'échec est dit franchement**, par
+un message persistant et non un toast fugace, et l'écran de saisie garde son
+état précédent puisqu'on ne l'a jamais avancé.
+
+Tout le reste — utilisateurs, rôles, onglets visibles, grilles horaires,
+médias, déclaration d'un poste — ne passe pas par le brouillon : ce ne sont pas
+des données d'affichage du jour.
+
+**Ce que « Publier » envoie** : les écarts réels entre l'état affiché et l'état
+de référence, décrits au point 6 ci-dessous. Une publication partielle échoue
+bruyamment et laisse en attente ce qui n'est pas passé ; elle ne se fait jamais
+passer pour un succès.
+
+_(Révisé par l'exploitant le 29/08/2026. Cette section porte le numéro que le
+code cite déjà : « docs/01 §5.6 » apparaît dix fois dans `src/pages/`, et ne
+renvoyait jusqu'au 13/09/2026 vers aucune section existante.)_
+
 6. **Publication**. Le compteur affiche le nombre d'ÉCARTS RÉELS avec un
    état de référence, pris au chargement de la page et après chaque
    publication — et non le nombre de clics : ramener une température de 12 à

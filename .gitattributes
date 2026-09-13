@@ -1,4 +1,38 @@
+# RÈGLE GÉNÉRALE : LF dans le dépôt, fins de ligne natives dans la copie de
+# travail. Le poste de développement est en CRLF, le coureur d'intégration
+# continue en LF — sans cette ligne, aucune règle ne couvrait les sources
+# TypeScript, et un test qui cherche un repère de texte À CHEVAL SUR DEUX
+# LIGNES passait en local et tombait en intégration. Payé le 07/09/2026, et
+# corrigé ce jour-là au cas par cas : la classe de défaut, elle, restait
+# ouverte, et ce dépôt compte beaucoup de tests qui lisent des fichiers source
+# (securite.test.ts, commanditaire.test.ts, ceux qui lisent les migrations…).
+#
+# `text=auto` laisse git décider ce qui est du texte ; `eol=lf` fixe ce qui est
+# ÉCRIT dans le dépôt. La copie de travail reste en CRLF sous Windows, ce qui
+# n'a jamais été le problème.
+#
+# MESURÉ le 13/09/2026, avant de poser la règle : `git add --renormalize .`
+# ne modifie AUCUN fichier en dehors de celui-ci. Le dépôt est déjà stocké en
+# LF de bout en bout — la règle est donc préventive, et il n'y a pas de
+# renormalisation à faire.
+* text=auto eol=lf
+
 # cmd.exe ne sait lire un fichier de commandes qu'en fins de ligne Windows :
 # livré en LF, il découpe mal les lignes et répond « 'm' n'est pas reconnu ».
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# Binaires : jamais de conversion, sinon le fichier est corrompu. `text=auto`
+# détecte déjà la plupart d'entre eux, mais une détection n'est pas une règle.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.xlsx binary
+*.zip binary

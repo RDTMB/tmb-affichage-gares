@@ -387,6 +387,19 @@
             <div class="ligne gares-sup" id="sup-champ-gares-descente">
               <b>Descente dessert :</b> <span id="sup-gares-descente"></span>
             </div>
+            <!-- LES 30 SECONDES. Un train créé à une heure ronde passe à « :30 »
+                 dès Motivon : ce sont les temps de parcours du document
+                 d'exploitation qui les portent (Saint-Gervais → Motivon
+                 = 11 min 30 s, sur les deux services et toutes les montées).
+                 La mention INFORME — elle ne refuse rien et ne modifie aucune
+                 valeur — pour que le « :30 » cesse de passer pour un défaut
+                 aux yeux du prochain agent. -->
+            <div class="note-30s" id="sup-note-30s">
+              Les horaires calculés portent des demi-minutes (« 09:26:30 ») dès Motivon : elles
+              viennent des temps de parcours du document d'exploitation, où Saint-Gervais → Motivon
+              vaut 11 min 30 s. Ce n'est pas une erreur de calcul, et chaque heure reste modifiable
+              ci-dessous.
+            </div>
             <div class="apercu-sup" id="sup-apercu"></div>
             <div class="note">
               Horaires calculés depuis la grille en vigueur (temps de parcours et d'arrêt) et
@@ -833,7 +846,9 @@
             </div>
             <div class="ligne-duree">
               Durée d'affichage de l'écran horaires :
-              <input type="number" id="duree-horaires" min="5" max="600" /> secondes
+              <!-- min/max/step/title sont posés par le script, depuis les bornes de
+                   `src/core/params.ts` : deux copies divergent. -->
+              <input type="number" id="duree-horaires" /> secondes
               <span style="font-weight: 400; color: var(--sec)"
                 >— chaque média garde sa propre durée.</span
               >
@@ -885,6 +900,13 @@
 
       <!-- ================= PARAMÈTRES ================= -->
       <section class="onglet" id="t-parametres">
+        <!-- PARAMÈTRES CORRIGÉS À LA LECTURE. L'assainissement remplace une
+             valeur aberrante par son défaut ; sans cet avertissement, la panne
+             était réparée mais MUETTE — sa cause demeurait et le cas se
+             reproduisait sans que quiconque sache qu'il s'était produit.
+             Ici, et jamais sur un écran de gare : c'est là que quelqu'un peut
+             agir. -->
+        <div class="avert-trad" id="params-corriges" hidden></div>
         <div class="param-grid">
           <div class="carte" id="carte-machines">
             <h2>

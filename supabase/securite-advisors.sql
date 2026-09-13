@@ -389,3 +389,76 @@ commit;
 --     « caisse » : onglet Bandeau fonctionnel, Circulations refusées.
 --
 -- (g) La matrice complète, cellule par cellule : supabase/tests/roles-rls.sql
+
+-- =============================================================================
+-- AVIS DU SECURITY ADVISOR EXAMINÉS ET ASSUMÉS — relevés le 13/09/2026
+-- =============================================================================
+--
+-- Ce ne sont PAS des correctifs en attente : ce sont des avis TRIÉS. Ils
+-- restent affichés dans le tableau de bord Supabase, et rien n'écrivait
+-- jusqu'ici qu'ils avaient été examinés. Un avis qu'on ignore sans le dire
+-- redevient un avis qu'on ignorera toujours — dans six mois, personne ne
+-- saurait s'il avait été regardé.
+--
+-- Chaque entrée porte la requête qui permet de la revérifier.
+
+-- (h) « Signed-In Users Can Execute SECURITY DEFINER Function »
+--     sur `public.definir_acces`.
+--
+--     ASSUMÉ — c'est la conception du 12/09/2026, pas un défaut. PostgREST
+--     n'expose que le schéma `public`, et cette fonction est la SEULE voie par
+--     laquelle `admin` privatise un train de GRILLE sans gagner du même coup
+--     `statut`, `retard_min`, `terminus` et `passages` : une politique RLS
+--     filtre des LIGNES, jamais des COLONNES, et les droits de colonne ne
+--     distinguent pas nos rôles applicatifs (admin, supervision et caisse sont
+--     le MÊME rôle PostgreSQL, `authenticated`).
+--
+--     CE QUE LE LINTER NE VOIT PAS, et qui borne la fonction :
+--       1. le contrôle du rôle applicatif DANS son corps
+--          (`private.a_un_des_roles(array['admin','supervision'])`) ;
+--       2. le `search_path` verrouillé à '' ;
+--       3. la révocation à `public` ET à `anon` ;
+--       4. le propriétaire NOMMÉ (`postgres`, celui de `circulations`).
+--     Ces quatre garanties sont vérifiées par `src/data/securite.test.ts`, sur
+--     TOUS les scripts SQL du dépôt — c'est la liste `DEFINER_PUBLIC_AUTORISES`
+--     et le test « chaque dérogation porte SES QUATRE garanties ».
+--
+--     Revérifier (les trois lignes doivent répondre `false`, `true`, `postgres`) :
+--     select has_function_privilege('anon',
+--              'public.definir_acces(date, int, text, text)', 'execute') as anon_execute,
+--            has_function_privilege('authenticated',
+--              'public.definir_acces(date, int, text, text)', 'execute') as authenticated_execute,
+--            (select r.rolname from pg_proc p join pg_roles r on r.oid = p.proowner
+--              where p.oid = 'public.definir_acces(date, int, text, text)'::regprocedure)
+--              as proprietaire;
+
+-- (i) « RLS Policy Always True » sur `ecrans`, politique « signal de vie ».
+--
+--     ASSUMÉ — décision du 29/08/2026, déjà documentée dans `schema.sql`. Un
+--     poste en gare n'a aucune session : son signal de vie doit passer avec la
+--     clé publiable, donc la politique ne peut pas filtrer sur un utilisateur.
+--
+--     CE QUE LE LINTER NE VOIT PAS : la portée réelle n'est pas tenue par la
+--     politique mais par les GRANT DE COLONNES (§5 de ce script) — `anon` ne
+--     peut écrire QUE les colonnes du signal de vie, ni déclarer un écran, ni
+--     commander un rechargement — et par le déclencheur qui réécrit
+--     `derniere_vue` avec `now()` côté serveur.
+--
+--     ⚠ IL RESTE UN RÉSIDU RÉEL, et il doit être nommé ici : rien n'empêche un
+--     anonyme de donner le signal de vie D'UN AUTRE ÉCRAN que le sien. Un
+--     poste éteint peut donc PARAÎTRE VIVANT en supervision. Ce n'est pas une
+--     fuite de données — c'est un mensonge possible sur l'état du parc,
+--     c'est-à-dire exactement ce que cette table existe pour dire.
+--
+--     Il n'y a pas de correctif court : un poste en gare n'a aucun moyen de
+--     garder un secret, la clé publiable étant PUBLIQUE par conception. Toute
+--     réponse sérieuse (jeton par poste, signature, mandataire) change
+--     l'architecture du parc. RENVOYÉ À LA RELECTURE GÉNÉRALE D'AVANT
+--     TRANSFERT.
+--
+--     Revérifier ce qui borne réellement l'écriture anonyme :
+--     select column_name, privilege_type
+--       from information_schema.column_privileges
+--      where grantee = 'anon' and table_name = 'ecrans'
+--      order by privilege_type, column_name;
+--     -> UPDATE sur les seules colonnes du signal de vie ; aucun INSERT.

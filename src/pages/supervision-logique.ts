@@ -3,6 +3,7 @@
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
 import { dureeCycleS } from '../core/cycle-medias';
+import { DUREE_HORAIRES_MAX_S, DUREE_HORAIRES_MIN_S } from '../core/params';
 import type { ModeMedias } from '../core/cycle-medias';
 import type {
   Circulation,
@@ -682,6 +683,27 @@ export function commanditairePourAcces(c: {
   return { ok: true, valeur: c.commanditaire };
 }
 
+/**
+ * Durée d'affichage de l'écran horaires SAISIE, ou `null` si elle est à
+ * refuser. PURE, donc éprouvable — c'est le seul moyen de vérifier qu'elle
+ * emploie les MÊMES bornes que la lecture, et non deux constantes recopiées.
+ *
+ * `null` est la valeur utile : `Number(value) || 20` laissait passer
+ * n'importe quoi, et `paramsValides()` le corrigeait ensuite en silence à la
+ * lecture. L'agent voyait sa valeur acceptée, l'écran en affichait une autre,
+ * et personne n'apprenait que les deux différaient.
+ *
+ * Les bornes viennent de `src/core/params.ts`, qui borne aussi la lecture.
+ */
+export function dureeHoraireSaisie(brut: string): number | null {
+  const texte = brut.trim();
+  if (texte === '') return null;
+  const n = Number(texte);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return null;
+  if (n < DUREE_HORAIRES_MIN_S || n > DUREE_HORAIRES_MAX_S) return null;
+  return n;
+}
+
 export function garesPrecochees(e: {
   ordre: readonly GareId[];
   obligatoires: readonly GareId[];
@@ -906,9 +928,19 @@ export function actionGroupeeFacultatifs(
     libelle: `${verbe} ${groupe}`,
     confirmation:
       `${verbe} ${groupe} du ${dateEnToutesLettres(dateISO)} ?\n` +
+      // DÉFAUT CORRIGÉ (13/09/2026) : la confirmation promettait « Ils
+      // apparaîtront IMMÉDIATEMENT sur les écrans », alors que l'appelant met
+      // la bascule au BROUILLON depuis le 29/08/2026 — rien n'atteint la base
+      // avant « Publier » (docs/01 §5.6). La phrase mentait à l'agent au
+      // moment précis où il décide, et deux tests la verrouillaient.
+      //
+      // La barre de publication avait déjà été corrigée de la même phrase ;
+      // celle-ci avait été oubliée. C'est la même classe de défaut, au même
+      // endroit du raisonnement : une interface qui décrit un logiciel
+      // antérieur à elle-même.
       (activer
-        ? 'Ils apparaîtront immédiatement sur les écrans.'
-        : 'Ils disparaîtront immédiatement des écrans.') +
+        ? 'Ils apparaîtront sur les écrans APRÈS publication.'
+        : 'Ils disparaîtront des écrans APRÈS publication.') +
       reserve,
   };
 }
