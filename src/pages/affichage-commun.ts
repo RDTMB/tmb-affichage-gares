@@ -1,6 +1,16 @@
 // Éléments d'affichage partagés entre l'écran de gare et la grille du jour :
 // échappement HTML, pied de page (messages défilants + météo sommet).
-import type { Affluence, GareId, Grille, Message, Params, PassageGare } from '../core/types';
+import type {
+  Affluence,
+  AccesCourse,
+  GareId,
+  Grille,
+  Message,
+  NiveauAffluence,
+  Params,
+  PassageGare,
+} from '../core/types';
+import { courseFermee } from '../core/types';
 import { dureeDefilementS, VITESSE_TICKER_DEFAUT, vitesseTickerValide } from '../core/ticker';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +48,57 @@ export function appliqueAffluence(
   }
   if (parNumero.size === 0) return passages.map((p) => ({ ...p, affluence: null }));
   return passages.map((p) => ({ ...p, affluence: parNumero.get(p.numero) ?? null }));
+}
+
+// ---------------------------------------------------------------------------
+// Mention d'une course : « Privé », « Complet », « Dernières places »
+// ---------------------------------------------------------------------------
+// UNE SEULE RÈGLE POUR DEUX ÉCRANS. L'écran de gare la portait seul, mesurée et
+// commentée, jusqu'à ce que la grille du jour ait besoin des mêmes mentions
+// (13/09/2026). Deux écrans qui diraient deux choses du même train est
+// exactement le défaut à éviter : la décision et les MOTS vivent donc ici, et
+// chaque page ne garde que sa mise en forme.
+
+/** Ce qu'une colonne ou une ligne annonce, en plus du train lui-même. */
+export type Mention = 'prive' | 'complet' | 'limite';
+
+/**
+ * Les mots, bilingues, dans les deux pages à la fois.
+ *
+ * « Privé / Private » dit le STATUT et laisse le voyageur en tirer la
+ * conséquence ; « PRIVATE » est reconnu bien au-delà de l'anglais, « charter »
+ * non. Les deux niveaux de remplissage reprennent le vocabulaire de l'onglet
+ * « Places » de la supervision (docs/01 §2.8).
+ */
+export const LIBELLE_MENTION: Record<Mention, { fr: string; en: string }> = {
+  prive: { fr: 'Privé', en: 'Private' },
+  complet: { fr: 'Complet', en: 'Full' },
+  limite: { fr: 'Dernières places', en: 'Few seats' },
+};
+
+/**
+ * La mention d'une course, ou `null` s'il n'y en a aucune. TROIS RÈGLES, toutes
+ * héritées de l'écran de gare et mesurées avant lui :
+ *
+ *  1. RIEN sur un train SUPPRIMÉ : il n'existe plus pour le voyageur ;
+ *  2. jamais de remplissage sur une course FERMÉE. Un train affrété ne vend
+ *     pas ses places au comptoir (il est exclu de l'onglet « Places »), et les
+ *     deux pastilles ne tiennent PAS ensemble — « PRIVÉ » + « DERNIÈRES
+ *     PLACES » + picto débordait de 140 px à 1920×1080 sur l'écran de gare,
+ *     mesuré le 11/09/2026 ;
+ *  3. le critère est `acces`, jamais `nature` : un spécial `mixte` VEND ses
+ *     places restantes et porte donc son remplissage — sans « Privé », si bien
+ *     que les deux ne se rencontrent jamais. C'est ce qui tient la mesure de
+ *     non-collision.
+ */
+export function mentionCourse(t: {
+  supprime: boolean;
+  acces?: AccesCourse | null;
+  affluence?: NiveauAffluence | null;
+}): Mention | null {
+  if (t.supprime) return null;
+  if (courseFermee(t)) return 'prive';
+  return t.affluence ?? null;
 }
 
 export function echapper(texte: string): string {

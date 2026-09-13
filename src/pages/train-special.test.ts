@@ -26,6 +26,7 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import { construitCourse, NUMERO_SPECIAL_MIN, prochainNumeroHorsGrille } from '../core/train-sup';
 import { libelleTrain, libelleTrainCourt, passagesPourGare, trainsDuJour } from '../core/horaires';
 import { aLeDroit, ongletsVisibles } from '../core/roles';
+import { LIBELLE_MENTION, mentionCourse } from './affichage-commun';
 import {
   avertissementTerminusCourse,
   departOrigine,
@@ -470,8 +471,12 @@ describe('le spécial n’entre pas au guichet', () => {
     // La mesure reste valable telle quelle : les deux pastilles ne se
     // rencontrent toujours pas, puisque « Privé » et « Complet » sont
     // désormais commandés par le MÊME critère, en sens inverse.
-    const ecran = source('src/pages/ecran.ts');
-    expect(ecran).toMatch(/const affluenceHtml =\s*\n?\s*supprime \|\| courseFermee\(p\)/);
+    // A CHANGÉ DE SUJET le 13/09/2026 : la règle vit dans `mentionCourse`,
+    // partagée avec la grille du jour, et s'ÉPROUVE au lieu de se relire.
+    // Une course fermée rend « prive », jamais un niveau de remplissage —
+    // quel que soit ce que la base porte.
+    expect(mentionCourse({ supprime: false, acces: 'prive', affluence: 'complet' })).toBe('prive');
+    expect(mentionCourse({ supprime: false, acces: 'prive', affluence: 'limite' })).toBe('prive');
   });
 
   it('le commanditaire est exigé à la création d’un spécial', () => {
@@ -552,11 +557,18 @@ describe('la mention « privé » tient à l’écran', () => {
     // La règle affirmée ici est plus forte que l'ancienne : elle nomme la
     // donnée au lieu de la déduire. Le détail du critère est éprouvé sur le
     // MOTEUR par acces-course.test.ts, qui ne lit pas la source.
-    expect(ecran).toContain('supprime || !courseFermee(p)');
+    // Le CRITÈRE s'éprouve à l'exécution depuis le 13/09/2026 ; la page, elle,
+    // doit bien l'appeler et poser la pastille bilingue.
+    expect(mentionCourse({ supprime: false, acces: 'prive' })).toBe('prive');
+    expect(mentionCourse({ supprime: false, acces: 'public' })).toBeNull();
+    expect(ecran).toContain('mentionCourse({ supprime, acces: p.acces, affluence: p.affluence })');
     expect(ecran, 'la pastille se déduit encore de la nature').not.toContain(
       "p.nature !== 'special'",
     );
-    expect(ecran).toContain('<span class="pill-prive">Privé <small>Private</small></span>');
+    expect(LIBELLE_MENTION.prive).toEqual({ fr: 'Privé', en: 'Private' });
+    expect(ecran).toContain(
+      '<span class="pill-prive">${LIBELLE_MENTION.prive.fr} <small>${LIBELLE_MENTION.prive.en}</small></span>',
+    );
   });
 
   it('la note ne reprend « privé » que si la ligne est LIBRE', () => {

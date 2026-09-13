@@ -239,12 +239,15 @@ thead th {
   line-height: 1.05;
 }
 
+/* LE NOM DU TRAIN EST LE TITRE DE LA COLONNE depuis le 13/09/2026 : il
+   reprend la taille, la graisse et la couleur qu’avait l’heure d’origine
+   (2,25 vh, 900, blanc). En légende grise de 1,35 vh, il restait illisible
+   de loin — or c’est désormais la seule chose qui identifie la colonne. */
 thead th .num {
   display: block;
-  font-size: 1.35vh;
-  font-weight: 700;
-  color: var(--texte-ter);
-  letter-spacing: 0.06em;
+  font-size: 2.25vh;
+  font-weight: 900;
+  letter-spacing: 0.04em;
   line-height: 1.1;
 }
 
@@ -254,6 +257,59 @@ thead th .picto {
   line-height: 1.15;
   font-weight: 900;
   color: var(--jaune);
+}
+
+/* MENTIONS DE COURSE — « Privé », « Complet », « Dernières places ».
+   Les mêmes mots que l'écran de gare (LIBELLE_MENTION), une mise en forme
+   propre à la grille : ici la contrainte est la HAUTEUR, pas la largeur.
+
+   EN LIGNE, dans la ligne `.picto` existante — et surtout PAS en bloc comme
+   les badges de retard : un rang de plus dans l'en-tête, c'est la coupe du
+   terminus qui revient (PR #34, marge mesurée à +57 px seulement). C'est le
+   retrait de l'heure d'origine qui paie ces mentions ; elles doivent tenir
+   dans la ligne libérée, pas en ajouter une.
+
+   L'anglais passe SOUS le français, en plus petit : côte à côte,
+   « Dernières places Few seats » double la largeur d'une colonne qui n'en a
+   pas. */
+.picto .mention {
+  display: inline-block;
+  vertical-align: middle;
+  padding: 0 0.35vw;
+  border-radius: 0.5vh;
+  font-size: 1.25vh;
+  line-height: 1.15;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.picto .mention small {
+  display: block;
+  font-size: 1.05vh;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
+/* Les couleurs sont celles de l'écran de gare : « Complet » prend le rouge de
+   la charte, « Dernières places » l'ambre d'ÉTAT (--affluence-limite, jeton
+   partagé par les deux surfaces), « Privé » le crème du train affrété. */
+.picto .mention.complet {
+  background: var(--rouge);
+  color: #fff;
+}
+
+.picto .mention.limite {
+  background: var(--affluence-limite);
+  color: #2b1d00;
+}
+
+.picto .mention.prive {
+  background: var(--creme);
+  color: var(--marine);
 }
 
 thead th img.motrice {
@@ -881,7 +937,7 @@ body.mode-horloge .badge-cache {
   }
 
   thead th .num {
-    font-size: calc(1.35 * var(--u));
+    font-size: calc(2.25 * var(--u));
   }
 
   thead th .picto {
@@ -892,6 +948,15 @@ body.mode-horloge .badge-cache {
     height: calc(3.3 * var(--u));
   }
 
+  .picto .mention {
+    padding: 0 0.35vw;
+    border-radius: calc(0.5 * var(--u));
+    font-size: calc(1.25 * var(--u));
+  }
+
+  .picto .mention small {
+    font-size: calc(1.05 * var(--u));
+  }
   thead th .velo {
     font-size: calc(1.5 * var(--u));
   }

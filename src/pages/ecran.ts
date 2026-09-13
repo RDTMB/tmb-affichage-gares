@@ -60,6 +60,8 @@ import {
   badgeFraicheur,
   bandeauSimulation,
   couleurSure,
+  LIBELLE_MENTION,
+  mentionCourse,
   styleRame,
   creeJournalHeartbeat,
   creeTicker,
@@ -363,10 +365,15 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // langues.
   //
   // Rien sur un train SUPPRIMÉ : il n'existe plus pour le voyageur.
+  // La RÈGLE et les MOTS viennent de `mentionCourse` / `LIBELLE_MENTION`
+  // (affichage-commun.ts) : la grille du jour affiche les mêmes mentions, et
+  // deux écrans qui diraient deux choses du même train est le défaut à éviter.
+  // Ne reste ici que la mise en forme, propre à l’écran de gare.
+  const mention = mentionCourse({ supprime, acces: p.acces, affluence: p.affluence });
   const priveHtml =
-    supprime || !courseFermee(p)
-      ? ''
-      : '<span class="pill-prive">Privé <small>Private</small></span>';
+    mention === 'prive'
+      ? `<span class="pill-prive">${LIBELLE_MENTION.prive.fr} <small>${LIBELLE_MENTION.prive.en}</small></span>`
+      : '';
 
   // …et JAMAIS de pastille de remplissage sur une course FERMÉE. Deux raisons,
   // et la seconde est mesurée : un train affrété ne vend pas ses places au
@@ -381,11 +388,9 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // voyageur a besoin. Il ne porte pas « Privé », donc les deux ne se
   // rencontrent pas — la mesure de collision reste tenue.
   const affluenceHtml =
-    supprime || courseFermee(p) || !p.affluence
-      ? ''
-      : p.affluence === 'complet'
-        ? '<span class="pill-affluence complet">Complet <small>Full</small></span>'
-        : '<span class="pill-affluence limite">Dernières places <small>Few seats</small></span>';
+    mention === 'complet' || mention === 'limite'
+      ? `<span class="pill-affluence ${mention}">${LIBELLE_MENTION[mention].fr} <small>${LIBELLE_MENTION[mention].en}</small></span>`
+      : '';
 
   // Badge du numéro DEVANT le nom de la gare de destination : c'est là que
   // l'œil du voyageur va déjà. « TRAIN 11 » reste le libellé canonique en

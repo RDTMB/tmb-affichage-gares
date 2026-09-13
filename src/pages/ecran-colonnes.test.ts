@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
+import { LIBELLE_MENTION, mentionCourse } from './affichage-commun';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   compteARebours,
@@ -109,20 +110,28 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
     // Le train n'existe plus pour le voyageur : « complet » sur une ligne
     // barrée n'a aucun sens. La garde est dans le calcul, pas dans le CSS —
     // masquer par la feuille laisserait le texte dans le DOM.
+    // A CHANGÉ DE SUJET le 13/09/2026 : la garde vit dans `mentionCourse`,
+    // partagée avec la grille du jour, et s'ÉPROUVE au lieu de se relire.
+    expect(mentionCourse({ supprime: true, affluence: 'complet' })).toBeNull();
+    expect(mentionCourse({ supprime: true, affluence: 'limite' })).toBeNull();
+    expect(mentionCourse({ supprime: true, acces: 'prive' })).toBeNull();
+    expect(mentionCourse({ supprime: false, affluence: null })).toBeNull();
+    // Les deux niveaux, et eux seuls, portent leur classe — la classe reste
+    // construite ici, elle est propre à l'écran de gare.
     const bloc = /const affluenceHtml =([\s\S]*?);\n/.exec(ts)?.[1] ?? '';
     expect(bloc, 'affluenceHtml introuvable').not.toBe('');
-    expect(bloc).toContain('supprime');
-    expect(bloc).toContain('!p.affluence');
-    // Les deux niveaux, et eux seuls, portent leur classe.
-    expect(bloc).toContain('pill-affluence complet');
-    expect(bloc).toContain('pill-affluence limite');
+    expect(bloc).toContain('pill-affluence ${mention}');
+    expect(bloc).toContain("mention === 'complet' || mention === 'limite'");
   });
 
   it('les deux libellés sont bilingues, l’anglais dans un <small>', () => {
     // Contrat de la page : UI voyageurs FR + EN. L'anglais n'est retiré que
     // sous 4/3, par la feuille de style, et le commentaire y dit pourquoi.
-    expect(ts).toContain('Complet <small>Full</small>');
-    expect(ts).toContain('Dernières places <small>Few seats</small>');
+    // Les MOTS viennent désormais de `LIBELLE_MENTION`, partagé avec la grille
+    // du jour : c'est lui qu'on éprouve, et la mise en forme `<small>` ici.
+    expect(LIBELLE_MENTION.complet).toEqual({ fr: 'Complet', en: 'Full' });
+    expect(LIBELLE_MENTION.limite).toEqual({ fr: 'Dernières places', en: 'Few seats' });
+    expect(ts).toContain('${LIBELLE_MENTION[mention].fr} <small>${LIBELLE_MENTION[mention].en}');
   });
 
   it('la mention du départ constaté est NEUTRE, jamais du « retard »', () => {
