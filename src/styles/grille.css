@@ -132,12 +132,18 @@ header {
 }
 
 /* ============ TABLEAUX MONTÉE / DESCENTE ============ */
+/* Le blanc AUTOUR des tableaux, resserré de moitié dans la hauteur (la
+   largeur ne change pas) : 1 vh → 0,5 vh de marge et 0,8 vh → 0,5 vh
+   entre les deux sens. Rendu au tableau : 1,6 vh, soit 17 px à 1080 p.
+   C’est ce qui fait tenir la grille quand le bandeau « horloge décalée »
+   ET une restriction de ligne s’affichent en même temps — l’interligne
+   seul n’y laissait plus que 2 px de marge (mesuré). */
 main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 1vh 1.2vw;
-  gap: 0.8vh;
+  padding: 0.5vh 1.2vw;
+  gap: 0.5vh;
   overflow: hidden;
 }
 
@@ -154,7 +160,7 @@ main {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 0.2vh 0.2vw 0.6vh;
+  padding: 0.1vh 0.2vw 0.25vh;
   flex: none;
   display: flex;
   align-items: center;
@@ -175,6 +181,26 @@ main {
   font-family: 'Lato', sans-serif;
 }
 
+/* LA COUPE SILENCIEUSE DE LA DERNIÈRE LIGNE — défaut relevé par l'exploitant
+   le 13/09/2026, mesuré au navigateur le même jour.
+
+   `overflow: hidden` reste : un kiosque n'a pas de souris, une barre de
+   défilement n'y serait jamais actionnée, et laisser le tableau déborder le
+   ferait passer SOUS la légende. Mais il ne doit plus RIEN avoir à couper.
+   La contrepartie est plus bas : les INTERLIGNES du tableau sont resserrés
+   (`line-height`), ce qui abaisse la hauteur minimale du contenu sans toucher
+   à la taille d'un seul caractère. Retirer ces `line-height` sans rendre la
+   place ailleurs fait revenir la coupe — c'est ce que verrouille
+   src/pages/grille-derniere-ligne.test.ts.
+
+   MESURES 1920×1080, géométrie de production (ni bandeau de démonstration ni
+   bandeau d'heure simulée), 1 vh = 10,8 px :
+                              place offerte   besoin montée   besoin descente
+     avant                        355 px          359 px          336 px
+     après                        372 px          315 px          297 px
+   La montée manquait donc de 4 px en service NOMINAL — et de 42 px dès que le
+   bandeau « horloge décalée » (état de PRODUCTION) s'affiche. Elle dispose
+   maintenant de 57 px de marge. */
 .tabwrap {
   flex: 1;
   min-height: 0;
@@ -195,12 +221,22 @@ td {
   position: relative;
 }
 
+/* INTERLIGNES DU TABLEAU — la contrepartie de `overflow: hidden` (voir
+   .tabwrap). `line-height: normal` vaut environ 1,2 : c'est du BLANC au-dessus
+   et au-dessous de chaque ligne de texte, pas du texte. Le resserrer ne change
+   la taille d'AUCUN caractère — la grille se lit de loin exactement comme
+   avant — et rend au tableau la place qui lui manquait.
+   Valeurs sans unité, donc rien à transcrire dans le bloc portrait : elles se
+   multiplient par la taille de police, qui a déjà son pendant en --u.
+   Mesuré à 1920×1080 : en-tête montée 76 → 67 px, en-tête descente 54 → 49 px,
+   hauteur minimale d'une ligne de gare 47 → 41 px. */
 thead th {
   background: #1b3252;
   font-size: 2.25vh;
   font-weight: 900;
   padding: 0.3vh 0;
   font-variant-numeric: tabular-nums;
+  line-height: 1.05;
 }
 
 thead th .num {
@@ -209,12 +245,13 @@ thead th .num {
   font-weight: 700;
   color: var(--texte-ter);
   letter-spacing: 0.06em;
+  line-height: 1.1;
 }
 
 thead th .picto {
   display: block;
   font-size: 1.35vh;
-  line-height: 1.4;
+  line-height: 1.15;
   font-weight: 900;
   color: var(--jaune);
 }
@@ -243,6 +280,7 @@ thead th.col-gare {
 tbody th {
   background: var(--marine-row);
   font-size: 1.85vh;
+  line-height: 1.05;
   font-weight: 700;
   text-align: left;
   padding: 0.25vh 0.7vw;
@@ -256,6 +294,7 @@ tbody th {
 tbody th small {
   display: block;
   font-size: 1.3vh;
+  line-height: 1;
   color: var(--texte-ter);
   font-weight: 400;
   font-family: 'Lato', sans-serif;
@@ -295,6 +334,7 @@ thead th.retard .badge,
 thead th.supp .badge {
   display: block;
   font-size: 1.25vh;
+  line-height: 1.1;
   font-weight: 900;
 }
 
@@ -333,8 +373,10 @@ td.supp {
 }
 
 /* ============ LÉGENDE ============ */
+/* 3,8 vh → 3,2 vh : la légende tient sur 3,2 vh (contenu mesuré à 2,6 vh
+   de haut à 1080 p), le reste était de la réserve non utilisée. */
 .legende {
-  flex: 0 0 3.8vh;
+  flex: 0 0 3.2vh;
   display: flex;
   align-items: center;
   gap: 1vw;
@@ -809,13 +851,13 @@ body.mode-horloge .badge-cache {
   }
 
   main {
-    padding: calc(1 * var(--u)) 1.2vw;
-    gap: calc(0.8 * var(--u));
+    padding: calc(0.5 * var(--u)) 1.2vw;
+    gap: calc(0.5 * var(--u));
   }
 
   .sens h2 {
     font-size: calc(2.2 * var(--u));
-    padding: calc(0.2 * var(--u)) 0.2vw calc(0.6 * var(--u));
+    padding: calc(0.1 * var(--u)) 0.2vw calc(0.25 * var(--u));
   }
 
   .sens h2 span.en {
