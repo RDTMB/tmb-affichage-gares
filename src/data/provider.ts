@@ -1,6 +1,7 @@
 // Interface unique d'accès aux données (docs/02 §1) : AUCUN appel Supabase
 // hors de src/data/. Implémentations : MockProvider (démo/tests), puis
 // SupabaseProvider (phase 1, étape 5) et ApiProvider (phase 2, étape 10).
+import type { CorrectionParam } from '../core/params';
 import type {
   AccesCourse,
   Affluence,
@@ -302,4 +303,17 @@ export interface DataProvider {
    * l'en-tête `Date` des réponses que l'application demande déjà.
    */
   ecartHorlogeMs(): number | null;
+  /**
+   * Ce que le DERNIER `getParams()` a dû CORRIGER, ou un tableau vide.
+   *
+   * Hors bande, comme `ecartHorlogeMs()` : la lecture des paramètres rend des
+   * valeurs sûres, et cette liste dit à quel PRIX. Sans elle, l'assainissement
+   * réparait la panne en silence — la cause demeurait, et le cas se
+   * reproduisait sans que quiconque sache qu'il s'était produit.
+   *
+   * Seule la SUPERVISION la lit : un écran de gare n'a personne devant lui
+   * pour corriger un paramètre, et le voyageur n'a que faire de savoir que la
+   * durée d'affichage était à 9 000 s en base.
+   */
+  correctionsParams(): CorrectionParam[];
 }

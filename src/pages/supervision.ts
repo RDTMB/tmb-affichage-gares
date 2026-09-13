@@ -11,6 +11,8 @@ import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
 import '../styles/supervision.css';
 
+import { DUREE_HORAIRES_MAX_S, DUREE_HORAIRES_MIN_S, PARAMS_DEFAUT } from '../core/params';
+
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   formatHeure,
@@ -165,6 +167,7 @@ import {
   ordreRotations,
   champsFormulaireCourse,
   commanditairePourAcces,
+  dureeHoraireSaisie,
   enTeteAffluence,
   messageAucunDepart,
   saisieAffluence,
@@ -3386,7 +3389,18 @@ function initMessages(): void {
 // ---------------------------------------------------------------------------
 
 function rendreMedias(): void {
-  ($('duree-horaires') as HTMLInputElement).value = String(params?.duree_horaires_s ?? 20);
+  // LE CHAMP PORTE SES BORNES, comme celui de la vitesse du bandeau
+  // (`majChampVitessePerso()`) : elles se lisent avant la saisie plutôt que de
+  // corriger après. Elles sont POSÉES ICI et non écrites dans le HTML — deux
+  // copies divergent, et c'est ce qui s'était produit : `min="5" max="600"`
+  // dormait dans `supervision.html` pendant que l'écriture, elle, ne passait
+  // par aucun contrôle.
+  const dureeHoraires = $('duree-horaires') as HTMLInputElement;
+  dureeHoraires.min = String(DUREE_HORAIRES_MIN_S);
+  dureeHoraires.max = String(DUREE_HORAIRES_MAX_S);
+  dureeHoraires.step = '1';
+  dureeHoraires.title = `Entre ${DUREE_HORAIRES_MIN_S} et ${DUREE_HORAIRES_MAX_S} secondes`;
+  dureeHoraires.value = String(params?.duree_horaires_s ?? PARAMS_DEFAUT.duree_horaires_s);
   const mode = params?.mode_medias ?? 'alterne';
   ($('mode-alterne') as HTMLInputElement).checked = mode === 'alterne';
   ($('mode-serie') as HTMLInputElement).checked = mode === 'serie';
@@ -3509,7 +3523,27 @@ function initMedias(): void {
   }
 
   $('duree-horaires').addEventListener('change', () => {
-    const v = Number(($('duree-horaires') as HTMLInputElement).value) || 20;
+    // DÉFAUT CORRIGÉ (13/09/2026) : `Number(value) || 20` n'était pas une
+    // borne. Une valeur aberrante partait en base, et seule la LECTURE la
+    // rattrapait — `paramsValides()` la ramenait dans la plage sans rien dire
+    // à personne. L'agent voyait donc son 9 000 accepté, et l'écran afficher
+    // 600 : deux vérités, et aucune des deux n'était annoncée.
+    //
+    // Il n'y a pas de contrainte SQL, délibérément — elle exposerait une
+    // erreur PostgreSQL brute. C'est donc ICI que le refus doit avoir lieu, et
+    // il doit DIRE les bornes plutôt que de corriger en silence (même règle
+    // que la vitesse du bandeau, `majChampVitessePerso()`).
+    const champ = $('duree-horaires') as HTMLInputElement;
+    const v = dureeHoraireSaisie(champ.value);
+    if (v === null) {
+      toast(
+        `Durée d'affichage : indiquez un nombre entier de secondes entre ${DUREE_HORAIRES_MIN_S} et ${DUREE_HORAIRES_MAX_S}`,
+      );
+      // On rend au champ la valeur EN VIGUEUR : le laisser sur la saisie
+      // refusée ferait croire qu'elle a été retenue.
+      if (params) majChampSansGener(champ, String(params.duree_horaires_s));
+      return;
+    }
     void provider
       .saveParams({ duree_horaires_s: v })
       .then(() => {
@@ -4068,6 +4102,34 @@ function rendreFiltreJournalQui(): void {
   sel.value = choisi;
 }
 
+/**
+ * AVERTISSEMENT « paramètre corrigé à la lecture » (docs/01 §5.7).
+ *
+ * La liste vient du fournisseur, qui la tient du dernier `getParams()`. Elle
+ * est VIDE dans le cas normal, et le bloc reste alors caché : un avertissement
+ * permanent finit par ne plus être lu.
+ */
+function rendreParamsCorriges(): void {
+  const bloc = $('params-corriges');
+  const corriges = provider.correctionsParams();
+  bloc.hidden = corriges.length === 0;
+  if (corriges.length === 0) {
+    bloc.textContent = '';
+    return;
+  }
+  // Le TEXTE dit les trois choses qui permettent d'agir : quel paramètre, ce
+  // qu'il y a en base, et ce que les écrans utilisent à la place. « Valeur
+  // corrigée » seul obligerait à aller chercher les trois.
+  bloc.textContent =
+    `⚠ ${corriges.length === 1 ? 'Un paramètre a' : `${corriges.length} paramètres ont`} dû être corrigé${
+      corriges.length === 1 ? '' : 's'
+    } à la lecture — la base contient une valeur que les écrans ne peuvent pas utiliser : ` +
+    corriges.map((c) => `${c.cle} (${c.recu} → ${c.retenu})`).join(' ; ') +
+    `. Réenregistrez-${corriges.length === 1 ? 'le' : 'les'} ci-dessous : tant que la base garde ${
+      corriges.length === 1 ? 'cette valeur' : 'ces valeurs'
+    }, la correction recommencera à chaque lecture.`;
+}
+
 function rendreParametres(): void {
   rendreFiltreJournalQui();
   if (!params) return;
@@ -4134,6 +4196,8 @@ function rendreParametres(): void {
     `<option value="${VITESSE_PERSONNALISEE}" ${choix.personnalisee ? 'selected' : ''}>Personnaliser…</option>`;
   majChampVitessePerso(choix);
   majApercuTicker(choix.px_s);
+
+  rendreParamsCorriges();
 
   // Veille (onglet Écrans) + météo et délai « à quai »
   majChampSansGener($('veille-debut') as HTMLInputElement, params.veille_nuit.debut);

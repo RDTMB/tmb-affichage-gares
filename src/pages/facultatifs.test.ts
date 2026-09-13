@@ -42,7 +42,13 @@ describe('action groupée sur les facultatifs', () => {
     expect(a.numeros).toEqual(facultatifs.map((c) => c.numero).sort((x, y) => x - y));
     expect(a.libelle).toBe(`Activer les ${facultatifs.length} trains facultatifs`);
     expect(a.confirmation).toContain(`du mardi 25 août 2026 ?`);
-    expect(a.confirmation).toContain('apparaîtront immédiatement sur les écrans');
+    // ⚠ CE TEST VERROUILLAIT UN MENSONGE, corrigé le 13/09/2026. Il exigeait
+    // « apparaîtront IMMÉDIATEMENT sur les écrans », alors que l'appelant met
+    // la bascule au brouillon depuis le 29/08 — rien n'atteint la base avant
+    // « Publier » (docs/01 §5.6). La confirmation trompait l'agent au moment
+    // précis où il décide, et ce test l'y maintenait.
+    expect(a.confirmation).toContain('apparaîtront sur les écrans APRÈS publication');
+    expect(a.confirmation, 'la promesse d’immédiateté est revenue').not.toContain('immédiat');
   });
 
   it('le compte annoncé est celui des trains RÉELLEMENT changés', () => {
@@ -63,7 +69,8 @@ describe('action groupée sur les facultatifs', () => {
     const a = actionGroupeeFacultatifs(j.circulations, DATE);
     expect(a.activer).toBe(false);
     expect(a.libelle).toBe(`Désactiver les ${facultatifs.length} trains facultatifs`);
-    expect(a.confirmation).toContain('disparaîtront immédiatement des écrans');
+    expect(a.confirmation).toContain('disparaîtront des écrans APRÈS publication');
+    expect(a.confirmation, 'la promesse d’immédiateté est revenue').not.toContain('immédiat');
     expect(a.numeros).toHaveLength(facultatifs.length);
   });
 

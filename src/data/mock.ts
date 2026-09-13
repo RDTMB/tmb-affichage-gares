@@ -29,7 +29,8 @@ import {
   peutGererProfil,
   rolesDemoDepuisEmail,
 } from '../core/roles';
-import { paramsValides } from '../core/params';
+import { paramsAvecCorrections } from '../core/params';
+import type { CorrectionParam } from '../core/params';
 import type {
   AccesCourse,
   Affluence,
@@ -842,18 +843,30 @@ export class MockProvider implements DataProvider {
     // de forme, comme le jsonb côté Supabase. Même point de validation unique
     // (C-01), et AVANT le tri : `localeCompare` lèverait sur un `fr` non
     // textuel, ce qui figerait l'écran.
-    const p = paramsValides({
+    const lu = paramsAvecCorrections({
       ...PARAMS_DEMO,
       ...etat.paramsSimples,
       machines: etat.machines ?? PARAMS_DEMO.machines,
       motifs: etat.motifs ?? PARAMS_DEMO.motifs,
       ciels: etat.ciels ?? PARAMS_DEMO.ciels,
     });
+    // Le mock REJOUE le signal : `?demo=1` sert à montrer la supervision, et
+    // une démonstration qui n'afficherait jamais l'avertissement laisserait
+    // croire qu'il n'existe pas. Un état local corrompu (bac à sable partagé)
+    // le déclenche donc ici comme il le ferait en production.
+    this.corrections = lu.corriges;
+    const p = lu.params;
     // Même ordre que le provider Supabase (.order('ordre').order('fr')).
     return {
       ...p,
       ciels: [...p.ciels].sort((a, b) => a.ordre - b.ordre || a.fr.localeCompare(b.fr, 'fr')),
     };
+  }
+
+  private corrections: CorrectionParam[] = [];
+
+  correctionsParams(): CorrectionParam[] {
+    return this.corrections;
   }
 
   onChange(cb: () => void): () => void {

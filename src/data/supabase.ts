@@ -41,7 +41,8 @@ import type {
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT, horsGrille } from '../core/types';
 import type { NatureCirculation } from '../core/types';
 import { ROLES, aLeDroit } from '../core/roles';
-import { paramsValides } from '../core/params';
+import { paramsAvecCorrections } from '../core/params';
+import type { CorrectionParam } from '../core/params';
 import {
   contenuSansMetadonnees,
   grilleDepuisEnregistrement,
@@ -139,6 +140,9 @@ export class SupabaseProvider implements DataProvider {
    * `null` tant qu'aucune réponse n'a porté d'en-tête `Date` lisible.
    */
   private ecartMs: number | null = null;
+
+  /** Ce que le dernier `getParams()` a dû corriger (voir `correctionsParams`). */
+  private corrections: CorrectionParam[] = [];
 
   /**
    * `sansSession` : le client n'ouvre AUCUNE session depuis le fragment
@@ -548,12 +552,21 @@ export class SupabaseProvider implements DataProvider {
     // paramsValides(), unique point de coercition et de bornage (C-01).
     // `Object.fromEntries` et non `{ ...valeurs }` : le spread d'une Map
     // donne un objet VIDE, ce qui remettrait tous les paramètres au défaut.
-    return paramsValides({
+    const lu = paramsAvecCorrections({
       ...Object.fromEntries(valeurs),
       machines: machinesRes.data,
       motifs: motifsRes.data,
       ciels: cielsRes.data,
     });
+    // Retenu HORS BANDE : la lecture rend des valeurs sûres, cette liste dit
+    // à quel prix. Écrasée à chaque lecture — c'est l'état actuel de la base
+    // qui compte, pas l'historique des lectures.
+    this.corrections = lu.corriges;
+    return lu.params;
+  }
+
+  correctionsParams(): CorrectionParam[] {
+    return this.corrections;
   }
 
   onChange(cb: () => void): () => void {

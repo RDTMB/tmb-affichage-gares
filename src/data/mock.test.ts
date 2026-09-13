@@ -1386,3 +1386,46 @@ describe('Commanditaire : le mock reproduit le droit de colonne (11/09/2026)', (
     expect(Object.values(t7 ?? {}).includes(undefined)).toBe(false);
   });
 });
+
+describe('Paramètres corrigés à la lecture : le fournisseur RETIENT le signal', () => {
+  // Survivantes de la campagne du 13/09 : remplacer `this.corrections =
+  // lu.corriges` par `[]` ne faisait tomber personne — les tests ne lisaient
+  // que le TEXTE des deux fournisseurs. Or c'est ce report qui porte tout le
+  // point : sans lui, `paramsAvecCorrections()` calcule une liste que
+  // personne ne voit jamais, et l'assainissement redevient muet.
+  it('une valeur aberrante en base ressort dans `correctionsParams()`', async () => {
+    stockage.clear();
+    stockage.set(
+      'tmb-mock-etat',
+      JSON.stringify({ paramsSimples: { duree_horaires_s: 9000, duree_cache_min: 9999 } }),
+    );
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    const params = await provider.getParams();
+    // La lecture rend une valeur SÛRE…
+    expect(params.duree_horaires_s).toBe(600);
+    // …et dit à quel prix.
+    const cles = provider.correctionsParams().map((c) => c.cle);
+    expect(cles, 'le fournisseur n’a rien retenu').toContain('duree_horaires_s');
+    expect(cles).toContain('duree_cache_min');
+  });
+
+  it('une base saine ne produit AUCUN signal', async () => {
+    stockage.clear();
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.getParams();
+    expect(provider.correctionsParams()).toEqual([]);
+  });
+
+  it('la liste suit la DERNIÈRE lecture : corriger la base éteint le signal', async () => {
+    // Sinon l'avertissement resterait affiché après la correction, et
+    // l'agent ne saurait pas si son geste a servi.
+    stockage.clear();
+    stockage.set('tmb-mock-etat', JSON.stringify({ paramsSimples: { duree_horaires_s: 9000 } }));
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.getParams();
+    expect(provider.correctionsParams()).toHaveLength(1);
+    stockage.set('tmb-mock-etat', JSON.stringify({ paramsSimples: { duree_horaires_s: 30 } }));
+    await provider.getParams();
+    expect(provider.correctionsParams(), 'le signal survit à la correction').toEqual([]);
+  });
+});
