@@ -27,11 +27,13 @@ import {
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type {
+  Affluence,
   GareId,
   Grille,
   Jour,
   Machine,
   Message,
+  NiveauAffluence,
   Params,
   Sens,
   TrainJour,
@@ -50,6 +52,8 @@ import {
   DELAI_PREMIERE_SYNCHRO_MS,
   dureeCacheMinutes,
   INTERVALLE_HEARTBEAT_MS,
+  LIBELLE_MENTION,
+  mentionCourse,
   messagesVisibles,
   meteoHtml,
   styleRame,
@@ -127,12 +131,20 @@ interface DonneesGrille {
   jour: Jour;
   params: Params;
   messages: Message[];
+  /**
+   * Remplissage déclaré du jour. DANS l’instantané, comme sur l’écran de
+   * gare : une grille qui redémarre sans réseau doit réafficher les
+   * pastilles qu’elle avait, pas les oublier. Absent d’un instantané écrit
+   * avant ce déploiement — d’où le repli côté application (leçon C-01).
+   */
+  affluence: Affluence[];
 }
 
 let grille: Grille | null = null;
 let jour: Jour | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
+let affluence: Affluence[] = [];
 let sync: Synchronisation | null = null;
 /**
  * Fournisseur retenu, gardé au niveau du module : la boucle de rendu a besoin
@@ -145,6 +157,17 @@ const majTicker = creeTicker($('ticker'));
 
 function machineDe(nomRame: string): Machine {
   return params?.machines.find((m) => m.nom === nomRame) ?? { ...RAME_INCONNUE, nom: nomRame };
+}
+
+/**
+ * Remplissage déclaré d'un train, ou `null`. Même jointure que sur l'écran de
+ * gare : la clé est le NUMÉRO, jamais la gare — un TRAIN 9 complet l'est dans
+ * toutes celles qu'il doit encore desservir. Un niveau inconnu (base plus
+ * récente que ce déploiement) est ignoré plutôt que recopié.
+ */
+function affluenceDe(numero: number): NiveauAffluence | null {
+  const a = affluence.find((x) => x.numero === numero);
+  return a && (a.niveau === 'complet' || a.niveau === 'limite') ? a.niveau : null;
 }
 
 /** Nom officiel d'une gare, tel que la grille le porte. */
@@ -237,12 +260,23 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
 
   let html = '<thead><tr><th class="col-gare">GARE / STATION</th>';
   colonnes.forEach((c, i) => {
+    // L'EN-TÊTE ANNONCE UN TRAIN, PLUS UNE HEURE (décision de l'exploitant du
+    // 13/09/2026). L'heure d'ORIGINE est retirée PARTOUT, `?gare=` ou non :
+    // elle ne faisait que répéter la première ligne du tableau, juste en
+    // dessous, et mentait à toutes les autres — sur l'écran de Saint-Gervais,
+    // la colonne mise en avant portait « TRAIN 14 · 13:13 » pour un train qui
+    // part d'ici à 14:13. L'heure de chaque gare est dans la cellule de sa
+    // ligne, qui est le seul endroit où elle est vraie.
+    //
+    // La ligne ainsi libérée PAIE les deux mentions ajoutées : « Privé » et le
+    // remplissage tiennent dans la ligne `.picto` existante, en ligne et non
+    // en bloc, si bien que l'en-tête compte un rang de MOINS qu'avant.
     html += `<th class="${classesColonne(c, i === prochainIdx)}"><span class="num">${echapper(
       libelleTrain(
         c.train,
         colonnes.map((x) => x.train),
       ),
-    )}</span>${formatHeure(c.departTheorique_s)}`;
+    )}</span>`;
     const pictos: string[] = [];
     if (c.train.express) {
       pictos.push(`<img class="motrice" src="${__MOTRICE_BLANC__}" alt="Express"> EXPRESS`);
@@ -255,6 +289,21 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
     }
     if (c.supprime)
       pictos.push('<span class="badge" style="color:var(--supprime)">SUPPRIMÉ</span>');
+    // La RÈGLE et les MOTS viennent de `mentionCourse` / `LIBELLE_MENTION` :
+    // l'écran de gare affiche exactement les mêmes, et deux écrans qui
+    // diraient deux choses du même train est le défaut à éviter.
+    const mention = mentionCourse({
+      supprime: c.supprime,
+      acces: c.train.acces,
+      affluence: affluenceDe(c.train.numero),
+    });
+    if (mention) {
+      pictos.push(
+        `<span class="mention ${mention}">${echapper(LIBELLE_MENTION[mention].fr)}<small>${echapper(
+          LIBELLE_MENTION[mention].en,
+        )}</small></span>`,
+      );
+    }
     if (pictos.length > 0) html += `<span class="picto">${pictos.join(' ')}</span>`;
     html += '</th>';
   });
@@ -490,13 +539,28 @@ async function demarre(): Promise<void> {
       provider.getMessages(gare ?? 'le-fayet'),
       provider.getJour(dateJour),
     ]);
-    return { grilles, params: p, messages: m, jour: j };
+    // LE REMPLISSAGE EST CHARGÉ À PART, ET SON ÉCHEC N'EMPORTE PAS LA PAGE.
+    //
+    // L'écran de gare le demande DANS son `Promise.all` : là-bas, une pastille
+    // « Complet » manquante envoie un voyageur vers un train plein, et l'écran
+    // a un repli propre (instantané, puis écran neutre). Ici, la même écriture
+    // ferait disparaître TOUTE la grille du jour parce qu'une information
+    // secondaire n'a pas chargé — une page d'horaires qui s'efface pour ça
+    // serait une régression bien plus grave que l'absence d'une pastille.
+    //
+    // En cas d'échec on garde le DERNIER remplissage connu plutôt qu'un
+    // tableau vide : vide voudrait dire « toutes les places sont disponibles »,
+    // ce que personne n'a constaté. Une pastille périmée se voit et vieillit
+    // avec le badge de fraîcheur ; une pastille effacée ment en silence.
+    const aff = await provider.getAffluence(dateJour).catch(() => affluence);
+    return { grilles, params: p, messages: m, jour: j, affluence: aff };
   };
 
   const applique = (d: DonneesGrille): void => {
     jour = d.jour;
     params = d.params;
     messages = d.messages;
+    affluence = d.affluence ?? [];
     grille = grillePourJour(d.grilles, d.jour);
     rendsEntetesEtPied();
   };

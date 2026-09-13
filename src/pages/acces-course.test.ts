@@ -29,6 +29,7 @@ import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-servi
 import { construitCourse } from '../core/train-sup';
 import { generationJour, passagesPourGare, trainsDuJour } from '../core/horaires';
 import { aLeDroit } from '../core/roles';
+import { mentionCourse } from './affichage-commun';
 import { accesValide, courseFermee, ACCES_COURSE } from '../core/types';
 import { champsFormulaireCourse, commanditairePourAcces } from './supervision-logique';
 import type { AccesCourse, Circulation, GareId, Grille, Jour, Role } from '../core/types';
@@ -180,7 +181,14 @@ describe('l’accès traverse le moteur jusqu’à la ligne d’affichage', () =
     // Les DEUX endroits : la pastille de la ligne de destination, et la
     // mention de la note. Le lot du 11/09 n'en tenait qu'un des deux.
     expect(ecran).toContain('const prive = courseFermee(p)');
-    expect(ecran).toContain('supprime || !courseFermee(p)');
+    // A CHANGÉ DE SUJET le 13/09/2026 : la pastille de la ligne de destination
+    // est commandée par `mentionCourse`, partagée avec la grille du jour. La
+    // règle ne se lit plus dans le texte de la page — elle s'EXÉCUTE, ce qui
+    // vaut mieux.
+    expect(ecran).toContain('mentionCourse({ supprime, acces: p.acces, affluence: p.affluence })');
+    expect(mentionCourse({ supprime: false, acces: 'prive' })).toBe('prive');
+    expect(mentionCourse({ supprime: false, acces: 'public' })).toBeNull();
+    expect(mentionCourse({ supprime: false, acces: 'mixte' })).toBeNull();
     expect(ecran, 'la déduction par la nature est revenue').not.toMatch(
       /p\.nature [!=]== 'special'/,
     );
@@ -191,11 +199,19 @@ describe('l’accès traverse le moteur jusqu’à la ligne d’affichage', () =
     // La collision mesurée le 11/09 (privé + « DERNIÈRES PLACES » + picto =
     // 140 px de débordement à 1920×1080) reste impossible, puisque les deux
     // pastilles sont commandées par le MÊME critère, en sens inverse.
-    const ecran = source('src/pages/ecran.ts');
-    const bloc = /const affluenceHtml =[\s\S]*?;\n/.exec(ecran)?.[0] ?? '';
-    expect(bloc, 'affluenceHtml introuvable').not.toBe('');
-    expect(bloc).toContain('courseFermee(p)');
-    expect(bloc, 'la pastille de remplissage exclut encore les spéciaux').not.toContain('nature');
+    // La règle s'exécute maintenant, au lieu de se lire : `mixte` garde son
+    // remplissage et ne porte PAS « Privé », donc les deux ne se rencontrent
+    // jamais — c'est ce qui tient la mesure de non-collision.
+    expect(mentionCourse({ supprime: false, acces: 'mixte', affluence: 'complet' })).toBe(
+      'complet',
+    );
+    expect(mentionCourse({ supprime: false, acces: 'mixte', affluence: 'limite' })).toBe('limite');
+    expect(mentionCourse({ supprime: false, acces: 'prive', affluence: 'complet' })).toBe('prive');
+    // Et la décision ne regarde JAMAIS la nature : elle n'en reçoit même pas.
+    const commun = source('src/pages/affichage-commun.ts');
+    const debut = commun.indexOf('export function mentionCourse(');
+    const corps = commun.slice(debut, commun.indexOf('\n}\n', debut));
+    expect(corps, 'la pastille de remplissage exclut encore les spéciaux').not.toContain('nature');
   });
 });
 
