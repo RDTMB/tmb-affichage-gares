@@ -98,7 +98,15 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { poseFavicon } from './favicon';
-import { anneauSur, couleurSure, echapper } from './affichage-commun';
+import {
+  anneauSur,
+  contenuTicker,
+  couleurSure,
+  creeTicker,
+  debordeBandeau,
+  echapper,
+  messageEnCours,
+} from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { analyseLienAuth, texteFormulaireMotDePasse, verifieMotDePasse } from './lien-auth';
 import { brancheMotDePasseOublie, messageRefusConnexion } from './mot-de-passe-oublie';
@@ -116,7 +124,6 @@ import {
 } from './etat-publiable';
 import {
   choixVitesseTicker,
-  dureeDefilementS,
   NIVEAUX_VITESSE_TICKER,
   VITESSE_PERSONNALISEE,
   VITESSE_TICKER_MAX,
@@ -1140,7 +1147,11 @@ function initOnglets(): void {
       $(`t-${b.dataset.t}`).classList.add('on');
       // Un élément d'onglet masqué a une largeur nulle : l'aperçu du bandeau
       // doit être remesuré une fois l'onglet réellement affiché.
-      if (b.dataset.t === 'parametres' && params) {
+      // L'aperçu ET la sonde vivent dans l'onglet BANDEAU (`t-bandeau`), pas
+      // dans Paramètres — ce remesurage ne s'est jamais déclenché jusqu'au
+      // 12/09/2026, et une largeur nulle fait répondre « ça tient » à
+      // n'importe quelle longueur de texte.
+      if (b.dataset.t === 'bandeau' && params) {
         majApercuTicker(vitesseTickerValide(params.vitesse_ticker_px_s));
       }
     });
@@ -2814,6 +2825,7 @@ function lanceTraduction(): void {
       const traduit = en ?? traductionLocale(fr);
       ($('msg-en') as HTMLInputElement).value = traduit;
       afficheAvertissementTraduction(traduit === '');
+      majVerdictLargeur(); // l'anglais compte dans la largeur du bandeau
     });
   }, 500);
 }
@@ -3124,7 +3136,7 @@ function rendreMessages(): void {
         <div class="en">${echapper(m.texte_en)}</div>
         <div class="cibles">
           <span class="chip-gare ${m.cible_type === 'toutes' ? 'toutes' : m.cible_type === 'train' ? 'train' : ''}">${echapper(libelleCible(m))}</span>
-          ${m.priorite === 'importante' ? '<span class="chip-gare fixe">Bandeau fixe</span>' : ''}
+          ${m.priorite === 'importante' ? '<span class="chip-gare fixe">Seul à l’écran</span>' : ''}
           ${m.expire_at ? `<span class="chip-gare">expire ${new Date(m.expire_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</span>` : ''}
         </div>
       </div>
@@ -3133,6 +3145,10 @@ function rendreMessages(): void {
     </div>`,
     )
     .join('');
+  // L'aperçu montre le CYCLE : ajouter, retirer ou changer la priorité d'un
+  // message le recompose. Sans ce rappel, l'aperçu resterait sur l'ancien jeu
+  // jusqu'au prochain réglage de vitesse.
+  if (params) majApercuTicker(vitesseTickerValide(params.vitesse_ticker_px_s));
 }
 
 /** Les raccourcis d'expiration remplissent le champ date : ce qui est affiché est ce qui sera enregistré. */
@@ -3195,6 +3211,9 @@ function remplitFormulaireMessage(f: FormulaireMessage | null): void {
   for (const case_ of document.querySelectorAll<HTMLInputElement>('#msg-gares input')) {
     case_.checked = v.gares.includes(case_.value as GareId);
   }
+  // Le formulaire vient d'être rempli SANS frappe : le verdict de largeur doit
+  // suivre, sinon il resterait celui du message précédent.
+  majVerdictLargeur();
 }
 
 /** Affiche les champs de la cible choisie et (re)construit la liste des trains. */
@@ -3275,6 +3294,7 @@ function initMessages(): void {
     ($('msg-en') as HTMLInputElement).value = modele.texte_en;
     traductionManuelle = true; // ne pas écraser l'anglais du modèle
     afficheAvertissementTraduction(modele.texte_en.trim() === '');
+    majVerdictLargeur();
     toast(`Modèle « ${modele.titre} » chargé — ajustez le texte si nécessaire`);
   });
 
@@ -3282,11 +3302,15 @@ function initMessages(): void {
     majChampsCible(($('msg-cible') as HTMLSelectElement).value as Message['cible_type'], null);
   });
   $('msg-expire').addEventListener('change', appliqueRaccourciExpiration);
+  // Le verdict de largeur suit la frappe, dans les DEUX langues : le bandeau
+  // porte « FR • EN » d'un seul tenant, c'est la somme qui doit tenir.
   $('msg-fr').addEventListener('input', lanceTraduction);
+  $('msg-fr').addEventListener('input', majVerdictLargeur);
   $('msg-en').addEventListener('input', () => {
     const saisi = ($('msg-en') as HTMLInputElement).value.trim() !== '';
     traductionManuelle = saisi;
     if (saisi) afficheAvertissementTraduction(false); // l'agent a fourni l'anglais
+    majVerdictLargeur();
   });
   $('btn-msg-annuler').addEventListener('click', annuleEditionMessage);
 
@@ -4180,16 +4204,69 @@ function majChampVitessePerso(choix: ChoixVitesse): void {
   if (choix.personnalisee) majChampSansGener(champ, String(choix.px_s));
 }
 
-/** Aperçu en direct : même calcul durée = largeur / vitesse que les écrans. */
+/**
+ * Aperçu du bandeau — il appelle `creeTicker()`, LE MÊME que les écrans.
+ *
+ * DÉFAUT CORRIGÉ (09/09/2026) : l'aperçu concaténait tous les messages actifs
+ * avec « ◆ », en français seul, sans regarder ni la priorité ni l'expiration.
+ * Il montrait donc un bandeau que AUCUN écran n'affichait — et l'agent réglait
+ * la vitesse sur une image fausse. Le rejouer avec la fonction des écrans est
+ * la seule façon de ne pas avoir deux règles d'affichage à tenir d'accord.
+ *
+ * CE QUE L'APERÇU NE PEUT PAS SAVOIR, et qu'il ne prétend donc pas savoir : la
+ * cible d'un message (« certaines gares », « un train précis ») dépend de la
+ * gare, que la supervision n'a pas. L'aperçu montre la vue d'une gare où TOUS
+ * les messages en cours s'appliquent — la plus chargée. Ordre et nature des
+ * créneaux, eux, sortent de `cycleBandeau()` et sont donc exactement ceux de
+ * l'écran.
+ */
+let tickerApercu: ((visibles: Message[], vitessePxS?: unknown) => void) | null = null;
+
 function majApercuTicker(vitessePxS: number): void {
-  const apercu = $('apercu-ticker');
-  const texte =
-    messages
-      .filter((m) => m.actif)
-      .map((m) => m.texte_fr)
-      .join(' ◆ ') || 'Aperçu du bandeau de messages voyageurs ◆ Passenger information ticker';
-  if (apercu.textContent !== texte) apercu.textContent = texte;
-  apercu.style.animationDuration = `${dureeDefilementS(apercu.offsetWidth, vitessePxS)}s`;
+  tickerApercu ??= creeTicker($('apercu-ticker'));
+  const visibles = messages.filter((m) => messageEnCours(m, Date.now()));
+  tickerApercu(visibles, vitessePxS);
+  majVerdictLargeur();
+}
+
+/**
+ * § 5 — le champ dit si le message TIENDRA sur la largeur de l'écran, ou s'il
+ * défilera. C'est une INFORMATION, jamais un refus : un message long n'est pas
+ * une faute, et rien n'est tronqué (le mode immobile n'est accordé qu'à ce qui
+ * tient). L'agent apprend seulement qu'un message important très long ne sera
+ * pas figé sous les yeux du voyageur.
+ *
+ * Mesuré par `debordeBandeau()` — le même oracle que les écrans — sur une
+ * sonde à l'échelle de l'écran de gare le plus étroit. Si la sonde n'est pas
+ * mesurable (largeur nulle : onglet jamais affiché, feuille de style absente),
+ * on se TAIT plutôt que d'annoncer un verdict inventé.
+ */
+function majVerdictLargeur(): void {
+  const ligne = $('msg-largeur');
+  const sonde = $('sonde-ticker');
+  const fr = ($('msg-fr') as HTMLInputElement).value.trim();
+  const en = ($('msg-en') as HTMLInputElement).value.trim();
+  if (!fr) {
+    ligne.textContent = '';
+    ligne.classList.remove('tient');
+    return;
+  }
+  sonde.classList.add('fixe'); // la mesure se fait SANS le rembourrage de défilement
+  sonde.innerHTML = contenuTicker([{ texte_fr: fr, texte_en: en }]);
+  if (sonde.parentElement && sonde.parentElement.clientWidth === 0) {
+    ligne.textContent = '';
+    ligne.classList.remove('tient');
+    return;
+  }
+  const deborde = debordeBandeau(sonde);
+  ligne.classList.toggle('tient', !deborde);
+  // Le verdict nomme l'écran sur lequel il porte. La sonde est à l'échelle du
+  // PLUS ÉTROIT : « tient » vaut alors pour les six gares, tandis que
+  // « défilera » peut se démentir sur un écran 16/9, qui offre 45 em. Dire
+  // « sur l'écran » tout court ferait de cette nuance un mensonge.
+  ligne.textContent = deborde
+    ? '↔ Plus long que l’écran le plus étroit (4/3) : ce message défilera, même en priorité importante.'
+    : '✓ Tient sur tous les écrans : en priorité importante, il restera immobile.';
 }
 
 async function rechargeParams(): Promise<void> {
