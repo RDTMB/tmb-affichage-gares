@@ -567,6 +567,39 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
     );
   });
 
+  it('les DEUX copies portent le même jeu d’instructions pour `definir_acces`', () => {
+    // Survivante : le `grant execute … to service_role` pouvait disparaître de
+    // `schema.sql` sans rien faire tomber — la vérification ne lisait que la
+    // migration. Sans lui, une installation NEUVE poserait une fonction dont
+    // le propriétaire ne peut pas appeler `a_un_des_roles` : elle échouerait
+    // au premier clic, et sur la base qui n'a pas d'historique pour aider à
+    // comprendre.
+    const lignes = (f: string): string[] =>
+      source(f)
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(
+          (l) =>
+            /definir_acces/.test(l) ||
+            /to service_role;$/.test(l) ||
+            /on circulations to service_role/.test(l),
+        )
+        .filter((l) => !l.startsWith('--'));
+    const schema = lignes('supabase/schema.sql');
+    const migration = lignes('supabase/migrations/2026-09-acces-course.sql');
+    for (const instruction of [
+      'revoke all on function public.definir_acces(date, int, text, text) from public;',
+      'revoke all on function public.definir_acces(date, int, text, text) from anon;',
+      'grant execute on function public.definir_acces(date, int, text, text) to authenticated;',
+      'grant select, update on circulations to service_role;',
+      'grant execute on function private.a_un_des_roles(text[]) to service_role;',
+      'alter function public.definir_acces(date, int, text, text) owner to service_role;',
+    ]) {
+      expect(schema, `schema.sql : « ${instruction} » absent`).toContain(instruction);
+      expect(migration, `migration : « ${instruction} » absent`).toContain(instruction);
+    }
+  });
+
   it('la MIGRATION porte les mêmes garanties que `schema.sql`', () => {
     // LE trou systématique relevé par la campagne : `securite.test.ts` ne lit
     // que `schema.sql`, `securite-advisors.sql` et la migration des rôles. La
@@ -775,5 +808,77 @@ describe('`acces` voyage jusqu’au guichet et jusqu’à l’écran', () => {
     expect(sql).toContain(
       "update circulations set acces = 'prive'\n where nature = 'special' and acces = 'public';",
     );
+  });
+});
+
+// ===========================================================================
+// La NUMÉROTATION des sections de docs/01 (relecture du 12/09/2026)
+// ===========================================================================
+describe('les renvois de la spécification pointent vers une section qui existe', () => {
+  // Deux lots menés en parallèle ont réclamé le même §2.11, et RIEN ne l'aurait
+  // dit : un numéro en double ne casse aucun rendu Markdown, et un renvoi vers
+  // une section qui a changé de numéro envoie simplement le lecteur au mauvais
+  // endroit. Le conflit a été résolu à la main à la fusion — ce test est ce
+  // qui le rendra visible la prochaine fois, au lieu d'être remarqué par
+  // quelqu'un qui suit un renvoi et ne trouve pas ce qu'il cherche.
+  const spec = source('docs/01-spec-fonctionnelle.md');
+  const titres = [...spec.matchAll(/^### (\d+\.\d+) (.+)$/gm)].map((m) => ({
+    numero: m[1] ?? '',
+    titre: m[2] ?? '',
+  }));
+
+  it('aucun numéro n’est utilisé deux fois', () => {
+    const numeros = titres.map((t) => t.numero);
+    expect(numeros.length, 'aucun sous-titre numéroté trouvé').toBeGreaterThan(5);
+    expect([...new Set(numeros)], 'un numéro de section est en double').toEqual(numeros);
+  });
+
+  it('les sections du chapitre 2 se suivent sans trou', () => {
+    const chapitre2 = titres
+      .filter((t) => t.numero.startsWith('2.'))
+      .map((t) => Number(t.numero.slice(2)));
+    expect(chapitre2).toEqual(chapitre2.map((_, i) => i + 1));
+  });
+
+  it('chaque section est là où le CODE dit qu’elle est', () => {
+    // Les renvois du code sont la raison d'être de la numérotation : un
+    // commentaire qui dit « docs/01 §2.12 » doit tomber sur l'accès, pas sur
+    // le bandeau.
+    for (const [numero, debutDuTitre] of [
+      ['2.9', 'Train spécial'],
+      ['2.10', 'Libellé libre'],
+      ['2.11', 'Cycle du bandeau'],
+      ['2.12', 'Accès d’une course'],
+    ] as const) {
+      const trouve = titres.find((t) => t.numero === numero);
+      expect(trouve, `§${numero} introuvable`).toBeDefined();
+      expect(trouve?.titre.replace(/'/g, '’'), `§${numero} a changé de sujet`).toContain(
+        debutDuTitre,
+      );
+    }
+  });
+
+  it('aucun renvoi §2.x du dépôt ne vise une section absente', () => {
+    const numeros = new Set(titres.map((t) => t.numero));
+    const fichiers = [
+      'docs/01-spec-fonctionnelle.md',
+      'docs/02-spec-technique.md',
+      'CLAUDE.md',
+      'src/core/types.ts',
+      'src/core/roles.ts',
+      'src/core/horaires.ts',
+      'src/data/provider.ts',
+      'src/pages/ecran.ts',
+      'src/pages/supervision.ts',
+      'src/pages/affichage-commun.ts',
+      'supabase/schema.sql',
+      'supabase/migrations/2026-09-acces-course.sql',
+      'supabase/tests/roles-rls.sql',
+    ];
+    for (const f of fichiers) {
+      for (const m of source(f).matchAll(/§(2\.\d+)/g)) {
+        expect(numeros, `${f} : renvoi vers §${m[1]}, qui n’existe pas`).toContain(m[1]);
+      }
+    }
   });
 });
