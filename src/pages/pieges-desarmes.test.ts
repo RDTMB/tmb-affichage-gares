@@ -213,6 +213,20 @@ describe('l’assainissement ne corrige plus en silence', () => {
     for (const p of ['src/data/supabase.ts', 'src/data/mock.ts'] as const) {
       expect(source(p), `${p} : paramsAvecCorrections absent`).toContain('paramsAvecCorrections(');
       expect(source(p), `${p} : correctionsParams absent`).toContain('correctionsParams()');
+      // LE REPORT, à la lettre. C'est lui qui porte tout le point : sans lui,
+      // la liste est calculée et personne ne la voit jamais. Survivante du
+      // 13/09 — `this.corrections = []` passait les deux assertions
+      // ci-dessus.
+      //
+      // Pour le MOCK, trois tests de COMPORTEMENT le tiennent aussi
+      // (src/data/mock.test.ts). Pour SupabaseProvider, ce verrou est TEXTUEL,
+      // et c'est tout ce qui est possible ici : la classe demande une base, et
+      // le dépôt n'a ni jsdom ni harnais réseau. C'est déjà la technique
+      // employée sur ce même fichier par affichage-sans-ecriture.test.ts et
+      // maj-honnete.test.ts.
+      expect(source(p), `${p} : le report des corrections a disparu`).toContain(
+        'this.corrections = lu.corriges;',
+      );
     }
   });
 });
