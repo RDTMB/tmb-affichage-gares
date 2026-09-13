@@ -116,9 +116,33 @@ describe('5.4 — un train supprimé ne porte ni l’une ni l’autre', () => {
     }
   });
 
-  it('la grille passe bien son `supprime` à la règle', () => {
-    // Sans cet argument, la garde ci-dessus serait vraie et sans effet.
-    expect(blocEntete()).toContain('supprime: c.supprime');
+  it('la grille passe les TROIS données du train, aucune constante', () => {
+    // SURVIVANTE DE LA CAMPAGNE DE MUTATION : remplacer `acces: c.train.acces`
+    // par `acces: 'public'` ne faisait rien tomber. Un TRAIN 11 privatisé
+    // aurait alors perdu « Privé » sur la grille en le gardant sur l'écran de
+    // gare — très exactement la divergence que ce lot existe pour empêcher,
+    // et la plus difficile à voir : il faut avoir les deux écrans sous les
+    // yeux le jour d'une course affrétée.
+    //
+    // Les gardes éprouvées plus haut sont vraies et sans effet si l'appel ne
+    // reçoit pas les vraies valeurs.
+    // L'APPEL ENTIER, pas trois fragments. Deuxième survivante de la
+    // campagne : `affluence: affluenceDe(c.train.numero) && null` CONTIENT le
+    // fragment attendu et ne rend pourtant plus jamais de mention. Chercher un
+    // morceau là où il faut vérifier une affirmation, encore une fois.
+    const bloc = blocEntete();
+    const appel = /const mention = mentionCourse\(\{([\s\S]*?)\}\);/.exec(bloc)?.[1] ?? '';
+    expect(appel, 'l’appel à mentionCourse est introuvable').not.toBe('');
+    expect(
+      appel
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ).toEqual([
+      'supprime: c.supprime',
+      'acces: c.train.acces',
+      'affluence: affluenceDe(c.train.numero)',
+    ]);
   });
 });
 
