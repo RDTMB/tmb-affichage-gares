@@ -284,7 +284,15 @@ describe('le propriétaire de `definir_acces` : la tentative reste écrite', () 
       expect(texte, `${f} : les deux raisons ne sont pas annoncées`).toMatch(
         /deux raisons,? et non une/i,
       );
-      expect(texte, `${f} : l'attribut du rôle n'est pas nommé`).toContain('rolbypassrls');
+      // L'attribut doit être nommé DANS l'énumération des deux raisons, et non
+      // ailleurs dans le fichier : `toContain('rolbypassrls')` survivait au
+      // retrait de la deuxième raison, le mot figurant aussi dans le bloc
+      // VÉRIFICATION. Survivante du 14/09.
+      const apresLAnnonce = texte.slice(texte.search(/deux raisons,? et non une/i));
+      expect(
+        apresLAnnonce.slice(0, 700),
+        `${f} : la deuxième raison n'est plus énoncée avec la première`,
+      ).toMatch(/rolbypassrls\s*=\s*true/);
       // …et la formulation incomplète ne doit pas revenir.
       expect(texte, `${f} : la version incomplète est de retour`).not.toMatch(
         /c['’]est cette égalité qui fait marcher l['’]UPDATE/i,
