@@ -544,10 +544,68 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
     }
   });
 
-  it('la recette éprouve les deux moitiés sur une vraie base', () => {
+  it('la recette éprouve les TROIS moitiés sur une vraie base', () => {
+    // Survivantes de la campagne de relecture : `toContain('pronargdefaults')`
+    // et un préfixe d'ÉCHEC partagé ne verrouillaient rien — on pouvait
+    // neutraliser la condition ou retirer un `else raise` sans faire tomber
+    // le test. Les chaînes sont donc EXACTES et DISCRIMINANTES.
     const recette = source('supabase/tests/roles-rls.sql');
-    expect(recette).toContain('ÉCHEC — definir_acces a effacé le commanditaire');
-    expect(recette).toContain('pronargdefaults');
+    for (const attendu of [
+      // (a) la valeur transmise survit ;
+      "raise exception 'ÉCHEC — definir_acces a effacé le commanditaire qu''on lui a passé'",
+      // (b) changer l'accès ne la perd pas ;
+      "raise exception 'ÉCHEC — definir_acces a effacé le commanditaire en changeant l''accès'",
+      // (c) l'effacement VOULU reste possible ;
+      "raise exception 'ÉCHEC — le commanditaire est devenu ineffaçable'",
+    ]) {
+      expect(recette, `recette : « ${attendu.slice(0, 50)}… » absent`).toContain(attendu);
+    }
+    // (d) et la condition qui refuse le paramètre par défaut, telle quelle :
+    // l'envelopper dans un `and` toujours faux la neutralisait en silence.
+    expect(recette).toContain(
+      "  if (select pronargdefaults from pg_proc\n       where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0",
+    );
+  });
+
+  it('la MIGRATION porte les mêmes garanties que `schema.sql`', () => {
+    // LE trou systématique relevé par la campagne : `securite.test.ts` ne lit
+    // que `schema.sql`, `securite-advisors.sql` et la migration des rôles. La
+    // migration de l'accès — celle que Thomas exécute réellement, et la SEULE
+    // qui touche une base existante — n'était couverte par aucune des quatre
+    // garanties. Trois mutations y ont survécu pour cette seule raison.
+    const migration = source('supabase/migrations/2026-09-acces-course.sql');
+    for (const [quoi, attendu] of [
+      [
+        'propriétaire nommé',
+        'alter function public.definir_acces(date, int, text, text) owner to service_role;',
+      ],
+      [
+        'exécution de la fonction d’habilitation pour ce propriétaire',
+        'grant execute on function private.a_un_des_roles(text[]) to service_role;',
+      ],
+      ['droits de table du propriétaire', 'grant select, update on circulations to service_role;'],
+      [
+        'révocation à anon',
+        'revoke all on function public.definir_acces(date, int, text, text) from anon;',
+      ],
+      [
+        'révocation à public',
+        'revoke all on function public.definir_acces(date, int, text, text) from public;',
+      ],
+      ['search_path verrouillé', "security definer set search_path = ''"],
+      ['contrôle du rôle applicatif', "private.a_un_des_roles(array['admin', 'supervision'])"],
+    ] as const) {
+      expect(migration, `migration : ${quoi} absent`).toContain(attendu);
+    }
+    // Et son bloc VÉRIFICATION contrôle ce que le script vient de poser : le
+    // propriétaire, l'hypothèse qui le justifie, et l'absence de défaut.
+    for (const controle of [
+      "select 'definir_acces appartient à service_role',",
+      'rolbypassrls',
+      'pronargdefaults',
+    ]) {
+      expect(migration, `migration : contrôle « ${controle} » absent`).toContain(controle);
+    }
   });
 });
 
