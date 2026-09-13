@@ -41,10 +41,8 @@ import { creeProviderDemo, creeProviderReel } from '../data';
 import type { DataProvider } from '../data/provider';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
-  anneauSur,
   badgeFraicheur,
   bandeauSimulation,
-  couleurSure,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -54,9 +52,11 @@ import {
   INTERVALLE_HEARTBEAT_MS,
   messagesVisibles,
   meteoHtml,
+  styleRame,
 } from './affichage-commun';
 import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
+import { indexProchainDepart } from './grille-logique';
 import {
   creeSynchronisation,
   demarreAntiBurnIn,
@@ -229,14 +229,11 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
     ? grille.gares.filter((g) => !gareHorsSection(jourCourant, g.id))
     : grille.gares;
   const gares = sens === 'montee' ? dansLaSection : [...dansLaSection].reverse();
-  // Prochain départ (surligné) : plus petit départ RÉEL d'origine encore à
-  // venir — un gros retard peut inverser l'ordre théorique des colonnes.
-  let prochainIdx = -1;
-  colonnes.forEach((c, i) => {
-    if (c.supprime || c.passe || c.departReel_s <= maintenant_s) return;
-    const meilleur = prochainIdx >= 0 ? colonnes[prochainIdx] : undefined;
-    if (!meilleur || c.departReel_s < meilleur.departReel_s) prochainIdx = i;
-  });
+  // Colonne éclairée : le prochain départ DE LA GARE DE L'ÉCRAN (`?gare=`), et
+  // non plus de l'origine de la ligne — décision de l'exploitant du
+  // 13/09/2026. La règle, ses deux cas limites et leur raison vivent dans
+  // `grille-logique.ts`, PUR et testé : elle se décide, elle ne se dessine pas.
+  const prochainIdx = indexProchainDepart(colonnes, gare, maintenant_s);
 
   let html = '<thead><tr><th class="col-gare">GARE / STATION</th>';
   colonnes.forEach((c, i) => {
@@ -276,7 +273,7 @@ function tableHtml(sens: Sens, maintenant_s: number, positions: Map<number, Gare
       const heureCellule = (passage.depart_s ?? passage.arrivee_s ?? 0) + c.decalage;
       const point =
         positions.get(c.train.numero) === g.id
-          ? `<span class="train-pos" style="background:${couleurSure(machineDe(c.train.rame).couleur)}"></span>`
+          ? `<span class="train-pos" style="${styleRame(machineDe(c.train.rame))}"></span>`
           : '';
       html += `<td class="${cls}">${formatHeure(heureCellule)}${point}</td>`;
     });
@@ -295,9 +292,7 @@ function rendsLegende(): void {
     .filter((m) => m.en_service)
     .map(
       (m) =>
-        `<span class="item"><span class="rame-dot" style="background:${couleurSure(m.couleur)};${
-          anneauSur(m.cercle) ? `box-shadow:0 0 0 2px ${anneauSur(m.cercle)};` : ''
-        }"></span><b>${echapper(m.nom)}</b></span>`,
+        `<span class="item"><span class="rame-dot" style="${styleRame(m)}"></span><b>${echapper(m.nom)}</b></span>`,
     )
     .join('');
   $('legende').innerHTML =

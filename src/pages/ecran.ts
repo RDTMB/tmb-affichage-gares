@@ -60,6 +60,7 @@ import {
   badgeFraicheur,
   bandeauSimulation,
   couleurSure,
+  styleRame,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -270,10 +271,7 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
 
   // Couleurs VALIDÉES, pas seulement échappées : elles atterrissent dans un
   // `style=""` construit par concaténation (voir couleurSure()).
-  const anneau = anneauSur(machine.cercle);
-  const pastille = `<span class="pastille" style="background:${couleurSure(machine.couleur)};${
-    anneau ? `box-shadow:0 0 0 .4vh ${anneau};` : ''
-  }"></span>`;
+  const pastille = `<span class="pastille" style="${styleRame(machine)}"></span>`;
 
   const sansArret = mentionSansArret(trains.get(p.numero));
   // Le STATUT, en tête de note, avant le sens de marche.

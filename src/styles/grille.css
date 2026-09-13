@@ -357,8 +357,11 @@ td.supp {
   height: 1.7vh;
   border-radius: 50%;
   animation: pulse 1.4s ease-in-out infinite;
+  /* Le liseré prend la couleur de l'anneau quand la rame en a un, et le halo
+     blanc reste dans les deux cas : un box-shadow posé EN LIGNE aurait écrasé
+     les deux (mesuré au navigateur le 13/09/2026 avant de choisir). */
   box-shadow:
-    0 0 0 2px rgba(24, 44, 66, 0.75),
+    0 0 0 2px var(--anneau, rgba(24, 44, 66, 0.75)),
     0 0 0.9vh rgba(255, 255, 255, 0.9);
 }
 
@@ -393,10 +396,18 @@ td.supp {
   gap: 0.4vw;
 }
 
+/* L'ANNEAU DE LA RAME est porté par --anneau, posée en ligne par styleRame()
+   (affichage-commun.ts) UNIQUEMENT pour les rames qui en ont un — Marguerite
+   seule, charte 2026. Chaque pastille compose ICI sa propre géométrie : la
+   couleur vient d'un seul endroit, la taille reste là où elle se lit.
+   Le repli du var() est ce qui était dessiné avant, donc rien ne change pour
+   les rames sans anneau — ni pour une couleur mal formée, qui ne pose pas la
+   variable (voir anneauSur()). */
 .legende .rame-dot {
   width: 1.7vh;
   height: 1.7vh;
   border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--anneau, transparent);
 }
 
 .legende b {
