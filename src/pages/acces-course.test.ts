@@ -858,6 +858,28 @@ describe('les renvois de la spécification pointent vers une section qui existe'
     }
   });
 
+  it('un renvoi NOMMÉ pointe vers la section qui porte ce nom', () => {
+    // Survivante de la campagne : « **accès d’une course** (§2.12) » pouvait
+    // devenir « (§2.11) » sans rien faire tomber — §2.11 EXISTE, c'est le
+    // bandeau. Un renvoi peut donc être faux tout en étant valide, et c'est
+    // le cas le plus difficile à repérer en relisant : le lecteur suit le
+    // lien, tombe sur un sujet voisin, et croit avoir mal compris.
+    //
+    // La règle ne se lit pas dans une liste écrite en dur : elle se DÉDUIT
+    // des titres.
+    const sansApostrophe = (s: string): string => s.replace(/['’]/g, '’').toLocaleLowerCase('fr');
+    const renvois = [...spec.matchAll(/\*\*([^*]+)\*\*\s*\(§(\d+\.\d+)\)/g)];
+    expect(renvois.length, 'aucun renvoi nommé trouvé').toBeGreaterThan(0);
+    for (const [, phrase, numero] of renvois) {
+      const cible = titres.find((t) => t.numero === numero);
+      expect(cible, `renvoi « ${phrase} » vers §${numero}, qui n’existe pas`).toBeDefined();
+      expect(
+        sansApostrophe(cible?.titre ?? ''),
+        `« ${phrase} » renvoie au §${numero}, intitulé « ${cible?.titre} »`,
+      ).toContain(sansApostrophe(phrase ?? ''));
+    }
+  });
+
   it('aucun renvoi §2.x du dépôt ne vise une section absente', () => {
     const numeros = new Set(titres.map((t) => t.numero));
     const fichiers = [
