@@ -207,6 +207,40 @@ grant execute on function public.definir_acces(date, int, text, text) to authent
 -- `force row level security` dans ce schéma). Le bloc VÉRIFICATION contrôle
 -- donc que la fonction appartient bien au propriétaire de la table — c'est
 -- CETTE égalité qui fait marcher l'UPDATE, pas le nom `postgres` en lui-même.
+--
+-- -----------------------------------------------------------------------------
+-- ET UN RÔLE DÉDIÉ, créé pour cette seule fonction ? — repris le 13/09/2026
+-- -----------------------------------------------------------------------------
+-- C'est la suite logique, et elle a été instruite plutôt que repoussée.
+--
+-- Un rôle dédié n'est PAS propriétaire de `circulations` : il n'aurait donc
+-- pas l'exemption dont la fonction vit aujourd'hui, et il lui faudrait
+-- l'attribut BYPASSRLS. Or `CREATE ROLE … BYPASSRLS` exige un
+-- SUPERUTILISATEUR. Toute la question tient là.
+--
+-- LA MESURE EST DANS `supabase/mesure-droits-proprietaire.sql` (lecture
+-- seule). Elle lit `rolsuper` du rôle courant et conclut mécaniquement.
+--
+-- INDICE DÉJÀ EN MAIN, et il est fort : l'`alter function … owner to
+-- service_role` du 13/09 a échoué sur « permission denied for schema public ».
+-- PostgreSQL n'applique ce contrôle de schéma QUE si l'exécutant n'est pas
+-- superutilisateur — un superutilisateur saute le bloc entier (propriété,
+-- appartenance au nouveau rôle, et CREATE sur le schéma). L'échec observé est
+-- donc lui-même une indication que l'exécutant N'EST PAS superutilisateur, et
+-- que la dette n'est pas remboursable ici.
+--
+-- ⚠ C'est une INDICATION, pas la mesure : elle repose sur une règle de
+-- PostgreSQL et non sur une lecture de `pg_roles` faite sur CETTE base. Tant
+-- que le script de mesure n'a pas été passé, la conclusion reste à confirmer —
+-- et c'est pour cela qu'il existe.
+--
+-- TROIS CHEMINS À NE PAS PRENDRE si la réponse est « non superutilisateur ».
+-- Aucun ne rembourse la dette, et chacun rend le système MOINS sûr :
+--   • `create role … superuser` ;
+--   • désactiver RLS sur `circulations` ;
+--   • ajouter une politique « en attendant ».
+-- Une dette dont on a prouvé qu'elle ne peut pas être payée n'est plus une
+-- dette : c'est une contrainte de plateforme, et elle s'écrit comme telle.
 alter function public.definir_acces(date, int, text, text) owner to postgres;
 
 comment on function public.definir_acces(date, int, text, text) is

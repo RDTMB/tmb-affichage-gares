@@ -441,6 +441,33 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   les policies évaluent la fonction AU NOM de l'utilisateur connecté, sans ce
   GRANT toutes les écritures seraient refusées. La fonction de trigger n'a
   besoin d'aucun GRANT (EXECUTE est vérifié à la création du trigger).
+- **`public.definir_acces` — la seule dérogation, et sa CONTRAINTE de
+  plateforme.** Elle est SECURITY DEFINER dans `public` parce que PostgREST
+  n'expose que ce schéma et que cette écriture doit être appelable en RPC
+  (docs/01 §2.12). Elle porte quatre garanties vérifiées par
+  `src/data/securite.test.ts` sur TOUS les scripts SQL : révoquée à `public`
+  et à `anon`, `search_path` verrouillé, rôle applicatif contrôlé dans le
+  corps, propriétaire NOMMÉ.
+
+  Son propriétaire est `postgres`. Un rôle DÉDIÉ, qui ne posséderait aucun
+  autre objet, serait plus étroit — mais il n'aurait pas l'exemption de RLS
+  dont la fonction vit (un propriétaire de table n'est pas soumis à ses
+  propres politiques), et il lui faudrait l'attribut `BYPASSRLS`, que seul un
+  SUPERUTILISATEUR accorde.
+
+  `service_role` a été essayé le 13/09/2026 et ne convient pas : il contourne
+  bien RLS, mais n'a pas `CREATE` sur le schéma `public`, droit que PostgreSQL
+  exige du NOUVEAU propriétaire lors d'un `alter function … owner to`. Lui
+  accorder ce droit a été refusé — on n'élargit pas un rôle qui contourne déjà
+  RLS pour la commodité d'un script.
+
+  **La mesure qui tranche** — le rôle courant est-il superutilisateur ? — est
+  dans `supabase/mesure-droits-proprietaire.sql`, en lecture seule. Si la
+  réponse est non, ce n'est pas une dette reportée mais une **contrainte de
+  plateforme** : on l'écrit et on ferme le sujet. Trois chemins sont
+  explicitement exclus, car chacun rendrait le système moins sûr qu'aujourd'hui
+  — `create role … superuser`, désactiver RLS sur `circulations`, ajouter une
+  politique « en attendant ».
 - `params` : QUATRE politiques permissives, qui se cumulent en OU, une par
   jeu de clés.
   - `roles: params affichage` — `meteo_sommet`, `vitesse_ticker_px_s`
