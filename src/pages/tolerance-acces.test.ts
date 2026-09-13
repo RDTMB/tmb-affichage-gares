@@ -230,7 +230,16 @@ describe('le propriétaire de `definir_acces` : la tentative reste écrite', () 
 
   it('la mesure qui tranche EXISTE, et elle est en lecture seule', () => {
     const mesure = source('supabase/mesure-droits-proprietaire.sql');
-    expect(mesure).toContain('rolsuper');
+    // LA LECTURE, pas le mot : `rolsuper` apparaît aussi dans l'en-tête et
+    // dans le verdict, et `toContain('rolsuper')` survivait au remplacement de
+    // la requête par une constante. Survivante du 14/09 — c'est pourtant la
+    // seule ligne dont dépend toute la conclusion du §1.
+    expect(mesure, 'la mesure ne lit plus rolsuper').toContain(
+      '(select rolsuper::text from pg_roles where rolname = current_user)',
+    );
+    // …et le verdict en DÉPEND : sans cela, le script pourrait lire la valeur
+    // et conclure autre chose.
+    expect(mesure).toContain('when (select rolsuper from pg_roles where rolname = current_user)');
     expect(mesure).toContain('LECTURE SEULE');
     // Un script de mesure qui écrirait ne serait pas une mesure.
     expect(mesure, 'le script de mesure écrit').not.toMatch(
