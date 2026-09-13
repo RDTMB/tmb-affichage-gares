@@ -90,6 +90,22 @@
         </div>
       </header>
 
+      <!-- APERÇU « VOIR COMME » : BANDEAU PERMANENT, pas une pastille.
+           Il est au-dessus des onglets, donc visible depuis tous, et il porte
+           sa propre sortie — un clic, depuis n'importe où. Une pastille
+           discrète laisserait conclure « la caisse ne voit pas ça » en ayant
+           oublié qu'on est en aperçu : c'est la seule erreur que ce lot peut
+           produire, et elle se corrige par la taille du bandeau. -->
+      <div class="bandeau-apercu" id="bandeau-apercu" style="display: none">
+        <span class="bandeau-apercu-oeil" aria-hidden="true">👁</span>
+        <span
+          >Aperçu en <b>lecture seule</b> — vous voyez l'interface d'un compte
+          <b id="apercu-roles">—</b>. Vos droits réels n'ont pas changé.
+          <span id="apercu-attente"></span
+        ></span>
+        <button class="leger" id="apercu-sortir" data-apercu="lecture">Quitter l'aperçu</button>
+      </div>
+
       <!-- UNE SEULE RANGÉE, DEUX POIDS (canevas 1b). L'exploitation à gauche,
            à sa taille ; l'administration à droite, plus discrète, derrière un
            filet. Aucune profondeur ajoutée : tout reste à un clic.
@@ -196,13 +212,13 @@
           <div class="barre-jour">
             <div class="rang rang-journee">
               <div class="nav-date">
-                <button class="leger" id="btn-jour-prec">◀</button>
-                <input type="date" id="date-picker" />
-                <button class="leger" id="btn-jour-suiv">▶</button>
+                <button class="leger" id="btn-jour-prec" data-apercu="lecture">◀</button>
+                <input type="date" id="date-picker" data-apercu="lecture" />
+                <button class="leger" id="btn-jour-suiv" data-apercu="lecture">▶</button>
               </div>
               <div class="chips">
-                <button class="chip-btn" id="chip-auj">Aujourd'hui</button>
-                <button class="chip-btn" id="chip-dem">Demain</button>
+                <button class="chip-btn" id="chip-auj" data-apercu="lecture">Aujourd'hui</button>
+                <button class="chip-btn" id="chip-dem" data-apercu="lecture">Demain</button>
               </div>
               <span class="jour-lettres" id="jour-lettres">—</span>
               <span class="service-tag" id="service-tag">—</span>
@@ -536,13 +552,27 @@
                reste unique (dateSel), les deux barres ne font que la montrer. -->
           <div class="nav-date-places">
             <div class="nav-date">
-              <button class="leger" id="btn-jour-prec-pl" title="Jour précédent">◀</button>
-              <input type="date" id="date-picker-pl" />
-              <button class="leger" id="btn-jour-suiv-pl" title="Jour suivant">▶</button>
+              <button
+                class="leger"
+                id="btn-jour-prec-pl"
+                data-apercu="lecture"
+                title="Jour précédent"
+              >
+                ◀
+              </button>
+              <input type="date" id="date-picker-pl" data-apercu="lecture" />
+              <button
+                class="leger"
+                id="btn-jour-suiv-pl"
+                data-apercu="lecture"
+                title="Jour suivant"
+              >
+                ▶
+              </button>
             </div>
             <div class="chips">
-              <button class="chip-btn" id="chip-auj-pl">Aujourd'hui</button>
-              <button class="chip-btn" id="chip-dem-pl">Demain</button>
+              <button class="chip-btn" id="chip-auj-pl" data-apercu="lecture">Aujourd'hui</button>
+              <button class="chip-btn" id="chip-dem-pl" data-apercu="lecture">Demain</button>
             </div>
             <span class="jour-affluence" id="affluence-jour">—</span>
           </div>
@@ -970,6 +1000,39 @@
             </div>
           </div>
 
+          <!-- APERÇU « VOIR COMME ». Carte PROPRE, et non un bouton dans la
+               carte voisine : « Onglets visibles par rôle » est réservée à
+               `parametres.technique`, alors que l'aperçu s'ouvre à
+               `comptes.lire` — donc aussi à l'admin, qui n'a pas le réglage
+               mais a l'annuaire. Les loger ensemble retirerait l'aperçu à
+               l'admin sans que personne l'ait décidé. -->
+          <div class="carte" id="carte-apercu">
+            <h2>Voir comme…</h2>
+            <div class="note">
+              Affiche la supervision telle que la verrait un compte portant ce rôle&nbsp;:
+              <b>onglets, cartes et commandes</b>. L'aperçu est en <b>lecture seule</b> — aucune
+              écriture ne part, même si une commande semble active. Vos droits réels ne changent
+              pas, et vos modifications en attente de publication sont conservées mais
+              <b>masquées</b> pendant l'aperçu.
+            </div>
+            <div class="ligne">
+              <label
+                >Rôle
+                <select id="apercu-choix" data-apercu="lecture">
+                  <option value="technique">Technique</option>
+                  <option value="admin">Administrateur</option>
+                  <option value="supervision">Supervision</option>
+                  <option value="caisse">Caisse</option>
+                </select>
+              </label>
+              <button class="leger" id="apercu-lancer" data-apercu="lecture">Prévisualiser</button>
+            </div>
+            <div class="note">
+              Pour un cumul de rôles, utilisez « Voir comme » sur la ligne du compte concerné dans
+              l'annuaire ci-dessus&nbsp;: l'aperçu prend alors <b>l'ensemble de ses rôles</b>.
+            </div>
+          </div>
+
           <div class="carte" id="carte-onglets-roles">
             <h2>Onglets visibles par rôle</h2>
             <!-- La note décrivait « une case grisée », vocabulaire de l'ancien
@@ -1006,15 +1069,15 @@
             </div>
           </h2>
           <div class="note filtres-journal">
-            <label>Du <input type="date" id="journal-du" /></label>
-            <label>au <input type="date" id="journal-au" /></label>
+            <label>Du <input type="date" id="journal-du" data-apercu="lecture" /></label>
+            <label>au <input type="date" id="journal-au" data-apercu="lecture" /></label>
             <label
               >Utilisateur
-              <select id="journal-qui"></select
+              <select id="journal-qui" data-apercu="lecture"></select
             ></label>
             <label
               >Objet
-              <select id="journal-table"></select
+              <select id="journal-table" data-apercu="lecture"></select
             ></label>
             <button class="leger" id="btn-journal-filtrer">Filtrer</button>
           </div>
@@ -1033,9 +1096,9 @@
             </table>
           </div>
           <div class="note pagination-journal">
-            <button class="leger" id="btn-journal-prec">◀ Précédentes</button>
+            <button class="leger" id="btn-journal-prec" data-apercu="lecture">◀ Précédentes</button>
             <span id="journal-page">—</span>
-            <button class="leger" id="btn-journal-suiv">Suivantes ▶</button>
+            <button class="leger" id="btn-journal-suiv" data-apercu="lecture">Suivantes ▶</button>
             <span class="sous">
               Chaque écriture est consignée par la base elle-même : un aller-retour (8 → 12 → 8) ne
               compte plus comme modification en attente, mais laisse bien ses deux traces ici.
