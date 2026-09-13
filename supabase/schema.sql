@@ -905,11 +905,20 @@ grant execute on function public.definir_acces(date, int, text, text) to authent
 -- rôle qui contourne déjà RLS. Décision de l'exploitant du 13/09/2026 — le
 -- propriétaire reste `postgres`.
 --
--- Ce que `postgres` apporte et qu'il fallait de toute façon : il POSSÈDE
--- `circulations`, et un propriétaire de table contourne RLS (aucun
--- `force row level security` dans ce schéma). Le bloc VÉRIFICATION contrôle
--- donc que la fonction appartient bien au propriétaire de la table — c'est
--- CETTE égalité qui fait marcher l'UPDATE, pas le nom `postgres` en lui-même.
+-- DEUX RAISONS, et non une, font marcher l'UPDATE malgré RLS. Les écrire
+-- toutes les deux n'est pas du zèle : qui changerait le propriétaire en se
+-- fiant à une seule croirait que l'autre est acquise.
+--
+--   1. `postgres` POSSÈDE `circulations`, et un propriétaire de table n'est
+--      pas soumis à ses propres politiques (aucun `force row level security`
+--      dans ce schéma) ;
+--   2. `postgres` porte `rolbypassrls = true` — MESURÉ le 13/09/2026 sur la
+--      base de test. À lui seul, cet attribut suffirait.
+--
+-- Le bloc VÉRIFICATION contrôle la PREMIÈRE (l'égalité des propriétaires),
+-- parce que c'est elle qu'un changement de propriétaire casserait le plus
+-- discrètement. Il ne contrôle pas la seconde : un rôle qui posséderait la
+-- table sans `bypassrls` ferait quand même marcher la fonction.
 alter function public.definir_acces(date, int, text, text) owner to postgres;
 
 

@@ -202,11 +202,20 @@ grant execute on function public.definir_acces(date, int, text, text) to authent
 -- rôle qui contourne déjà RLS. Décision de l'exploitant du 13/09/2026 — le
 -- propriétaire reste `postgres`.
 --
--- Ce que `postgres` apporte et qu'il fallait de toute façon : il POSSÈDE
--- `circulations`, et un propriétaire de table contourne RLS (aucun
--- `force row level security` dans ce schéma). Le bloc VÉRIFICATION contrôle
--- donc que la fonction appartient bien au propriétaire de la table — c'est
--- CETTE égalité qui fait marcher l'UPDATE, pas le nom `postgres` en lui-même.
+-- DEUX RAISONS, et non une, font marcher l'UPDATE malgré RLS. Les écrire
+-- toutes les deux n'est pas du zèle : qui changerait le propriétaire en se
+-- fiant à une seule croirait que l'autre est acquise.
+--
+--   1. `postgres` POSSÈDE `circulations`, et un propriétaire de table n'est
+--      pas soumis à ses propres politiques (aucun `force row level security`
+--      dans ce schéma) ;
+--   2. `postgres` porte `rolbypassrls = true` — MESURÉ le 13/09/2026 sur la
+--      base de test. À lui seul, cet attribut suffirait.
+--
+-- Le bloc VÉRIFICATION contrôle la PREMIÈRE (l'égalité des propriétaires),
+-- parce que c'est elle qu'un changement de propriétaire casserait le plus
+-- discrètement. Il ne contrôle pas la seconde : un rôle qui posséderait la
+-- table sans `bypassrls` ferait quand même marcher la fonction.
 --
 -- -----------------------------------------------------------------------------
 -- ET UN RÔLE DÉDIÉ, créé pour cette seule fonction ? — repris le 13/09/2026
@@ -218,23 +227,36 @@ grant execute on function public.definir_acces(date, int, text, text) to authent
 -- l'attribut BYPASSRLS. Or `CREATE ROLE … BYPASSRLS` exige un
 -- SUPERUTILISATEUR. Toute la question tient là.
 --
--- LA MESURE EST DANS `supabase/mesure-droits-proprietaire.sql` (lecture
--- seule). Elle lit `rolsuper` du rôle courant et conclut mécaniquement.
+-- ─────────────────────────────────────────────────────────────────────────
+-- MESURÉ LE 13/09/2026 SUR LA BASE DE TEST
+-- (`supabase/mesure-droits-proprietaire.sql`, lecture seule) :
 --
--- INDICE DÉJÀ EN MAIN, et il est fort : l'`alter function … owner to
--- service_role` du 13/09 a échoué sur « permission denied for schema public ».
--- PostgreSQL n'applique ce contrôle de schéma QUE si l'exécutant n'est pas
--- superutilisateur — un superutilisateur saute le bloc entier (propriété,
--- appartenance au nouveau rôle, et CREATE sur le schéma). L'échec observé est
--- donc lui-même une indication que l'exécutant N'EST PAS superutilisateur, et
--- que la dette n'est pas remboursable ici.
+--     rôle courant                     : postgres
+--     superutilisateur                 : false
+--     peut créer des rôles             : true
+--     contourne RLS lui-même           : true
+--     propriétaire de definir_acces    : postgres
+--     propriétaire de circulations     : postgres
+--     service_role : CREATE sur public : false
+--     service_role : contourne RLS     : true
 --
--- ⚠ C'est une INDICATION, pas la mesure : elle repose sur une règle de
--- PostgreSQL et non sur une lecture de `pg_roles` faite sur CETTE base. Tant
--- que le script de mesure n'a pas été passé, la conclusion reste à confirmer —
--- et c'est pour cela qu'il existe.
+-- CONCLUSION — LA DETTE N'EST PAS REMBOURSABLE SUR SUPABASE. `postgres` peut
+-- créer des rôles, mais il n'est PAS superutilisateur : `BYPASSRLS` est donc
+-- hors de portée, et un rôle dédié ne pourrait pas écrire dans
+-- `circulations` malgré RLS.
 --
--- TROIS CHEMINS À NE PAS PRENDRE si la réponse est « non superutilisateur ».
+-- Le sujet est CLOS, et il l'est par une mesure — pas par un abandon. Ce
+-- n'est plus une dette : c'est une contrainte de plateforme.
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- L'indication tirée de la règle PostgreSQL disait déjà la même chose, et la
+-- lecture de `pg_roles` l'a confirmée : l'`alter function … owner to
+-- service_role` du 13/09 a échoué sur « permission denied for schema public »
+-- parce que ce contrôle de schéma n'est appliqué QUE lorsque l'exécutant
+-- n'est pas superutilisateur — un superutilisateur saute le bloc entier
+-- (propriété, appartenance au nouveau rôle, et CREATE sur le schéma).
+--
+-- TROIS CHEMINS À NE PAS PRENDRE, et la mesure ne les rouvre pas.
 -- Aucun ne rembourse la dette, et chacun rend le système MOINS sûr :
 --   • `create role … superuser` ;
 --   • désactiver RLS sur `circulations` ;
@@ -321,11 +343,13 @@ with controles as (
            where p.oid = 'public.definir_acces(date, int, text, text)'::regprocedure)
          = 'postgres'
   union all
-  -- …et ce propriétaire est CELUI DE LA TABLE. C'est cette égalité qui fait
-  -- marcher l'UPDATE, et non le nom « postgres » : un propriétaire de table
-  -- contourne RLS, or aucune politique n'ouvre une circulation de grille à
-  -- l'admin. Si cette ligne échoue, la fonction rendrait 0 et le front dirait
-  -- « Accès non enregistré » — panne franche, mais autant la voir ICI.
+  -- …et ce propriétaire est CELUI DE LA TABLE. C'est l'une des DEUX raisons
+  -- qui font marcher l'UPDATE malgré RLS — l'autre étant que `postgres` porte
+  -- `rolbypassrls = true` (mesuré le 13/09/2026). On contrôle celle-ci parce
+  -- qu'un changement de propriétaire la casserait le plus discrètement ; un
+  -- rôle qui posséderait la table sans `bypassrls` ferait quand même marcher
+  -- la fonction. Si cette ligne échoue, la fonction rendrait 0 et le front
+  -- dirait « Accès non enregistré » — panne franche, mais autant la voir ICI.
   --
   -- (Le contrôle `bypassrls` sur `service_role` qui figurait ici est devenu
   --  sans objet le 13/09/2026 : ce rôle n'est plus propriétaire. La raison de

@@ -249,6 +249,49 @@ describe('le propriétaire de `definir_acces` : la tentative reste écrite', () 
     expect(migration).toContain('supabase/mesure-droits-proprietaire.sql');
   });
 
+  it('la MESURE du 13/09 est écrite, avec sa conclusion', () => {
+    // Une contrainte annoncée sans ses chiffres redevient une opinion, et la
+    // question se rouvrira. Les deux lectures qui la fondent sont donc
+    // verrouillées : `postgres` peut créer des rôles MAIS n'est pas
+    // superutilisateur — c'est cet écart qui met `BYPASSRLS` hors de portée.
+    const doc = source('docs/02-spec-technique.md');
+    for (const texte of [migration, doc]) {
+      expect(texte).toContain('superutilisateur');
+      expect(texte, 'la conclusion n’est plus écrite').toMatch(/dette n['’]est pas remboursable/i);
+    }
+    // Les valeurs mesurées, dans la migration : ce sont elles qui datent la
+    // contrainte et permettent de la rejuger si la plateforme change.
+    expect(migration).toContain('superutilisateur                 : false');
+    expect(migration).toContain('peut créer des rôles             : true');
+    expect(migration).toContain('MESURÉ LE 13/09/2026 SUR LA BASE DE TEST');
+    expect(doc).toContain('MESURÉ le 13/09/2026 sur la base de test');
+  });
+
+  it('les DEUX raisons qui font marcher l’UPDATE sont écrites, jamais une seule', () => {
+    // Correction du 14/09 : la version d'avant n'en nommait qu'une — l'égalité
+    // des propriétaires. Or `postgres` porte AUSSI `rolbypassrls = true`.
+    // Quelqu'un qui changerait le propriétaire en se fiant à la version
+    // incomplète croirait que l'égalité suffit à tout expliquer.
+    const fichiers = [
+      'supabase/migrations/2026-09-acces-course.sql',
+      'supabase/schema.sql',
+      'supabase/securite-advisors.sql',
+      'docs/01-spec-fonctionnelle.md',
+      'docs/02-spec-technique.md',
+    ] as const;
+    for (const f of fichiers) {
+      const texte = source(f).replace(/\s+/g, ' ');
+      expect(texte, `${f} : les deux raisons ne sont pas annoncées`).toMatch(
+        /deux raisons,? et non une/i,
+      );
+      expect(texte, `${f} : l'attribut du rôle n'est pas nommé`).toContain('rolbypassrls');
+      // …et la formulation incomplète ne doit pas revenir.
+      expect(texte, `${f} : la version incomplète est de retour`).not.toMatch(
+        /c['’]est cette égalité qui fait marcher l['’]UPDATE/i,
+      );
+    }
+  });
+
   it('docs/02 porte la contrainte, pas seulement la migration', () => {
     // La migration se lit quand on la joue ; docs/02 se lit quand on reprend
     // le projet — c'est le second lecteur qu'il faut atteindre.

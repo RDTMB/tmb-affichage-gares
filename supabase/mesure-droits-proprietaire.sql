@@ -4,6 +4,25 @@
 -- Ce script ne crée, ne modifie ni ne supprime aucun objet.
 -- =============================================================================
 --
+-- ⚠ DÉJÀ PASSÉE LE 13/09/2026 SUR LA BASE DE TEST. Résultat :
+--
+--     rôle courant                     : postgres
+--     superutilisateur                 : FALSE   ← la réponse
+--     peut créer des rôles             : true
+--     contourne RLS lui-même           : true
+--     propriétaire de definir_acces    : postgres
+--     propriétaire de circulations     : postgres
+--     service_role : CREATE sur public : false
+--     service_role : contourne RLS     : true
+--
+-- CONCLUSION : la dette n'est PAS remboursable sur Supabase. `postgres` peut
+-- créer des rôles mais n'est pas superutilisateur, donc `BYPASSRLS` est hors
+-- de portée. C'est une contrainte de plateforme, écrite en tête de
+-- `migrations/2026-09-acces-course.sql` et dans docs/02.
+--
+-- Ce script reste REJOUABLE : il servira le jour où la plateforme changera, ou
+-- sur une autre base. Il n'y a rien à en refaire aujourd'hui.
+--
 -- POURQUOI CETTE MESURE. `public.definir_acces` est SECURITY DEFINER et
 -- appartient à `postgres`, le rôle le plus puissant du projet. C'est le CORPS
 -- de la fonction qui borne réellement ce qu'elle peut faire, pas son
@@ -61,7 +80,7 @@ select
   'propriétaire de circulations',
   (select r.rolname from pg_class c join pg_roles r on r.oid = c.relowner
     where c.oid = 'public.circulations'::regclass),
-  'c''est CETTE égalité qui fait marcher l''UPDATE, pas le nom « postgres »'
+  'l''UNE des deux raisons qui font marcher l''UPDATE ; l''autre est rolbypassrls ci-dessus'
 union all
 -- Rappel de la tentative du 13/09/2026, pour qu'elle ne se refasse pas.
 select

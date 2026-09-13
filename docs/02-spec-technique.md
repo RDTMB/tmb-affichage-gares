@@ -461,13 +461,36 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   accorder ce droit a été refusé — on n'élargit pas un rôle qui contourne déjà
   RLS pour la commodité d'un script.
 
-  **La mesure qui tranche** — le rôle courant est-il superutilisateur ? — est
-  dans `supabase/mesure-droits-proprietaire.sql`, en lecture seule. Si la
-  réponse est non, ce n'est pas une dette reportée mais une **contrainte de
-  plateforme** : on l'écrit et on ferme le sujet. Trois chemins sont
-  explicitement exclus, car chacun rendrait le système moins sûr qu'aujourd'hui
-  — `create role … superuser`, désactiver RLS sur `circulations`, ajouter une
-  politique « en attendant ».
+  **MESURÉ le 13/09/2026 sur la base de test**
+  (`supabase/mesure-droits-proprietaire.sql`, lecture seule) :
+
+  | Lecture | Valeur |
+  | --- | --- |
+  | rôle courant | `postgres` |
+  | superutilisateur | **false** |
+  | peut créer des rôles | true |
+  | contourne RLS lui-même | true |
+  | propriétaire de `definir_acces` | `postgres` |
+  | propriétaire de `circulations` | `postgres` |
+  | `service_role` : CREATE sur `public` | false |
+  | `service_role` : contourne RLS | true |
+
+  **La dette n'est pas remboursable sur Supabase.** `postgres` peut créer des
+  rôles, mais il n'est pas superutilisateur : `BYPASSRLS` est hors de portée,
+  et un rôle dédié ne pourrait pas écrire dans `circulations` malgré RLS. Ce
+  n'est plus une dette, c'est une **contrainte de plateforme** — le sujet est
+  clos, et il l'est par une mesure.
+
+  Trois chemins restent explicitement exclus, et la mesure ne les rouvre pas :
+  `create role … superuser`, désactiver RLS sur `circulations`, ajouter une
+  politique « en attendant ». Chacun rendrait le système moins sûr
+  qu'aujourd'hui.
+
+  **Deux raisons, et non une, font marcher l'`UPDATE` malgré RLS** :
+  `postgres` possède `circulations` (un propriétaire de table n'est pas soumis
+  à ses propres politiques) **et** il porte `rolbypassrls = true`. Chacune
+  suffirait ; le bloc VÉRIFICATION contrôle la première, celle qu'un changement
+  de propriétaire casserait le plus discrètement.
 - `params` : QUATRE politiques permissives, qui se cumulent en OU, une par
   jeu de clés.
   - `roles: params affichage` — `meteo_sommet`, `vitesse_ticker_px_s`
