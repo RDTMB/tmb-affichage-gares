@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { anneauSur, couleurSure, echapper } from './affichage-commun';
+import { anneauSur, couleurSure, echapper, styleRame } from './affichage-commun';
 
 /** Bleu-gris de la charte 2026, repli de `couleurSure()`. */
 const BLEU_GRIS = '#708DA4';
@@ -121,12 +121,52 @@ describe('les onze sites de construction passent par les validateurs', () => {
     }
   });
 
-  it('chaque page importe les deux validateurs', () => {
+  it('chaque page passe par les validateurs — directement, ou par `styleRame`', () => {
+    // A CHANGÉ DE SUJET le 13/09/2026, sans rien perdre. Les pastilles de rame
+    // passent désormais par `styleRame()`, qui appelle LUI-MÊME les deux
+    // validateurs : exiger de chaque page qu'elle les importe encore
+    // reviendrait à interdire la mise en commun qui vient de supprimer la
+    // troisième copie de la règle de l'anneau. Ce qui compte reste qu'aucun
+    // chemin ne construise un style de rame sans validation.
     for (const fichier of FICHIERS) {
       const src = source(fichier);
-      expect(src, fichier).toMatch(/couleurSure/);
-      expect(src, fichier).toMatch(/anneauSur/);
+      expect(src, `${fichier} : la couleur ne passe par aucun validateur`).toMatch(
+        /couleurSure|styleRame/,
+      );
+      expect(src, `${fichier} : l’anneau ne passe par aucun validateur`).toMatch(
+        /anneauSur|styleRame/,
+      );
     }
+  });
+
+  it('`styleRame` valide les DEUX champs — c’est lui qui porte la garantie', () => {
+    // Sans ceci, le test précédent se contenterait de la présence du mot
+    // « styleRame » : une fonction qui concaténerait la couleur brute
+    // passerait, et les trois pages avec elle.
+    const src = source('src/pages/affichage-commun.ts');
+    const debut = src.indexOf('export function styleRame(');
+    expect(debut, 'styleRame introuvable').toBeGreaterThan(-1);
+    const corps = src.slice(debut, src.indexOf('\n}\n', debut));
+    expect(corps, 'styleRame n’appelle pas couleurSure').toContain('couleurSure(');
+    expect(corps, 'styleRame n’appelle pas anneauSur').toContain('anneauSur(');
+    expect(corps, 'styleRame concatène une couleur brute').not.toMatch(/\$\{[^}]*\.couleur\}/);
+  });
+
+  it('une rame SANS anneau ne pose pas la variable : aucun anneau inventé', () => {
+    // C'est le comportement délibéré d'`anneauSur()`, vu depuis la pastille :
+    // Marie, Anne et Jeanne n'ont pas d'anneau, et une couleur d'anneau mal
+    // formée vaut absence — pas un anneau de repli. La variable absente laisse
+    // jouer le repli de chaque `var(--anneau, …)` en CSS.
+    expect(styleRame({ couleur: '#2E74B5', cercle: null })).toBe('background:#2E74B5;');
+    expect(styleRame({ couleur: '#2E74B5', cercle: 'red;box-shadow:0 0 0 99vh red' })).toBe(
+      'background:#2E74B5;',
+    );
+    // Marguerite, la seule qui en porte un (charte 2026).
+    expect(styleRame({ couleur: '#FFFFFF', cercle: '#E52A23' })).toBe(
+      'background:#FFFFFF;--anneau:#E52A23;',
+    );
+    // Couleur de fond mal formée : le repli de la charte, comme ailleurs.
+    expect(styleRame({ couleur: 'url(x)', cercle: null })).toBe(`background:${BLEU_GRIS};`);
   });
 
   it('les deux champs de saisie de la supervision sont validés aussi', () => {

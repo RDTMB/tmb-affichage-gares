@@ -88,6 +88,34 @@ export function anneauSur(v: string | null | undefined): string | null {
 }
 
 /**
+ * Style en ligne d'une PASTILLE DE RAME : sa couleur de fond, et la couleur de
+ * son anneau quand elle en a un — jamais la GÉOMÉTRIE de cet anneau.
+ *
+ * POURQUOI UNE VARIABLE CSS PLUTÔT QU'UN `box-shadow`. Le 13/09/2026,
+ * l'anneau de Marguerite manquait sur la pastille de position de la grille
+ * alors qu'il était présent dans la légende, à quelques centimètres sur le
+ * même écran. Chaque endroit écrivait son propre `box-shadow` — trois copies
+ * d'une même règle, dont une oubliée.
+ *
+ * Recopier la ligne de la légende aurait été pire qu'inutile : `.train-pos`
+ * porte DÉJÀ un `box-shadow` en CSS (liseré sombre + halo blanc, qui la
+ * détachent de la cellule), et un `box-shadow` en ligne l'aurait ÉCRASÉ —
+ * mesuré au navigateur avant de choisir. On aurait réparé l'anneau en
+ * effaçant le halo.
+ *
+ * D'où le partage retenu : cette fonction décide QUI a un anneau et de quelle
+ * couleur, une fois pour toutes ; chaque feuille de style compose sa propre
+ * géométrie autour de `var(--anneau, …)` — 2 px dans la légende, 2 px plus un
+ * halo sur la pastille de position, 0,4 vh sur l'écran de gare. Une rame sans
+ * anneau ne pose pas la variable : le repli de chaque `var()` s'applique, et
+ * aucun anneau n'est inventé (voir `anneauSur`).
+ */
+export function styleRame(m: { couleur?: string | null; cercle?: string | null }): string {
+  const anneau = anneauSur(m.cercle);
+  return `background:${couleurSure(m.couleur)};${anneau ? `--anneau:${anneau};` : ''}`;
+}
+
+/**
  * Le message est-il diffusable À CET INSTANT, indépendamment de toute gare ?
  *
  * Extrait de `messagesVisibles()` pour l'aperçu de la supervision, qui n'a pas

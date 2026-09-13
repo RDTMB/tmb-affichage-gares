@@ -585,12 +585,19 @@ main {
   min-width: 0;
 }
 
+/* L'ANNEAU DE LA RAME est porté par --anneau, posée en ligne par styleRame()
+   (affichage-commun.ts) UNIQUEMENT pour les rames qui en ont un — Marguerite
+   seule, charte 2026. Chaque pastille compose ICI sa propre géométrie : la
+   couleur vient d'un seul endroit, la taille reste là où elle se lit.
+   Le repli du var() est ce qui était dessiné avant, donc rien ne change pour
+   les rames sans anneau — ni pour une couleur mal formée, qui ne pose pas la
+   variable (voir anneauSur()). */
 .pastille {
   width: 3vh;
   height: 3vh;
   border-radius: 50%;
   flex: none;
-  box-shadow: 0 0 0 0.4vh rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 0.4vh var(--anneau, rgba(255, 255, 255, 0.14));
 }
 
 .r-train .txt {
@@ -1382,7 +1389,7 @@ body.mode-horloge .badge-cache {
   .pastille {
     width: calc(3 * var(--u));
     height: calc(3 * var(--u));
-    box-shadow: 0 0 0 calc(0.4 * var(--u)) rgba(255, 255, 255, 0.14);
+    box-shadow: 0 0 0 calc(0.4 * var(--u)) var(--anneau, rgba(255, 255, 255, 0.14));
   }
   .r-train .nom-rame {
     font-size: calc(2.9 * var(--u));
