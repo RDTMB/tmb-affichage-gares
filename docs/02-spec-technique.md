@@ -441,6 +441,56 @@ quelques dizaines de lignes par jour, sans effet sur l'offre gratuite.
   les policies évaluent la fonction AU NOM de l'utilisateur connecté, sans ce
   GRANT toutes les écritures seraient refusées. La fonction de trigger n'a
   besoin d'aucun GRANT (EXECUTE est vérifié à la création du trigger).
+- **`public.definir_acces` — la seule dérogation, et sa CONTRAINTE de
+  plateforme.** Elle est SECURITY DEFINER dans `public` parce que PostgREST
+  n'expose que ce schéma et que cette écriture doit être appelable en RPC
+  (docs/01 §2.12). Elle porte quatre garanties vérifiées par
+  `src/data/securite.test.ts` sur TOUS les scripts SQL : révoquée à `public`
+  et à `anon`, `search_path` verrouillé, rôle applicatif contrôlé dans le
+  corps, propriétaire NOMMÉ.
+
+  Son propriétaire est `postgres`. Un rôle DÉDIÉ, qui ne posséderait aucun
+  autre objet, serait plus étroit — mais il n'aurait pas l'exemption de RLS
+  dont la fonction vit (un propriétaire de table n'est pas soumis à ses
+  propres politiques), et il lui faudrait l'attribut `BYPASSRLS`, que seul un
+  SUPERUTILISATEUR accorde.
+
+  `service_role` a été essayé le 13/09/2026 et ne convient pas : il contourne
+  bien RLS, mais n'a pas `CREATE` sur le schéma `public`, droit que PostgreSQL
+  exige du NOUVEAU propriétaire lors d'un `alter function … owner to`. Lui
+  accorder ce droit a été refusé — on n'élargit pas un rôle qui contourne déjà
+  RLS pour la commodité d'un script.
+
+  **MESURÉ le 13/09/2026 sur la base de test**
+  (`supabase/mesure-droits-proprietaire.sql`, lecture seule) :
+
+  | Lecture | Valeur |
+  | --- | --- |
+  | rôle courant | `postgres` |
+  | superutilisateur | **false** |
+  | peut créer des rôles | true |
+  | contourne RLS lui-même | true |
+  | propriétaire de `definir_acces` | `postgres` |
+  | propriétaire de `circulations` | `postgres` |
+  | `service_role` : CREATE sur `public` | false |
+  | `service_role` : contourne RLS | true |
+
+  **La dette n'est pas remboursable sur Supabase.** `postgres` peut créer des
+  rôles, mais il n'est pas superutilisateur : `BYPASSRLS` est hors de portée,
+  et un rôle dédié ne pourrait pas écrire dans `circulations` malgré RLS. Ce
+  n'est plus une dette, c'est une **contrainte de plateforme** — le sujet est
+  clos, et il l'est par une mesure.
+
+  Trois chemins restent explicitement exclus, et la mesure ne les rouvre pas :
+  `create role … superuser`, désactiver RLS sur `circulations`, ajouter une
+  politique « en attendant ». Chacun rendrait le système moins sûr
+  qu'aujourd'hui.
+
+  **Deux raisons, et non une, font marcher l'`UPDATE` malgré RLS** :
+  `postgres` possède `circulations` (un propriétaire de table n'est pas soumis
+  à ses propres politiques) **et** il porte `rolbypassrls = true`. Chacune
+  suffirait ; le bloc VÉRIFICATION contrôle la première, celle qu'un changement
+  de propriétaire casserait le plus discrètement.
 - `params` : QUATRE politiques permissives, qui se cumulent en OU, une par
   jeu de clés.
   - `roles: params affichage` — `meteo_sommet`, `vitesse_ticker_px_s`
