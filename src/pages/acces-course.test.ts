@@ -544,6 +544,40 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
     }
   });
 
+  it('la TENTATIVE ÉCHOUÉE reste écrite, avec sa mesure', () => {
+    // Ce test verrouille un COMMENTAIRE, et c'est délibéré.
+    //
+    // `service_role` a été choisi comme propriétaire, puis abandonné : il
+    // contourne bien RLS, mais n'a pas `CREATE` sur le schéma `public`, droit
+    // que PostgreSQL exige DU NOUVEAU PROPRIÉTAIRE lors d'un
+    // `alter function … owner to`. Le script s'est arrêté en production de
+    // test sur « permission denied for schema public » — message trompeur,
+    // puisque l'exécutant a ce droit.
+    //
+    // Sans cette trace, le raisonnement qui mène à `service_role` reste
+    // séduisant : plus étroit, NOLOGIN, sans objets. Une prochaine session le
+    // referait, et le referait contre une base. Le coût d'un commentaire
+    // perdu se paie donc en déploiement raté, pas en documentation manquante.
+    for (const fichier of [
+      'supabase/schema.sql',
+      'supabase/migrations/2026-09-acces-course.sql',
+    ] as const) {
+      const sql = source(fichier);
+      // La mesure, chiffrée : c'est elle qui distingue un constat d'une
+      // opinion sur ce que PostgreSQL ferait.
+      expect(sql, `${fichier} : la mesure a disparu`).toContain(
+        'service_role_peut_creer_dans_public : false',
+      );
+      expect(sql, `${fichier} : le droit qui manque n’est plus nommé`).toMatch(
+        /CREATE[\s\S]{0,40}schéma `public`/,
+      );
+      // …et l'interdiction de « corriger » le problème en accordant ce droit.
+      expect(sql, `${fichier} : l’interdiction a disparu`).toContain(
+        'NE PAS ACCORDER `CREATE` SUR `public` À `service_role`',
+      );
+    }
+  });
+
   it('la recette éprouve les TROIS moitiés sur une vraie base', () => {
     // Survivantes de la campagne de relecture : `toContain('pronargdefaults')`
     // et un préfixe d'ÉCHEC partagé ne verrouillaient rien — on pouvait
@@ -631,7 +665,11 @@ describe('privatiser une course ne perd jamais son commanditaire', () => {
       // fonction et celui de la table qui fait marcher l'UPDATE, pas le nom
       // « postgres » en lui-même.
       "select 'definir_acces appartient au propriétaire de circulations',",
-      'pronargdefaults',
+      // CHAÎNE EXACTE, et non le seul mot `pronargdefaults` : survivante de la
+      // campagne du 13/09, on pouvait neutraliser la condition en la préfixant
+      // d'un `true and` sans que le mot disparaisse. C'est la deuxième fois
+      // que ce genre d'assertion laisse passer une mutation.
+      "         (select pronargdefaults from pg_proc\n           where oid = 'public.definir_acces(date, int, text, text)'::regprocedure) = 0",
     ]) {
       expect(migration, `migration : contrôle « ${controle} » absent`).toContain(controle);
     }
