@@ -83,6 +83,13 @@ import {
   type Droit,
 } from '../core/roles';
 import { creeProvider } from '../data';
+import {
+  CLE_APERCU,
+  RefusApercu,
+  libelleApercu,
+  providerApercu,
+  rolesApercuStockes,
+} from './voir-comme';
 import { baseServie, configSupabasePresente, estModeDemo } from '../data/config';
 import { initOngletHoraires, type OngletHoraires } from './onglet-horaires';
 import {
@@ -201,7 +208,16 @@ const lienAuth = analyseLienAuth(window.location.hash, window.location.search);
 const parametresUrl = new URLSearchParams(window.location.search);
 const echecSimule = estModeDemo(parametresUrl) && parametresUrl.get('echec') === '1';
 
-const provider = creeProvider({ echecSimule });
+/**
+ * LE FOURNISSEUR EST INTERPOSÉ (§3 du lot « voir comme »). Tant que l'aperçu
+ * d'un autre rôle est actif, toute méthode d'écriture lève `RefusApercu` —
+ * ici, une fois, pour les neuf onglets. Hors aperçu, l'enveloppe est
+ * transparente : `actif()` répond `false` et l'appel passe tel quel.
+ *
+ * `creeProvider({ echecSimule })` reste l'appel réel : c'est lui que vérifie
+ * `session-et-purge.test.ts`, et il n'a pas changé de sens.
+ */
+const provider = providerApercu(creeProvider({ echecSimule }), () => rolesSimules !== null);
 
 /**
  * Suffixe d'URL des aperçus. Les pages d'affichage n'acceptent plus le repli
@@ -229,6 +245,29 @@ function $(id: string): HTMLElement {
  * la base refuse de toute façon ce qu'elle doit refuser.
  */
 let roles: Role[] = [];
+
+/**
+ * APERÇU « VOIR COMME » : rôles SIMULÉS, ou `null` hors aperçu.
+ *
+ * Un ensemble VIDE est une valeur légitime et distincte de `null` — « un
+ * compte sans aucun rôle » est un cas que l'annuaire produit et que
+ * l'exploitant a besoin de voir. D'où le test `!== null` partout, jamais une
+ * vérité simple.
+ *
+ * ⚠ Cette variable ne change RIEN aux droits réels : le jeton porte toujours
+ * les vrais rôles, RLS refuse exactement ce qu'elle refusait, et l'écriture
+ * est coupée en amont par `providerApercu`. Elle ne sert qu'à choisir ce qu'on
+ * AFFICHE.
+ */
+let rolesSimules: Role[] | null = null;
+
+/** Rôles réels de l'agent, mis de côté pendant l'aperçu pour être rendus à la sortie. */
+let rolesReels: Role[] = [];
+
+/** L'aperçu est-il actif ? Une seule lecture, pour que la règle ne se duplique pas. */
+function enApercu(): boolean {
+  return rolesSimules !== null;
+}
 
 /**
  * Onglets que l'exploitant a choisi d'afficher, par rôle (table
@@ -340,15 +379,52 @@ const brouillonSection: BrouillonSection = new Map();
 const brouillonMessages: BrouillonMessages = new Map();
 let brouillonParams: Partial<Params> = {};
 
+/**
+ * §5 — CE QUE DEVIENT LE BROUILLON PENDANT L'APERÇU : il est CONSERVÉ et
+ * SUSPENDU, jamais publié, jamais jeté.
+ *
+ * Trois fonctions, et trois seulement, posent le brouillon par-dessus ce qui
+ * vient de la base. Les neutraliser pendant l'aperçu suspend l'ensemble en un
+ * point ; les `Map` du brouillon, elles, ne sont pas touchées et sont
+ * ré-appliquées en sortie par un simple re-rendu.
+ *
+ * POURQUOI SUSPENDRE PLUTÔT QUE MONTRER. L'aperçu doit répondre à « que voit
+ * la caisse ? ». Une caisse ne voit pas les modifications non publiées de la
+ * supervision — c'est la définition même du brouillon (docs/01 §5.6). Les
+ * laisser en surimpression rendrait un aperçu FAUX, et faux dans le sens qui
+ * rassure : on verrait son propre travail et on conclurait que tout va bien.
+ *
+ * POURQUOI NE PAS PUBLIER D'ABORD. Ce serait faire dépendre un geste de
+ * lecture d'une écriture en production.
+ *
+ * POURQUOI NE PAS JETER. Le brouillon peut représenter une demi-heure de
+ * saisie, et il ne survit pas à un rechargement (les `Map` vivent en mémoire).
+ *
+ * CE QUE ÇA COÛTE, et il faut le dire : pendant l'aperçu, l'agent ne voit plus
+ * ses propres modifications en attente — et la barre « Publier » va jusqu'à
+ * annoncer « Tout est publié », puisqu'elle compare ce qui est AFFICHÉ et que
+ * l'affichage est revenu à la base. C'est le BANDEAU qui porte le compte, lu
+ * dans le brouillon lui-même (`nbEnAttente`), sans quoi l'agent croirait son
+ * travail parti.
+ *
+ * CONTRAINTE DURE QUI EN DÉCOULE : entrer dans l'aperçu et en sortir ne doit
+ * JAMAIS recharger la page. Un rechargement détruirait ces `Map`, donc le
+ * brouillon, donc la promesse ci-dessus.
+ */
 function rafraichitMessagesEffectifs(): void {
-  messages = appliqueBrouillonMessages(messagesBase, brouillonMessages);
+  messages = enApercu() ? messagesBase : appliqueBrouillonMessages(messagesBase, brouillonMessages);
 }
 
 function rafraichitParamsEffectifs(): void {
+  if (enApercu()) {
+    params = paramsBase;
+    return;
+  }
   params = paramsBase ? appliqueBrouillonParams(paramsBase, brouillonParams) : paramsBase;
 }
 
 function rafraichitJourEffectif(): void {
+  if (enApercu()) return;
   if (jour)
     jour = appliqueBrouillonJour(
       jour,
@@ -357,6 +433,31 @@ function rafraichitJourEffectif(): void {
       brouillonSupSupprimes,
       brouillonSection,
     );
+}
+
+/**
+ * COMBIEN de modifications sont mises de côté, lues dans le brouillon lui-même.
+ *
+ * `modifs`, le compteur de la barre « Publier », ne convient PAS ici : il
+ * compte les ÉCARTS entre l'état AFFICHÉ et la référence. Or l'aperçu suspend
+ * précisément la surimpression du brouillon (§5) — l'état affiché redevient
+ * celui de la base, et la barre annonce donc « Tout est publié » pendant tout
+ * l'aperçu. MESURÉ au navigateur le 13/09/2026 : quatre modifications en
+ * attente, barre à « Tout est publié ✓ ».
+ *
+ * Ce n'est pas un défaut de la barre — elle dit la vérité sur ce qui est à
+ * l'écran — mais laisser l'agent devant ce seul message serait lui dire que
+ * son travail est parti. Le bandeau porte donc ce compte-ci, pris à la
+ * SOURCE, qui ne dépend pas de ce qui est affiché.
+ */
+function nbEnAttente(): number {
+  return (
+    brouillonCirc.size +
+    brouillonTerminus.size +
+    brouillonSection.size +
+    brouillonMessages.size +
+    Object.keys(brouillonParams).length
+  );
 }
 
 /** Reste-t-il des modifications non publiées (toutes catégories confondues) ? */
@@ -566,6 +667,12 @@ function bumpEnAttente(detail: string): void {
 }
 
 function erreurVersToast(erreur: unknown): void {
+  // Un refus d'aperçu n'est pas une panne : le dire autrement évite d'envoyer
+  // l'agent chercher un problème de réseau ou de droits qui n'existe pas.
+  if (erreur instanceof RefusApercu) {
+    toast('⚠ Aperçu « voir comme » : lecture seule. Quittez l’aperçu pour modifier.');
+    return;
+  }
   toast(`⚠ ${String(erreur instanceof Error ? erreur.message : erreur)}`);
 }
 
@@ -899,6 +1006,9 @@ function rendreTout(): void {
     if (referenceFixee) recalculeEcarts();
     else fixeReference();
   });
+  // APRÈS tous les rendus : le verrou se pose sur le DOM qui vient d'être
+  // réécrit, sinon il s'appliquerait à celui d'avant.
+  verrouilleApercu();
 }
 
 // ---------------------------------------------------------------------------
@@ -999,6 +1109,14 @@ function appliqueRoles(): void {
   // Ranger la barre de navigation est un réglage d'INFRASTRUCTURE, au même
   // titre que la veille de nuit globale ou la purge du journal.
   montreSi('carte-onglets-roles', peut('parametres.technique'));
+
+  // APERÇU « voir comme » : `comptes.lire`, donc technique ET admin — et non
+  // `parametres.technique` comme la carte voisine. L'écart est VOULU : celui
+  // qui gère l'annuaire doit pouvoir vérifier ce qu'il vient d'accorder, même
+  // s'il ne règle pas la barre de navigation. Pendant un aperçu, la carte
+  // suit les rôles SIMULÉS — c'est justement ce qu'on est venu voir ; la
+  // sortie, elle, vit dans le bandeau et ne dépend d'aucun droit.
+  montreSi('carte-apercu', peut('comptes.lire'));
   if (peut('parametres.technique')) rendOngletsParRole();
 }
 
@@ -1065,6 +1183,136 @@ function montreSi(id: string, visible: boolean): void {
   if (el) el.style.display = visible ? '' : 'none';
 }
 
+// ---------------------------------------------------------------------------
+// Aperçu « voir comme » (docs/01 §5.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Entre dans l'aperçu d'un JEU DE RÔLES — jamais d'une personne (§2). Les
+ * rôles se cumulent exactement comme en vrai : ce sont les mêmes fonctions
+ * (`ongletsVisibles`, `aLeDroit`) qui décident, et c'est le seul moyen que
+ * l'aperçu ne soit pas une seconde règle à tenir d'accord avec la première.
+ *
+ * AUCUN RECHARGEMENT, ni ici ni à la sortie : le brouillon vit dans des `Map`
+ * en mémoire (§5). On recharge les DONNÉES, pas la page.
+ */
+function entreApercu(simules: readonly Role[]): void {
+  if (!peut('comptes.lire')) return; // le droit d'entrée, § 1
+  if (rolesSimules === null) rolesReels = roles;
+  rolesSimules = [...simules];
+  roles = [...simules];
+  try {
+    sessionStorage.setItem(CLE_APERCU, JSON.stringify(rolesSimules));
+  } catch {
+    // Stockage refusé (navigation privée saturée) : l'aperçu fonctionne quand
+    // même, il ne survivra simplement pas à un changement d'onglet du
+    // navigateur. Un aperçu qui refuserait de s'ouvrir pour cette raison
+    // serait pire.
+  }
+  rechargePourApercu();
+}
+
+/** Quitte l'aperçu et rend à l'agent ses vrais rôles — et son brouillon. */
+function sortApercu(): void {
+  if (rolesSimules === null) return;
+  rolesSimules = null;
+  roles = rolesReels;
+  try {
+    sessionStorage.removeItem(CLE_APERCU);
+  } catch {
+    // idem : ne jamais retenir l'agent dans l'aperçu à cause du stockage.
+  }
+  rechargePourApercu();
+}
+
+/**
+ * Relit les données et redessine. Entrée comme sortie passent par ici : le
+ * brouillon étant suspendu dans un sens et rétabli dans l'autre, l'état
+ * affiché doit repartir de la base dans les deux cas — sinon la surimpression
+ * déjà posée resterait collée à l'entrée.
+ */
+function rechargePourApercu(): void {
+  appliqueRoles();
+  rendreBandeauApercu();
+  void chargeTout()
+    .then(rendreTout)
+    .catch((erreur: unknown) => {
+      erreurVersToast(erreur);
+      rendreTout();
+    });
+}
+
+/**
+ * BANDEAU PERMANENT (§4), et non une pastille discrète : on ne doit jamais
+ * pouvoir conclure « la caisse ne voit pas ça » en ayant oublié qu'on est en
+ * aperçu. Il porte sa propre sortie, visible depuis n'importe quel onglet
+ * puisqu'il vit au-dessus d'eux.
+ */
+function rendreBandeauApercu(): void {
+  const bandeau = document.getElementById('bandeau-apercu');
+  if (!bandeau) return;
+  bandeau.style.display = enApercu() ? '' : 'none';
+  document.body.classList.toggle('en-apercu', enApercu());
+  if (!enApercu()) return;
+  const quoi = $('apercu-roles');
+  quoi.textContent = libelleApercu(rolesSimules ?? [], LIBELLE_ROLE);
+  // LE COMPTE DU BROUILLON, ici et pas ailleurs : pendant l'aperçu la barre
+  // « Publier » annonce « Tout est publié », puisqu'elle compare ce qui est
+  // AFFICHÉ (voir `nbEnAttente`). Sans cette phrase, l'agent lirait que son
+  // travail est parti — et la seule façon de s'en assurer serait de quitter
+  // l'aperçu.
+  // PAS DE NOMBRE ICI, et c'est une décision. La barre « Publier » compte des
+  // ÉCARTS (un message ajouté en produit plusieurs : ajout, activation…), le
+  // brouillon compte des SAISIES. Afficher « 1 » sous une barre qui montrait
+  // « 4 » à l'instant d'avant créerait une seconde façon d'induire en erreur
+  // pour en corriger une première. La phrase dit le FAIT, qui suffit.
+  $('apercu-attente').textContent =
+    nbEnAttente() === 0
+      ? 'Aucune modification en attente.'
+      : 'Vos modifications en attente sont CONSERVÉES et réapparaîtront à la sortie ; elles sont masquées pendant l’aperçu, et la barre « Publier » annonce donc « Tout est publié » — elle décrit ce qui est à l’écran, pas votre brouillon.';
+}
+
+/**
+ * VERROU D'INTERFACE. Il vient APRÈS le refus du fournisseur, et cet ordre est
+ * la moitié de la règle : `disabled` se retire dans l'inspecteur, l'écriture
+ * n'en partira pas pour autant (`providerApercu`). Ce verrou-ci ne sert qu'à
+ * rendre l'aperçu honnête à l'œil — une commande qui a l'air active et qui
+ * refuse ferait chercher une panne.
+ *
+ * Le balayage est volontairement LARGE : tout ce qui se saisit dans le contenu
+ * s'éteint, sauf ce qui porte `data-apercu="lecture"` (barres de date, filtres
+ * du journal, et la sortie elle-même). Le sens du défaut compte : un contrôle
+ * de lecture oublié gêne la navigation, un contrôle d'écriture oublié ferait
+ * croire qu'on peut écrire.
+ */
+function verrouilleApercu(): void {
+  const actif = enApercu();
+  const zones = ['contenu', 'barre-publier'];
+  for (const id of zones) {
+    const zone = document.getElementById(id);
+    if (!zone) continue;
+    zone
+      .querySelectorAll<HTMLInputElement>('input, select, textarea, button')
+      .forEach((commande) => {
+        if (commande.dataset.apercu === 'lecture') return;
+        if (!actif) {
+          // Ne rendre la main qu'à ce que l'aperçu a éteint : les commandes
+          // qu'un DROIT ou une date passée verrouillent déjà doivent le
+          // rester. C'est le rendu qui les repose, pas nous.
+          if (commande.dataset.apercuEteint === '1') {
+            commande.disabled = false;
+            delete commande.dataset.apercuEteint;
+          }
+          return;
+        }
+        if (commande.disabled) return; // déjà verrouillé pour une autre raison
+        commande.disabled = true;
+        commande.dataset.apercuEteint = '1';
+        commande.title = 'Aperçu « voir comme » : lecture seule.';
+      });
+  }
+}
+
 /**
  * Badges de rôle d'un compte. Chacun garde la largeur fixe qui aligne les
  * colonnes des lignes utilisateur ; ils passent à la ligne proprement quand un
@@ -1101,6 +1349,7 @@ function ligneUtilisateur(u: User): string {
       <div class="user-badges">${badgesRoles(u.roles)}</div>
       <div class="user-roles">${cases}</div>
       <label class="switch"${titreCompte}><input type="checkbox" ${u.actif ? 'checked' : ''} data-champ="actif" ${verrou} />Actif</label>
+      <button class="leger" data-champ="voir-comme" data-apercu="lecture" title="Prévisualiser l’interface avec les rôles de ce compte, en lecture seule">Voir comme</button>
       <button class="leger" data-champ="reset">Réinit. mdp</button>
       <button class="leger danger" data-champ="supprimer" ${verrou}${titreCompte}>Supprimer</button>
     </div>`;
@@ -1170,7 +1419,13 @@ async function apresConnexion(): Promise<void> {
   $('user-nom').textContent = libelleUtilisateur(profilConnecte);
   $('user-nom').title = profilConnecte?.email ?? '';
   $('avatar').textContent = initiales(profilConnecte);
-  $('user-role').innerHTML = badgesRoles(roles);
+  // LES BADGES DE L'EN-TÊTE DISENT QUI ON EST VRAIMENT, pas ce qu'on
+  // prévisualise : `rolesReels` et non `roles`. L'en-tête répond à « qui
+  // agit », le bandeau d'aperçu à « qu'est-ce que je regarde » — deux
+  // questions, deux endroits. Avec `roles`, un rechargement en cours d'aperçu
+  // (le mode est restauré depuis `sessionStorage` AVANT ce rendu) aurait
+  // affiché les rôles simulés comme s'ils étaient les siens.
+  $('user-role').innerHTML = badgesRoles(rolesReels);
   // Écouteur DÉLÉGUÉ sur le conteneur, posé une seule fois : la grille est
   // réécrite à chaque réglage, des écouteurs par case ne survivraient pas.
   brancheOngletsParRole();
@@ -1178,6 +1433,7 @@ async function apresConnexion(): Promise<void> {
   // déclaration, l'écouteur vit donc sur son conteneur.
   brancheAffluence();
   appliqueRoles();
+  rendreBandeauApercu();
   try {
     await chargeTout();
   } catch (erreur) {
@@ -1628,6 +1884,10 @@ function rendreCirculations(): void {
       );
     })
     .join('');
+  // Aperçu « voir comme » : ce rendu est atteignable sans passer par
+  // rendreTout() (barre de date, filtres du journal, qui restent actifs en
+  // lecture). Le verrou d’interface se repose donc ici aussi.
+  verrouilleApercu();
 }
 
 /**
@@ -3104,6 +3364,10 @@ function rendreAffluence(): void {
       })
       .join(''),
   );
+  // Aperçu « voir comme » : ce rendu est atteignable sans passer par
+  // rendreTout() (barre de date, filtres du journal, qui restent actifs en
+  // lecture). Le verrou d’interface se repose donc ici aussi.
+  verrouilleApercu();
 }
 
 function brancheAffluence(): void {
@@ -4497,6 +4761,10 @@ async function rechargeJournal(): Promise<void> {
       : `page ${pageJournal + 1} · ${entreesJournal.length} ligne(s)`;
   ($('btn-journal-prec') as HTMLButtonElement).disabled = pageJournal === 0;
   ($('btn-journal-suiv') as HTMLButtonElement).disabled = entreesJournal.length < PAGE_JOURNAL;
+  // Aperçu « voir comme » : ce rendu est atteignable sans passer par
+  // rendreTout() (barre de date, filtres du journal, qui restent actifs en
+  // lecture). Le verrou d’interface se repose donc ici aussi.
+  verrouilleApercu();
 }
 
 function initJournal(): void {
@@ -5079,13 +5347,44 @@ async function demarre(): Promise<void> {
     },
   });
 
+  // SORTIE DE L'APERÇU. Le bouton vit dans le bandeau, au-dessus des onglets :
+  // il est donc atteignable depuis n'importe lequel, en un clic (§4).
+  $('apercu-sortir').addEventListener('click', sortApercu);
+
+  // ENTRÉE 1 — à côté de la carte « Onglets visibles par rôle » : c'est là
+  // qu'on décide ce que chaque rôle voit, donc là qu'on veut le vérifier.
+  $('apercu-lancer').addEventListener('click', () => {
+    const choix = $('apercu-choix') as HTMLSelectElement;
+    const role = choix.value as Role;
+    if (!ROLES.includes(role)) return;
+    entreApercu([role]);
+  });
+
+  // ENTRÉE 2 — sur chaque ligne de l'annuaire. On prévisualise les RÔLES de ce
+  // compte (§2), pas le compte : rien de personnel n'est simulé, et deux
+  // comptes aux mêmes rôles donnent rigoureusement le même aperçu.
+  $('users').addEventListener('click', (e) => {
+    const bouton = e.target as HTMLElement;
+    if (bouton.dataset.champ !== 'voir-comme') return;
+    const id = (bouton.closest('.user-row') as HTMLElement | null)?.dataset.user;
+    const u = utilisateurs.find((x) => x.user_id === id);
+    if (u) entreApercu(u.roles);
+  });
+
   $('btn-deconnexion').addEventListener('click', () => {
     // Le brouillon (Bandeau, Circulations) ne vit qu'en mémoire : se
     // déconnecter sans publier le perdrait silencieusement.
+    // LE COMPTE VIENT DU BROUILLON PENDANT L'APERÇU. `modifs` compte les
+    // écarts avec ce qui est AFFICHÉ, et l'aperçu suspend la surimpression du
+    // brouillon : il vaudrait donc ZÉRO, et l'avertissement annoncerait
+    // « 0 modification(s) seront perdues » alors qu'il y en a. Le garde-fou
+    // lui-même (`rienEnAttente`) lit déjà le brouillon et n'a jamais menti ;
+    // c'est le NOMBRE qui devenait faux.
+    const enAttente = enApercu() ? nbEnAttente() : modifs;
     if (
       !rienEnAttente() &&
       !window.confirm(
-        `${modifs} modification(s) en attente de publication seront perdues. Se déconnecter quand même ?`,
+        `${enAttente} modification(s) en attente de publication seront perdues. Se déconnecter quand même ?`,
       )
     ) {
       return;
@@ -5120,6 +5419,17 @@ async function demarre(): Promise<void> {
   async function entreAvecSession(): Promise<void> {
     profilConnecte = await provider.getProfil();
     roles = profilConnecte.roles;
+    rolesReels = roles;
+    // APERÇU RESTAURÉ. `sessionStorage` survit à un rechargement accidentel de
+    // l'onglet : sans cela, la page reviendrait en mode normal SANS le dire,
+    // et l'agent croirait lire ses propres droits. Le droit d'entrée est
+    // revérifié sur les rôles RÉELS — une valeur forgée à la main n'ouvre
+    // rien, et de toute façon elle n'accorde aucun droit, elle en retire.
+    const simules = rolesApercuStockes(sessionStorage);
+    if (simules !== null && aLeDroit(rolesReels, 'comptes.lire')) {
+      rolesSimules = simules;
+      roles = simules;
+    }
     // Un échec ne bloque RIEN : `null` fait retomber la barre sur la matrice
     // du code, exactement comme avant l'existence de ce réglage.
     visibiliteOnglets = await provider.getOngletsParRole().catch(() => null);

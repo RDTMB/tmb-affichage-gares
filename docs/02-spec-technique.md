@@ -707,6 +707,36 @@ service, passage de minuit, tri multi-sens.
   si la phrase est inconnue, `texte_en` reste VIDE et l'écran n'affiche que
   le français — aucun faux anglais n'est fabriqué) ; phase 2 : LibreTranslate
   auto-hébergé sur la tour. Le texte EN reste toujours modifiable.
+- **Aperçu « voir comme » : le FOURNISSEUR refuse, pas l'interface**
+  (docs/01 §5.7, `src/pages/voir-comme.ts`). Prévisualiser les droits d'un
+  autre rôle impose de garantir qu'aucune écriture ne parte — et « garantir »
+  ne peut pas vouloir dire « désactiver les boutons » : un attribut `disabled`
+  se retire dans l'inspecteur.
+  Trois mécanismes étaient possibles ; le relevé des appels a tranché.
+  Verrouiller chaque commande — le motif de l'onglet Places — vaut pour UNE
+  commande : ici l'écriture part de ~20 méthodes du fournisseur, appelées
+  depuis une centaine de gestionnaires sur neuf onglets, et le gestionnaire
+  ajouté l'an prochain ne saurait rien de l'aperçu. Changer les rôles lus par
+  RLS est exclu : le jeton doit continuer de dire la vérité sur qui agit.
+  Reste l'INTERPOSITION du fournisseur, retenue parce que la règle du dépôt
+  — aucun appel Supabase hors de `src/data/` — en fait un passage obligé :
+  un seul endroit refuse, pour les neuf onglets.
+  Le refus est **fermé par défaut** : les 65 méthodes de `DataProvider` sont
+  réparties en trois listes (lectures, sortie, écritures) et toute méthode
+  absente des trois est refusée. Un test compare les listes à l'interface
+  elle-même, lue dans `src/data/provider.ts` : on ne peut pas ajouter une
+  méthode sans la classer — même motif que `commanditaire.test.ts`, qui
+  compare le `select` du front aux droits de colonne SQL.
+  Deux classements méritent leur raison. `signOut` est la SEULE méthode
+  autorisée qui ne soit pas une lecture : la refuser enfermerait l'agent dans
+  son aperçu, sans pouvoir se déconnecter, et le jeton de rafraîchissement
+  survivrait dans `localStorage` (défaut E-01). Et `getJour` est la seule
+  LECTURE qui sache écrire : la supervision lui passe
+  `{ creerSiAbsent: true }` à ses trois appels, l'option est donc neutralisée
+  au passage de l'enveloppe — sans quoi prévisualiser une date à venir
+  l'ouvrirait, soit le défaut du 08/09/2026 reproduit par un autre chemin.
+  Aucune migration, aucun droit nouveau, aucune ligne de journal : l'aperçu
+  s'ouvre sur `comptes.lire`, un droit qui existe déjà.
 - Navigation par date : `genererJour(date)` idempotent (n'écrase pas les
   lignes modifiées, upsert sur (date,numero) avec garde).
 - Échappement HTML systématique ; textes ≤ 200 caractères ; confirmation

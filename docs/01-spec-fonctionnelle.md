@@ -1175,6 +1175,73 @@ renvoyait jusqu'au 13/09/2026 vers aucune section existante.)_
    journal sous ~8 600 lignes par jour.
    _(Évolutions validées par l'exploitant le 29/08/2026.)_
 
+### 5.7 « Voir comme » — prévisualiser l'interface d'un autre rôle
+
+**Demandé par l'exploitant le 09/09/2026.** La barre d'onglets est réglable en
+exploitation (`onglets_par_role`, §5.5), la matrice des droits ne l'est pas, et
+les deux se composent. Personne ne pouvait répondre à « qu'est-ce que la caisse
+voit, au juste ? » autrement qu'en se connectant avec un compte de caisse —
+donc en connaissant son mot de passe.
+
+**Ce qui est simulé : un JEU DE RÔLES, jamais une personne.** Les rôles se
+cumulent exactement comme en vrai, puisque ce sont les mêmes fonctions qui
+décident (`ongletsVisibles`, `aLeDroit`). Deux comptes aux mêmes rôles donnent
+donc rigoureusement le même aperçu, et rien de personnel n'entre dans l'aperçu.
+
+**L'aperçu est en LECTURE SEULE, et ce n'est pas une affaire de boutons.**
+Toute écriture de la supervision passe par le fournisseur de données
+(`src/data/provider.ts`) ; c'est LUI qui refuse pendant l'aperçu, en un seul
+endroit pour les neuf onglets. Retirer un attribut `disabled` dans l'inspecteur
+ne rouvre donc rien. Les commandes sont en plus éteintes à l'écran, mais c'est
+du confort : ce qui tient, c'est le refus en amont.
+
+Trois conséquences qui se voient :
+
+- **une journée non ouverte n'est pas ouverte par l'aperçu.** La supervision
+  demande normalement la création de la journée affichée ; pendant l'aperçu
+  cette demande est neutralisée, sans quoi regarder une date à venir la
+  créerait — le défaut du 08/09/2026, une alerte détruite en la regardant ;
+- **aucune ligne de journal, aucune migration, aucun droit nouveau.** Le droit
+  d'entrée est `comptes.lire`, qui existe déjà (technique et administrateur) ;
+- **l'aperçu ne peut pas servir d'élévation de privilège.** Le jeton porte
+  toujours les vrais rôles, RLS refuse exactement ce qu'elle refusait, et
+  simuler « technique » n'ouvre aucune écriture — c'est ce qui permet de
+  laisser simuler n'importe quel rôle sans restriction.
+
+Ce que devient le **brouillon** (§5.6) : il est **conservé et suspendu**. Les
+modifications en attente ne sont ni publiées ni perdues, mais elles ne sont pas
+affichées pendant l'aperçu — une caisse ne voit pas le travail non publié de la
+supervision, et le montrer rendrait l'aperçu faux dans le sens qui rassure.
+**Ce que ça coûte, et il faut le savoir** : pendant l'aperçu, on ne voit plus
+ses propres modifications en attente, et la barre « Publier » annonce même
+« Tout est publié » — elle compare ce qui est AFFICHÉ, et l'affichage est
+revenu à la base (MESURÉ au navigateur le 13/09/2026 : quatre modifications en
+attente, barre à « Tout est publié ✓ »). Ce serait dire à l'agent que son travail
+est parti : le **bandeau d'aperçu porte donc le compte**, pris directement dans
+le brouillon, et dit qu'il est conservé. Il en découle une contrainte dure : **entrer dans l'aperçu et en sortir
+ne rechargent jamais la page**, le brouillon ne vivant qu'en mémoire.
+
+**Comment on y entre, comment on en sort.** Deux entrées : la carte « Voir
+comme… » de l'onglet Utilisateurs (un rôle à la fois) et le bouton « Voir
+comme » de chaque ligne de l'annuaire (l'ensemble des rôles de ce compte, donc
+les cumuls). On en sort par le **bandeau permanent** posé au-dessus des
+onglets : il reste visible quel que soit l'onglet et quel que soit le
+défilement, et il porte sa propre sortie. Un bandeau et non une pastille
+discrète — la seule erreur que ce dispositif puisse produire est de conclure
+« la caisse ne voit pas ça » en ayant oublié qu'on est en aperçu.
+
+L'aperçu vit dans `sessionStorage` : il survit à un rechargement accidentel de
+l'onglet (sans quoi la page reviendrait en mode normal sans le dire) et meurt
+avec la session, la déconnexion vidant déjà ce stockage.
+
+**Écart connu et VOULU** avec la carte voisine : « Onglets visibles par rôle »
+est réservée à `parametres.technique`, l'aperçu s'ouvre à `comptes.lire`. Celui
+qui gère l'annuaire doit pouvoir vérifier ce qu'il vient d'accorder, même s'il
+ne règle pas la barre de navigation. Les deux cartes sont donc distinctes.
+
+_(Livré le 13/09/2026 ; `src/pages/voir-comme.ts`, éprouvé par
+`src/pages/voir-comme.test.ts`.)_
+
 ## 6. Bilinguisme
 
 Libellés fixes FR + EN (comme les maquettes). Messages : FR puis EN dans le
