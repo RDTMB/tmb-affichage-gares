@@ -80,10 +80,29 @@ header {
   opacity: 0.9;
 }
 
+/* LE TITRE SE CENTRE SUR L'ESPACE DISPONIBLE, PAS SUR L'EN-TÊTE ENTIER.
+   Défaut mesuré le 13/09/2026, corrigé le 14 : en `?demo=1` le titre centré
+   chevauchait le bandeau de 7 px, et de 23 px quand les deux bandeaux de test
+   étaient actifs ensemble — cas que personne n'avait regardé.
+
+   CAUSE, établie par la mesure et non supposée : une boîte `position:
+   absolute` se cale sur le PADDING BOX de son ancêtre positionné. `top: 50%`
+   ignore donc le `padding-top` qui réserve la place du bandeau, et le titre
+   se centre sur la hauteur TOTALE de l'en-tête, bandeau compris. Vérifié à
+   1920×1080 sur les quatre géométries : la position mesurée suit
+   `hauteur/2 − titre/2` à 5 px près (le demi-filet rouge), jamais la formule
+   qui tiendrait compte du padding — laquelle se trompe de 27 à 59 px.
+
+   Ce n'était donc PAS l'écart 17vh / 19vh entre les deux bandeaux : à 24 vh le
+   titre chevauchait encore. Cet écart existait bien, il est corrigé plus bas,
+   mais il n'était que la moitié du défaut.
+
+   `--reserve-bandeau` vaut le `padding-top` du mode. Une seule règle de
+   centrage, valable pour les quatre modes et pour celui qu'on ajoutera. */
 .titre-bloc {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: calc(50% + var(--reserve-bandeau, 0px) / 2);
   transform: translate(-50%, -50%);
   text-align: center;
   white-space: nowrap;
@@ -700,6 +719,9 @@ body.mode-demo .bandeau-demo {
    demarreAntiBurnIn() lui applique un `transform`, et un ancêtre transformé
    devient le bloc conteneur des descendants `position: fixed` — tous les
    calques (écran neutre, veille, médias) glisseraient d'une heure à l'autre. */
+body.mode-demo {
+  --reserve-bandeau: 5vh;
+}
 body.mode-demo header {
   flex-basis: 17vh;
   padding-top: 5vh;
@@ -747,23 +769,51 @@ body.mode-simule .bandeau-simule {
 }
 /* Même règle que pour la démonstration : le bandeau prend sa place DANS
    l'en-tête, jamais en padding sur `body` (transform de l'anti-burn-in). */
+/* 19vh RAMENÉS À 17 (14/09/2026). Les deux bandeaux de test font la même
+   hauteur — 5vh — et doivent donc réserver la même place : 12vh d'en-tête plus
+   5vh de bandeau. Les 2vh de surplus n'avaient aucune justification écrite, ne
+   réparaient pas le chevauchement (le titre les ignorait, voir .titre-bloc) et
+   se prenaient sur la marge du tableau. Le bloc PORTRAIT, lui, appliquait déjà
+   la bonne formule : 12u + 6u = 18u, sans écart entre les deux modes. */
+body.mode-simule {
+  --reserve-bandeau: 5vh;
+}
 body.mode-simule header {
-  flex-basis: 19vh;
+  flex-basis: 17vh;
   padding-top: 5vh;
 }
 body.mode-simule .badge-cache {
-  top: 20.5vh;
+  top: 18.5vh;
 }
-/* Les deux bandeaux à la fois : ils s'empilent, ils ne se recouvrent pas. */
+/* Les deux bandeaux à la fois : ils s'empilent, ils ne se recouvrent pas.
+
+   ET ILS SE RESSERRENT À 4vh CHACUN — mesuré le 14/09/2026. À 5vh, les deux
+   empilés prennent 10vh, l'en-tête monte à 22vh, et la dernière ligne de la
+   montée est COUPÉE de 10 px : le terminus disparaît, le défaut même que la
+   PR #34 a réparé. Ce n'est pas ce lot qui l'a créé — à 24vh, la valeur
+   d'avant, la coupe était de 20 px et personne ne l'avait regardée.
+   À 4vh le texte reste entier (mesuré : 923 px de contenu pour 1920 de large,
+   34 px pour le titre et 24 px pour l'anglais dans 43 px de bandeau) et le
+   débordement tombe à ZÉRO, mention la plus large comprise.
+
+   Le resserrement ne vaut QUE pour les deux ensemble : seuls, les bandeaux
+   gardent leurs 5vh, qui ne coûtent rien (débordement nul, mesuré). */
+body.mode-simule.mode-demo .bandeau-demo,
+body.mode-simule.mode-demo .bandeau-simule {
+  height: 4vh;
+}
 body.mode-simule.mode-demo .bandeau-demo {
-  top: 5vh;
+  top: 4vh;
+}
+body.mode-simule.mode-demo {
+  --reserve-bandeau: 8vh;
 }
 body.mode-simule.mode-demo header {
-  flex-basis: 24vh;
-  padding-top: 10vh;
+  flex-basis: 20vh;
+  padding-top: 8vh;
 }
 body.mode-simule.mode-demo .badge-cache {
-  top: 25.5vh;
+  top: 21.5vh;
 }
 
 /* ---- Horloge du poste déréglée (lot 5) ------------------------------------
@@ -815,12 +865,18 @@ body.mode-horloge .bandeau-horloge {
 }
 /* Comme les autres bandeaux : la place se prend DANS l'en-tête, jamais en
    padding sur `body` (transform de l'anti-burn-in). */
+/* Mode de PRODUCTION, contrairement aux deux précédents : il s'affiche quand
+   l'horloge d'un poste dérive. Il portait le même 19vh sans justification ; le
+   ramener à 17 rend 2vh au tableau, là où la marge est le plus comptée. */
+body.mode-horloge {
+  --reserve-bandeau: 5vh;
+}
 body.mode-horloge header {
-  flex-basis: 19vh;
+  flex-basis: 17vh;
   padding-top: 5vh;
 }
 body.mode-horloge .badge-cache {
-  top: 20.5vh;
+  top: 18.5vh;
 }
 
 /* ============ AUTRES FORMATS DE MONITEUR (mesurés, pas supposés) ============
@@ -1053,8 +1109,18 @@ body.mode-horloge .badge-cache {
   }
 
   /* Bandeaux de test : leurs deux langues s'empilent (une ligne de 1080 px
-     ne les tient pas côte à côte), d'où 6 u de haut au lieu de 5, repris
-     dans la place que l'en-tête leur fait — jamais en padding sur body. */
+     ne les tient pas côte à côte), d'où 8 u de haut au lieu de 5, repris
+     dans la place que l'en-tête leur fait — jamais en padding sur body.
+
+     6 u AVANT LE 14/09/2026, et c'était trop court : mesuré à 1080×1920, le
+     contenu en occupe 77 px, soit 7,9 u. La boîte débordait donc de sa
+     hauteur annoncée, et comme le bandeau de démonstration est posé à
+     `top: 6u` dans le cas où les DEUX sont actifs, il remontait DANS le
+     bandeau d'heure simulée : 18 px de recouvrement, alors que le commentaire
+     d'à côté affirme qu'ils s'empilent sans se recouvrir. Le titre, lui,
+     arrivait tangent au bandeau — 0 px de marge.
+     À 8 u : recouvrement nul, 19 px de marge sous le bandeau, et le
+     débordement du terminus reste à ZÉRO (mesuré, pire cas compris). */
   .bandeau-horloge {
     height: calc(5 * var(--u));
     border-bottom: calc(0.4 * var(--u)) solid var(--rouge-fonce);
@@ -1071,6 +1137,12 @@ body.mode-horloge .badge-cache {
     font-size: calc(1.9 * var(--u));
   }
 
+  /* La variable du centrage vaut le `padding-top` du mode, ici en --u : les
+     bandeaux y font 6u (leurs deux langues s'empilent) et non 5vh. */
+  body.mode-horloge {
+    --reserve-bandeau: calc(6 * var(--u));
+  }
+
   body.mode-horloge header {
     flex-basis: calc(18 * var(--u));
     padding-top: calc(6 * var(--u));
@@ -1082,7 +1154,7 @@ body.mode-horloge .badge-cache {
 
   .bandeau-demo,
   .bandeau-simule {
-    height: calc(6 * var(--u));
+    height: calc(8 * var(--u));
     flex-direction: column;
     gap: 0;
     line-height: 1.1;
@@ -1099,27 +1171,39 @@ body.mode-horloge .badge-cache {
     font-size: calc(1.9 * var(--u));
   }
 
+  body.mode-demo,
+  body.mode-simule {
+    --reserve-bandeau: calc(8 * var(--u));
+  }
+
   body.mode-demo header,
   body.mode-simule header {
-    flex-basis: calc(18 * var(--u));
-    padding-top: calc(6 * var(--u));
+    flex-basis: calc(20 * var(--u));
+    padding-top: calc(8 * var(--u));
   }
 
   body.mode-demo .badge-cache,
   body.mode-simule .badge-cache {
-    top: calc(19.5 * var(--u));
+    top: calc(21.5 * var(--u));
   }
 
+  /* Le portrait ne resserre PAS les bandeaux quand les deux sont actifs : il
+     a la place (débordement du terminus nul, mesuré), là où le paysage ne
+     l'avait pas. Deux bandeaux de 8 u, donc 12 u + 16 u d'en-tête. */
   body.mode-simule.mode-demo .bandeau-demo {
-    top: calc(6 * var(--u));
+    top: calc(8 * var(--u));
+  }
+
+  body.mode-simule.mode-demo {
+    --reserve-bandeau: calc(16 * var(--u));
   }
 
   body.mode-simule.mode-demo header {
-    flex-basis: calc(24 * var(--u));
-    padding-top: calc(12 * var(--u));
+    flex-basis: calc(28 * var(--u));
+    padding-top: calc(16 * var(--u));
   }
 
   body.mode-simule.mode-demo .badge-cache {
-    top: calc(25.5 * var(--u));
+    top: calc(29.5 * var(--u));
   }
 }
