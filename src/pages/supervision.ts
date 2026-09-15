@@ -156,6 +156,7 @@ import {
   barrePublication,
   grilleOngletsHtml,
   groupesNavigation,
+  ongletAOuvrir,
   etatVisibiliteOnglets,
   initiales,
   libelleUtilisateur,
@@ -1060,10 +1061,17 @@ function rendreBaseServie(): void {
  */
 function appliqueRoles(): void {
   const visibles = ongletsVisibles(roles, visibiliteOnglets);
+  // L'ONGLET COURANT SE LIT DANS LE DOM, et nulle part ailleurs : c'est
+  // `initOnglets()` qui pose la classe `on` au clic. Une variable de module en
+  // plus serait une SECONDE mémoire du même fait, et deux mémoires finissent
+  // par diverger.
+  const ouvert = document.querySelector<HTMLElement>('nav.tabs button.on')?.dataset.t as
+    Onglet | undefined;
+  const cible = ongletAOuvrir(ouvert, visibles);
   document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
     const nom = b.dataset.t ?? '';
     b.style.display = visibles.includes(nom as Onglet) ? '' : 'none';
-    b.classList.toggle('on', nom === visibles[0]);
+    b.classList.toggle('on', nom === cible);
   });
   // UN GROUPE VIDE N'EST PAS RENDU — ni son intitulé, ni son filet. La liste
   // d'onglets étant réglable en exploitation, « Administration » suivi de rien
@@ -1076,8 +1084,10 @@ function appliqueRoles(): void {
   document
     .getElementById('tabs')
     ?.classList.toggle('sans-exploitation', groupes.exploitation.length === 0);
+  // LA MÊME cible que le bouton, sans quoi la barre annoncerait un onglet et
+  // la page en montrerait un autre.
   document.querySelectorAll('.onglet').forEach((o) => {
-    o.classList.toggle('on', o.id === `t-${visibles[0]}`);
+    o.classList.toggle('on', o.id === `t-${cible}`);
   });
 
   // Bandeau : la bibliothèque de modèles est proposée à la saisie pour tous,

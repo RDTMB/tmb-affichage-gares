@@ -13,6 +13,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { ongletAOuvrir } from './supervision-logique';
+import { ongletsVisibles } from '../core/roles';
+
 function source(chemin: string): string {
   return readFileSync(fileURLToPath(new URL(`../../${chemin}`, import.meta.url)), 'utf-8');
 }
@@ -539,7 +542,16 @@ describe('supervision — la vue caisse n’est pas un cas particulier', () => {
     // C'est ce qui fait arriver la caisse sur Bandeau une fois Horaires
     // masqué — par construction, et non par une liste en dur qu'il faudrait
     // corriger au prochain changement de configuration.
-    expect(code).toMatch(/visibles\[0\]/);
+    //
+    // A CHANGÉ DE PREUVE le 15/09/2026, pas d'intention. Ce test vérifiait
+    // l'ORTHOGRAPHE `visibles[0]` dans la source ; ce repli vit désormais dans
+    // `ongletAOuvrir()`, parce que rallumer le premier onglet à CHAQUE redessin
+    // renvoyait l'agent sur Circulations dès qu'il cochait une case de réglage.
+    // Le repli est le même, il est simplement devenu conditionnel : on le
+    // vérifie donc par son COMPORTEMENT, là où il vit.
+    const caisse = ongletsVisibles(['caisse'], null);
+    expect(ongletAOuvrir(undefined, caisse)).toBe(caisse[0]);
+    expect(code).toMatch(/ongletAOuvrir\(/);
     expect(code).not.toMatch(/=== 'caisse'/);
     expect(code).not.toMatch(/roles\.includes\('caisse'\)/);
   });

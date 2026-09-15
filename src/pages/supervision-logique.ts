@@ -1584,6 +1584,36 @@ export function groupesNavigation(visibles: readonly Onglet[]): GroupesNavigatio
   };
 }
 
+/**
+ * Quel onglet doit être OUVERT après un redessin de la barre ?
+ *
+ * ON GARDE CELUI QU'ON REGARDE, tant qu'il reste visible. On ne retombe sur le
+ * premier que s'il a DISPARU — et cela arrive vraiment, de deux façons :
+ *   • au chargement, `supervision.html` marque Circulations `on` en dur, or la
+ *     caisse ne le voit pas : il faut bien ouvrir autre chose ;
+ *   • un agent peut se masquer à lui-même, depuis la carte « Onglets visibles
+ *     par rôle », l'onglet qu'il a sous les yeux.
+ *
+ * LE DÉFAUT QUE CETTE RÈGLE RÉPARE (signalé le 15/09/2026) : `appliqueRoles()`
+ * rallumait sans condition le premier onglet visible. Il est appelé à la
+ * connexion, aux deux bascules de l'aperçu « voir comme », ET à chaque case
+ * cochée dans la carte de réglage : cocher une case — même pour un rôle qui
+ * n'est pas le sien — renvoyait donc l'agent sur Circulations. Le réglage
+ * partait bien en base ; c'est l'affichage qui déménageait.
+ * Seul le premier de ces appels a le droit de choisir l'onglet ouvert : régler
+ * la barre de navigation n'est pas naviguer.
+ *
+ * `undefined` quand plus rien n'est visible : l'appelant n'allume alors aucun
+ * onglet, plutôt que d'en inventer un.
+ */
+export function ongletAOuvrir(
+  actif: Onglet | null | undefined,
+  visibles: readonly Onglet[],
+): Onglet | undefined {
+  if (actif && visibles.includes(actif)) return actif;
+  return visibles[0];
+}
+
 /** Un onglet relève-t-il du groupe d'administration ? (rendu de la barre) */
 export function estOngletAdministration(onglet: Onglet): boolean {
   return ONGLETS_ADMINISTRATION.includes(onglet);
