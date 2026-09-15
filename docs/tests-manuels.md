@@ -43,6 +43,10 @@ réglable en supervision).
 - Anti-burn-in : le rendu se décale d'1 px toutes les heures (vérifiable en
   inspectant `body.style.transform`).
 - Curseur : masqué sur ecran.html et grille.html (pages kiosque).
+- Curseur, sur un Pi en gare : bouger la souris, rien ne doit apparaître. Si un
+  pointeur apparaît alors que les pages portent bien `cursor: none`, c'est
+  `~/.config/labwc/environment` (`XCURSOR_THEME=invisible`) qu'il faut regarder,
+  pas le CSS.
 - Grille : mêmes tests avec grille.html (badge + écran neutre identiques).
 - Cycle médias : ajouter une image dans Supervision → Médias ; l'écran
   alterne horaires (`duree_horaires_s`) → média (sa durée) → horaires ;

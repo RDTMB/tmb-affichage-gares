@@ -758,9 +758,17 @@ build` → Pages ; échec des tests = pas de déploiement.
 
 ### Poste écran Raspberry Pi (`docs/kiosque.md`, étape 9)
 
-Pi OS Lite + Chromium `--kiosk` via systemd (URL de la gare en variable),
-`unclutter`, NTP, reboot 04:30, luminosité/HDMI gérés, procédure « échange
-standard en 10 minutes » (flasher l'image, brancher, renseigner la gare).
+Raspberry Pi OS **complet** (bureau), Wayland sous **labwc** : lightdm ouvre
+une session sans mot de passe pour `tmb`, et `~/.config/labwc/autostart` lance
+Chromium `--kiosk` sur l'URL de la gare (`/boot/firmware/gare.txt`). Il n'y a
+PAS de `kiosque.service` — la variante Lite + Xorg + systemd décrite ici
+jusqu'au 15/09/2026 n'a jamais été celle en service. Curseur masqué par
+`XCURSOR_THEME=invisible`, horloge rattrapée par `corrige-horloge.service`
+(ordonné `Before=graphical.target`), reboot 04:30 par la crontab de root,
+procédure « échange standard en 10 minutes » (flasher l'image, brancher,
+renseigner la gare). Deux pièges d'ordre de fichiers, de règles CONTRAIRES,
+sont documentés dans `docs/kiosque.md` : `zz-` pour `/etc/chromium.d/`,
+`01-` pour `/etc/ssh/sshd_config.d/`.
 Accès distant optionnel (phase 2 : via VPN Fortinet de la Régie).
 
 ## 7. Phase 2 — micro-serveur interne (tour Windows Server 2019)
