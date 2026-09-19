@@ -281,6 +281,19 @@ Nid d'Aigle (été seulement), 4 rames : Marie, Anne, Jeanne, Marguerite.
   ajoutée doit être RELEVÉE dans le code, jamais supposée, et VÉRIFIÉE au
   navigateur console ouverte : une CSP qui casse l'affichage en gare serait
   pire que son absence. Verrouillée par `src/pages/demarrage-ecrans.test.ts`.
+- **Guetteur d'écrans muets** (`alerte-ecrans`, docs/02 §6) : `pg_cron` +
+  `pg_net` appellent l'Edge Function toutes les 5 min ; elle applique
+  `src/core/surveillance-ecrans.ts` (10 min de silence, hors veille, hors
+  postes décochés ou jamais vus) et envoie UN courriel par épisode via Brevo.
+  Elle est déployée **sans vérification de jeton** — la base n'a pas de
+  session à présenter — et son SEUL verrou est le secret partagé
+  `CLE_GUETTEUR`, comparé avant toute lecture ; ne JAMAIS étendre
+  `--no-verify-jwt` aux trois autres fonctions. La règle n'est énoncée qu'en
+  TypeScript : le SQL ne sait rien de la veille, et la copie que porte la
+  fonction Deno est compilée, exécutée et confrontée à l'originale
+  (`src/data/alerte-ecrans.test.ts`). `surveillance_etat` porte l'heure du
+  dernier passage, que la supervision affiche : une tâche planifiée inerte
+  ressemble sinon à une flotte en bonne santé.
 - Contraintes de FORME sur `params` (`schema.sql`, et
   `migrations/2026-08-params-forme.sql` pour une base existante) : la base
   refuse la valeur aberrante, ce que le front ne peut pas faire. Les deux

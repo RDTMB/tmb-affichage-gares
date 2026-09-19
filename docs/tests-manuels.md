@@ -71,3 +71,16 @@ En démonstration (`supervision.html?demo=1`), aucune écriture réelle.
 Le troisième état ne se provoque pas autrement : sans ce drapeau, il serait
 découvert un matin, en production, par un agent seul en gare. Il est
 inopérant dès qu'une base réelle est configurée (docs/01 §1).
+
+## 5. Surveillance des écrans (guetteur)
+
+- Onglet Écrans, bandeau du haut : « Surveillance active — dernier passage il
+  y a N min ». S'il dit « JAMAIS lancée » ou « À L'ARRÊT », l'alerte par
+  courriel ne partira pas, quoi qu'affichent les cartes.
+- Un poste muet depuis plus de dix minutes porte « En défaut depuis … » et dit
+  si l'alerte est partie. « ALERTE NON ENVOYÉE » = secret Brevo absent ou
+  refusé : la panne est vue, personne n'a été prévenu.
+- Décocher « Surveiller ce poste » : la carte passe à « Hors surveillance —
+  aucune alerte ne partira », et le réglage tient après rechargement.
+- La veille se vérifie sans attendre la nuit : `?simule=02:00` sur la
+  supervision fait passer les postes muets à « En veille de nuit ».

@@ -771,6 +771,43 @@ sont documentés dans `docs/kiosque.md` : `zz-` pour `/etc/chromium.d/`,
 `01-` pour `/etc/ssh/sshd_config.d/`.
 Accès distant optionnel (phase 2 : via VPN Fortinet de la Régie).
 
+### Surveillance des écrans — le guetteur (`alerte-ecrans`)
+
+Le 19/09/2026, l'écran de Saint-Gervais a affiché « Informations
+momentanément indisponibles » pendant plus de trois heures : la clé du Wi-Fi
+de la gare avait changé. La base **savait** — plus aucun `derniere_vue` à
+partir de 10 h 40 — et rien ne la regardait. C'est un agent en gare qui l'a
+découvert.
+
+`pg_cron` appelle toutes les cinq minutes, par `pg_net`, l'Edge Function
+`alerte-ecrans`. Elle lit `ecrans`, applique la règle de
+`src/core/surveillance-ecrans.ts` — **dix minutes** de silence, hors veille
+de nuit, hors postes décochés (`ecrans.surveille`) et hors postes jamais vus
+— et envoie **un** courriel par Brevo, une seule fois par épisode, suivi
+d'un message de rétablissement. L'état d'un épisode vit dans `alertes_ecran`,
+les destinataires dans `params.alertes_destinataires` (jamais dans le code :
+le dépôt est public, et une adresse en dur grave « une seule personne sait
+faire tourner le système »).
+
+Trois choix méritent leur raison :
+
+- **La règle n'est énoncée qu'une fois**, en TypeScript. Le SQL ne sait rien
+  de la veille de nuit ; la copie que porte la fonction Deno — l'import est
+  impossible, les imports relatifs de `src/core/` n'ont pas d'extension et
+  Deno l'exige — est compilée, exécutée et confrontée à l'originale par
+  `src/data/alerte-ecrans.test.ts`.
+- **La fonction est déployée sans vérification de jeton**, parce que la base
+  n'a aucune session à présenter. Un secret partagé (`CLE_GUETTEUR`, en
+  coffre côté base) est comparé avant la première lecture ; son absence fait
+  refuser tout appel plutôt qu'ouvrir la fonction.
+- **`surveillance_etat` porte l'heure du dernier passage**, que la
+  supervision affiche. Une tâche planifiée qui ne se déclenche pas ressemble
+  trait pour trait à une flotte en bonne santé : aucun courriel, aucune
+  pastille, rien. C'est le piège déjà rencontré six fois en trois semaines.
+
+Mise en place : `supabase/migrations/2026-09-alerte-ecrans.sql`, qui commence
+par la mesure des extensions disponibles et finit par sa recette.
+
 ## 7. Phase 2 — micro-serveur interne (tour Windows Server 2019)
 
 `server/` dans le même dépôt : Node.js LTS + Fastify + better-sqlite3 +
