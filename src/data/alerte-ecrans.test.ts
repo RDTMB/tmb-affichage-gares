@@ -27,6 +27,7 @@ import {
   type PosteSurveille,
 } from '../core/surveillance-ecrans';
 import { enVeille } from '../core/horaires';
+import { PARAMS_DEFAUT } from '../core/params';
 import type { VeilleNuit } from '../core/types';
 
 const DEBUT = 'BLOC DE DÉCISION — copie vérifiée de src/core (début)';
@@ -1118,14 +1119,34 @@ describe('Le guetteur, exécuté — le fuseau et le repli de veille', () => {
     }
   });
 
+  it('le repli est EXACTEMENT la fenêtre par défaut de l’application', () => {
+    // Le contrôle de comportement ci-dessus ne distingue le bon repli du
+    // mauvais qu'entre 21 h et 6 h : le reste de la journée, « 21:00 → 06:00 »
+    // et « jamais de veille » donnent la même réponse. Une campagne de
+    // mutation l'a montré le 19/09/2026, en plein après-midi.
+    // Alors on compare le littéral de la fonction à la constante du cœur.
+    // C'est une lecture de texte, mais elle porte sur une VALEUR, et elle
+    // attrape la vraie dérive : un repli qui cesserait d'être celui que
+    // l'application applique partout ailleurs.
+    const bloc = blocDecision();
+    const veille = PARAMS_DEFAUT.veille_nuit;
+    expect(FONCTION).toContain(`{ debut: '${veille.debut}', fin: '${veille.fin}' }`);
+    expect(bloc).not.toContain("{ debut: '00:00', fin: '00:00' }");
+  });
+
   it('la veille est jugée sur l’heure de PARIS, écrite en toutes lettres', () => {
     // Ce contrôle est textuel, et il le reste faute de mieux : la fonction
     // lit l'heure réelle, et ce poste de développement EST à l'heure de
     // Paris — retirer `timeZone` n'y change donc rien, alors que sur le
-    // serveur (en UTC) la veille se décalerait d'une ou deux heures. Les
-    // contrôles de comportement de `secondesParis`, plus haut, tuent bien la
-    // mutation sur le coureur d'intégration ; ici, seul le texte le peut.
+    // serveur (en UTC) la veille se décalerait d'une ou deux heures.
+    //
+    // `hourCycle` est du même ordre, pour une raison différente : `fr-FR`
+    // formate déjà minuit « 00 », le retirer ne change rien AUJOURD'HUI. Il
+    // est écrit pour que la réponse juste ne dépende pas du réglage par
+    // défaut d'une locale — en « h24 », minuit vaudrait 86 400 s et ne
+    // tomberait dans aucune fenêtre de veille : la nuit entière alerterait.
     const bloc = blocDecision();
     expect(bloc).toMatch(/function secondesParis[\s\S]*?timeZone: 'Europe\/Paris'/);
+    expect(bloc).toMatch(/function secondesParis[\s\S]*?hourCycle: 'h23'/);
   });
 });
