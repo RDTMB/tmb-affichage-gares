@@ -39,6 +39,15 @@ départ réel), `.claude/regles-affichage.md` (pastilles à l'écran).
   du train. Unique dans la journée, comparaison sur la forme COURTE contre
   `jour.circulations` (et non `trainsDuJour()`, qui écarte les facultatifs non
   activés), insensible à la casse et aux espaces de bord.
+  Le REFUS DE LARGEUR — et lui seul, un nom déjà porté ne se raccourcit pas —
+  s'accompagne de formes courtes CLIQUABLES (`propositionsLibelle()`, pure,
+  oracle injecté) : premier mot + initiale des suivants, initiales de tous les
+  mots à partir de trois, premier mot seul. Chaque candidat est MESURÉ par le
+  même oracle que le champ, jamais estimé à la longueur ; « MARIAGE M. » vaut
+  6,013 em et ne tient donc PAS. Aucune coupe en plein mot, aucun
+  raccourcissement d'office — l'agent accepte d'un clic —, et la liste vide
+  (mot unique trop long) est une réponse : on n'affiche alors rien de plus que
+  le refus.
   Les CASES DE DESSERTE suivent « express » — cochée, Voza et Bellevue se
   décochent ; décochée, elles se recochent — sans jamais être verrouillées.
 - **Accès d'une course** (`circulations.acces`, docs/01 §2.12) : `public` |
