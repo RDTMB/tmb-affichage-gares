@@ -461,6 +461,13 @@ create table if not exists ecrans (
   -- et quantité d'information diffusée ne sont pas les mêmes au Fayet et au
   -- Nid d'Aigle. Mêmes bornes que le moteur (src/core/ticker.ts).
   vitesse_ticker_px_s int,
+  -- SURVEILLÉ PAR LE GUETTEUR (docs/02 §6, Edge Function `alerte-ecrans`).
+  -- Faux = poste retiré du service : hors-saison, déposé, en atelier. C'est la
+  -- SEULE colonne capable de dire « ce poste n'est pas censé tourner » — sans
+  -- elle, le Nid d'Aigle, exploité l'été seulement, alerterait chaque jour
+  -- pendant six mois, et l'alerte cesserait d'être lue.
+  -- Vrai par défaut : un poste déclaré est un poste qu'on attend.
+  surveille boolean not null default true,
   constraint ecrans_vitesse_ticker_valide
     check (vitesse_ticker_px_s is null or vitesse_ticker_px_s between 20 and 400)
 );
@@ -1745,11 +1752,11 @@ drop trigger if exists trg_journal_ecrans on ecrans;
 create trigger trg_journal_ecrans
   after insert or delete or
     update of veille_debut, veille_fin, vitesse_ticker_px_s, gare, type,
-      recharger_demande_at
+      recharger_demande_at, surveille
   on ecrans
   for each row execute function private.tracer_ecriture(
     'id', '', 'veille_debut', 'veille_fin', 'vitesse_ticker_px_s', 'gare', 'type',
-    'recharger_demande_at'
+    'recharger_demande_at', 'surveille'
   );
 
 -- ---------------------------------------------------------------------------
@@ -1807,6 +1814,171 @@ grant execute on function private.purge_journal_exploitation(int) to authenticat
 alter publication supabase_realtime add table jours, circulations, messages,
   medias, params, machines, motifs, ciels, modeles_messages, ecrans, grilles,
   affluence;
+
+-- ===========================================================================
+-- LE GUETTEUR — alerter quand un écran cesse de donner signe de vie
+--
+-- Ajout sur base existante : supabase/migrations/2026-09-alerte-ecrans.sql,
+-- qui porte en plus la MESURE préalable, la recette et la planification
+-- `pg_cron` (celle-ci dépend de secrets de coffre propres à chaque projet, et
+-- n'a donc pas sa place dans un schéma de référence).
+-- src/data/scripts-sql.test.ts compare les deux copies.
+--
+-- CE QUE LE SQL NE SAIT PAS, ET NE DOIT PAS APPRENDRE : ni la règle de défaut
+-- (dix minutes de silence), ni la fenêtre de veille de nuit. Elles vivent en
+-- TypeScript, dans src/core/surveillance-ecrans.ts, et l'Edge Function
+-- `alerte-ecrans` les applique. Les réécrire ici en ferait une SECONDE
+-- énonciation de la même règle, et deux énonciations finissent par diverger.
+-- Le SQL ne fait que conserver l'état.
+-- ===========================================================================
+
+-- La mémoire d'un ÉPISODE de panne : une ligne par poste actuellement en
+-- défaut, et rien d'autre. C'est elle qui empêche la répétition — la tâche
+-- tourne toutes les cinq minutes, elle aurait envoyé trente-six courriels
+-- pendant la panne du 19/09/2026. La ligne disparaît au rétablissement, si
+-- bien qu'une seconde panne du même poste est bien une NOUVELLE alerte.
+create table if not exists alertes_ecran (
+  ecran_id text primary key references ecrans (id) on delete cascade,
+  -- Dernier signal de vie connu à la détection : l'heure que le courriel
+  -- annonce, et la clé qui distingue deux épisodes.
+  depuis timestamptz not null,
+  detectee_at timestamptz not null default now(),
+  -- Envois TENTÉS pour cet épisode. Borné côté fonction (3) : un échec qui se
+  -- rejoue toutes les cinq minutes est un journal qui déborde, pas une alerte.
+  envois_tentes int not null default 0,
+  -- Horodatage de l'envoi RÉUSSI ; NULL = détectée mais jamais dite. C'est ce
+  -- qui interdit d'annoncer un rétablissement dont personne n'a connu la panne.
+  envoyee_at timestamptz,
+  -- Raison COURTE du dernier échec, affichée en supervision. Jamais un corps
+  -- de réponse brut : il pourrait porter un jeton.
+  dernier_echec text
+);
+
+alter table alertes_ecran enable row level security;
+
+-- Lecture pour ceux qui voient l'onglet Écrans ; AUCUNE écriture par l'API.
+-- Le guetteur écrit avec la clé secrète, qui contourne RLS : il n'a besoin
+-- d'aucune politique, et n'en avoir aucune ferme la table à tout le reste. Une
+-- alerte qu'un compte connecté pourrait effacer ne vaudrait rien.
+drop policy if exists "roles: alertes lecture" on alertes_ecran;
+create policy "roles: alertes lecture" on alertes_ecran for select to authenticated
+  using ((select private.a_un_des_roles(array['technique','admin','supervision','caisse'])));
+
+revoke all on alertes_ecran from anon, authenticated;
+grant select on alertes_ecran to authenticated;
+
+-- LA PREUVE QUE LE GUETTEUR A TOURNÉ. UNE ligne, jamais plus.
+--
+-- Un `pg_cron` qui ne se déclenche pas ressemble trait pour trait à une flotte
+-- en bonne santé : aucun courriel, aucune pastille, rien. C'est le défaut
+-- nommé six fois en trois semaines, dont une le 19/09/2026 même — un
+-- `corrige-horloge.timer` visait un service `Type=oneshot` avec
+-- `RemainAfterExit=yes`, que systemd ne relance jamais : colonne NEXT vide,
+-- timer inerte, aucun message.
+-- Le guetteur écrit ici à CHAQUE passage, qu'il ait ou non quelque chose à
+-- dire, et la supervision affiche l'heure.
+create table if not exists surveillance_etat (
+  id boolean primary key default true constraint surveillance_etat_une_ligne check (id),
+  derniere_execution timestamptz,
+  dernier_resultat text
+);
+
+insert into surveillance_etat (id) values (true) on conflict (id) do nothing;
+
+alter table surveillance_etat enable row level security;
+
+drop policy if exists "roles: surveillance lecture" on surveillance_etat;
+create policy "roles: surveillance lecture" on surveillance_etat for select to authenticated
+  using ((select private.a_un_des_roles(array['technique','admin','supervision','caisse'])));
+
+revoke all on surveillance_etat from anon, authenticated;
+grant select on surveillance_etat to authenticated;
+
+-- DESTINATAIRES DE L'ALERTE — un réglage, jamais du code.
+--
+-- Une seule adresse pour commencer, mais surtout PAS écrite dans le dépôt :
+-- « une seule personne sait faire tourner le système » est le risque de fond
+-- de ce projet, et une adresse en dur dans un dépôt public le grave dans le
+-- marbre. La seconde s'ajoutera par un `update`, sans refonte ni déploiement.
+--
+-- DROITS : aucune politique n'est ajoutée. Les clés inconnues de `params` ne
+-- sont ouvertes qu'au rôle `technique` (« roles: params technique »), ce qui
+-- est exactement la bonne réponse — la caisse écrit la météo, elle n'a pas à
+-- rediriger les alertes de la Régie.
+--
+-- Une CHECK ne peut pas contenir de sous-requête : la validation passe donc
+-- par une fonction IMMUTABLE, seule façon de parcourir un tableau jsonb.
+create or replace function private.adresses_alerte_valides(v jsonb)
+returns boolean language sql immutable set search_path = '' as $fn$
+  select jsonb_typeof(v) = 'array'
+     and jsonb_array_length(v) <= 5
+     and not exists (
+       select 1 from jsonb_array_elements(v) e
+       where jsonb_typeof(e) <> 'string'
+          or (e #>> '{}') !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$'
+     );
+$fn$;
+
+alter table params drop constraint if exists params_alertes_destinataires_forme;
+alter table params add constraint params_alertes_destinataires_forme check (
+  cle <> 'alertes_destinataires' or private.adresses_alerte_valides(valeur)
+);
+
+-- Créée VIDE. L'adresse se pose à la main (voir la migration) : elle n'a pas
+-- sa place dans un dépôt public. Tant que la liste est vide, le guetteur
+-- fonctionne et la pastille aussi ; il l'écrit dans
+-- `surveillance_etat.dernier_resultat`, que la supervision affiche — l'oubli
+-- est donc VISIBLE, il n'est pas silencieux.
+insert into params (cle, valeur) values ('alertes_destinataires', '[]'::jsonb)
+on conflict (cle) do nothing;
+
+-- Le déclencheur de la tâche planifiée. La logique vit dans une FONCTION et
+-- non dans la commande de `cron.schedule` : corriger un `create or replace`
+-- est simple, réécrire une planification l'est moins.
+--
+-- Elle LÈVE si un secret manque, et c'est voulu : la levée fait apparaître la
+-- tâche en échec dans `cron.job_run_details`, avec son message. Un `return`
+-- silencieux aurait donné une tâche verte qui ne fait rien — l'exacte panne
+-- muette que ce chantier répare.
+--
+-- L'URL et le secret vivent dans le COFFRE : l'URL diffère entre le projet de
+-- test et la production, et le secret n'a rien à faire dans un dépôt public.
+-- Ce fichier est donc identique sur les deux projets. Les extensions
+-- (`pg_cron`, `pg_net`) et la planification elle-même sont dans la migration.
+create or replace function private.declenche_surveillance_ecrans()
+returns bigint language plpgsql security definer set search_path = '' as $fn$
+declare
+  v_url text;
+  v_cle text;
+  v_requete bigint;
+begin
+  select decrypted_secret into v_url
+    from vault.decrypted_secrets where name = 'url_alerte_ecrans';
+  select decrypted_secret into v_cle
+    from vault.decrypted_secrets where name = 'cle_guetteur';
+  if v_url is null or v_cle is null then
+    raise exception 'Guetteur : secret absent du coffre (url_alerte_ecrans / cle_guetteur).'
+      using errcode = 'invalid_parameter_value',
+            hint = 'Voir la section 7 de supabase/migrations/2026-09-alerte-ecrans.sql';
+  end if;
+  -- `pg_net` est ASYNCHRONE : cet appel rend un identifiant de requête, pas
+  -- une réponse. La réponse atterrit dans `net._http_response`. La tâche est
+  -- donc « réussie » dès que la requête est mise en file — d'où l'importance
+  -- de `surveillance_etat`, que la FONCTION écrit : c'est la seule preuve que
+  -- la chaîne entière a marché, et non seulement son premier maillon.
+  select net.http_post(
+    url := v_url,
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cle-guetteur', v_cle
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 20000
+  ) into v_requete;
+  return v_requete;
+end $fn$;
+
+revoke all on function private.declenche_surveillance_ecrans() from public;
 
 -- ---------------------------------------------------------------- storage
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

@@ -80,6 +80,7 @@ export const LECTURES = [
   'dernierePublication',
   'listJournal',
   'listEcrans',
+  'getSurveillance',
   'ecartHorlogeMs',
   'correctionsParams',
 ] as const;
@@ -153,6 +154,7 @@ export const ECRITURES = [
   'declareEcran',
   'demanderRechargement',
   'saveVeilleEcran',
+  'saveSurveillanceEcran',
   'oublierEcran',
 ] as const;
 

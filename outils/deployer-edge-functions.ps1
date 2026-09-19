@@ -63,7 +63,7 @@ param(
     [ValidateSet('test', 'prod')]
     [string] $Projet,
 
-    [string[]] $Fonctions = @('traduire', 'inviter-utilisateur', 'supprimer-utilisateur'),
+    [string[]] $Fonctions = @('traduire', 'inviter-utilisateur', 'supprimer-utilisateur', 'alerte-ecrans'),
 
     [string] $VersionCli = '2.116.0',
 
@@ -459,9 +459,33 @@ if ($Projet -eq 'prod') {
 }
 
 # --- 6. Déploiement -----------------------------------------------------------
+<#
+    DEUX APPELS, ET C'EST NÉCESSAIRE.
+
+    `alerte-ecrans` est appelée par `pg_cron`, depuis la base : il n'y a
+    AUCUNE session utilisateur à présenter, donc aucun jeton que la passerelle
+    puisse vérifier. Elle se déploie avec --no-verify-jwt, et se garde
+    elle-même par un secret partagé (`CLE_GUETTEUR`) comparé avant la première
+    lecture de la base.
+
+    Ce drapeau ne vaut QUE pour elle. Le passer aux trois autres ouvrirait
+    l'invitation, la suppression de compte et la traduction à tout l'internet :
+    d'où la séparation, plutôt qu'un drapeau commun qu'une distraction
+    étendrait un jour à tout le lot.
+#>
+$sansJeton = @('alerte-ecrans')
+$avecJeton = @($Fonctions | Where-Object { $sansJeton -notcontains $_ })
+
 Ecrire-Titre 'Déploiement'
-$arguments = @('functions', 'deploy') + $Fonctions + @('--project-ref', $ref, '--use-api')
-Invoquer-Cli -Npx $npx -Arguments $arguments | Out-Null
+if ($avecJeton.Count -gt 0) {
+    $arguments = @('functions', 'deploy') + $avecJeton + @('--project-ref', $ref, '--use-api')
+    Invoquer-Cli -Npx $npx -Arguments $arguments | Out-Null
+}
+foreach ($f in @($Fonctions | Where-Object { $sansJeton -contains $_ })) {
+    Ecrire-Info "$f : déployée SANS vérification de jeton (appelée par pg_cron)"
+    $arguments = @('functions', 'deploy', $f, '--project-ref', $ref, '--use-api', '--no-verify-jwt')
+    Invoquer-Cli -Npx $npx -Arguments $arguments | Out-Null
+}
 
 Ecrire-Titre 'État après déploiement'
 Invoquer-Cli -Npx $npx -Arguments @('functions', 'list', '--project-ref', $ref) -ToleranteALEchec | Out-Null
@@ -469,6 +493,12 @@ Invoquer-Cli -Npx $npx -Arguments @('functions', 'list', '--project-ref', $ref) 
 Write-Host ''
 Ecrire-Ok "Déploiement terminé sur $($Projet.ToUpper()) ($ref)."
 Write-Host ''
-Write-Host 'Reste à vérifier, une seule fois par projet, que le secret DEEPL_API_KEY'
-Write-Host 'y est bien posé (Tableau de bord > Edge Functions > Secrets), sans quoi'
-Write-Host '« traduire » répondra en erreur.'
+Write-Host 'Reste à vérifier, une seule fois par projet, que les secrets sont bien'
+Write-Host 'posés (Tableau de bord > Edge Functions > Secrets) :'
+Write-Host '  DEEPL_API_KEY      sans lui, « traduire » répond en erreur'
+Write-Host '  CLE_GUETTEUR       sans lui, « alerte-ecrans » REFUSE tout appel'
+Write-Host '  BREVO_API_KEY      sans lui, aucun courriel — la pastille de la'
+Write-Host '  BREVO_EXPEDITEUR   supervision fonctionne quand même'
+Write-Host ''
+Write-Host 'Puis les sections 7 et 8 de supabase/migrations/2026-09-alerte-ecrans.sql'
+Write-Host '(coffre + tâche pg_cron), et la recette de sa section 9.'

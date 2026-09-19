@@ -10,7 +10,9 @@ import type {
   AccesCourse,
   Affluence,
   Circulation,
+  AlerteEcran,
   EcranInfo,
+  EtatGuetteur,
   GareId,
   Grille,
   Jour,
@@ -1386,6 +1388,35 @@ export class SupabaseProvider implements DataProvider {
 
   async oublierEcran(id: string): Promise<void> {
     exigeLignes(await this.client.from('ecrans').delete().eq('id', id).select(), 'écran inconnu');
+  }
+
+  async saveSurveillanceEcran(id: string, surveille: boolean): Promise<void> {
+    exigeLignes(
+      await this.client.from('ecrans').update({ surveille }).eq('id', id).select(),
+      'écran inconnu',
+    );
+  }
+
+  async getSurveillance(): Promise<EtatGuetteur> {
+    // Deux lectures, une seule attente. Les tables sont minuscules (une ligne
+    // et au plus six) : pas de pagination, pas de filtre.
+    const [etat, alertes] = await Promise.all([
+      this.client
+        .from('surveillance_etat')
+        .select('derniere_execution, dernier_resultat')
+        .maybeSingle(),
+      this.client.from('alertes_ecran').select('*'),
+    ]);
+    // ÉCHEC TOLÉRÉ, ET LUI SEUL. Tant que la migration n'est pas jouée, ces
+    // tables n'existent pas : faire échouer l'onglet Écrans entier pour cela
+    // serait pire que le défaut qu'on répare. L'absence se lit comme « le
+    // guetteur n'a jamais tourné », ce qui est exactement vrai — et la
+    // supervision l'affiche en rouge plutôt que de se taire.
+    return {
+      derniere_execution: etat.data?.derniere_execution ?? null,
+      dernier_resultat: etat.data?.dernier_resultat ?? null,
+      alertes: (alertes.data ?? []) as AlerteEcran[],
+    };
   }
 }
 

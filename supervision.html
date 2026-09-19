@@ -906,6 +906,14 @@
             <input type="time" id="veille-debut" /> à <input type="time" id="veille-fin" />. Chaque
             poste peut recevoir son propre horaire sur sa carte ci-dessous.
           </div>
+          <!--
+            LE GUETTEUR. Rempli par rendreEcrans() : l'heure de son dernier
+            passage, et ce qu'il a trouvé. Un `pg_cron` qui ne se déclenche pas
+            ressemble sinon trait pour trait à une flotte en bonne santé —
+            aucun courriel, aucune pastille, rien. C'est le défaut nommé six
+            fois en trois semaines, dont une le 19/09/2026.
+          -->
+          <div class="note guetteur" id="guetteur"></div>
           <div class="ecrans" id="ecrans"></div>
           <div class="note" id="declaration-ecran">
             <b>Déclarer un poste</b> — un écran ne s'inscrit plus tout seul : il doit être déclaré

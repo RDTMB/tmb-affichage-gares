@@ -3,6 +3,7 @@
 // doivent survivre à une simple correction de texte) et construction des
 // identifiants d'écran.
 import { dureeCycleS } from '../core/cycle-medias';
+import { silenceLisible } from '../core/surveillance-ecrans';
 import { DUREE_HORAIRES_MAX_S, DUREE_HORAIRES_MIN_S } from '../core/params';
 import type { ModeMedias } from '../core/cycle-medias';
 import type {
@@ -220,8 +221,22 @@ export function etatFraicheurEcran(
   maintenantMs: number,
 ): EtatFraicheur {
   const vuMs = ecran.derniere_vue ? new Date(ecran.derniere_vue).getTime() : Number.NaN;
-  if (!Number.isFinite(vuMs) || maintenantMs - vuMs >= SEUIL_HORS_LIGNE_MS) {
-    return { statut: 'hors-ligne', retard_min: 0, libelle: 'hors ligne' };
+  if (!Number.isFinite(vuMs)) {
+    // « hors ligne depuis 56 ans » serait la réponse d'un calcul sur une date
+    // absente. Un poste déclaré mais jamais posé n'est pas en panne.
+    return { statut: 'hors-ligne', retard_min: 0, libelle: 'jamais vu' };
+  }
+  if (maintenantMs - vuMs >= SEUIL_HORS_LIGNE_MS) {
+    // DEPUIS QUAND, et non un simple « hors ligne » : décision de l'exploitant
+    // du 31/08/2026, une durée chiffrée se lit, un point rouge finit par ne
+    // plus être vu. Le 19/09, l'écran de Saint-Gervais était muet depuis trois
+    // heures et la supervision n'en disait rien de plus qu'après trente
+    // secondes.
+    return {
+      statut: 'hors-ligne',
+      retard_min: 0,
+      libelle: `hors ligne depuis ${silenceLisible(maintenantMs - vuMs)}`,
+    };
   }
 
   const majMs = ecran.donnees_maj ? new Date(ecran.donnees_maj).getTime() : Number.NaN;
@@ -245,6 +260,119 @@ export function etatFraicheurEcran(
  * cela distingue une synchronisation en cours d'un poste réellement mort.
  */
 export const SILENCE_A_PRECISER_MS = 2 * 60_000;
+
+// ---------------------------------------------------------------------------
+// Le guetteur : a-t-il tourné ?
+// ---------------------------------------------------------------------------
+
+/**
+ * Silence du guetteur au-delà duquel la supervision le déclare à l'arrêt.
+ *
+ * La tâche passe toutes les cinq minutes ; quinze en laissent manquer deux
+ * avant de crier. C'est la seule façon de distinguer un guetteur qui DORT d'un
+ * guetteur qui n'a rien à dire — les deux produisent exactement la même chose
+ * à l'écran : aucune alerte. Le 19/09/2026, un `corrige-horloge.timer` visait
+ * un service que systemd ne relance jamais : colonne NEXT vide, timer inerte,
+ * aucun message. Une tâche `pg_cron` qui ne se déclenche pas a cette tête-là.
+ */
+export const SEUIL_GUETTEUR_MUET_MS = 15 * 60_000;
+
+export interface PastilleSurveillance {
+  classe: 'surveille' | 'defaut' | 'repos' | 'hors';
+  libelle: string;
+}
+
+/**
+ * Ce qu'une carte d'écran dit de sa surveillance. PURE : le contrôleur peint.
+ *
+ * Quatre états, et le plus important est le TROISIÈME : « en défaut, mais
+ * l'alerte n'est pas partie ». Sans lui, une clé Brevo absente donnerait une
+ * supervision qui affiche la panne et personne qui reçoit le courriel, sans
+ * que rien ne relie les deux. L'échec d'envoi est donc dit là où quelqu'un le
+ * lira, et pas seulement dans les journaux de la fonction.
+ */
+export function pastilleSurveillance(
+  etat: { defaut: boolean; motif: string | null; silence_ms: number | null },
+  surveille: boolean,
+  alerte?: { envoyee_at?: string | null; dernier_echec?: string | null } | null,
+): PastilleSurveillance {
+  if (!surveille) {
+    return { classe: 'hors', libelle: 'Hors surveillance — aucune alerte ne partira' };
+  }
+  if (etat.defaut) {
+    const depuis = `En défaut depuis ${silenceLisible(etat.silence_ms ?? 0)}`;
+    if (alerte?.envoyee_at) {
+      const heure = new Date(alerte.envoyee_at).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      return { classe: 'defaut', libelle: `${depuis} · alerte envoyée à ${heure}` };
+    }
+    if (alerte?.dernier_echec) {
+      return {
+        classe: 'defaut',
+        libelle: `${depuis} · ALERTE NON ENVOYÉE (${alerte.dernier_echec})`,
+      };
+    }
+    // Le guetteur n'est pas encore repassé : il tourne toutes les cinq
+    // minutes, et le dire évite de croire à une panne de l'alerte.
+    return { classe: 'defaut', libelle: `${depuis} · alerte au prochain passage du guetteur` };
+  }
+  if (etat.motif === 'en-veille') {
+    return { classe: 'repos', libelle: 'En veille de nuit — pas d’alerte avant le matin' };
+  }
+  if (etat.motif === 'jamais-vu') {
+    return { classe: 'repos', libelle: 'Jamais vu — déclaré, pas encore posé' };
+  }
+  return { classe: 'surveille', libelle: 'Surveillé' };
+}
+
+export interface BandeauGuetteur {
+  /** `alerte` = la surveillance elle-même est en panne, ce qui prime sur tout. */
+  classe: 'ok' | 'alerte';
+  libelle: string;
+  /** Détail rendu par le guetteur à son dernier passage ; '' s'il n'y en a pas. */
+  detail: string;
+}
+
+/**
+ * Ce que la supervision affiche du guetteur. PURE : le contrôleur peint.
+ *
+ * « Jamais tourné » et « ne tourne plus » sont dits DIFFÉREMMENT : le premier
+ * est un déploiement inachevé (la migration n'a pas été jouée, le coffre est
+ * vide), le second une panne. Les confondre enverrait chercher le mauvais
+ * problème, et le premier cas est le plus probable les jours qui suivent la
+ * mise en service.
+ */
+export function bandeauGuetteur(
+  etat: { derniere_execution?: string | null; dernier_resultat?: string | null },
+  maintenantMs: number,
+): BandeauGuetteur {
+  const detail = etat.dernier_resultat ?? '';
+  const quandMs = etat.derniere_execution
+    ? new Date(etat.derniere_execution).getTime()
+    : Number.NaN;
+  if (!Number.isFinite(quandMs)) {
+    return {
+      classe: 'alerte',
+      libelle: 'Surveillance JAMAIS lancée — aucun écran muet ne sera signalé.',
+      detail,
+    };
+  }
+  const age = maintenantMs - quandMs;
+  if (age >= SEUIL_GUETTEUR_MUET_MS) {
+    return {
+      classe: 'alerte',
+      libelle: `Surveillance À L'ARRÊT — dernier passage il y a ${silenceLisible(age)}.`,
+      detail,
+    };
+  }
+  return {
+    classe: 'ok',
+    libelle: `Surveillance active — dernier passage il y a ${silenceLisible(age)}.`,
+    detail,
+  };
+}
 
 /** Mémoire du bandeau entre deux rafraîchissements. */
 export interface EtatBandeauApplication {

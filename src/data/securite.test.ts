@@ -1029,7 +1029,27 @@ describe('Contraintes de forme de `params` : schema.sql ne doit pas les perdre',
   it('les six contraintes de la migration figurent toutes dans schema.sql', () => {
     const attendues = contraintesAjoutees(migration);
     expect(attendues.length).toBe(6);
-    expect(contraintesAjoutees(schema)).toEqual(attendues);
+    for (const nom of attendues) expect(contraintesAjoutees(schema)).toContain(nom);
+  });
+
+  it('et RÉCIPROQUEMENT : aucune contrainte de schema.sql ne manque aux migrations', () => {
+    // L'égalité stricte avec la SEULE migration de 2026-08 ne tenait plus dès
+    // qu'une migration ultérieure ajoutait une contrainte à `params` — ce qui
+    // est arrivé le 19/09/2026 avec `alertes_destinataires`. La relâcher en
+    // simple inclusion aurait laissé passer l'inverse, bien pire : une
+    // contrainte présente dans schema.sql et dans AUCUNE migration, donc
+    // absente de la production, où la base neuve serait plus stricte que celle
+    // qui tourne. On compare donc schema.sql à l'UNION de toutes les
+    // migrations.
+    const desMigrations = new Set(
+      readdirSync(chemin('migrations')).flatMap((f) =>
+        contraintesAjoutees(instructions(sql(`migrations/${f}`))),
+      ),
+    );
+    for (const nom of contraintesAjoutees(schema)) {
+      expect([...desMigrations], `${nom} n’est ajoutée par aucune migration`).toContain(nom);
+    }
+    expect(desMigrations.has('params_alertes_destinataires_forme')).toBe(true);
   });
 
   it('chacune est précédée d’un `drop … if exists` : le fichier reste rejouable', () => {
