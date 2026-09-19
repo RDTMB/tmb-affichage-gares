@@ -1,16 +1,23 @@
-# Tests sur TOUTES les branches, déploiement GitHub Pages depuis `main`
-# uniquement (docs/02 §6, docs/mise-en-service.md « Mise en ligne d'une
-# évolution »). Un test rouge bloque la mise en ligne. config.js est généré
-# depuis les VARIABLES de dépôt (Settings → Secrets and variables → Actions →
-# Variables) : jamais de clé dans le code. La clé « publishable » Supabase est
-# publique par conception.
+# Tests sur les pull requests et sur les branches d'intégration, déploiement
+# GitHub Pages depuis `main` uniquement (docs/02 §6, docs/mise-en-service.md
+# « Mise en ligne d'une évolution »). Un test rouge bloque la mise en ligne.
+# config.js est généré depuis les VARIABLES de dépôt (Settings → Secrets and
+# variables → Actions → Variables) : jamais de clé dans le code. La clé
+# « publishable » Supabase est publique par conception.
 name: Tests et déploiement GitHub Pages
 
+# Les déclencheurs sont RESTREINTS depuis le 19/09/2026. `push: ['**']` ET
+# `pull_request` faisaient construire DEUX FOIS toute branche poussée qui
+# portait une PR, et le groupe de concurrence ci-dessous en annulait une : le
+# 13/09/2026, une PR est restée bloquée sur un contrôle obligatoire ANNULÉ —
+# et un contrôle annulé n'est pas un contrôle réussi. Une branche de chantier
+# n'a donc plus de build à elle : c'est sa PR qui le porte. `dev` n'existe pas
+# encore (lot suivant) ; il est nommé ici pour ne pas avoir à y revenir.
 on:
   push:
-    branches: ['**']
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
