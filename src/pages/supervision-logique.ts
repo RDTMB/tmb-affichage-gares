@@ -302,7 +302,14 @@ export function pastilleSurveillance(
   if (etat.defaut) {
     const depuis = `En défaut depuis ${silenceLisible(etat.silence_ms ?? 0)}`;
     if (alerte?.envoyee_at) {
+      // FUSEAU EXPLICITE. L'horodatage vient de la base, en UTC, et cette
+      // heure sera comparée à celle d'un courriel et à une pendule de gare :
+      // elle doit être celle de PARIS, pas celle de la machine qui regarde.
+      // Sans cette ligne, la supervision annonçait « 06:05 » pour un envoi de
+      // 08:05 dès que le navigateur n'était pas à l'heure française — ce qui
+      // est exactement ce qu'a montré le coureur d'intégration, en UTC.
       const heure = new Date(alerte.envoyee_at).toLocaleTimeString('fr-FR', {
+        timeZone: 'Europe/Paris',
         hour: '2-digit',
         minute: '2-digit',
       });

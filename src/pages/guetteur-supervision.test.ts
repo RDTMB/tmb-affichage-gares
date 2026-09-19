@@ -21,6 +21,26 @@ import type { VeilleNuit } from '../core/types';
 const MAINTENANT = Date.parse('2026-09-19T10:00:00+02:00');
 const ilYA = (ms: number) => new Date(MAINTENANT - ms).toISOString();
 
+/**
+ * Exécute `action` comme si la machine était dans ce fuseau.
+ *
+ * Node relit `process.env.TZ` à chaque affectation et réinitialise le fuseau
+ * par défaut d'ICU : c'est la seule façon d'éprouver ici ce qui ne se voyait
+ * que sur le coureur d'intégration. Le fuseau d'origine est TOUJOURS remis,
+ * y compris si l'action lève — sans quoi un échec contaminerait tous les
+ * tests suivants du fichier.
+ */
+function sousFuseau<T>(fuseau: string, action: () => T): T {
+  const avant = process.env.TZ;
+  process.env.TZ = fuseau;
+  try {
+    return action();
+  } finally {
+    if (avant === undefined) delete process.env.TZ;
+    else process.env.TZ = avant;
+  }
+}
+
 describe('Le bandeau du guetteur', () => {
   it('quinze minutes : deux passages manqués sur une tâche de cinq', () => {
     expect(SEUIL_GUETTEUR_MUET_MS).toBe(900_000);
@@ -107,13 +127,27 @@ describe('La pastille d’un poste', () => {
     expect(p.libelle).toBe('Hors surveillance — aucune alerte ne partira');
   });
 
-  it('en défaut, alerte partie : l’heure de l’envoi est dite', () => {
-    const p = pastilleSurveillance(etat(3 * 3_600_000 + 12 * 60_000), true, {
-      envoyee_at: '2026-09-19T08:05:00+02:00',
-    });
-    expect(p.classe).toBe('defaut');
-    expect(p.libelle).toContain('En défaut depuis 3 h 12');
-    expect(p.libelle).toContain('alerte envoyée à 08:05');
+  it('en défaut, alerte partie : l’heure de l’envoi est dite, à l’heure de PARIS', () => {
+    // SOUS TROIS FUSEAUX, dont aucun n'est celui de ce poste. L'horodatage
+    // vient de la base, en UTC ; l'heure affichée sera comparée à celle d'un
+    // courriel et à une pendule de gare, elle doit donc être française quelle
+    // que soit la machine qui regarde.
+    //
+    // Ce contrôle était d'abord écrit sans les fuseaux. Il passait ici — ce
+    // poste est à l'heure de Paris — et le coureur d'intégration, en UTC,
+    // l'a fait tomber : la supervision annonçait « 06:05 » pour un envoi de
+    // 08:05. Un contrôle qui ne mord que sur le coureur est un contrôle qu'on
+    // découvre trop tard.
+    for (const fuseau of ['UTC', 'America/New_York', 'Asia/Tokyo']) {
+      const p = sousFuseau(fuseau, () =>
+        pastilleSurveillance(etat(3 * 3_600_000 + 12 * 60_000), true, {
+          envoyee_at: '2026-09-19T08:05:00+02:00',
+        }),
+      );
+      expect(p.classe, fuseau).toBe('defaut');
+      expect(p.libelle, fuseau).toContain('En défaut depuis 3 h 12');
+      expect(p.libelle, fuseau).toContain('alerte envoyée à 08:05');
+    }
   });
 
   it('en défaut, alerte NON partie : c’est écrit en toutes lettres', () => {
@@ -138,10 +172,12 @@ describe('La pastille d’un poste', () => {
   it('un envoi RÉUSSI prime sur un échec antérieur du même épisode', () => {
     // La ligne garde `dernier_echec` d'une tentative précédente ; annoncer
     // « non envoyée » après un succès serait faux.
-    const p = pastilleSurveillance(etat(20 * 60_000), true, {
-      envoyee_at: '2026-09-19T09:50:00+02:00',
-      dernier_echec: 'Brevo 503',
-    });
+    const p = sousFuseau('UTC', () =>
+      pastilleSurveillance(etat(20 * 60_000), true, {
+        envoyee_at: '2026-09-19T09:50:00+02:00',
+        dernier_echec: 'Brevo 503',
+      }),
+    );
     expect(p.libelle).toContain('alerte envoyée à 09:50');
     expect(p.libelle).not.toContain('NON ENVOYÉE');
   });
