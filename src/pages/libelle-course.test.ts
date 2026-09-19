@@ -29,6 +29,7 @@ import {
   LARGEUR_BADGE_MAX_EM,
   POLICE_BADGE,
   POLICE_BADGE_CHARGEMENT,
+  propositionsLibelle,
   REFUS_POLICE,
   REFUS_TROP_LARGE,
 } from './supervision-logique';
@@ -60,12 +61,85 @@ const LARGEURS_MESUREES: Record<string, number> = {
   'Navette scolaire': 7.461,
   MMMMMMMM: 7.513,
   'MARIAGE MARTIN': 8.824,
+  // Relevés le 19/09/2026, au même canevas et dans la même police, pour les
+  // formes RACCOURCIES et ce dont elles partent. Les quatre valeurs communes
+  // avec le relevé du 12/09 sont retombées au millième près.
+  CE: 1.222,
+  CAF: 1.951,
+  CMD: 2.338,
+  CLUB: 2.558,
+  Navette: 3.696,
+  'CE M. D.': 3.736,
+  'Navette s.': 4.565,
+  'CLUB A. F.': 4.62,
+  GROUPE: 4.081,
+  // Au-dessus de 4,9 em : ces formes-là sont des candidats REFUSÉS, et c'est
+  // tout l'intérêt de les avoir mesurées. « MARIAGE M. » — la forme que le
+  // prompt de ce lot donnait en exemple — ne tient PAS.
+  'GROUPE A.': 5.247,
+  'MARIAGE M.': 6.013,
+  'GROUPE ALPINA': 7.981,
+  'MARIAGE - MARTIN': 9.387,
+  'CE MARTIN DUPONT': 9.855,
+  'CE (MARTIN) DUPONT': 10.455,
+  'CAF A. F.': 4.013,
+  'CAF a. f.': 3.65,
+  Caf: 1.558,
+  'SCOLAIRE !': 5.374,
+  // Avec son espace finale, « SCOLAIRE » NE tient plus : 4,998 em. C'est ce
+  // que proposerait une règle qui accepterait un seul mot.
+  'SCOLAIRE ': 4.998,
+  'CAF albertville fondation': 11.536,
+  'CAF ALBERTVILLE FONDATION': 14.665,
+  'CLUB ALPIN FRANCAIS': 10.885,
+  ANNIVERSAIREDUPRESIDENT: 14.225,
 };
 const mesure = (t: string): number => {
   const l = LARGEURS_MESUREES[t];
   if (l === undefined) throw new Error(`largeur non mesurée pour « ${t} » — mesurer au navigateur`);
   return l;
 };
+
+/**
+ * L'oracle tel que le reçoit la règle : la MÊME mesure, avec `null` pour
+ * « police absente ». Une largeur manquante lève — c'est voulu : une
+ * proposition estimée plutôt que mesurée est exactement ce que ce lot
+ * interdit, et le test doit s'arrêter plutôt que d'inventer un nombre.
+ */
+const oracle = (texte: string): number | null => mesure(texte);
+
+/**
+ * Corps d'une fonction, extrait par COMPTAGE D'ACCOLADES depuis son en-tête.
+ *
+ * Chercher une chaîne dans les cinq mille lignes de `supervision.ts` répond
+ * « elle y est », pas « elle est DANS la bonne fonction » : un test de câblage
+ * qui se contente de la présence passe encore quand le code a migré ailleurs.
+ */
+function corpsDe(source: string, entete: string): string {
+  const debut = source.indexOf(entete);
+  if (debut === -1) return '';
+  const ouvrante = source.indexOf('{', debut);
+  if (ouvrante === -1) return '';
+  let profondeur = 0;
+  for (let i = ouvrante; i < source.length; i++) {
+    if (source[i] === '{') profondeur++;
+    else if (source[i] === '}' && --profondeur === 0) return source.slice(debut, i + 1);
+  }
+  return '';
+}
+
+/**
+ * Le CODE sans ses commentaires.
+ *
+ * Un test qui interdit un motif (`innerHTML`, « aucune proposition ») le
+ * trouverait dans le commentaire qui EXPLIQUE pourquoi il est interdit, et
+ * passerait au rouge sur la bonne intention. Le retrait est grossier — il
+ * frapperait un `//` dans une chaîne — et c'est assumé : ce fichier lit du
+ * code, pas des URL.
+ */
+function sansCommentaires(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
 
 /** Plafond `max-width` de `.badge-txt`, lu dans la feuille de style. */
 function plafondCssEm(): number {
@@ -271,6 +345,330 @@ describe('la saisie refuse, et dit pourquoi', () => {
       dejaPris: ['MARIAGE MARTIN'],
     });
     expect(controle.refus).toBe(REFUS_TROP_LARGE);
+  });
+});
+
+// ============================================================================
+// 19/09/2026 — le refus de largeur PROPOSE des formes qui tiennent
+// ============================================================================
+//
+// CE QUE CETTE SECTION PROTÈGE. Une proposition n'est pas une idée de forme
+// courte : c’est une forme MESURÉE. Le lot entier tient à cet invariant —
+// « toute proposition passe `controleLibelle` » —, parce qu’une proposition
+// que le champ refuserait à son tour serait pire que pas de proposition :
+// elle enverrait l’agent au mur avec l’air de l’en sortir.
+//
+// Le relevé du 19/09 l’a montré aussitôt : « MARIAGE M. » vaut 6,013 em,
+// donc NE TIENT PAS, alors que c’était l’exemple du prompt de ce lot. Une
+// règle qui aurait « su » que premier mot + initiale rentre aurait proposé à
+// l’agent exactement ce que le champ lui refuse.
+describe('le refus de largeur propose des formes MESURÉES', () => {
+  /** Libellés d’essai, tous plus larges que le badge. */
+  const TROP_LARGES = [
+    'MARIAGE MARTIN',
+    'GROUPE ALPINA',
+    'CE MARTIN DUPONT',
+    'CLUB ALPIN FRANCAIS',
+    'Navette scolaire',
+    'MARIAGE - MARTIN',
+    'ANNIVERSAIREDUPRESIDENT',
+    'CAF ALBERTVILLE FONDATION',
+    'CAF albertville fondation',
+    'CE (MARTIN) DUPONT',
+  ];
+
+  it('L’INVARIANT : toute proposition rendue est acceptée par le champ', () => {
+    // C'est LE test du lot. S'il tombe, une proposition est refusée à l'agent
+    // au moment même où il l'accepte.
+    let vues = 0;
+    for (const saisi of TROP_LARGES) {
+      expect(mesure(saisi), `« ${saisi} » n’est pas trop large`).toBeGreaterThan(
+        LARGEUR_BADGE_MAX_EM,
+      );
+      for (const proposition of propositionsLibelle(saisi, oracle)) {
+        vues++;
+        const controle = controleLibelle({
+          saisi: proposition,
+          largeurEm: mesure(proposition),
+          dejaPris: [],
+          mesure: oracle,
+        });
+        expect(
+          controle.refus,
+          `« ${proposition} » (proposé pour « ${saisi} ») est refusé par le champ`,
+        ).toBeNull();
+        // …et le champ garde EXACTEMENT ce qui a été proposé : verbatim.
+        expect(controle.valeur).toBe(proposition);
+      }
+    }
+    // Un invariant éprouvé sur zéro proposition ne prouve rien.
+    expect(vues, 'aucune proposition n’a été éprouvée').toBeGreaterThan(5);
+  });
+
+  it('DEUX MOTS : le premier mot entier, quand l’initiale ne tient pas', () => {
+    // « MARIAGE M. » = 6,013 em : la forme la plus informative est CALCULÉE
+    // puis écartée par la MESURE, pas par une règle de longueur.
+    expect(mesure('MARIAGE M.')).toBeGreaterThan(LARGEUR_BADGE_MAX_EM);
+    expect(propositionsLibelle('MARIAGE MARTIN', oracle)).toEqual(['MARIAGE']);
+    expect(mesure('GROUPE A.')).toBeGreaterThan(LARGEUR_BADGE_MAX_EM);
+    expect(propositionsLibelle('GROUPE ALPINA', oracle)).toEqual(['GROUPE']);
+  });
+
+  it('DEUX MOTS : l’initiale passe devant dès qu’elle tient', () => {
+    // « Navette s. » = 4,565 em : elle tient, et elle garde du second mot une
+    // trace que « Navette » seul perd. Elle passe donc en tête.
+    expect(propositionsLibelle('Navette scolaire', oracle)).toEqual(['Navette s.', 'Navette']);
+  });
+
+  it('TROIS MOTS : les initiales de tous entrent au milieu du classement', () => {
+    // « CE » seul confondrait « CE MARTIN » et « CE DUPONT » ; « CMD » garde
+    // une trace de chaque mot. Il passe donc devant le premier mot seul.
+    expect(propositionsLibelle('CE MARTIN DUPONT', oracle)).toEqual(['CE M. D.', 'CMD', 'CE']);
+    expect(propositionsLibelle('CLUB ALPIN FRANCAIS', oracle)).toEqual([
+      'CLUB A. F.',
+      'CAF',
+      'CLUB',
+    ]);
+  });
+
+  it('UN SEUL MOT, trop long : la liste est VIDE — et c’est une réponse', () => {
+    // Il n'existe pas de raccourci honnête : « ANNIVERSAIREDUPRE… » n'apprend
+    // rien et se lit comme un défaut d’affichage. Le dire vaut mieux que
+    // l’inventer.
+    expect(propositionsLibelle('ANNIVERSAIREDUPRESIDENT', oracle)).toEqual([]);
+    // Même chose pour un mot unique qui, lui, tient déjà.
+    expect(propositionsLibelle('SCOLAIRE', oracle)).toEqual([]);
+  });
+
+  it('un libellé qui TIENT n’est pas refusé, donc rien ne lui est proposé', () => {
+    const controle = controleLibelle({
+      saisi: 'SCOLAIRE',
+      largeurEm: mesure('SCOLAIRE'),
+      dejaPris: [],
+      mesure: oracle,
+    });
+    expect(controle.refus).toBeNull();
+    expect(controle.propositions).toEqual([]);
+  });
+
+  it('AUCUNE proposition n’est une coupe en plein mot', () => {
+    // « MARIAGE MAR… » sur un écran de gare n’apprend rien et fait croire à un
+    // défaut d’affichage. Chaque morceau rendu est donc soit un MOT ENTIER du
+    // libellé saisi, soit une initiale suivie d’un point, soit la suite des
+    // initiales.
+    for (const saisi of TROP_LARGES) {
+      const mots = saisi.trim().split(/\s+/);
+      const alphanum = /[\p{L}\p{N}]/u;
+      const initiales = mots
+        .filter((m) => alphanum.test(m))
+        .map((m) => alphanum.exec(m)?.[0] ?? '')
+        .join('');
+      for (const proposition of propositionsLibelle(saisi, oracle)) {
+        expect(proposition, `« ${proposition} » est tronqué`).not.toMatch(/…|\.\.\./);
+        for (const morceau of proposition.split(/\s+/)) {
+          expect(
+            mots.includes(morceau) || /^.\.$/u.test(morceau) || morceau === initiales,
+            `« ${morceau} » (de « ${proposition} ») n’est ni un mot entier, ni une initiale`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('aucun DOUBLON, et jamais le libellé saisi lui-même', () => {
+    // Le saisi ne tient pas — le reproposer renverrait l’agent au mur.
+    // « MARIAGE M. » produit « MARIAGE M. » par la première stratégie : c’est
+    // le cas qui se présente quand l’agent a DÉJÀ abrégé lui-même.
+    expect(propositionsLibelle('MARIAGE M.', oracle)).toEqual(['MARIAGE']);
+    // Un séparateur sans lettre ni chiffre n’est pas un mot : « - » ne devient
+    // pas une initiale, et les deux écritures proposent la même chose.
+    expect(propositionsLibelle('MARIAGE - MARTIN', oracle)).toEqual(
+      propositionsLibelle('MARIAGE MARTIN', oracle),
+    );
+    for (const saisi of TROP_LARGES) {
+      const liste = propositionsLibelle(saisi, oracle);
+      expect(new Set(liste).size, `doublon dans « ${saisi} »`).toBe(liste.length);
+      expect(liste, `« ${saisi} » se propose lui-même`).not.toContain(saisi.trim());
+    }
+  });
+
+  it('POLICE ABSENTE : aucune proposition, et le refus reste celui de la police', () => {
+    // Un oracle muet ne rend pas « ça tient » : il ne rend rien.
+    expect(propositionsLibelle('CE MARTIN DUPONT', () => null)).toEqual([]);
+    const controle = controleLibelle({
+      saisi: 'CE MARTIN DUPONT',
+      largeurEm: null,
+      dejaPris: [],
+      mesure: () => null,
+    });
+    expect(controle.refus).toBe(REFUS_POLICE);
+    expect(controle.propositions).toEqual([]);
+  });
+
+  it('un libellé DÉJÀ PORTÉ ne se répare pas en le raccourcissant', () => {
+    // Raccourcir « SCOLAIRE » ne règle pas une collision de noms : le seul
+    // refus qui propose est celui de la LARGEUR.
+    const controle = controleLibelle({
+      saisi: 'SCOLAIRE',
+      largeurEm: mesure('SCOLAIRE'),
+      dejaPris: ['SCOLAIRE'],
+      mesure: oracle,
+    });
+    expect(controle.refus).toContain('déjà porté');
+    expect(controle.propositions).toEqual([]);
+  });
+
+  it('le REFUS DE LARGEUR porte bien la liste de la règle', () => {
+    // Mutation survivante du premier tour : remplacer la liste par `[]` dans
+    // `controleLibelle` laissait tous les tests verts — ils interrogeaient la
+    // règle en direct, aucun ne regardait ce que le REFUS emporte.
+    const controle = controleLibelle({
+      saisi: 'CE MARTIN DUPONT',
+      largeurEm: mesure('CE MARTIN DUPONT'),
+      dejaPris: [],
+      mesure: oracle,
+    });
+    expect(controle.refus).toBe(REFUS_TROP_LARGE);
+    expect(controle.propositions).toEqual(propositionsLibelle('CE MARTIN DUPONT', oracle));
+    expect(controle.propositions, 'le refus ne propose rien').not.toHaveLength(0);
+  });
+
+  it('la borne de la proposition est CELLE du champ, à l’em près', () => {
+    // Mutation survivante : passer `>` à `>=` ne changeait rien sur les
+    // largeurs relevées — aucune ne tombe pile sur la borne. Un oracle qui
+    // répond EXACTEMENT 4,9 em tranche : le champ accepte cette largeur, la
+    // proposition doit donc la retenir, sinon les deux bornes divergent.
+    const aLaBorne = (t: string): number | null =>
+      t === 'MARIAGE' ? LARGEUR_BADGE_MAX_EM : mesure(t);
+    expect(propositionsLibelle('MARIAGE MARTIN', aLaBorne)).toEqual(['MARIAGE']);
+    expect(
+      controleLibelle({ saisi: 'MARIAGE', largeurEm: LARGEUR_BADGE_MAX_EM, dejaPris: [] }).refus,
+    ).toBeNull();
+  });
+
+  it('UN SEUL MOT suivi d’un signe reste un seul mot', () => {
+    // Mutation survivante : abaisser la garde à « un mot » proposait
+    // « SCOLAIRE » pour « SCOLAIRE ! » — un nom que l’agent n’a pas écrit, et
+    // dont le point d’exclamation a disparu sans qu’on le lui dise.
+    expect(propositionsLibelle('SCOLAIRE !', oracle)).toEqual([]);
+  });
+
+  it('une PARENTHÈSE n’est pas une initiale', () => {
+    // Mutation survivante : prendre le premier caractère au lieu du premier
+    // caractère alphanumérique donnait « CE (. D. » — illisible en gare.
+    expect(propositionsLibelle('CE (MARTIN) DUPONT', oracle)).toEqual(['CE M. D.', 'CMD', 'CE']);
+  });
+
+  it('la règle ne repropose JAMAIS ce qu’on lui a donné', () => {
+    // Mutation survivante des deux tours : retirer l’exclusion du saisi ne
+    // changeait rien tant que le saisi était trop large — la mesure l’écartait
+    // ensuite. Elle ne se voit que sur un libellé qui TIENT, cas que le champ
+    // n’atteint pas aujourd’hui mais que la règle, publique et pure, doit
+    // tenir : elle rend des formes PLUS COURTES, jamais l’original.
+    expect(mesure('CE M. D.')).toBeLessThan(LARGEUR_BADGE_MAX_EM);
+    expect(propositionsLibelle('CE M. D.', oracle)).toEqual(['CMD', 'CE']);
+  });
+
+  it('DOUBLON RÉEL : un sigle déjà écrit ne revient pas deux fois', () => {
+    // Mutation survivante : sans dédoublonnage, « CAF ALBERTVILLE FONDATION »
+    // proposait « CAF » DEUX FOIS — une fois comme suite des initiales, une
+    // fois comme premier mot. Deux boutons identiques côte à côte.
+    expect(propositionsLibelle('CAF ALBERTVILLE FONDATION', oracle)).toEqual(['CAF A. F.', 'CAF']);
+    // …et le dédoublonnage compare des formes COMPARABLES, pas des chaînes :
+    // « Caf » et « CAF » sont le même nom en gare, et deux boutons qui ne
+    // diffèrent que par la casse ne proposent pas deux choses.
+    expect(propositionsLibelle('CAF albertville fondation', oracle)).toEqual(['CAF a. f.', 'Caf']);
+  });
+
+  it('un libellé multi-mots DÉJÀ PORTÉ ne reçoit rien non plus', () => {
+    // Mutation survivante : brancher les propositions sur le refus d’unicité
+    // passait, faute d’un cas d’essai où la règle avait quelque chose à dire.
+    // Raccourcir « CE MARTIN DUPONT » ne règle pas une collision de noms.
+    expect(propositionsLibelle('CE MARTIN DUPONT', oracle)).not.toHaveLength(0);
+    const controle = controleLibelle({
+      saisi: 'CE MARTIN DUPONT',
+      largeurEm: 2,
+      dejaPris: ['CE MARTIN DUPONT'],
+      mesure: oracle,
+    });
+    expect(controle.refus).toContain('déjà porté');
+    expect(controle.propositions).toEqual([]);
+  });
+
+  it('sans oracle, le refus est EXACTEMENT celui d’hier', () => {
+    // Les appelants qui ne mesurent pas (tests, futurs porteurs de la règle)
+    // ne reçoivent pas une liste inventée : ils reçoivent une liste vide.
+    const controle = controleLibelle({
+      saisi: 'MARIAGE MARTIN',
+      largeurEm: mesure('MARIAGE MARTIN'),
+      dejaPris: [],
+    });
+    expect(controle.refus).toBe(REFUS_TROP_LARGE);
+    expect(controle.propositions).toEqual([]);
+  });
+});
+
+// ============================================================================
+// Le câblage : ce que la supervision fait de ces propositions
+// ============================================================================
+describe('la supervision propose, et n’applique jamais d’office', () => {
+  const corps = (): string =>
+    corpsDe(source('src/pages/supervision.ts'), 'const controleLibelleSaisi = (');
+
+  it('les DEUX formulaires passent par le même contrôle', () => {
+    // Création (`sup-libelle`) et renommage (`renom-libelle`) partagent
+    // `controleLibelleSaisi` : les propositions s’y branchent une seule fois.
+    const sup = source('src/pages/supervision.ts');
+    expect(corps(), 'controleLibelleSaisi introuvable').not.toBe('');
+    expect(sup).toContain("controleLibelleSaisi('renom-libelle', 'renom-refus', numero)");
+    expect(corps()).toContain("refusId = 'sup-refus-libelle'");
+  });
+
+  it('l’oracle passé à la règle est CELUI qui mesure le libellé', () => {
+    // Deux mesures différentes, et une proposition « qui tient » pourrait ne
+    // pas tenir. Le champ mesure par `largeurEnEm` : la règle aussi.
+    expect(corps()).toContain("largeurEm: saisi.trim() === '' ? 0 : largeurEnEm(saisi.trim())");
+    expect(corps()).toContain('mesure: largeurEnEm');
+  });
+
+  it('les boutons viennent de la RÈGLE, et un clic écrit dans le champ', () => {
+    const c = corps();
+    expect(c).toContain('controle.propositions');
+    expect(c, 'le clic n’écrit pas la proposition dans le champ').toContain(
+      'champ.value = proposition',
+    );
+    // …puis le contrôle est RELANCÉ : c’est lui qui fait tomber le refus, et
+    // non une supposition sur ce que la mesure aurait dit.
+    expect(c).toContain('controleLibelleSaisi(champId, refusId, saufNumero)');
+    // Le texte du bouton est posé en `textContent` : le libellé vient de la
+    // frappe de l’agent, et l’échappement reste la première défense.
+    expect(c).toContain('bouton.textContent = proposition');
+    expect(sansCommentaires(c), 'du HTML est assemblé avec la saisie de l’agent').not.toContain(
+      'innerHTML',
+    );
+  });
+
+  it('LISTE VIDE : rien de plus que le refus', () => {
+    // Pas de « aucune proposition disponible » : une phrase qui dit qu’il n’y
+    // a rien à dire encombre l’écran d’un agent pressé.
+    const c = corps();
+    expect(c).toContain('if (controle.propositions.length > 0)');
+    expect(sansCommentaires(c).toLowerCase()).not.toContain('aucune proposition');
+  });
+
+  it('le libellé n’est JAMAIS raccourci d’office', () => {
+    // La supervision n’appelle pas la règle pour s’en servir toute seule : le
+    // seul chemin qui écrit une forme courte dans le champ est le CLIC.
+    const sup = sansCommentaires(source('src/pages/supervision.ts'));
+    expect(
+      [...sup.matchAll(/propositionsLibelle\(/g)],
+      'la supervision applique une proposition sans passer par l’agent',
+    ).toHaveLength(0);
+    // Dans le contrôle lui-même, une SEULE écriture du champ — celle du clic.
+    expect(
+      [...sansCommentaires(corps()).matchAll(/champ\.value = /g)],
+      'une autre écriture du champ de libellé est apparue',
+    ).toHaveLength(1);
   });
 });
 

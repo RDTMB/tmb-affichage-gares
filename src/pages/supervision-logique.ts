@@ -625,6 +625,13 @@ export interface ControleLibelle {
   valeur: string | null;
   /** Refus en une phrase, ou `null` si le libellé est acceptable. */
   refus: string | null;
+  /**
+   * Formes raccourcies qui TIENNENT, à SUGGÉRER — jamais appliquées d'office.
+   * Vide partout sauf sur le refus de LARGEUR : un libellé déjà porté par un
+   * autre train ne se répare pas en le raccourcissant, et sans la police
+   * aucune mesure n'est possible.
+   */
+  propositions: string[];
 }
 
 /**
@@ -652,23 +659,38 @@ export function controleLibelle(e: {
   /** Largeur en em, ou `null` quand la mesure est impossible (police absente). */
   largeurEm: number | null;
   dejaPris: readonly string[];
+  /**
+   * Oracle de mesure, le MÊME que celui qui a produit `largeurEm` : il sert à
+   * proposer des formes raccourcies dont on a VÉRIFIÉ qu'elles tiennent.
+   * Absent, le refus reste ce qu'il était et rien n'est proposé.
+   */
+  mesure?: (texte: string) => number | null;
 }): ControleLibelle {
   const valeur = e.saisi.trim();
   // FACULTATIF (décision de l'exploitant du 12/09/2026) : sans libellé, le
   // badge affiche « SPÉ n » / « SUP n », ce qui est parfaitement valide.
-  if (valeur === '') return { valeur: null, refus: null };
+  if (valeur === '') return { valeur: null, refus: null, propositions: [] };
 
   if (e.largeurEm === null) {
-    return { valeur: null, refus: REFUS_POLICE };
+    return { valeur: null, refus: REFUS_POLICE, propositions: [] };
   }
   if (e.largeurEm > LARGEUR_BADGE_MAX_EM) {
-    return { valeur: null, refus: REFUS_TROP_LARGE };
+    // SEUL refus qui propose : c'est le seul qu'un raccourcissement répare.
+    return {
+      valeur: null,
+      refus: REFUS_TROP_LARGE,
+      propositions: e.mesure ? propositionsLibelle(valeur, e.mesure) : [],
+    };
   }
   const forme = formeComparable(valeur);
   if (e.dejaPris.some((pris) => formeComparable(pris) === forme)) {
-    return { valeur: null, refus: `« ${valeur} » est déjà porté par un train de cette journée.` };
+    return {
+      valeur: null,
+      refus: `« ${valeur} » est déjà porté par un train de cette journée.`,
+      propositions: [],
+    };
   }
-  return { valeur, refus: null };
+  return { valeur, refus: null, propositions: [] };
 }
 
 /**
@@ -692,6 +714,83 @@ export const REFUS_TROP_LARGE =
 export const REFUS_POLICE =
   'Mesure impossible : la police du badge n’est pas chargée. Le train s’appellera ' +
   '« SPÉ n » ; vous pourrez le renommer une fois la page rechargée.';
+
+/**
+ * Formes raccourcies du libellé saisi qui TIENNENT réellement dans le badge,
+ * de la plus informative à la moins informative.
+ *
+ * CE N'EST PAS UN RACCOURCISSEMENT AUTOMATIQUE. Le libellé reste rendu
+ * VERBATIM : l'agent accepte une de ces formes d'un clic, ou écrit la sienne.
+ * Abréger sans qu'il l'ait vu lui ferait découvrir en gare un nom qu'il n'a
+ * pas choisi — la troncature silencieuse du bandeau, réparée le 12/09/2026,
+ * en version délibérée.
+ *
+ * CHAQUE candidat est MESURÉ par l'oracle et n'est rendu que s'il tient : une
+ * proposition à son tour refusée serait pire que pas de proposition (un test
+ * en fait un invariant). Estimer à la longueur en caractères mentirait, la
+ * largeur dépendant des glyphes.
+ *
+ * LES TROIS STRATÉGIES, dans l'ordre de ce qu'elles conservent :
+ *
+ *   1. le premier mot ENTIER + l'initiale des suivants — « MARIAGE M. » :
+ *      elle garde un mot complet ET une trace de chacun des autres ;
+ *   2. les initiales de tous les mots, à partir de trois — « CMD » : elle ne
+ *      garde plus un mot entier, mais encore une trace de chaque mot, ce qui
+ *      distingue deux groupes là où le premier mot seul les confondrait
+ *      (« CE MARTIN » et « CE DUPONT » sont tous deux « CE ») ;
+ *   3. le premier mot seul — « MARIAGE ».
+ *
+ * CE QU'ELLE NE FAIT JAMAIS : couper en plein mot, avec ou sans points de
+ * suspension. « MARIAGE MAR… » sur un écran de gare n'apprend rien et se lit
+ * comme un défaut d'affichage. Un mot unique trop long n'a donc aucun
+ * raccourci honnête, et la liste est alors VIDE — un résultat légitime, que
+ * l'affichage traduit par le seul refus.
+ *
+ * PURE, comme `indexProchainDepart` ou `ongletAOuvrir` : l'oracle entre par
+ * la porte, aucun DOM, aucun canevas — donc testable sans navigateur.
+ */
+export function propositionsLibelle(
+  saisi: string,
+  largeurEm: (texte: string) => number | null,
+): string[] {
+  // Les « mots » sans aucune lettre ni chiffre (un tiret isolé, une puce) ne
+  // sont pas des mots : « MARIAGE - MARTIN » se raccourcit comme
+  // « MARIAGE MARTIN », et non en « MARIAGE -. M. ».
+  const estAlphanum = /[\p{L}\p{N}]/u;
+  const mots = saisi
+    .trim()
+    .split(/\s+/)
+    .filter((mot) => estAlphanum.test(mot));
+  // Un seul mot : rien à retirer qui ne soit une coupe en plein mot.
+  if (mots.length < 2) return [];
+
+  // L'initiale est le premier caractère ALPHANUMÉRIQUE : « (privé) » donne
+  // « p. », pas « (. ».
+  const initiale = (mot: string): string => estAlphanum.exec(mot)?.[0] ?? '';
+  const premier = mots[0] ?? '';
+  const candidats = [
+    `${premier} ${mots
+      .slice(1)
+      .map((mot) => `${initiale(mot)}.`)
+      .join(' ')}`,
+    ...(mots.length >= 3 ? [mots.map(initiale).join('')] : []),
+    premier,
+  ];
+
+  const retenus: string[] = [];
+  for (const candidat of candidats) {
+    const forme = formeComparable(candidat);
+    // Ni le libellé saisi lui-même (il ne tient pas, c'est le point de
+    // départ), ni deux fois la même forme.
+    if (forme === '' || forme === formeComparable(saisi)) continue;
+    if (retenus.some((deja) => formeComparable(deja) === forme)) continue;
+    // MESURÉ, jamais estimé — et `null` (police absente) n'est pas « tient ».
+    const largeur = largeurEm(candidat);
+    if (largeur === null || largeur > LARGEUR_BADGE_MAX_EM) continue;
+    retenus.push(candidat);
+  }
+  return retenus;
+}
 
 // ============================================================================
 // Train SPÉCIAL — création (docs/01 §2.9)
