@@ -2118,10 +2118,44 @@ function initCirculations(): void {
       saisi,
       largeurEm: saisi.trim() === '' ? 0 : largeurEnEm(saisi.trim()),
       dejaPris: libellesDuJour(saufNumero),
+      // Le MÊME oracle que la mesure ci-dessus : une forme proposée a donc été
+      // mesurée exactement comme le sera le libellé qu'elle remplace.
+      mesure: largeurEnEm,
     });
     const refus = $(refusId);
     refus.textContent = controle.refus ?? '';
     refus.hidden = controle.refus === null;
+    // PROPOSITIONS : elles vivent DANS le bloc de refus, donc elles
+    // apparaissent et disparaissent avec lui — il n'y a pas d'état à tenir, et
+    // pas de bouton orphelin après une frappe qui rend le libellé acceptable.
+    // Liste vide : rien de plus que le refus. Pas de « aucune proposition
+    // disponible » — une phrase qui dit qu'il n'y a rien à dire encombre
+    // l'écran d'un agent pressé.
+    if (controle.propositions.length > 0) {
+      const rangee = document.createElement('div');
+      rangee.className = 'propositions-libelle';
+      rangee.append('Ce qui tiendrait :');
+      for (const proposition of controle.propositions) {
+        const bouton = document.createElement('button');
+        bouton.type = 'button';
+        bouton.className = 'leger';
+        // `textContent` et non `innerHTML` : le libellé vient de la frappe de
+        // l'agent, et l'échappement reste la première défense (CSP en second).
+        bouton.textContent = proposition;
+        bouton.addEventListener('click', () => {
+          // SUGGESTION, jamais application d'office : c'est ce clic-ci qui
+          // écrit dans le champ, et l'agent voit ce qu'il accepte.
+          champ.value = proposition;
+          champ.focus();
+          // Le contrôle repasse au vert de lui-même : le candidat a été mesuré
+          // par cet oracle-là. Le relancer plutôt que de le supposer, c'est
+          // aussi ce qui remet à jour l'unicité.
+          controleLibelleSaisi(champId, refusId, saufNumero);
+        });
+        rangee.append(bouton);
+      }
+      refus.append(rangee);
+    }
     // Police absente : le champ se DÉSACTIVE, et le reste du formulaire
     // continue de marcher. Le libellé est facultatif ; bloquer une course
     // d'exploitation pour une police qui n'a pas chargé ferait payer un souci

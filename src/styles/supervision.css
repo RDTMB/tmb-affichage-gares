@@ -2782,6 +2782,27 @@ input:disabled {
   white-space: nowrap;
 }
 
+/* PROPOSITIONS de libellé, sous le refus de largeur. Ce sont des boutons, pas
+   du texte : l'agent ACCEPTE une forme d'un clic — rien n'est appliqué
+   d'office. La rangée n'existe dans le DOM que quand il y a quelque chose à
+   proposer, d'où l'absence d'état « vide » à styler. */
+.propositions-libelle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  color: var(--sec);
+  font-size: 12.5px;
+}
+
+.propositions-libelle button {
+  /* Même FAMILLE que le badge de l'écran (Lato), pas la même graisse : le
+     bouton donne à lire la forme du nom, pas sa largeur en gare — celle-là est
+     mesurée au canevas, et c'est la seule qui décide. */
+  font-family: var(--police-textes);
+}
+
 .apercu-sup {
   display: flex;
   gap: 22px;
