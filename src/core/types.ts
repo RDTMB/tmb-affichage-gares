@@ -753,6 +753,36 @@ export interface EcranInfo {
    */
   veille_debut?: string | null;
   veille_fin?: string | null;
+  /**
+   * Le guetteur alerte-t-il sur ce poste ? Faux = retiré du service
+   * (hors-saison, déposé, en atelier). C'est la SEULE façon de dire « ce
+   * poste n'est pas censé tourner » : sans elle, le Nid d'Aigle, exploité
+   * l'été seulement, alerterait chaque jour pendant six mois.
+   */
+  surveille?: boolean | null;
+}
+
+/** Épisode de panne en cours sur un poste (table `alertes_ecran`). */
+export interface AlerteEcran {
+  ecran_id: string;
+  /** Dernier signal de vie connu au moment de la détection. */
+  depuis: string;
+  detectee_at: string;
+  envois_tentes: number;
+  /** Envoi RÉUSSI ; null = détectée mais jamais dite (clé Brevo absente…). */
+  envoyee_at?: string | null;
+  dernier_echec?: string | null;
+}
+
+/**
+ * Ce que le guetteur a fait, et quand. Lu par la supervision pour dire si la
+ * surveillance TOURNE — un `pg_cron` inerte ressemble sinon trait pour trait
+ * à une flotte en bonne santé.
+ */
+export interface EtatGuetteur {
+  derniere_execution: string | null;
+  dernier_resultat: string | null;
+  alertes: AlerteEcran[];
 }
 
 /** Résultat de la bascule « Terminus Bellevue à partir du TRAIN N ». */

@@ -12,6 +12,7 @@ import '../styles/tokens.css';
 import '../styles/supervision.css';
 
 import { DUREE_HORAIRES_MAX_S, DUREE_HORAIRES_MIN_S, PARAMS_DEFAUT } from '../core/params';
+import { etatSurveillance, silenceLisible } from '../core/surveillance-ecrans';
 
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
@@ -161,6 +162,8 @@ import {
   initiales,
   libelleUtilisateur,
   etatFraicheurEcran,
+  bandeauGuetteur,
+  pastilleSurveillance,
   propositionAppariementFacultatif,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
@@ -3906,8 +3909,9 @@ function initMedias(): void {
 
 async function rendreEcrans(): Promise<void> {
   let liste;
+  let guetteur;
   try {
-    liste = await provider.listEcrans();
+    [liste, guetteur] = await Promise.all([provider.listEcrans(), provider.getSurveillance()]);
   } catch {
     return;
   }
@@ -3916,6 +3920,20 @@ async function rendreEcrans(): Promise<void> {
   const etats = new Map(
     liste.map((e) => [e.id, etatFraicheurEcran(e, referenceMajMs, maintenant)]),
   );
+  // L'heure LOCALE, et non `Date.now()` : la veille de nuit s'exprime en
+  // heures de Paris et franchit minuit. `heurePoste` la donne déjà, et suit
+  // `?simule=` — ce qui rend la fenêtre de veille essayable sans attendre
+  // 21 heures.
+  const maintenantS = heurePoste.maintenantS();
+  const alertes = new Map(guetteur.alertes.map((a) => [a.ecran_id, a]));
+
+  // LE GUETTEUR, avant la flotte. Une surveillance à l'arrêt prime sur l'état
+  // des postes : tant qu'elle ne tourne pas, l'absence d'alerte ne prouve rien.
+  const bandeau = bandeauGuetteur(guetteur, maintenant);
+  $('guetteur').className = `note guetteur ${bandeau.classe}`;
+  $('guetteur').innerHTML =
+    `<b>${echapper(bandeau.libelle)}</b>` +
+    (bandeau.detail ? ` <span class="sous">${echapper(bandeau.detail)}</span>` : '');
   const enLigne = (id: string): boolean => etats.get(id)?.statut !== 'hors-ligne';
   const actifs = liste.filter((e) => enLigne(e.id)).length;
   // « 0/— écrans en ligne » ne veut rien dire. Quand AUCUN poste n'est
@@ -3938,14 +3956,29 @@ async function rendreEcrans(): Promise<void> {
             libelle: 'hors ligne',
           };
           const ok = etat.statut !== 'hors-ligne';
+          // La règle du guetteur, appliquée ICI AUSSI : la pastille et le
+          // courriel répondent à la même question, et deux réponses
+          // différentes à la même question sont un mensonge sur l'une des
+          // deux surfaces.
+          const surveillance = etatSurveillance(
+            { ...e, surveille: e.surveille },
+            params?.veille_nuit ?? { debut: '21:00', fin: '06:00' },
+            maintenant,
+            maintenantS,
+          );
+          const surveille = e.surveille !== false;
+          const pastille = pastilleSurveillance(surveillance, surveille, alertes.get(e.id));
           // Une seule des deux bornes ne décrit pas une fenêtre : on ne parle
           // de réglage propre que si les DEUX sont posées (même règle que le moteur).
           const propre = Boolean(e.veille_debut && e.veille_fin);
           // Vitesse propre au poste : posée = surcharge, absente = global.
           const vitessePropre =
             e.vitesse_ticker_px_s !== null && e.vitesse_ticker_px_s !== undefined;
+          // « vu il y a 11 704 s » était vrai et illisible : personne ne
+          // convertit des secondes en heures d'un coup d'œil, et c'est
+          // précisément ce coup d'œil qu'on attend d'un agent qui passe.
           const vu = e.derniere_vue
-            ? `${Math.max(0, Math.round((maintenant - new Date(e.derniere_vue).getTime()) / 1000))} s`
+            ? silenceLisible(maintenant - new Date(e.derniere_vue).getTime())
             : '—';
           const donnees = e.donnees_maj
             ? new Date(e.donnees_maj).toLocaleTimeString('fr-FR', {
@@ -3958,6 +3991,7 @@ async function rendreEcrans(): Promise<void> {
         <div class="haut"><span class="dot ${ok ? '' : 'rouge'}"></span>${echapper(nomDeGare(e.gare))} · ${echapper(e.id)}
           <span class="net">${echapper(e.reseau ?? (e.gare === 'nid-daigle' ? '5G · solaire' : 'Fibre'))}</span></div>
         <div class="fraicheur ${etat.statut}">${echapper(etat.libelle)}</div>
+        <div class="surveillance ${pastille.classe}">${echapper(pastille.libelle)}</div>
         <div class="sub">${echapper(e.type ?? 'écran')} · vu il y a ${vu} · données de ${donnees}${
           e.date_affichee ? ` · journée ${echapper(e.date_affichee)}` : ''
         } · ${echapper(e.version_app ?? '—')}</div>
@@ -3981,6 +4015,13 @@ async function rendreEcrans(): Promise<void> {
             style="width: 84px" title="Entre ${VITESSE_TICKER_MIN} et ${VITESSE_TICKER_MAX} px/s ; vide = réglage global"
             data-vitesse-ecran="${echapper(e.id)}" value="${vitessePropre ? String(e.vitesse_ticker_px_s) : ''}" />
           ${vitessePropre ? `<button class="leger" data-vitesse-global="${echapper(e.id)}">Revenir au global</button>` : ''}
+        </div>
+        <div class="veille-ecran">
+          <label class="surveille">
+            <input type="checkbox" data-surveille="${echapper(e.id)}" ${surveille ? 'checked' : ''} />
+            Surveiller ce poste
+          </label>
+          <span class="veille-suit">décoché : hors-saison, déposé, en atelier — aucune alerte</span>
         </div>
         <div class="actions">
           <button class="leger" data-recharger="${echapper(e.id)}">⟳ Recharger</button>
@@ -4155,6 +4196,28 @@ function initEcrans(): void {
     const champ = e.target as HTMLInputElement;
     const id = champ.dataset.vitesseEcran;
     if (id) poseVitesseEcran(id, champ.value);
+    const poste = champ.dataset.surveille;
+    if (poste) {
+      const veut = champ.checked;
+      void provider
+        .saveSurveillanceEcran(poste, veut)
+        .then(() => rendreEcrans())
+        .then(() => {
+          bump(`surveillance ${poste} : ${veut ? 'activée' : 'suspendue'}`);
+          toast(
+            veut
+              ? `${poste} est de nouveau surveillé`
+              : `${poste} n'est plus surveillé : aucune alerte ne partira`,
+          );
+        })
+        // La case est REPEINTE par `rendreEcrans()`, jamais laissée dans
+        // l'état que le clic lui a donné : sur échec, elle doit revenir à ce
+        // que la base dit, et non à ce que l'agent croyait avoir réglé.
+        .catch((err) => {
+          erreurVersToast(err);
+          void rendreEcrans();
+        });
+    }
   });
 
   $('ecrans').addEventListener('click', (e) => {

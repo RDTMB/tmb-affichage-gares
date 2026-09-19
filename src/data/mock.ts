@@ -17,6 +17,7 @@ import {
   serviceActif,
 } from '../core/horaires';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
+import { bilanSurveillance } from '../core/surveillance-ecrans';
 import {
   LIBELLE_ROLE,
   ROLES,
@@ -36,6 +37,7 @@ import type {
   Affluence,
   Circulation,
   EcranInfo,
+  EtatGuetteur,
   GareId,
   Grille,
   Jour,
@@ -1722,6 +1724,65 @@ export class MockProvider implements DataProvider {
     ecran.veille_debut = debut;
     ecran.veille_fin = fin;
     ecritEcrans(ecrans);
+  }
+
+  async saveSurveillanceEcran(id: string, surveille: boolean): Promise<void> {
+    const ecrans = litEcrans();
+    const ecran = ecrans[id];
+    if (!ecran) throw new Error(`Écran ${id} inconnu`);
+    const etat = litEtat();
+    trace(etat, 'ecrans', id, { surveille: ecran.surveille ?? true }, { surveille }, ['surveille']);
+    ecritEtat(etat);
+    ecran.surveille = surveille;
+    ecritEcrans(ecrans);
+  }
+
+  /**
+   * En démonstration, il n'y a NI `pg_cron` NI Edge Function : aucun guetteur
+   * ne tourne. Rendre un état vide afficherait pourtant « surveillance à
+   * l'arrêt » sur une démo parfaitement saine, ce qui apprendrait le contraire
+   * de ce qu'il faut retenir.
+   *
+   * Le mock REJOUE donc la règle du cœur sur ses propres écrans et se date de
+   * l'instant. C'est une simulation, elle n'est écrite nulle part, et
+   * `dernier_resultat` le dit en toutes lettres — un agent qui regarde la
+   * démonstration ne doit pas croire qu'une alerte partira.
+   */
+  async getSurveillance(): Promise<EtatGuetteur> {
+    const params = await this.getParams();
+    const maintenant = new Date();
+    const [h = 0, m = 0, s = 0] = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .format(maintenant)
+      .split(':')
+      .map(Number);
+    const bilan = bilanSurveillance(
+      Object.values(litEcrans()),
+      params.veille_nuit,
+      maintenant.getTime(),
+      h * 3600 + m * 60 + s,
+    );
+    return {
+      derniere_execution: maintenant.toISOString(),
+      dernier_resultat: `démonstration (aucun envoi) — ${
+        bilan.enDefaut.length
+          ? `${bilan.enDefaut.length}/${bilan.surveilles} en défaut`
+          : `${bilan.surveilles} surveillés, aucun défaut`
+      }`,
+      alertes: bilan.enDefaut.map((p) => ({
+        ecran_id: p.id,
+        depuis: p.derniere_vue,
+        detectee_at: maintenant.toISOString(),
+        envois_tentes: 0,
+        envoyee_at: null,
+        dernier_echec: 'démonstration : aucun courriel n’est envoyé',
+      })),
+    };
   }
 
   async oublierEcran(id: string): Promise<void> {

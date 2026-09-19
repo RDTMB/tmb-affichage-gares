@@ -64,7 +64,27 @@ describe('etatFraicheurEcran', () => {
       MAINTENANT,
     );
     expect(etat.statut).toBe('hors-ligne');
-    expect(etat.libelle).toBe('hors ligne');
+    // DEPUIS QUAND. Le 19/09/2026, l'écran de Saint-Gervais s'est tu pendant
+    // plus de trois heures et la supervision n'en disait pas plus qu'après
+    // trente secondes. La durée est la moitié de l'information.
+    expect(etat.libelle).toBe('hors ligne depuis 5 min');
+  });
+
+  it('un poste JAMAIS vu n’est pas « hors ligne depuis 56 ans »', () => {
+    // Sans date de départ, la soustraction donnerait l'âge de l'époque Unix.
+    // Un poste déclaré la veille et posé le lendemain n'est pas en panne.
+    for (const sans of [{}, { derniere_vue: null }, { derniere_vue: 'abîmé' }]) {
+      const etat = etatFraicheurEcran(sans, null, MAINTENANT);
+      expect(etat.statut).toBe('hors-ligne');
+      expect(etat.libelle).toBe('jamais vu');
+    }
+  });
+
+  it('la durée grandit avec le silence, et se lit en heures au-delà de soixante minutes', () => {
+    const lib = (ms: number) =>
+      etatFraicheurEcran({ derniere_vue: ilYA(ms) }, null, MAINTENANT).libelle;
+    expect(lib(3 * 60_000)).toBe('hors ligne depuis 3 min');
+    expect(lib(3 * 3_600_000 + 12 * 60_000)).toBe('hors ligne depuis 3 h 12');
   });
 
   it('le seuil hors ligne vaut deux cycles et demi de signal de vie', () => {

@@ -260,12 +260,20 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
    de gare sans source de données afficherait des horaires fictifs (le mode
    démonstration n'existe que sur le poste de développement, §H).
 
-## E. Edge Functions (traduction + invitations) (~10 min)
+## E. Edge Functions (traduction + invitations + guetteur) (~10 min)
 
-Trois fonctions à déployer : `traduire`, `inviter-utilisateur` et
-`supprimer-utilisateur`. Le dépôt fournit un script qui fait tout, appelé par
-`outils\deployer-edge-functions.cmd`. C'est la voie normale ; le tableau de
-bord n'est qu'un dépannage.
+Quatre fonctions à déployer : `traduire`, `inviter-utilisateur`,
+`supprimer-utilisateur` et `alerte-ecrans`. Le dépôt fournit un script qui
+fait tout, appelé par `outils\deployer-edge-functions.cmd`. C'est la voie
+normale ; le tableau de bord n'est qu'un dépannage.
+
+`alerte-ecrans` est déployée **sans vérification de jeton**, et le script s'en
+charge tout seul (un appel à part). Ce n'est pas un oubli : c'est `pg_cron`
+qui l'appelle, depuis la base, et une tâche planifiée n'a aucune session
+utilisateur à présenter. Son verrou est le secret partagé `CLE_GUETTEUR`,
+comparé avant la première lecture de la base ; sans lui, la fonction refuse
+tout appel. Ne jamais étendre ce drapeau aux trois autres : il ouvrirait
+l'invitation, la suppression de compte et la traduction à tout l'internet.
 
 ### La voie normale : le script
 
@@ -360,6 +368,34 @@ depuis le **tableau de bord** : Edge Functions → Secrets → `DEEPL_API_KEY`.
 
 On préfère ici le tableau de bord à la ligne de commande : une clé tapée dans
 un terminal reste dans l'historique PowerShell, en clair, pour longtemps.
+
+### Les trois secrets du guetteur
+
+Même endroit, même raison — Edge Functions → Secrets :
+
+| Secret             | Sans lui                                                     |
+| ------------------ | ------------------------------------------------------------ |
+| `CLE_GUETTEUR`     | `alerte-ecrans` REFUSE tout appel (elle n'a pas d'autre verrou) |
+| `BREVO_API_KEY`    | aucun courriel ne part — la pastille de la supervision, si     |
+| `BREVO_EXPEDITEUR` | idem ; c'est l'adresse d'envoi validée chez Brevo              |
+
+`CLE_GUETTEUR` est une phrase longue, tirée au hasard, qui ne sert qu'à ça.
+Elle doit être posée **à l'identique** dans le coffre de la base, sous le nom
+`cle_guetteur` (section 7 de `supabase/migrations/2026-09-alerte-ecrans.sql`).
+Deux valeurs différentes donnent une tâche planifiée qui tourne, une fonction
+qui répond 401, et aucune alerte — sans que rien ne le dise, sauf
+`surveillance_etat.derniere_execution`, qui cesse d'avancer et que la
+supervision affiche en rouge au bout d'un quart d'heure.
+
+Brevo est le fournisseur retenu le 07/09/2026 : Microsoft retire
+l'authentification basique pour SMTP AUTH fin décembre 2026, et la
+configuration SMTP de Supabase ne sert **que** aux courriels
+d'authentification.
+
+**Ce lot n'attend pas après Brevo.** Tant que ses deux secrets manquent, le
+guetteur détecte, écrit, et la supervision montre tout — elle écrit même
+« ALERTE NON ENVOYÉE (BREVO_API_KEY absent) » sur la carte du poste. C'est le
+même motif que `DEEPL_API_KEY` : rien ne casse, et l'absence se voit.
 
 ### Les deux refus de Windows, et leur réponse
 
@@ -537,6 +573,40 @@ protection sans rien résoudre.
 ## G. Écrans en gare
 
 Suivre `docs/kiosque.md` (Raspberry Pi, kiosque Chromium, échange standard).
+
+### Armer le guetteur (~10 min, APRÈS le déploiement des fonctions)
+
+Il prévient par courriel quand un écran cesse de donner signe de vie plus de
+dix minutes. Sans lui, personne ne regarde : le 19/09/2026, Saint-Gervais est
+resté trois heures sur « Informations momentanément indisponibles » et c'est
+un agent en gare qui l'a découvert.
+
+Dans l'ordre, sur le projet de TEST d'abord — `supabase/migrations/2026-09-alerte-ecrans.sql`
+porte le détail de chaque étape :
+
+1. **Mesurer** (section 0 du script, lecture seule) : `pg_cron`, `pg_net` et
+   `supabase_vault` sont-ils disponibles ? Combien de postes n'ont jamais
+   donné signe de vie ?
+2. **Jouer les sections 1 à 6** : la colonne, les deux tables, la clé de
+   réglage.
+3. **Poser l'adresse** qui recevra les alertes :
+   `update params set valeur = '["…@tramwaydumontblanc.fr"]'::jsonb where cle = 'alertes_destinataires';`
+   Tant que la liste est vide, tout fonctionne sauf l'envoi, et la supervision
+   l'écrit.
+4. **Déployer les fonctions** (§E) et poser les trois secrets.
+5. **Jouer les sections 7 et 8** : les extensions, le coffre (URL du projet +
+   `cle_guetteur`), puis la tâche planifiée.
+6. **Jouer la recette** (section 9) : reculer la dernière vue d'un poste de
+   vingt minutes, constater qu'un courriel part **une seule fois** sur trois
+   passages, puis que le rétablissement en envoie un second.
+7. **Ouvrir Supervision → Écrans** : le bandeau du haut doit dire
+   « Surveillance active — dernier passage il y a N min ». S'il dit « JAMAIS
+   lancée » ou « À L'ARRÊT », la chaîne est coupée quelque part et c'est
+   `cron.job_run_details` puis `net._http_response` qu'il faut lire.
+
+Un poste qu'on retire du service — le Nid d'Aigle l'hiver, un écran en
+atelier — se **décoche** sur sa carte (« Surveiller ce poste »). Sans cela il
+alerterait chaque jour, et une alerte quotidienne cesse d'être lue.
 
 ## H. Poste de développement et projet Supabase de test
 

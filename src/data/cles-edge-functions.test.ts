@@ -1,4 +1,4 @@
-// Lecture des clés d'API par les trois Edge Functions.
+// Lecture des clés d'API par les Edge Functions — toutes celles du dossier.
 //
 // Historique en deux temps. Le constat S9 demandait de sortir des clés
 // « legacy » sans casser l'invitation, la suppression et la traduction : les
@@ -22,7 +22,7 @@
 //   2. on COMPILE ce bloc (Vite retire les types par esbuild) et on l'EXÉCUTE
 //      avec un faux `Deno.env`. Ce n'est pas une copie du code déployé qui est
 //      éprouvée, c'est lui.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 // `vite` et non `esbuild` : esbuild n'est qu'une dépendance TRANSITIVE de Vite,
 // l'importer directement serait un besoin caché qu'une montée de version de
@@ -31,7 +31,21 @@ import { fileURLToPath } from 'node:url';
 import { transformWithEsbuild } from 'vite';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-const FONCTIONS = ['inviter-utilisateur', 'supprimer-utilisateur', 'traduire'] as const;
+/**
+ * Les fonctions sont LUES DANS LE DOSSIER, jamais énumérées à la main.
+ *
+ * Une liste écrite en dur aurait sauté `alerte-ecrans` le jour de sa création
+ * (19/09/2026) : le test serait resté vert en n'éprouvant rien de la nouvelle
+ * copie — un contrôle qui ne s'exécute pas ne se distingue pas d'un contrôle
+ * qui passe. Toute fonction ajoutée entre donc dans la comparaison d'office,
+ * et le dernier test de ce fichier refuse un dossier vide.
+ */
+const FONCTIONS = readdirSync(fileURLToPath(new URL('../../supabase/functions', import.meta.url)), {
+  withFileTypes: true,
+})
+  .filter((e) => e.isDirectory())
+  .map((e) => e.name)
+  .sort();
 
 // Repères cherchés sans leur début de ligne : la borne porte une apostrophe,
 // et une constante qui la contiendrait se lirait moins bien que ce décalage.
@@ -113,14 +127,23 @@ async function lecteurs(env: EnvSimule): Promise<Lecteurs> {
   return { ...api, journal, alertes };
 }
 
-describe('les trois copies du bloc sont identiques', () => {
-  it('le bloc est présent et délimité dans les trois fonctions', () => {
+describe('toutes les copies du bloc sont identiques', () => {
+  it('le dossier des fonctions n’est pas vide', () => {
+    // Sans cette ligne, un dossier introuvable ou renommé rendrait TOUS les
+    // tests de ce fichier verts en ne comparant rien du tout : les boucles
+    // ci-dessous tourneraient à vide. C'est le défaut que le reste du fichier
+    // existe précisément pour interdire.
+    expect(FONCTIONS.length).toBeGreaterThanOrEqual(4);
+    expect(FONCTIONS).toContain('alerte-ecrans');
+  });
+
+  it('le bloc est présent et délimité dans CHAQUE fonction du dossier', () => {
     for (const fonction of FONCTIONS) {
       expect(() => blocDe(fonction), fonction).not.toThrow();
     }
   });
 
-  it('caractère par caractère, les trois copies sont le même texte', () => {
+  it('caractère par caractère, toutes les copies sont le même texte', () => {
     // Aucun module partagé : le tableau de bord déploie une fonction en collant
     // UN fichier. La duplication est donc voulue — et vérifiée ici plutôt que
     // promise en commentaire. C'est cet invariant qui la rend acceptable.

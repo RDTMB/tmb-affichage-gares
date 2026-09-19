@@ -755,6 +755,25 @@ describe('Écrans pré-déclarés (correctifs Security Advisors)', () => {
     expect(apres?.gare).toBe('bellevue');
   });
 
+  it('la surveillance d’un poste se coupe et se remet, et le réglage TIENT', async () => {
+    // Un poste déclaré est un poste qu'on attend : la surveillance est donc
+    // active d'emblée. La décocher est ce qui évite au Nid d'Aigle d'alerter
+    // tout l'hiver — un réglage qui ne se conserverait pas la rallumerait au
+    // rechargement suivant, sans que personne ne comprenne pourquoi les
+    // courriels reviennent.
+    const provider = new MockProvider({ aujourdhui: '2026-08-25' });
+    await provider.declareEcran({ id: 'nid-daigle-ecran-1', gare: 'nid-daigle', type: 'ecran' });
+    expect((await provider.listEcrans())[0]?.surveille).not.toBe(false);
+
+    await provider.saveSurveillanceEcran('nid-daigle-ecran-1', false);
+    expect((await provider.listEcrans())[0]?.surveille).toBe(false);
+
+    await provider.saveSurveillanceEcran('nid-daigle-ecran-1', true);
+    expect((await provider.listEcrans())[0]?.surveille).toBe(true);
+
+    await expect(provider.saveSurveillanceEcran('inconnu-1', false)).rejects.toThrow(/inconnu/);
+  });
+
   it('une déclaration en double est refusée', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-08-25' });
     await provider.declareEcran({ id: 'motivon-ecran-1', gare: 'motivon', type: 'ecran' });

@@ -8,6 +8,7 @@ import type {
   Circulation,
   EcranInfo,
   EntreeJournal,
+  EtatGuetteur,
   FiltreJournal,
   GareId,
   Grille,
@@ -292,6 +293,23 @@ export interface DataProvider {
   saveVeilleEcran(id: string, debut: string | null, fin: string | null): Promise<void>;
   /** Retire un écran de la liste (poste remplacé, identifiant obsolète). */
   oublierEcran(id: string): Promise<void>;
+  /**
+   * Met un poste SOUS ou HORS surveillance du guetteur. Hors surveillance, son
+   * silence ne déclenche plus d'alerte : c'est le cas du Nid d'Aigle l'hiver,
+   * d'un poste déposé ou en atelier. Rien d'autre ne change — il reste
+   * déclaré, réglable, et visible en supervision.
+   */
+  saveSurveillanceEcran(id: string, surveille: boolean): Promise<void>;
+  /**
+   * Ce que le guetteur a fait, et quand : l'heure de son dernier passage et
+   * les épisodes de panne en cours. LECTURE SEULE — seule l'Edge Function
+   * `alerte-ecrans` écrit ces deux tables, avec la clé secrète.
+   *
+   * L'heure du dernier passage est ce qui distingue un guetteur qui DORT d'un
+   * guetteur qui n'a rien à dire : sans elle, une tâche planifiée inerte
+   * ressemble trait pour trait à une flotte en bonne santé.
+   */
+  getSurveillance(): Promise<EtatGuetteur>;
   /**
    * Écart mesuré entre l'horloge du POSTE et celle du serveur, en
    * millisecondes ; positif = le poste est en avance. `null` = aucune mesure
