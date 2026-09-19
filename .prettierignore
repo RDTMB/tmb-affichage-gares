@@ -3,10 +3,14 @@ node_modules/
 dist/
 package-lock.json
 
-# Documents de référence : ne pas reformater
+# Documents de référence : ne pas reformater. Prettier y casse ce qu'il croit
+# ranger — sur un code span coupé en deux lignes (le `viewBox` de logo-long.svg),
+# il DÉSINDENTE la continuation et sort la suite hors de la puce. Les fichiers
+# de `.claude/` sont le même document, coupé en cinq le 19/09/2026.
 docs/
 supabase/
 CLAUDE.md
+.claude/
 
 # Horaires OFFICIELS : ne jamais reformater ni modifier à la main
 public/grilles/
