@@ -945,6 +945,13 @@ describe('les renvois de la spécification pointent vers une section qui existe'
       'docs/01-spec-fonctionnelle.md',
       'docs/02-spec-technique.md',
       'CLAUDE.md',
+      // Les renvois §2.x de CLAUDE.md ont suivi les règles qui les portaient,
+      // le 19/09/2026 : sans ces quatre lignes, la garantie se serait vidée
+      // en silence, la boucle ne trouvant plus rien à vérifier.
+      '.claude/regles-horaires.md',
+      '.claude/regles-affichage.md',
+      '.claude/regles-courses-libres.md',
+      '.claude/charte-graphique.md',
       'src/core/types.ts',
       'src/core/roles.ts',
       'src/core/horaires.ts',
