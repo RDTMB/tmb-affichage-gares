@@ -39,6 +39,8 @@ départ réel), `.claude/regles-affichage.md` (pastilles à l'écran).
   du train. Unique dans la journée, comparaison sur la forme COURTE contre
   `jour.circulations` (et non `trainsDuJour()`, qui écarte les facultatifs non
   activés), insensible à la casse et aux espaces de bord.
+  Les CASES DE DESSERTE suivent « express » — cochée, Voza et Bellevue se
+  décochent ; décochée, elles se recochent — sans jamais être verrouillées.
   Le REFUS DE LARGEUR — et lui seul, un nom déjà porté ne se raccourcit pas —
   s'accompagne de formes courtes CLIQUABLES (`propositionsLibelle()`, pure,
   oracle injecté) : premier mot + initiale des suivants, initiales de tous les
@@ -48,8 +50,6 @@ départ réel), `.claude/regles-affichage.md` (pastilles à l'écran).
   raccourcissement d'office — l'agent accepte d'un clic —, et la liste vide
   (mot unique trop long) est une réponse : on n'affiche alors rien de plus que
   le refus.
-  Les CASES DE DESSERTE suivent « express » — cochée, Voza et Bellevue se
-  décochent ; décochée, elles se recochent — sans jamais être verrouillées.
 - **Accès d'une course** (`circulations.acces`, docs/01 §2.12) : `public` |
   `prive` | `mixte`, sur TOUTE circulation quelle que soit sa nature. AXE
   INDÉPENDANT de `nature` — « d'où vient ce train » et « à qui il est vendu »
