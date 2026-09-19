@@ -6,6 +6,8 @@
 //     produisent exactement la même chose : rien ;
 //   • la pastille par poste — quelqu'un sera-t-il prévenu ? « En panne » et
 //     « en panne, et le courriel n'est pas parti » ne sont pas le même état.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -173,5 +175,83 @@ describe('La pastille d’un poste', () => {
       envoyee_at: '2026-09-19T08:05:00+02:00',
     });
     expect(p.classe).toBe('hors');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Le câblage de la page
+//
+// `supervision.ts` construit son DOM au chargement et pèse 5 000 lignes :
+// Vitest ne l'importe pas. Deux décisions pures peuvent donc être justes
+// pendant que la page appelle autre chose — c'est exactement ce qu'une
+// campagne de mutation a montré le 19/09/2026 : « la page mesure la veille
+// sur une heure fausse » et « la case à cocher écrit toujours surveillé »
+// survivaient toutes les deux.
+//
+// On éprouve donc le CORPS de `rendreEcrans()`, isolé par comptage
+// d'accolades — jamais par une recherche dans le fichier entier, où une
+// occurrence ailleurs rendrait le test vert ou rouge pour la mauvaise raison.
+// ---------------------------------------------------------------------------
+
+function sourcePage(): string {
+  return readFileSync(
+    fileURLToPath(new URL('../../src/pages/supervision.ts', import.meta.url)),
+    'utf-8',
+  ).replace(/\r\n/g, '\n');
+}
+
+function corpsDe(signature: string): string {
+  const src = sourcePage();
+  const debut = src.indexOf(signature);
+  expect(debut, `${signature} est introuvable — a-t-elle été renommée ?`).toBeGreaterThan(-1);
+  const ouvre = src.indexOf('{', debut);
+  let profondeur = 0;
+  let i = ouvre;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') profondeur++;
+    else if (src[i] === '}') {
+      profondeur--;
+      if (profondeur === 0) break;
+    }
+  }
+  expect(profondeur, `accolades non appariées dans ${signature}`).toBe(0);
+  return src.slice(ouvre + 1, i);
+}
+
+describe('rendreEcrans : la page emploie bien les décisions', () => {
+  const corps = corpsDe('async function rendreEcrans(): Promise<void> {');
+
+  it('la veille se juge sur l’heure LOCALE de la page, pas sur Date.now()', () => {
+    // `heurePoste` suit `?simule=`, ce qui rend la fenêtre de veille
+    // essayable sans attendre 21 heures — et surtout, il rend des secondes
+    // depuis minuit à Paris, seule grandeur que `etatSurveillance` accepte.
+    expect(corps).toContain('const maintenantS = heurePoste.maintenantS();');
+    expect(corps).toContain('maintenantS,');
+  });
+
+  it('la règle du guetteur est appelée avec la veille EN VIGUEUR', () => {
+    expect(corps).toContain('etatSurveillance(');
+    expect(corps).toContain("params?.veille_nuit ?? { debut: '21:00', fin: '06:00' }");
+  });
+
+  it('la pastille reçoit l’épisode d’alerte du poste', () => {
+    // Sans lui, « alerte envoyée à 10:52 » et « ALERTE NON ENVOYÉE » ne
+    // s'afficheraient jamais : la carte dirait la panne et tairait si
+    // quelqu'un a été prévenu.
+    expect(corps).toContain('pastilleSurveillance(surveillance, surveille, alertes.get(e.id))');
+  });
+
+  it('le bandeau porte la classe que la décision a rendue', () => {
+    expect(corps).toContain('const bandeau = bandeauGuetteur(guetteur, maintenant);');
+    expect(corps).toContain('`note guetteur ${bandeau.classe}`');
+  });
+
+  it('la case à cocher écrit ce que l’agent a coché, pas une constante', () => {
+    const brancher = corpsDe('function initEcrans(): void {');
+    expect(brancher).toContain('const veut = champ.checked;');
+    expect(brancher).toContain('.saveSurveillanceEcran(poste, veut)');
+    // Sur échec, la carte est REPEINTE : la case doit revenir à ce que la
+    // base dit, non rester dans l'état que le clic lui a donné.
+    expect(brancher).toMatch(/erreurVersToast\(err\);\s*\n\s*void rendreEcrans\(\);/);
   });
 });

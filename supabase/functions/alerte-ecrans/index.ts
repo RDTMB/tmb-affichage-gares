@@ -262,8 +262,13 @@ function silenceLisible(ms: number): string {
  * heures locales et franchit minuit. Convertir par un décalage fixe serait
  * faux deux fois par an, pendant les semaines qui séparent les changements
  * d'heure français des autres. `Intl` porte la base de fuseaux et s'en charge.
- * `hourCycle: 'h23'` est indispensable : sans lui, minuit se formate « 24 »
- * dans certaines locales, et la veille commencerait 24 heures trop tard.
+ *
+ * `hourCycle: 'h23'` est EXPLICITE et non indispensable : `fr-FR` formate déjà
+ * minuit « 00 » par défaut, et le retirer ne change rien aujourd'hui — une
+ * mutation l'a vérifié le 19/09/2026. Il reste écrit parce que la réponse
+ * juste ne doit pas dépendre du réglage par défaut d'une locale : en « h24 »,
+ * minuit se formate « 24 », 24 × 3600 = 86 400 ne tombe dans AUCUNE fenêtre
+ * de veille, et la nuit entière alerterait.
  */
 function secondesParis(d: Date): number {
   const [h = 0, m = 0, s = 0] = new Intl.DateTimeFormat('fr-FR', {
@@ -428,30 +433,34 @@ Deno.serve(async (req) => {
     ((alertes ?? []) as LigneAlerte[]).map((l) => [l.ecran_id, l]),
   );
   const bilan = bilanSurveillance(postes, veilleGlobale, maintenant_ms, maintenant_s);
-  const enDefaut = new Map(bilan.enDefaut.map((p) => [p.id, p]));
 
   // ── Ce qu'on décide ───────────────────────────────────────────────────────
   const aAnnoncer: PosteEnDefaut[] = []; // première annonce, ou réessai d'envoi
   const aRetablir: LigneAlerte[] = []; // le signal est revenu
   const aOublier: string[] = []; // poste retiré du service pendant l'épisode
 
-  for (const poste of postes) {
-    const etat = etatSurveillance(poste, veilleGlobale, maintenant_ms, maintenant_s);
-    const ligne = connues.get(poste.id);
-    if (etat.defaut) {
-      const defaut = enDefaut.get(poste.id);
-      if (!defaut) continue;
-      // NE PAS RÉPÉTER. Une tâche qui tourne toutes les cinq minutes aurait
-      // envoyé trente-six courriels pendant la panne de samedi. La ligne en
-      // base EST la mémoire de l'épisode ; on n'y revient que si l'envoi a
-      // échoué, et trois fois au plus — un échec qui se rejoue indéfiniment
-      // est un journal qui déborde, pas une alerte.
-      if (!ligne || (!ligne.envoyee_at && ligne.envois_tentes < MAX_TENTATIVES)) {
-        aAnnoncer.push(defaut);
-      }
-      continue;
+  // ON PARCOURT LE BILAN, PAS LA TABLE. `bilanSurveillance` a trié les postes
+  // du plus ancien silence au plus récent, et c'est cet ordre que le courriel
+  // doit porter : on commence à chercher par le poste qui s'est tu le premier.
+  // Reparcourir `postes` rendait l'ordre de la base, c'est-à-dire l'ordre
+  // alphabétique des gares — le tri était fait et jeté.
+  for (const defaut of bilan.enDefaut) {
+    const ligne = connues.get(defaut.id);
+    // NE PAS RÉPÉTER. Une tâche qui tourne toutes les cinq minutes aurait
+    // envoyé trente-six courriels pendant la panne de samedi. La ligne en
+    // base EST la mémoire de l'épisode ; on n'y revient que si l'envoi a
+    // échoué, et trois fois au plus — un échec qui se rejoue indéfiniment est
+    // un journal qui déborde, pas une alerte.
+    if (!ligne || (!ligne.envoyee_at && ligne.envois_tentes < MAX_TENTATIVES)) {
+      aAnnoncer.push(defaut);
     }
-    if (!ligne) continue;
+  }
+
+  const muets = new Set(bilan.enDefaut.map((p) => p.id));
+  for (const poste of postes) {
+    const ligne = connues.get(poste.id);
+    if (!ligne || muets.has(poste.id)) continue;
+    const etat = etatSurveillance(poste, veilleGlobale, maintenant_ms, maintenant_s);
     if (etat.motif === 'vivant') aRetablir.push(ligne);
     // `hors-service` : on retire l'épisode sans rien annoncer, l'exploitant
     // vient de décocher le poste — ce n'est plus une panne, c'est une décision.

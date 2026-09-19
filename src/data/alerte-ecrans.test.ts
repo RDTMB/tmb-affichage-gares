@@ -26,6 +26,7 @@ import {
   silenceLisible,
   type PosteSurveille,
 } from '../core/surveillance-ecrans';
+import { enVeille } from '../core/horaires';
 import type { VeilleNuit } from '../core/types';
 
 const DEBUT = 'BLOC DE DÉCISION — copie vérifiée de src/core (début)';
@@ -531,5 +532,600 @@ describe('Migration et schema.sql : deux copies qui ne doivent pas diverger', ()
     for (const ligne of executables) {
       expect(ligne, ligne).not.toMatch(/^\s*(insert|update|delete|alter|create|drop)\b/i);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LE BANC : le guetteur ENTIER, exécuté
+//
+// Le premier tour de mutation n'avait tué que ce qu'il visait, parce que tout
+// le reste de la fonction n'était éprouvé que par des repères de texte. Un
+// second tour a montré ce que cela coûtait : « un envoi ÉCHOUÉ est marqué
+// réussi », « l'alerte se répète », « une réponse Brevo en erreur passe pour
+// un succès » survivaient toutes.
+//
+// Alors on exécute la fonction. Son unique import (`jsr:@supabase/…`) est
+// retiré, et `Deno`, `createClient`, `fetch` et `console` sont fournis à la
+// main : ce qui tourne ici est le fichier qui part chez Supabase, à la ligne
+// d'import près.
+// ---------------------------------------------------------------------------
+
+interface LigneAlerteBanc {
+  ecran_id: string;
+  depuis: string;
+  detectee_at: string;
+  envois_tentes: number;
+  envoyee_at: string | null;
+  dernier_echec: string | null;
+}
+
+interface Ecriture {
+  op: 'upsert' | 'delete' | 'update';
+  table: string;
+  lignes?: unknown;
+  ids?: unknown;
+  valeurs?: Record<string, unknown>;
+}
+
+interface Courriel {
+  sujet: string;
+  corps: string;
+  destinataires: string[];
+  cle: string | undefined;
+}
+
+interface Passage {
+  statut: number;
+  corps: Record<string, unknown> | string;
+  ecritures: Ecriture[];
+  courriels: Courriel[];
+  journal: string[];
+  /** Tables réellement LUES : sert à prouver qu'un refus ne lit rien. */
+  lues: string[];
+}
+
+type Poignee = (req: Request) => Promise<Response>;
+
+/** Compile la fonction une seule fois ; chaque passage réinstalle son décor. */
+async function chargeGuetteur(): Promise<(decor: Decor) => Promise<Passage>> {
+  const sansImport = FONCTION.replace(/^import \{[^}]*\} from 'jsr:[^']*';\n/m, '');
+  const { code } = await transformWithEsbuild(sansImport, 'guetteur.ts', {
+    loader: 'ts',
+    target: 'es2022',
+  });
+  return async (decor: Decor) => {
+    const ecritures: Ecriture[] = [];
+    const courriels: Courriel[] = [];
+    const journal: string[] = [];
+    const lues: string[] = [];
+
+    const contenu = (table: string): unknown[] =>
+      table === 'ecrans'
+        ? decor.ecrans
+        : table === 'params'
+          ? decor.params
+          : table === 'alertes_ecran'
+            ? decor.alertes
+            : [];
+
+    const repond = (data: unknown) => ({
+      then: (r: (v: { data: unknown; error: null }) => unknown) => r({ data, error: null }),
+    });
+    const createClient = () => ({
+      from(table: string) {
+        return {
+          select: () => {
+            lues.push(table);
+            return { ...repond(contenu(table)), in: () => repond(contenu(table)) };
+          },
+          upsert: (lignes: unknown) => {
+            ecritures.push({ op: 'upsert', table, lignes });
+            return repond(lignes);
+          },
+          delete: () => ({
+            in: (_col: string, ids: unknown) => {
+              ecritures.push({ op: 'delete', table, ids });
+              return repond([]);
+            },
+          }),
+          update: (valeurs: Record<string, unknown>) => ({
+            eq: () => {
+              ecritures.push({ op: 'update', table, valeurs });
+              return repond([]);
+            },
+          }),
+        };
+      },
+    });
+
+    let poignee: Poignee | null = null;
+    const Deno = {
+      env: { get: (n: string) => decor.env[n] },
+      serve: (h: Poignee) => {
+        poignee = h;
+      },
+    };
+    const faussefetch = async (
+      _url: string,
+      init: { headers: Record<string, string>; body: string },
+    ) => {
+      const envoi = JSON.parse(init.body) as {
+        subject: string;
+        textContent: string;
+        to: { email: string }[];
+      };
+      courriels.push({
+        sujet: envoi.subject,
+        corps: envoi.textContent,
+        destinataires: envoi.to.map((t) => t.email),
+        cle: init.headers['api-key'],
+      });
+      if (decor.brevoLeve) throw new Error('réseau coupé');
+      return { ok: (decor.brevoStatut ?? 201) < 300, status: decor.brevoStatut ?? 201 };
+    };
+    const fausseConsole = {
+      error: (...a: unknown[]) => void journal.push(a.map(String).join(' ')),
+      log: () => {},
+      warn: () => {},
+    };
+
+    new Function('Deno', 'createClient', 'fetch', 'console', code)(
+      Deno,
+      createClient,
+      faussefetch,
+      fausseConsole,
+    );
+    if (!poignee) throw new Error('la fonction n’a pas appelé Deno.serve');
+
+    const reponse = await (poignee as Poignee)(
+      new Request('https://exemple.test/alerte-ecrans', {
+        method: 'POST',
+        headers: decor.entetes ?? { 'x-cle-guetteur': decor.env.CLE_GUETTEUR ?? '' },
+      }),
+    );
+    const texte = await reponse.text();
+    let corps: Record<string, unknown> | string = texte;
+    try {
+      corps = JSON.parse(texte) as Record<string, unknown>;
+    } catch {
+      /* réponse en texte brut : c'est le cas des refus */
+    }
+    return { statut: reponse.status, corps, ecritures, courriels, journal, lues };
+  };
+}
+
+interface Decor {
+  ecrans: Record<string, unknown>[];
+  params: { cle: string; valeur: unknown }[];
+  alertes: LigneAlerteBanc[];
+  env: Record<string, string | undefined>;
+  entetes?: Record<string, string>;
+  brevoStatut?: number;
+  brevoLeve?: boolean;
+}
+
+const passe = await chargeGuetteur();
+
+const ENV_COMPLET = {
+  CLE_GUETTEUR: 'secret-du-guetteur',
+  SUPABASE_URL: 'https://exemple.supabase.co',
+  SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'sb_secret_abc' }),
+  SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: 'sb_publishable_xyz' }),
+  BREVO_API_KEY: 'brevo-abc',
+  BREVO_EXPEDITEUR: 'supervision@exemple.test',
+};
+
+/** Secondes locales à Paris MAINTENANT : le guetteur lit l'heure réelle. */
+function secondesParisMaintenant(): number {
+  const [h = 0, m = 0, s = 0] = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  })
+    .format(new Date())
+    .split(':')
+    .map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
+/** « HH:MM » à `decalage_s` de l'heure courante — pour cadrer une veille. */
+function heureDecalee(decalage_s: number): string {
+  const s = (((secondesParisMaintenant() + decalage_s) % 86_400) + 86_400) % 86_400;
+  return `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
+}
+
+function posteBanc(id: string, silence_ms: number | null, reste: Record<string, unknown> = {}) {
+  return {
+    id,
+    gare: id.split('-ecran-')[0],
+    derniere_vue: silence_ms === null ? null : new Date(Date.now() - silence_ms).toISOString(),
+    ...reste,
+  };
+}
+
+const VEILLE_JAMAIS = { cle: 'veille_nuit', valeur: { debut: '00:00', fin: '00:00' } };
+const DESTINATAIRE = { cle: 'alertes_destinataires', valeur: ['alerte@exemple.test'] };
+const MUET = 20 * 60_000;
+
+/** Les lignes écrites dans `alertes_ecran` par le passage. */
+function upsertAlertes(p: Passage): LigneAlerteBanc[] {
+  return p.ecritures
+    .filter((e) => e.op === 'upsert' && e.table === 'alertes_ecran')
+    .flatMap((e) => e.lignes as LigneAlerteBanc[]);
+}
+
+describe('Le guetteur, exécuté — le refus avant tout', () => {
+  it('sans CLE_GUETTEUR, il refuse et ne lit RIEN', async () => {
+    // Déployée sans vérification de jeton, cette fonction serait ouverte à
+    // tout l'internet si son secret manquait côté Supabase.
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: { ...ENV_COMPLET, CLE_GUETTEUR: undefined },
+      entetes: {},
+    });
+    expect(p.statut).toBe(500);
+    expect(p.lues).toEqual([]);
+    expect(p.courriels).toEqual([]);
+    expect(p.journal.join(' ')).toContain('CLE_GUETTEUR absent');
+  });
+
+  it('avec un mauvais secret, il refuse et ne lit RIEN', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      entetes: { 'x-cle-guetteur': 'pas-le-bon' },
+    });
+    expect(p.statut).toBe(401);
+    expect(p.lues).toEqual([]);
+    expect(p.ecritures).toEqual([]);
+  });
+});
+
+describe('Le guetteur, exécuté — un épisode de panne', () => {
+  it('première annonce : UN courriel, et la ligne porte l’heure de l’envoi', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET), posteBanc('le-fayet-ecran-1', 30_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(p.statut).toBe(200);
+    expect(p.corps).toMatchObject({ surveilles: 2, en_defaut: 1, annonces: 1, globale: false });
+    expect(p.courriels).toHaveLength(1);
+    expect(p.courriels[0]?.sujet).toBe('[TMB] Écran muet — Saint-Gervais');
+    expect(p.courriels[0]?.destinataires).toEqual(['alerte@exemple.test']);
+    expect(p.courriels[0]?.cle).toBe('brevo-abc');
+    expect(p.courriels[0]?.corps).toContain('saint-gervais-ecran-1');
+    expect(p.courriels[0]?.corps).toContain('muet depuis 20 min');
+    const [ligne] = upsertAlertes(p);
+    expect(ligne?.ecran_id).toBe('saint-gervais-ecran-1');
+    expect(ligne?.envois_tentes).toBe(1);
+    expect(ligne?.envoyee_at).toBeTruthy();
+    expect(ligne?.dernier_echec).toBeNull();
+    // La dernière vue du poste EST la clé de l'épisode : sans elle, deux
+    // pannes successives se confondraient.
+    expect(ligne?.depuis).toBe((p.ecritures[0]?.lignes as LigneAlerteBanc[])[0]?.depuis);
+    expect(Date.parse(ligne?.depuis ?? '')).toBeLessThan(Date.now() - MUET + 5_000);
+  });
+
+  it('les passages SUIVANTS ne renvoient rien : trente-six courriels, c’est ce qu’on répare', async () => {
+    const dejaDite: LigneAlerteBanc = {
+      ecran_id: 'saint-gervais-ecran-1',
+      depuis: new Date(Date.now() - MUET).toISOString(),
+      detectee_at: new Date(Date.now() - 300_000).toISOString(),
+      envois_tentes: 1,
+      envoyee_at: new Date(Date.now() - 300_000).toISOString(),
+      dernier_echec: null,
+    };
+    for (const essai of [1, 2, 3]) {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET + essai * 300_000)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [dejaDite],
+        env: ENV_COMPLET,
+      });
+      expect(p.courriels, `passage ${essai}`).toEqual([]);
+      expect(upsertAlertes(p), `passage ${essai}`).toEqual([]);
+    }
+  });
+
+  it('un envoi échoué est RÉESSAYÉ, mais trois fois au plus', async () => {
+    const jamaisDite = (tentes: number): LigneAlerteBanc => ({
+      ecran_id: 'saint-gervais-ecran-1',
+      depuis: new Date(Date.now() - MUET).toISOString(),
+      detectee_at: new Date(Date.now() - 600_000).toISOString(),
+      envois_tentes: tentes,
+      envoyee_at: null,
+      dernier_echec: 'Brevo 500',
+    });
+    for (const tentes of [1, 2]) {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [jamaisDite(tentes)],
+        env: ENV_COMPLET,
+      });
+      expect(p.courriels, `après ${tentes} tentatives`).toHaveLength(1);
+      expect(upsertAlertes(p)[0]?.envois_tentes).toBe(tentes + 1);
+    }
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [jamaisDite(3)],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels, 'la quatrième tentative n’a pas lieu').toEqual([]);
+  });
+
+  it('le rétablissement est annoncé, et l’épisode se referme', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'saint-gervais-ecran-1',
+          depuis: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          detectee_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          envois_tentes: 1,
+          envoyee_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          dernier_echec: null,
+        },
+      ],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels).toHaveLength(1);
+    expect(p.courriels[0]?.sujet).toContain('rétabli');
+    expect(p.ecritures.filter((e) => e.op === 'delete')[0]?.ids).toEqual(['saint-gervais-ecran-1']);
+  });
+
+  it('une panne que PERSONNE n’a connue n’a pas de rétablissement à annoncer', async () => {
+    // Clé Brevo absente au moment de la panne : l'épisode se referme en
+    // silence. Annoncer « c'est réparé » d'une panne jamais dite ferait
+    // chercher un message qu'on n'a pas reçu.
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'saint-gervais-ecran-1',
+          depuis: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          detectee_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          envois_tentes: 3,
+          envoyee_at: null,
+          dernier_echec: 'BREVO_API_KEY absent',
+        },
+      ],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels).toEqual([]);
+    expect(p.ecritures.filter((e) => e.op === 'delete')[0]?.ids).toEqual(['saint-gervais-ecran-1']);
+  });
+
+  it('un poste DÉCOCHÉ pendant sa panne voit son épisode retiré, sans un mot', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('nid-daigle-ecran-1', 5 * 86_400_000, { surveille: false })],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'nid-daigle-ecran-1',
+          depuis: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+          detectee_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+          envois_tentes: 1,
+          envoyee_at: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+          dernier_echec: null,
+        },
+      ],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels).toEqual([]);
+    expect(p.ecritures.filter((e) => e.op === 'delete')[0]?.ids).toEqual(['nid-daigle-ecran-1']);
+  });
+
+  it('un poste qui s’endort pendant sa panne GARDE sa ligne', async () => {
+    // Une heure de veille calée sur l'instant du test : déterministe, quelle
+    // que soit l'heure à laquelle la suite tourne.
+    const ligne: LigneAlerteBanc = {
+      ecran_id: 'saint-gervais-ecran-1',
+      depuis: new Date(Date.now() - MUET).toISOString(),
+      detectee_at: new Date(Date.now() - 600_000).toISOString(),
+      envois_tentes: 1,
+      envoyee_at: new Date(Date.now() - 600_000).toISOString(),
+      dernier_echec: null,
+    };
+    const p = await passe({
+      ecrans: [
+        posteBanc('saint-gervais-ecran-1', MUET, {
+          veille_debut: `${heureDecalee(-3600)}:00`,
+          veille_fin: `${heureDecalee(3600)}:00`,
+        }),
+      ],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [ligne],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels).toEqual([]);
+    expect(p.ecritures.filter((e) => e.op === 'delete')).toEqual([]);
+    expect(upsertAlertes(p)).toEqual([]);
+  });
+});
+
+describe('Le guetteur, exécuté — la panne générale', () => {
+  it('trois postes muets : UN courriel, et il nomme la cause probable', async () => {
+    const p = await passe({
+      ecrans: [
+        posteBanc('le-fayet-ecran-1', MUET),
+        posteBanc('saint-gervais-ecran-1', MUET + 60_000),
+        posteBanc('motivon-ecran-1', MUET + 120_000),
+      ],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels).toHaveLength(1);
+    expect(p.courriels[0]?.sujet).toBe('[TMB] PANNE GÉNÉRALE — 3 écrans muets');
+    expect(p.courriels[0]?.corps).toContain('la cause est probablement en amont');
+    // Le plus ancien silence d'abord : c'est par là qu'on commence à chercher.
+    const lignes = p.courriels[0]?.corps.split('\n').filter((l) => l.startsWith('•')) ?? [];
+    expect(lignes[0]).toContain('motivon');
+    expect(upsertAlertes(p)).toHaveLength(3);
+    expect(p.corps).toMatchObject({ globale: true });
+  });
+
+  it('un seul poste muet sur deux : le sujet NOMME la gare, sans parler d’amont', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET), posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(p.courriels[0]?.sujet).toBe('[TMB] Écran muet — Le Fayet');
+    expect(p.courriels[0]?.corps).not.toContain('en amont');
+  });
+});
+
+describe('Le guetteur, exécuté — quand l’envoi ne marche pas', () => {
+  it('sans BREVO_API_KEY : succès, trace, et l’échec CONSERVÉ en base', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: { ...ENV_COMPLET, BREVO_API_KEY: undefined },
+    });
+    expect(p.statut).toBe(200);
+    expect(p.courriels).toEqual([]);
+    expect(p.journal.join(' ')).toContain('BREVO_API_KEY absent');
+    const [ligne] = upsertAlertes(p);
+    expect(ligne?.envoyee_at).toBeNull();
+    expect(ligne?.dernier_echec).toBe('BREVO_API_KEY absent');
+    // La pastille de la supervision, elle, fonctionne : la ligne est écrite.
+    expect(ligne?.ecran_id).toBe('saint-gervais-ecran-1');
+  });
+
+  it('sans BREVO_EXPEDITEUR : le manquant est NOMMÉ, et ce n’est pas le même', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: { ...ENV_COMPLET, BREVO_EXPEDITEUR: undefined },
+    });
+    expect(upsertAlertes(p)[0]?.dernier_echec).toBe('BREVO_EXPEDITEUR absent');
+  });
+
+  it('Brevo REFUSE : ce n’est pas un succès', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      brevoStatut: 403,
+    });
+    expect(upsertAlertes(p)[0]?.envoyee_at).toBeNull();
+    expect(upsertAlertes(p)[0]?.dernier_echec).toBe('Brevo 403');
+  });
+
+  it('réseau coupé : la fonction répond quand même, sans détailler l’erreur', async () => {
+    // Le détail pourrait porter l'en-tête `api-key`.
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      brevoLeve: true,
+    });
+    expect(p.statut).toBe(200);
+    expect(upsertAlertes(p)[0]?.dernier_echec).toBe('réseau');
+    expect(p.journal.join(' ')).not.toContain('brevo-abc');
+  });
+
+  it('aucun destinataire, ou une adresse qui n’en est pas une : dit, et conservé', async () => {
+    for (const valeur of [[], ['pas-une-adresse'], 'pas-un-tableau', undefined]) {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [
+          VEILLE_JAMAIS,
+          ...(valeur === undefined ? [] : [{ cle: 'alertes_destinataires', valeur }]),
+        ],
+        alertes: [],
+        env: ENV_COMPLET,
+      });
+      expect(p.courriels, JSON.stringify(valeur)).toEqual([]);
+      expect(upsertAlertes(p)[0]?.dernier_echec, JSON.stringify(valeur)).toBe('aucun destinataire');
+    }
+  });
+});
+
+describe('Le guetteur, exécuté — la preuve qu’il est passé', () => {
+  it('il horodate son passage même quand tout va bien', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    const maj = p.ecritures.find((e) => e.table === 'surveillance_etat');
+    expect(maj?.valeurs?.derniere_execution).toBeTruthy();
+    expect(maj?.valeurs?.dernier_resultat).toBe('1 surveillés, aucun défaut');
+  });
+
+  it('et même quand il n’y a AUCUN écran déclaré', async () => {
+    const p = await passe({
+      ecrans: [],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(
+      p.ecritures.find((e) => e.table === 'surveillance_etat')?.valeurs?.derniere_execution,
+    ).toBeTruthy();
+  });
+
+  it('le résultat porte l’échec d’envoi : l’oubli du réglage se VOIT', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(
+      p.ecritures.find((e) => e.table === 'surveillance_etat')?.valeurs?.dernier_resultat,
+    ).toBe('1/1 en défaut (envoi : aucun destinataire)');
+  });
+});
+
+describe('Le guetteur, exécuté — le fuseau et le repli de veille', () => {
+  it('un réglage de veille ILLISIBLE replie sur la fenêtre de l’application, pas sur « jamais »', async () => {
+    // L'attendu se CALCULE avec la règle du cœur à l'heure réelle du test :
+    // le résultat est donc déterministe sans figer d'horloge. Un repli à
+    // « jamais de veille » ferait alerter toute la nuit dès qu'une ligne de
+    // `params` manque.
+    const enVeilleMaintenant = enVeille('21:00', '06:00', secondesParisMaintenant());
+    for (const valeur of ['n’importe quoi', null, { debut: 12 }]) {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [{ cle: 'veille_nuit', valeur }, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+      });
+      expect(p.corps, JSON.stringify(valeur)).toMatchObject({
+        en_defaut: enVeilleMaintenant ? 0 : 1,
+      });
+    }
+  });
+
+  it('la veille est jugée sur l’heure de PARIS, écrite en toutes lettres', () => {
+    // Ce contrôle est textuel, et il le reste faute de mieux : la fonction
+    // lit l'heure réelle, et ce poste de développement EST à l'heure de
+    // Paris — retirer `timeZone` n'y change donc rien, alors que sur le
+    // serveur (en UTC) la veille se décalerait d'une ou deux heures. Les
+    // contrôles de comportement de `secondesParis`, plus haut, tuent bien la
+    // mutation sur le coureur d'intégration ; ici, seul le texte le peut.
+    const bloc = blocDecision();
+    expect(bloc).toMatch(/function secondesParis[\s\S]*?timeZone: 'Europe\/Paris'/);
   });
 });
