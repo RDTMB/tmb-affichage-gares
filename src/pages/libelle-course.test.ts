@@ -81,6 +81,16 @@ const LARGEURS_MESUREES: Record<string, number> = {
   'GROUPE ALPINA': 7.981,
   'MARIAGE - MARTIN': 9.387,
   'CE MARTIN DUPONT': 9.855,
+  'CE (MARTIN) DUPONT': 10.455,
+  'CAF A. F.': 4.013,
+  'CAF a. f.': 3.65,
+  Caf: 1.558,
+  'SCOLAIRE !': 5.374,
+  // Avec son espace finale, « SCOLAIRE » NE tient plus : 4,998 em. C'est ce
+  // que proposerait une règle qui accepterait un seul mot.
+  'SCOLAIRE ': 4.998,
+  'CAF albertville fondation': 11.536,
+  'CAF ALBERTVILLE FONDATION': 14.665,
   'CLUB ALPIN FRANCAIS': 10.885,
   ANNIVERSAIREDUPRESIDENT: 14.225,
 };
@@ -362,6 +372,9 @@ describe('le refus de largeur propose des formes MESURÉES', () => {
     'Navette scolaire',
     'MARIAGE - MARTIN',
     'ANNIVERSAIREDUPRESIDENT',
+    'CAF ALBERTVILLE FONDATION',
+    'CAF albertville fondation',
+    'CE (MARTIN) DUPONT',
   ];
 
   it('L’INVARIANT : toute proposition rendue est acceptée par le champ', () => {
@@ -499,6 +512,73 @@ describe('le refus de largeur propose des formes MESURÉES', () => {
       saisi: 'SCOLAIRE',
       largeurEm: mesure('SCOLAIRE'),
       dejaPris: ['SCOLAIRE'],
+      mesure: oracle,
+    });
+    expect(controle.refus).toContain('déjà porté');
+    expect(controle.propositions).toEqual([]);
+  });
+
+  it('le REFUS DE LARGEUR porte bien la liste de la règle', () => {
+    // Mutation survivante du premier tour : remplacer la liste par `[]` dans
+    // `controleLibelle` laissait tous les tests verts — ils interrogeaient la
+    // règle en direct, aucun ne regardait ce que le REFUS emporte.
+    const controle = controleLibelle({
+      saisi: 'CE MARTIN DUPONT',
+      largeurEm: mesure('CE MARTIN DUPONT'),
+      dejaPris: [],
+      mesure: oracle,
+    });
+    expect(controle.refus).toBe(REFUS_TROP_LARGE);
+    expect(controle.propositions).toEqual(propositionsLibelle('CE MARTIN DUPONT', oracle));
+    expect(controle.propositions, 'le refus ne propose rien').not.toHaveLength(0);
+  });
+
+  it('la borne de la proposition est CELLE du champ, à l’em près', () => {
+    // Mutation survivante : passer `>` à `>=` ne changeait rien sur les
+    // largeurs relevées — aucune ne tombe pile sur la borne. Un oracle qui
+    // répond EXACTEMENT 4,9 em tranche : le champ accepte cette largeur, la
+    // proposition doit donc la retenir, sinon les deux bornes divergent.
+    const aLaBorne = (t: string): number | null =>
+      t === 'MARIAGE' ? LARGEUR_BADGE_MAX_EM : mesure(t);
+    expect(propositionsLibelle('MARIAGE MARTIN', aLaBorne)).toEqual(['MARIAGE']);
+    expect(
+      controleLibelle({ saisi: 'MARIAGE', largeurEm: LARGEUR_BADGE_MAX_EM, dejaPris: [] }).refus,
+    ).toBeNull();
+  });
+
+  it('UN SEUL MOT suivi d’un signe reste un seul mot', () => {
+    // Mutation survivante : abaisser la garde à « un mot » proposait
+    // « SCOLAIRE » pour « SCOLAIRE ! » — un nom que l’agent n’a pas écrit, et
+    // dont le point d’exclamation a disparu sans qu’on le lui dise.
+    expect(propositionsLibelle('SCOLAIRE !', oracle)).toEqual([]);
+  });
+
+  it('une PARENTHÈSE n’est pas une initiale', () => {
+    // Mutation survivante : prendre le premier caractère au lieu du premier
+    // caractère alphanumérique donnait « CE (. D. » — illisible en gare.
+    expect(propositionsLibelle('CE (MARTIN) DUPONT', oracle)).toEqual(['CE M. D.', 'CMD', 'CE']);
+  });
+
+  it('DOUBLON RÉEL : un sigle déjà écrit ne revient pas deux fois', () => {
+    // Mutation survivante : sans dédoublonnage, « CAF ALBERTVILLE FONDATION »
+    // proposait « CAF » DEUX FOIS — une fois comme suite des initiales, une
+    // fois comme premier mot. Deux boutons identiques côte à côte.
+    expect(propositionsLibelle('CAF ALBERTVILLE FONDATION', oracle)).toEqual(['CAF A. F.', 'CAF']);
+    // …et le dédoublonnage compare des formes COMPARABLES, pas des chaînes :
+    // « Caf » et « CAF » sont le même nom en gare, et deux boutons qui ne
+    // diffèrent que par la casse ne proposent pas deux choses.
+    expect(propositionsLibelle('CAF albertville fondation', oracle)).toEqual(['CAF a. f.', 'Caf']);
+  });
+
+  it('un libellé multi-mots DÉJÀ PORTÉ ne reçoit rien non plus', () => {
+    // Mutation survivante : brancher les propositions sur le refus d’unicité
+    // passait, faute d’un cas d’essai où la règle avait quelque chose à dire.
+    // Raccourcir « CE MARTIN DUPONT » ne règle pas une collision de noms.
+    expect(propositionsLibelle('CE MARTIN DUPONT', oracle)).not.toHaveLength(0);
+    const controle = controleLibelle({
+      saisi: 'CE MARTIN DUPONT',
+      largeurEm: 2,
+      dejaPris: ['CE MARTIN DUPONT'],
       mesure: oracle,
     });
     expect(controle.refus).toContain('déjà porté');
