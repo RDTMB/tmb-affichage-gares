@@ -559,6 +559,16 @@ describe('le refus de largeur propose des formes MESURÉES', () => {
     expect(propositionsLibelle('CE (MARTIN) DUPONT', oracle)).toEqual(['CE M. D.', 'CMD', 'CE']);
   });
 
+  it('la règle ne repropose JAMAIS ce qu’on lui a donné', () => {
+    // Mutation survivante des deux tours : retirer l’exclusion du saisi ne
+    // changeait rien tant que le saisi était trop large — la mesure l’écartait
+    // ensuite. Elle ne se voit que sur un libellé qui TIENT, cas que le champ
+    // n’atteint pas aujourd’hui mais que la règle, publique et pure, doit
+    // tenir : elle rend des formes PLUS COURTES, jamais l’original.
+    expect(mesure('CE M. D.')).toBeLessThan(LARGEUR_BADGE_MAX_EM);
+    expect(propositionsLibelle('CE M. D.', oracle)).toEqual(['CMD', 'CE']);
+  });
+
   it('DOUBLON RÉEL : un sigle déjà écrit ne revient pas deux fois', () => {
     // Mutation survivante : sans dédoublonnage, « CAF ALBERTVILLE FONDATION »
     // proposait « CAF » DEUX FOIS — une fois comme suite des initiales, une
