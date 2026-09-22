@@ -774,6 +774,24 @@ export const DELAI_PREMIERE_SYNCHRO_MS = 10_000;
  * voyageurs : on trace UNE fois par cause (un kiosque tourne 18 h par jour,
  * pas question d’inonder la console) et le cycle suivant réessaie.
  */
+/**
+ * Page ouverte sans `?ecran=` : elle n'est le poste de personne. Elle affiche
+ * les horaires normalement — l'affichage voyageurs ne dépend JAMAIS de la
+ * supervision — mais elle ne bat pas, et il faut que ça se VOIE. Le silence
+ * serait le pire des deux mondes : celui qui vient de poser un écran croirait
+ * à une panne de supervision là où il manque seulement l'identifiant dans
+ * l'URL du kiosque.
+ */
+export function avertitPosteAnonyme(): void {
+  console.warn(
+    '[TMB] aucun signal de vie : cette page est ouverte sans ?ecran=. ' +
+      'Elle n’apparaîtra pas en supervision, et c’est voulu — seul un poste ' +
+      'nommé dans son URL peut se signaler, sinon un onglet ouvert couvrirait ' +
+      'l’écran réel de la gare. Poste en service : ajouter ' +
+      '« &ecran=<gare>-<type>-1 » à l’URL (voir docs/kiosque.md §12).',
+  );
+}
+
 export function creeJournalHeartbeat(): (erreur: unknown) => void {
   const vues = new Set<string>();
   return (erreur) => {

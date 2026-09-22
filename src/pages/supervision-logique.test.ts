@@ -9,6 +9,7 @@ import { ONGLETS, ROLES, ROLES_QUI_ROUVRENT, plafondOnglets } from '../core/role
 import {
   datetimeLocalVersIso,
   identifiantEcran,
+  identifiantEcranDeclare,
   isoVersDatetimeLocal,
   messageDepuisFormulaire,
   traductionLocale,
@@ -159,17 +160,54 @@ describe('Traduction de repli : jamais de faux anglais', () => {
   });
 });
 
-describe('Identifiant d’écran : le type de page en fait partie', () => {
-  it('l’écran des départs et l’écran grille d’une même gare sont distincts', () => {
-    expect(identifiantEcran('ecran', 'le-fayet', null)).toBe('le-fayet-ecran-1');
-    expect(identifiantEcran('grille', 'le-fayet', null)).toBe('le-fayet-grille-1');
-    expect(identifiantEcran('ecran', 'le-fayet', null)).not.toBe(
-      identifiantEcran('grille', 'le-fayet', null),
-    );
+describe('Identifiant d’écran : il désigne un POSTE, pas une gare', () => {
+  // 19/09/2026 : l'écran de Saint-Gervais est resté muet trois heures et la
+  // supervision l'a dit sain pendant une heure. Un onglet ouvert ailleurs sur
+  // la même gare battait sous le MÊME identifiant que le Raspberry et couvrait
+  // son silence — le guetteur (PR #40) n'envoyait donc aucune alerte.
+  it('deux pages ouvertes sur la même gare sans ?ecran= ne battent pas sous le même identifiant', () => {
+    const raspberry = identifiantEcran(null);
+    const ongletDeBureau = identifiantEcran(null);
+    // Un identifiant ABSENT ne bat pas : seuls les identifiants réellement
+    // émis doivent être comparés entre eux.
+    const battants = [raspberry, ongletDeBureau].filter((id) => id !== null);
+    expect(new Set(battants).size).toBe(battants.length);
   });
 
-  it('le paramètre ?ecran= reste prioritaire', () => {
-    expect(identifiantEcran('ecran', 'le-fayet', 'fayet-quai-nord')).toBe('fayet-quai-nord');
+  it('sans ?ecran=, la page n’est le poste de personne', () => {
+    expect(identifiantEcran(null)).toBeNull();
+  });
+
+  it('le paramètre ?ecran= est la SEULE source de l’identifiant', () => {
+    expect(identifiantEcran('fayet-quai-nord')).toBe('fayet-quai-nord');
+    expect(identifiantEcran('le-fayet-ecran-1')).toBe('le-fayet-ecran-1');
+  });
+
+  it('un ?ecran= vide ou blanc vaut absence (URL mal recopiée)', () => {
+    expect(identifiantEcran('')).toBeNull();
+    expect(identifiantEcran('   ')).toBeNull();
+    expect(identifiantEcran('\t\n')).toBeNull();
+  });
+
+  it('les blancs de bordure sont retirés, jamais ceux du milieu', () => {
+    expect(identifiantEcran('  le-fayet-ecran-1  ')).toBe('le-fayet-ecran-1');
+    // Un nom déclaré avec un espace interne reste tel quel : c'est la ligne
+    // en base qui fait foi, pas une normalisation inventée ici.
+    expect(identifiantEcran(' hall principal ')).toBe('hall principal');
+  });
+
+  // La convention de NOM continue d'exister : c'est elle que la supervision
+  // propose au moment de déclarer un poste, et que le poseur recopie dans
+  // l'URL du kiosque. Les deux doivent tomber sur la même chaîne.
+  it('un poste déclaré est reconnu quand son URL porte la chaîne déclarée', () => {
+    expect(identifiantEcran(identifiantEcranDeclare('ecran', 'motivon'))).toBe('motivon-ecran-1');
+    expect(identifiantEcran(identifiantEcranDeclare('grille', 'bellevue', 2))).toBe(
+      'bellevue-grille-2',
+    );
+    // L'écran des départs et l'écran grille d'une même gare restent distincts
+    expect(identifiantEcranDeclare('ecran', 'le-fayet')).not.toBe(
+      identifiantEcranDeclare('grille', 'le-fayet'),
+    );
   });
 });
 

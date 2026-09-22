@@ -1,6 +1,7 @@
 // Écran de gare — étapes 2 (rendu maquette), 4 (résilience) et 7 (médias).
-// Paramètres d'URL : gare (obligatoire), ecran (identifiant physique, défaut
-// <gare>-1), simule=HH:MM, zoom, cache=N (minutes, tests du mode dégradé) et
+// Paramètres d'URL : gare (obligatoire), ecran (identifiant du POSTE, SANS
+// défaut : sans lui la page ne se signale pas), simule=HH:MM, zoom, cache=N
+// (minutes, tests du mode dégradé) et
 // demo=1 (démonstration EXPLICITE : horaires fictifs, bandeau permanent) et,
 // en mode démo, terminus=N (bascule « à partir du TRAIN N »).
 import '@fontsource/amaranth/400.css';
@@ -63,6 +64,7 @@ import {
   LIBELLE_MENTION,
   mentionCourse,
   styleRame,
+  avertitPosteAnonyme,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -139,11 +141,12 @@ if (bandeau) {
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
 
-// Identifiant physique de l'écran (heartbeat) : le type de page en fait
-// partie, sinon l'écran des départs et l'écran grille d'une même gare
-// s'écrasent dans « État des écrans ».
-const idEcran = identifiantEcran('ecran', gareParam, url.get('ecran'));
-document.body.dataset.ecran = idEcran;
+// Identifiant du POSTE (signal de vie) : il vient UNIQUEMENT de `?ecran=`,
+// jamais de la gare — sans quoi n'importe quel onglet ouvert sur la même gare
+// battrait à la place du Raspberry et couvrirait son silence (19/09/2026).
+// Sans identifiant, la page s'affiche normalement mais ne bat pas.
+const idEcran = identifiantEcran(url.get('ecran'));
+if (idEcran) document.body.dataset.ecran = idEcran;
 
 // Bandeau de titre : logo HORIZONTAL. Les écrans CENTRÉS (neutre, fin de
 // service, tronçon fermé) gardent le logo rond blanc — il n'existe pas de
@@ -885,11 +888,17 @@ async function demarre(): Promise<void> {
   window.setInterval(() => sync?.resynchronise(), 30_000);
   window.addEventListener('online', () => sync?.resynchronise());
 
-  // Heartbeat 30 s (id écran, gare, version) — la commande « recharger »
-  // est honorée par le provider. JAMAIS en mode aperçu (?apercu=1) : un
-  // onglet de supervision battrait sous l'identifiant du Raspberry Pi,
-  // fausserait sa dernière vue et consommerait son ordre de rechargement.
-  if (url.get('apercu') !== '1') {
+  // Signal de vie — la commande « recharger » est honorée par le provider.
+  // JAMAIS en mode aperçu (?apercu=1) : un onglet de supervision battrait sous
+  // l'identifiant du Raspberry Pi, fausserait sa dernière vue et consommerait
+  // son ordre de rechargement. JAMAIS non plus sans `?ecran=` : une page qui
+  // ne sait pas quel poste elle est ne doit rien affirmer sur aucun poste.
+  // L'aperçu, lui, ne s'en plaint pas : il SAIT qu'il n'est pas un poste.
+  if (url.get('apercu') === '1') {
+    // rien : ni signal de vie, ni avertissement
+  } else if (idEcran === null) {
+    avertitPosteAnonyme();
+  } else {
     const journaliseHeartbeat = creeJournalHeartbeat();
     const bat = (): void => {
       void provider

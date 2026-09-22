@@ -131,7 +131,23 @@ describe('`?apercu=1` garde son rôle, qui n’a jamais été celui-là', () => 
     // fausserait sa dernière vue et consommerait son ordre de rechargement.
     // C'est utile, mais ça ne protégeait pas de l'écriture — d'où §C.
     for (const chemin of SURFACES) {
-      expect(source(chemin), chemin).toContain("url.get('apercu') !== '1'");
+      expect(source(chemin), chemin).toContain("url.get('apercu') === '1'");
+    }
+  });
+
+  // 19/09/2026 : `?apercu=1` ne protégeait que l'onglet de supervision. Un
+  // onglet ORDINAIRE ouvert sur la même gare battait sous l'identifiant du
+  // Raspberry et couvrait son silence. Le second verrou est l'absence
+  // d'identifiant : sans `?ecran=`, la page ne bat pas non plus.
+  it('une page sans ?ecran= ne bat pas davantage', () => {
+    for (const chemin of SURFACES) {
+      const src = source(chemin);
+      expect(src, chemin).toContain("identifiantEcran(url.get('ecran'))");
+      expect(src, chemin).toContain('idEcran === null');
+      // Le signal de vie n'est atteint qu'après ces deux refus.
+      const refus = src.indexOf('idEcran === null');
+      const bat = src.indexOf('.heartbeat({');
+      expect(bat, chemin).toBeGreaterThan(refus);
     }
   });
 });

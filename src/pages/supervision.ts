@@ -4153,7 +4153,7 @@ function initEcrans(): void {
       .then(() => rendreEcrans())
       .then(() => {
         bump(`écran déclaré : ${id}`);
-        toast(`Écran ${id} déclaré — il apparaîtra dès son premier signal de vie`);
+        toast(`Écran ${id} déclaré — lancer le poste avec « &ecran=${id} » dans son URL`);
       })
       .catch(erreurVersToast);
   });
