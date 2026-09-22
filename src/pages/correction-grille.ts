@@ -31,6 +31,12 @@ import { dateCourte } from './horaires-onglet';
 
 export type ModeCorrection = 'correction' | 'duplication';
 
+/** Ce que l'agent a tapé dans une cellule, et pourquoi ça n'a pas été retenu. */
+export interface SaisieRefusee {
+  saisie: string;
+  message: string;
+}
+
 /** Carte de correction ouverte : l'originale, la saisie, et ce qui l'accompagne. */
 export interface CorrectionEnCours {
   mode: ModeCorrection;
@@ -42,8 +48,12 @@ export interface CorrectionEnCours {
   libelle: string;
   periodes: Periode[];
   commentaire: string;
-  /** Message de la dernière saisie refusée, sous la cellule concernée (« montee|5|motivon|a »). */
-  erreursCellules: Map<string, string>;
+  /**
+   * Saisies REFUSÉES, par cellule (« montee|5|motivon|a »). La cellule garde
+   * ce que l'agent a tapé — l'effacer sous ses doigts pour revenir à l'heure
+   * d'avant lui cacherait sa faute de frappe.
+   */
+  erreursCellules: Map<string, SaisieRefusee>;
   avertissementsAcquittes: boolean;
   /** Journées déjà préparées sur les dates concernées ; cochées = à réinitialiser. */
   joursExistants: string[];

@@ -107,7 +107,10 @@ describe('raisonsBlocageCorrection', () => {
     );
     if (!r.ok) throw new Error(r.erreur);
     c.grille = r.grille;
-    c.erreursCellules.set(cleCellule('montee', 7, 'bellevue', 'd'), 'midi n’est pas une heure');
+    c.erreursCellules.set(cleCellule('montee', 7, 'bellevue', 'd'), {
+      saisie: 'midi',
+      message: '« midi » n’est pas une heure',
+    });
     expect(raisonsBlocageCorrection(c)).toEqual([
       '1 saisie(s) refusée(s) : corrigez les cellules signalées en rouge.',
     ]);
