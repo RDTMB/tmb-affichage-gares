@@ -8,6 +8,7 @@ import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-servi
 import { ecarts } from './ecarts-grille';
 import {
   ajouteRotation,
+  dupliqueGrille,
   garesDansLeSens,
   numeroMonteeSuivant,
   poseHeure,
@@ -279,5 +280,63 @@ describe('versionCorrigee', () => {
     expect(versionCorrigee('2026-ete-petit-service-v2', ['2026-ete-petit-service-v2'])).toBe(
       '2026-ete-petit-service-v3',
     );
+  });
+});
+
+describe('dupliqueGrille', () => {
+  const IDENTITE = {
+    version: '2026-2027-hiver',
+    libelle: 'Hiver 2026-2027',
+    periodes: [{ du: '2026-12-19', au: '2027-03-14' }],
+  };
+
+  it('reprend le contenu, pose la nouvelle identité, et ne touche pas l’originale', () => {
+    const d = dupliqueGrille(PETIT, IDENTITE);
+    expect(d.version).toBe('2026-2027-hiver');
+    expect(d.libelle).toBe('Hiver 2026-2027');
+    expect(d.periodes).toEqual([{ du: '2026-12-19', au: '2027-03-14' }]);
+    // Même contenu, au mot près : aucun écart de trains, d'heures ni d'indicateurs.
+    expect(ecarts(PETIT, d).aucun).toBe(true);
+    expect(d.gares).toEqual(PETIT.gares);
+    expect(d.arret_intermediaire_s).toBe(PETIT.arret_intermediaire_s);
+    expect(validationEdition(d).erreurs).toEqual([]);
+    // L'originale garde son identité.
+    expect(PETIT.version).toBe('2026-ete-petit-service');
+  });
+
+  it('n’hérite d’aucune métadonnée d’enregistrement de la grille copiée', () => {
+    const source: Grille = {
+      ...structuredClone(PETIT),
+      actif: false,
+      cree_le: '2026-06-05T08:00:00Z',
+      cree_par: 'exploitation@tramwaydumontblanc.fr',
+      commentaire: 'chargée après la réunion du 4 juin',
+      source: '2026-ete-exploit-v1.xlsx',
+    };
+    const d = dupliqueGrille(source, IDENTITE);
+    expect('actif' in d).toBe(false);
+    expect('cree_le' in d).toBe(false);
+    expect('cree_par' in d).toBe(false);
+    expect('commentaire' in d).toBe(false);
+    expect('source' in d).toBe(false);
+    // …sauf la provenance quand on la donne explicitement.
+    expect(
+      dupliqueGrille(source, { ...IDENTITE, source: 'copie de « Petit service »' }).source,
+    ).toBe('copie de « Petit service »');
+  });
+
+  it('copie en profondeur : corriger le duplicata ne touche pas l’original', () => {
+    const d = dupliqueGrille(PETIT, IDENTITE);
+    const r = poseHeure(d, { sens: 'montee', numero: 1, gare: 'motivon', champ: 'a' }, '07:30');
+    if (!r.ok) throw new Error(r.erreur);
+    d.montees[0]?.passages.push({ gare: 'motivon', a: '00:00:00' });
+    expect(PETIT.montees[0]?.passages.some((p) => p.a === '00:00:00')).toBe(false);
+    expect(ecarts(PETIT, dupliqueGrille(PETIT, IDENTITE)).aucun).toBe(true);
+  });
+
+  it('chemin de la grille d’hiver : dupliquer puis retirer le Nid d’Aigle', () => {
+    const hiver = retireNidDaigle(dupliqueGrille(PETIT, IDENTITE));
+    expect(seTermineABellevue(hiver)).toBe(true);
+    expect(hiver.version).toBe('2026-2027-hiver');
   });
 });
