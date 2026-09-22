@@ -11,6 +11,17 @@
 // jamais « version », « payload » ni jargon technique. L'identifiant interne
 // n'apparaît qu'en petit, sous le nom « référence », pour le journal.
 import { decritEcarts, libellePeriodes } from '../core/ecarts-grille';
+import type { EcartsGrilles, Indicateur } from '../core/ecarts-grille';
+import {
+  ajouteRotation,
+  numeroMonteeSuivant,
+  poseHeure,
+  poseIndicateur,
+  retireNidDaigle,
+  seTermineABellevue,
+  supprimeRotation,
+  validationEdition,
+} from '../core/edition-grille';
 import {
   datesDesPeriodes,
   effetChangementPeriodes,
@@ -19,7 +30,7 @@ import {
 import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
 import { nomGare, parseClasseur, type Probleme } from '../core/import-grille';
 import { ORDRE_GARES } from '../core/types';
-import type { Grille, Role, Sens, TrainGrille } from '../core/types';
+import type { GareId, Grille, Role, Sens, TrainGrille } from '../core/types';
 import { aLeDroit } from '../core/roles';
 import type { DataProvider } from '../data/provider';
 import { echapper } from './affichage-commun';
@@ -44,6 +55,20 @@ import {
 } from './horaires-onglet';
 import { avertissementsGrillePrecedente } from '../core/import-grille';
 import { grillePrecedentePour } from './horaires-onglet';
+import {
+  cleCellule,
+  ecartsCorrection,
+  effetNouvelleGrille,
+  grilleAEnregistrerCorrection,
+  nouvelleCorrection,
+  nouvelleDuplication,
+  periodesRetenues,
+  raisonsBlocageCorrection,
+  resumeCorrection,
+  type CorrectionEnCours,
+  type ModeCorrection,
+  type SaisieRefusee,
+} from './correction-grille';
 
 export interface DependancesHoraires {
   provider: DataProvider;
@@ -69,11 +94,24 @@ interface ImportEnCours {
 interface OptionsTableau {
   /** Cases à cocher facultatif / vélos modifiables (aperçu d'import). */
   editable: boolean;
+  /**
+   * CORRECTION : les heures deviennent saisissables dans le tableau lui-même,
+   * l'express s'y coche, et chaque rotation porte son bouton de suppression.
+   * Le tableau reste celui du document d'exploitation — c'est le point : un
+   * agent corrige la case qu'il lit, à l'endroit où il la lit.
+   */
+  correction?: boolean;
   /** Clés « sens|numéro|gare|a/d » des heures qui changent par rapport à la grille en service. */
   modifiees?: Set<string>;
   /** Clés « sens|numéro » des trains absents de la grille en service. */
   ajoutes?: Set<string>;
   feuille?: number;
+  /** Messages du validateur rattachés à une cellule, par « numéro|gare ». */
+  erreursGare?: Map<string, string[]>;
+  /** Messages du validateur rattachés à un train entier, par numéro. */
+  erreursTrain?: Map<number, string[]>;
+  /** Saisies REFUSÉES (texte qui n'est pas une heure), par « sens|numéro|gare|a/d ». */
+  refus?: Map<string, SaisieRefusee>;
 }
 
 const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -86,6 +124,8 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   let importEnCours: ImportEnCours | null = null;
   /** Fiche « Modifier » ouverte : la grille telle qu'enregistrée, et la saisie. */
   let editionEnCours: { grille: Grille; edition: EditionGrille } | null = null;
+  /** Carte « Corriger » ou « Dupliquer » ouverte : le contenu en cours de saisie. */
+  let correctionEnCours: CorrectionEnCours | null = null;
 
   // Les grilles sont PARTAGÉES : le prestataire informatique les charge, mais
   // l'exploitation aussi — un horaire corrigé un matin de service ne doit pas
@@ -117,10 +157,20 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
           ? '<span class="etat-grille en-service">En service aujourd’hui</span>'
           : '<span class="etat-grille active">Active</span>';
     const v = echapper(g.version);
-    const actions = [`<button class="leger" data-action="voir" data-version="${v}">Voir</button>`];
+    // Télécharger n'est pas une écriture : la caisse aussi imprime le document.
+    const actions = [
+      `<button class="leger" data-action="voir" data-version="${v}">Voir</button>`,
+      `<button class="leger" data-action="telecharger" data-version="${v}" title="Télécharger le document d’exploitation (.xlsx) de cette grille">Télécharger</button>`,
+    ];
     if (peutEcrire()) {
       actions.push(
         `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
+      );
+      actions.push(
+        `<button class="leger" data-action="corriger" data-version="${v}" title="Corriger les heures, les trains, les indicateurs — crée une nouvelle version">Corriger</button>`,
+      );
+      actions.push(
+        `<button class="leger" data-action="dupliquer" data-version="${v}" title="Créer une nouvelle grille à partir de celle-ci">Dupliquer</button>`,
       );
       actions.push(
         g.actif === false
@@ -148,7 +198,11 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     carte.style.display = '';
     carte.innerHTML = `<h2>${echapper(g.libelle)}
         <span class="sous">${echapper(libellePeriodes(g.periodes))} · référence ${echapper(g.version)}</span>
-        <div class="actions"><button class="leger" id="btn-voir-fermer">Fermer</button></div>
+        <div class="actions">${
+          peutEcrire()
+            ? `<button class="principal leger" id="btn-voir-corriger" data-version="${echapper(g.version)}">Corriger cette grille</button>`
+            : ''
+        }<button class="leger" id="btn-voir-fermer">Fermer</button></div>
       </h2>
       <div class="corps-voir">${tableauxGrilleHtml(g, { editable: false })}</div>
       <div class="note">${g.source ? `Provenance : ${echapper(g.source)}. ` : ''}${
@@ -158,6 +212,13 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       carte.style.display = 'none';
       carte.innerHTML = '';
     });
+    if (peutEcrire()) {
+      $('btn-voir-corriger').addEventListener('click', () => {
+        carte.style.display = 'none';
+        carte.innerHTML = '';
+        void ouvreCorrection(version, 'correction').catch(erreurVersToast);
+      });
+    }
     carte.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -314,7 +375,352 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     }
   }
 
+  // ----------------------------------------------------------- télécharger
+
+  /**
+   * Le document d'exploitation de la grille, au format .xlsx — celui qu'on
+   * imprime, qu'on diffuse, et qu'on peut recharger tel quel.
+   *
+   * L'écriture (`fflate` + le format Excel) est chargée À LA DEMANDE, ici et
+   * nulle part ailleurs : ni les écrans de gare ni le corps de la supervision
+   * n'en portent un octet.
+   */
+  async function telechargeGrille(version: string): Promise<void> {
+    const g = grilles.find((x) => x.version === version);
+    if (!g) return;
+    toast('Préparation du document…');
+    try {
+      const [{ cellulesGrille, problemesExport }, { ecritClasseur }] = await Promise.all([
+        import('../core/export-grille'),
+        import('../core/ecriture-xlsx'),
+      ]);
+      const problemes = problemesExport(g);
+      if (
+        problemes.length > 0 &&
+        !window.confirm(
+          [
+            'Ce document ne pourra pas être rechargé tel quel :',
+            '',
+            ...problemes.map((p) => `• ${p}`),
+            '',
+            'Le télécharger quand même (pour l’impression) ?',
+          ].join('\n'),
+        )
+      ) {
+        return;
+      }
+      const octets = ecritClasseur([
+        cellulesGrille(g, {
+          nomFeuille: g.libelle,
+          miseAJour: dateCourte((g.cree_le ?? '').slice(0, 10)),
+        }),
+      ]);
+      const blob = new Blob([octets as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `horaires-${g.version}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('✓ Document téléchargé — pensez à rediffuser la version imprimée');
+    } catch (erreur) {
+      erreurVersToast(erreur);
+    }
+  }
+
+  // -------------------------------------------------------------- corriger
+
+  /**
+   * FORME RETENUE : le tableau du document, éditable en place, dans une carte
+   * pleine largeur de l'onglet — ni fenêtre modale, ni panneau latéral.
+   * L'agent qui corrige une heure fausse un matin de perturbation a le
+   * document sous les yeux ; il clique la case qu'il lit et tape l'heure.
+   * Une fenêtre modale l'aurait coupé du reste de la supervision (la journée
+   * en cours, les circulations) alors que c'est précisément ce qu'il consulte
+   * en même temps, et un panneau latéral aurait rétréci un tableau qui fait
+   * déjà dix colonnes.
+   */
+  async function ouvreCorrection(version: string, mode: ModeCorrection): Promise<void> {
+    const g = grilles.find((x) => x.version === version);
+    if (!g || !peutEcrire()) return;
+    correctionEnCours = mode === 'correction' ? nouvelleCorrection(g) : nouvelleDuplication(g);
+    await chargeJoursCorrection();
+    rendreCorrection();
+    $('carte-corriger').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /**
+   * Journées déjà préparées sur les dates concernées. Une correction porte
+   * sur les dates de la grille d'origine ; une duplication sur celles qu'on
+   * vient de saisir. Dans les deux cas elles sont DÉCOCHÉES : une grille
+   * décrit le service théorique, et modifier le théorique ne réécrit pas ce
+   * qu'un agent a retouché à la main pour un jour précis.
+   */
+  async function chargeJoursCorrection(): Promise<void> {
+    const c = correctionEnCours;
+    if (!c) return;
+    const dates = datesDesPeriodes(periodesRetenues(c));
+    if (dates.length === 0) {
+      c.joursExistants = [];
+      c.joursAReinitialiser.clear();
+      return;
+    }
+    const dans = new Set(dates);
+    try {
+      c.joursExistants = (
+        await provider.listJoursGeneres(dates[0] ?? '', dates[dates.length - 1] ?? '')
+      ).filter((d) => dans.has(d));
+    } catch (erreur) {
+      erreurVersToast(erreur);
+      c.joursExistants = [];
+    }
+    for (const d of [...c.joursAReinitialiser]) {
+      if (!c.joursExistants.includes(d)) c.joursAReinitialiser.delete(d);
+    }
+  }
+
+  /** Erreurs du validateur rangées par train et par cellule, pour les poser sous elles. */
+  function erreursParCible(problemes: Probleme[]): {
+    parGare: Map<string, string[]>;
+    parTrain: Map<number, string[]>;
+    generales: string[];
+  } {
+    const parGare = new Map<string, string[]>();
+    const parTrain = new Map<number, string[]>();
+    const generales: string[] = [];
+    for (const p of problemes) {
+      if (p.train !== undefined && p.gare !== undefined) {
+        const cle = `${p.train}|${p.gare}`;
+        parGare.set(cle, [...(parGare.get(cle) ?? []), p.message]);
+      } else if (p.train !== undefined) {
+        parTrain.set(p.train, [...(parTrain.get(p.train) ?? []), p.message]);
+      } else {
+        generales.push(p.message);
+      }
+    }
+    return { parGare, parTrain, generales };
+  }
+
+  function rendreCorrection(): void {
+    const carte = $('carte-corriger');
+    const c = correctionEnCours;
+    if (!c) {
+      carte.style.display = 'none';
+      carte.innerHTML = '';
+      return;
+    }
+    carte.style.display = '';
+    const duplication = c.mode === 'duplication';
+    const v = validationEdition(c.grille);
+    const { parGare, parTrain, generales } = erreursParCible(v.erreurs);
+    const e = ecartsCorrection(c);
+    const modifiees = new Set(e.heures.map((h) => `${h.sens}|${h.numero}|${h.gare}|${h.champ}`));
+    const ajoutes = new Set(e.trainsAjoutes.map((t) => `${t.sens}|${t.numero}`));
+    const options: OptionsTableau = {
+      editable: false,
+      correction: true,
+      modifiees,
+      ajoutes,
+      erreursGare: parGare,
+      erreursTrain: parTrain,
+      refus: c.erreursCellules,
+    };
+
+    const identite = duplication
+      ? `<div class="champs-import">
+          <label>Nom de la nouvelle grille
+            <input type="text" data-role="libelle" value="${echapper(c.libelle)}" maxlength="80" placeholder="Hiver 2026-2027"></label>
+          <div class="periodes-import"><span class="intitule">Dates de validité (du → au, plusieurs périodes possibles)</span>
+            ${c.periodes
+              .map(
+                (p, k) => `<span class="periode">
+                  <input type="date" data-role="du" data-periode="${k}" value="${echapper(p.du)}"> →
+                  <input type="date" data-role="au" data-periode="${k}" value="${echapper(p.au)}">
+                  <button class="leger" data-role="suppr-periode" data-periode="${k}" title="Retirer cette période">✕</button>
+                </span>`,
+              )
+              .join('')}
+            <span><button class="leger" data-role="ajout-periode">+ Ajouter une période</button></span>
+          </div>
+          <label>Commentaire
+            <input type="text" data-role="commentaire" value="${echapper(c.commentaire)}" maxlength="200" placeholder="pourquoi cette grille (facultatif)"></label>
+        </div>`
+      : `<div class="champs-import">
+          <label>Commentaire
+            <input type="text" data-role="commentaire" value="${echapper(c.commentaire)}" maxlength="200" placeholder="pourquoi cette correction (facultatif)"></label>
+        </div>`;
+
+    const avertissements =
+      v.avertissements.length > 0
+        ? `<div class="problemes avertissements"><b>⚠ ${v.avertissements.length} avertissement(s) — à lire avant d’enregistrer :</b>
+          <ul>${v.avertissements.map((p) => `<li>${echapper(p.message)}</li>`).join('')}</ul>
+          <label><input type="checkbox" data-role="acquitter" ${
+            c.avertissementsAcquittes ? 'checked' : ''
+          }> J’ai lu ces avertissements</label></div>`
+        : '';
+    const erreursGenerales =
+      generales.length > 0
+        ? `<div class="problemes erreurs"><b>✖ ${generales.length} erreur(s) à corriger :</b>
+          <ul>${generales.map((m) => `<li>${echapper(m)}</li>`).join('')}</ul></div>`
+        : '';
+
+    const jours =
+      c.joursExistants.length === 0
+        ? 'Aucune journée n’a encore été préparée sur ces dates.'
+        : `<b>${c.joursExistants.length} journée(s) déjà préparée(s)</b> sur ces dates, peut-être retouchée(s) à la main. Cochez celles à <b>réinitialiser depuis la grille corrigée</b> ; les autres sont conservées telles quelles.
+          <div class="jours">${c.joursExistants
+            .map(
+              (d) =>
+                `<label><input type="checkbox" data-role="jour" data-date="${d}" ${
+                  c.joursAReinitialiser.has(d) ? 'checked' : ''
+                }> ${dateLongue(d)}</label>`,
+            )
+            .join('')}</div>`;
+
+    const outils = `<div class="outils-correction">
+        <button class="leger" data-role="ajout-rotation">+ Ajouter une rotation</button>
+        ${
+          seTermineABellevue(c.grille)
+            ? '<span class="note-outil">Cette grille s’arrête à Bellevue : aucun train ne monte au Nid d’Aigle.</span>'
+            : '<button class="leger" data-role="retirer-nid">Retirer le Nid d’Aigle (grille d’hiver)</button>'
+        }
+      </div>`;
+
+    carte.innerHTML = `<h2>${
+      duplication
+        ? `Nouvelle grille à partir de « ${echapper(c.origine.libelle)} »`
+        : `Corriger la grille « ${echapper(c.origine.libelle)} »`
+    }
+        <span class="sous">${
+          duplication
+            ? 'le contenu est copié ; donnez un nom et des dates, puis ajustez les trains'
+            : `${echapper(libellePeriodes(c.origine.periodes))} · enregistrer crée une nouvelle version qui remplace celle-ci, réactivable à tout moment`
+        }</span>
+        <div class="actions"><button class="leger" id="correction-fermer">Fermer sans enregistrer</button></div>
+      </h2>
+      <div class="corps-correction">
+        ${identite}
+        ${outils}
+        ${erreursGenerales}
+        ${avertissements}
+        <div class="ecarts">${blocEcartsHtml(c.origine.libelle, e, duplication)}</div>
+        <div class="jours-existants">${jours}</div>
+        ${tableauxGrilleHtml(c.grille, options)}
+        <div class="note">Une grille décrit le service théorique : la corriger ne change aucune journée déjà préparée, sauf celles cochées ci-dessus. <b>Pour modifier les trains d’aujourd’hui, utilisez l’onglet Circulations.</b></div>
+        <div class="validation-import">
+          <ul id="correction-raisons"></ul>
+          <button class="principal" id="correction-enregistrer" disabled>${
+            duplication ? 'Enregistrer la nouvelle grille' : 'Enregistrer la correction'
+          }</button>
+        </div>
+      </div>`;
+    rendreValidationCorrection();
+  }
+
+  function rendreValidationCorrection(): void {
+    if (!correctionEnCours) return;
+    const raisons = raisonsBlocageCorrection(correctionEnCours);
+    $('correction-raisons').innerHTML =
+      raisons.length > 0
+        ? raisons.map((r) => `<li>${echapper(r)}</li>`).join('')
+        : '<li class="ok">✓ Prêt à enregistrer.</li>';
+    ($('correction-enregistrer') as HTMLButtonElement).disabled = raisons.length > 0;
+  }
+
+  /** Un geste sur le contenu : on remplace la grille saisie et on redessine tout. */
+  function appliqueGeste(nouvelle: Grille): void {
+    if (!correctionEnCours) return;
+    correctionEnCours.grille = nouvelle;
+    rendreCorrection();
+  }
+
+  async function enregistreCorrection(): Promise<void> {
+    const c = correctionEnCours;
+    if (!c) return;
+    const duplication = c.mode === 'duplication';
+    let aEnregistrer: Grille;
+    try {
+      aEnregistrer = grilleAEnregistrerCorrection(
+        c,
+        grilles.map((g) => g.version),
+      );
+    } catch (erreur) {
+      erreurVersToast(erreur);
+      return;
+    }
+    const resume = resumeCorrection(c, aEnregistrer);
+    const effet = duplication
+      ? lignesEffetPeriodes(
+          aEnregistrer,
+          effetNouvelleGrille(grilles, aEnregistrer, new Date().toISOString()),
+        ).map((l) => `• ${l.texte}`)
+      : [
+          `• Les écrans appliqueront la version corrigée sur ${libellePeriodes(aEnregistrer.periodes)}.`,
+          `• La version précédente est désactivée : la réactiver suffit à revenir en arrière.`,
+        ];
+    const question = [
+      duplication ? 'Enregistrer la nouvelle grille ?' : 'Enregistrer la correction ?',
+      '',
+      `• ${resume}`,
+      '',
+      ...effet,
+      '',
+      'Les écrans suivent en quelques secondes.',
+    ].join('\n');
+    if (!window.confirm(question)) return;
+
+    ($('correction-enregistrer') as HTMLButtonElement).disabled = true;
+    try {
+      await provider.saveGrille(aEnregistrer, {
+        actif: true,
+        commentaire: c.commentaire.trim() || null,
+      });
+      // La version d'origine n'est jamais réécrite : elle est désactivée, donc
+      // réactivable — c'est tout le retour arrière.
+      if (!duplication) await provider.setGrilleActive(c.origine.version, false);
+      for (const date of [...c.joursAReinitialiser].sort()) await provider.reinitialiseJour(date);
+      await provider.logPublication(resume).catch(erreurVersToast);
+      correctionEnCours = null;
+      rendreCorrection();
+      const recap = $('horaires-recap');
+      recap.style.display = '';
+      recap.innerHTML = `✓ ${echapper(resume)}`;
+      toast(
+        duplication
+          ? '✓ Nouvelle grille enregistrée · consigné dans l’historique'
+          : '✓ Grille corrigée · consigné dans l’historique',
+      );
+      await deps.apresChangement();
+    } catch (erreur) {
+      erreurVersToast(erreur);
+      rendreValidationCorrection();
+    }
+  }
+
   // ------------------------------------------------------ tableau d'aperçu
+
+  /**
+   * Aperçu des écarts — LE MÊME composant pour l'import et pour la
+   * correction : deux façons de dire « qu'est-ce qui change ? » auraient fini
+   * par ne plus dire la même chose.
+   */
+  function blocEcartsHtml(nomReference: string, e: EcartsGrilles, duplication: boolean): string {
+    const depuis = duplication
+      ? `la grille copiée « ${echapper(nomReference)} »`
+      : `la version enregistrée de « ${echapper(nomReference)} »`;
+    if (e.aucun) return `<b>Aucun écart</b> avec ${depuis}.`;
+    const lignes = decritEcarts({ ...e, periodes: { ...e.periodes, identiques: true } });
+    return `<b>${lignes.length} écart(s)</b> avec ${depuis} (heures modifiées surlignées dans le tableau) :
+      <ul>${lignes
+        .slice(0, MAX_ECARTS_AFFICHES)
+        .map((l) => `<li>${echapper(l)}</li>`)
+        .join('')}${
+        lignes.length > MAX_ECARTS_AFFICHES
+          ? `<li>… et ${lignes.length - MAX_ECARTS_AFFICHES} autres</li>`
+          : ''
+      }</ul>`;
+  }
 
   function tableauxGrilleHtml(g: Grille, o: OptionsTableau): string {
     return `<div class="grille-apercu">${tableauSensHtml('montee', g.montees, o)}${tableauSensHtml(
@@ -331,17 +737,25 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     const feuille = o.feuille ?? 0;
 
     const entete = trains
-      .map(
-        (t) =>
-          `<th class="${o.ajoutes?.has(`${sens}|${t.numero}`) ? 'ajoute' : ''}" title="${
-            o.ajoutes?.has(`${sens}|${t.numero}`) ? 'Train absent de la grille en service' : ''
-          }">TRAIN ${t.numero}${t.express ? '<small>EXPRESS</small>' : ''}</th>`,
-      )
+      .map((t) => {
+        const messages = o.erreursTrain?.get(t.numero) ?? [];
+        const retirer =
+          o.correction && sens === 'montee'
+            ? `<button class="leger danger" data-role="suppr-rotation" data-train="${t.numero}" title="Retirer la rotation TRAIN ${t.numero} / TRAIN ${t.numero + 1}">✕</button>`
+            : '';
+        return `<th class="${[o.ajoutes?.has(`${sens}|${t.numero}`) ? 'ajoute' : '', messages.length > 0 ? 'en-erreur' : ''].filter(Boolean).join(' ')}" title="${
+          o.ajoutes?.has(`${sens}|${t.numero}`) ? 'Train absent de la grille en service' : ''
+        }">TRAIN ${t.numero}${t.express ? '<small>EXPRESS</small>' : ''}${retirer}${
+          messages.length > 0
+            ? `<small class="erreur-cellule">${messages.map(echapper).join(' ')}</small>`
+            : ''
+        }</th>`;
+      })
       .join('');
-    const ligneIndicateur = (champ: 'facultatif' | 'velos', libelle: string): string =>
+    const ligneIndicateur = (champ: Indicateur, libelle: string): string =>
       `<tr class="indic"><th>${libelle}</th><td></td>${trains
         .map((t) =>
-          o.editable
+          o.editable || o.correction
             ? `<td><input type="checkbox" data-champ="${champ}" data-sens="${sens}" data-train="${t.numero}" data-feuille="${feuille}" ${
                 t[champ] ? 'checked' : ''
               } title="${libelle} — TRAIN ${t.numero}"></td>`
@@ -349,12 +763,24 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         )
         .join('')}</tr>`;
 
+    // En CORRECTION, chaque gare desservie montre ses deux lignes A et D, même
+    // vides : la case à remplir doit exister avant d'être remplie. Seules les
+    // extrémités du parcours n'en ont qu'une (pas d'arrivée à l'origine, pas
+    // de départ au terminus) — la ligne l'impose, ce n'est pas une saisie.
+    const desservies = gares.filter((g) =>
+      trains.some((t) => t.passages.some((p) => p.gare === g)),
+    );
+    const origine = desservies[0];
+    const terminus = desservies[desservies.length - 1];
+
     let corps = '';
-    for (const gare of gares) {
-      if (!trains.some((t) => t.passages.some((p) => p.gare === gare))) continue; // gare hors service (hiver)
+    for (const gare of desservies) {
       const champs = (['a', 'd'] as const).filter((champ) =>
-        trains.some((t) => t.passages.find((p) => p.gare === gare)?.[champ] !== undefined),
+        o.correction
+          ? !(champ === 'a' && gare === origine) && !(champ === 'd' && gare === terminus)
+          : trains.some((t) => t.passages.find((p) => p.gare === gare)?.[champ] !== undefined),
       );
+      const messagesGare = new Set<string>();
       champs.forEach((champ, i) => {
         corps += `<tr>${i === 0 ? `<th rowspan="${champs.length}">${echapper(nomGare(gare))}</th>` : ''}<td class="ad">${
           champ === 'a' ? 'A' : 'D'
@@ -362,21 +788,46 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         for (const t of trains) {
           const p = t.passages.find((x) => x.gare === gare);
           const h = p?.[champ];
-          const classes = [
-            o.modifiees?.has(`${sens}|${t.numero}|${gare}|${champ}`) ? 'modif' : '',
-            p ? '' : 'saute',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          const texte = !p ? (t.express ? '|' : '—') : h ? formatHeure(heureVersSecondes(h)) : '';
-          corps += `<td class="${classes}"${h ? ` title="${h}"` : ''}>${texte}</td>`;
+          const cle = `${sens}|${t.numero}|${gare}|${champ}`;
+          if (o.correction) {
+            const refus = o.refus?.get(cle);
+            const messages = o.erreursGare?.get(`${t.numero}|${gare}`) ?? [];
+            for (const m of messages) messagesGare.add(m);
+            const classes = [
+              o.modifiees?.has(cle) ? 'modif' : '',
+              refus !== undefined || messages.length > 0 ? 'en-erreur' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            corps += `<td class="${classes}"><input type="text" class="cellule-heure" maxlength="8"
+              data-role="heure" data-sens="${sens}" data-train="${t.numero}" data-gare="${gare}" data-champ="${champ}"
+              value="${echapper(refus?.saisie ?? (h ? formatHeure(heureVersSecondes(h)) : ''))}"
+              placeholder="${t.express && !p ? '—' : ''}" title="TRAIN ${t.numero} — ${echapper(nomGare(gare))} ${
+                champ === 'a' ? 'arrivée' : 'départ'
+              }${h ? ` (${h})` : ''}">${
+                refus ? `<small class="erreur-cellule">${echapper(refus.message)}</small>` : ''
+              }</td>`;
+          } else {
+            const classes = [o.modifiees?.has(cle) ? 'modif' : '', p ? '' : 'saute']
+              .filter(Boolean)
+              .join(' ');
+            const texte = !p ? (t.express ? '|' : '—') : h ? formatHeure(heureVersSecondes(h)) : '';
+            corps += `<td class="${classes}"${h ? ` title="${h}"` : ''}>${texte}</td>`;
+          }
         }
         corps += '</tr>';
       });
+      if (messagesGare.size > 0) {
+        corps += `<tr class="ligne-erreur"><td colspan="${trains.length + 2}">${[...messagesGare]
+          .map((m) => `<span>${echapper(m)}</span>`)
+          .join('')}</td></tr>`;
+      }
     }
     return `<h4>${titre} <small>${trains.length} trains</small></h4>
       <div class="tabwrap-apercu"><table class="table-apercu">
-        <thead><tr><th>Gare</th><th></th>${entete}</tr>${ligneIndicateur('facultatif', 'Facultatif')}${ligneIndicateur('velos', 'Vélos')}</thead>
+        <thead><tr><th>Gare</th><th></th>${entete}</tr>${
+          o.correction ? ligneIndicateur('express', 'Express') : ''
+        }${ligneIndicateur('facultatif', 'Facultatif')}${ligneIndicateur('velos', 'Vélos')}</thead>
         <tbody>${corps}</tbody>
       </table></div>`;
   }
@@ -687,7 +1138,16 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     if (!bouton) return;
     const version = bouton.dataset.version ?? '';
     if (bouton.dataset.action === 'voir') rendreVoir(version);
+    if (bouton.dataset.action === 'telecharger') {
+      void telechargeGrille(version).catch(erreurVersToast);
+    }
     if (bouton.dataset.action === 'modifier') void ouvreEdition(version).catch(erreurVersToast);
+    if (bouton.dataset.action === 'corriger') {
+      void ouvreCorrection(version, 'correction').catch(erreurVersToast);
+    }
+    if (bouton.dataset.action === 'dupliquer') {
+      void ouvreCorrection(version, 'duplication').catch(erreurVersToast);
+    }
     if (bouton.dataset.action === 'activer') void bascule(version, true);
     if (bouton.dataset.action === 'desactiver') void bascule(version, false);
   });
@@ -737,6 +1197,130 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       if (periode) periode[role] = champ.value;
       // Les dates changent l'effet annoncé et les journées concernées.
       void chargeJoursEdition().then(rendreEdition);
+    }
+  });
+
+  // --- carte « Corriger » / « Dupliquer » ---
+  // Chaque geste passe par src/core/edition-grille.ts : ici, uniquement lire
+  // le DOM, appeler la fonction, redessiner.
+  const carteCorriger = $('carte-corriger');
+  carteCorriger.addEventListener('click', (e) => {
+    const cible = (e.target as HTMLElement).closest<HTMLElement>('button');
+    const c = correctionEnCours;
+    if (!cible || !c) return;
+    if (cible.id === 'correction-fermer') {
+      correctionEnCours = null;
+      rendreCorrection();
+      return;
+    }
+    if (cible.id === 'correction-enregistrer') {
+      void enregistreCorrection();
+      return;
+    }
+    switch (cible.dataset.role) {
+      case 'ajout-periode':
+        c.periodes.push({ du: '', au: '' });
+        rendreCorrection();
+        break;
+      case 'suppr-periode':
+        c.periodes.splice(Number(cible.dataset.periode), 1);
+        void chargeJoursCorrection().then(rendreCorrection);
+        break;
+      case 'suppr-rotation': {
+        const numero = Number(cible.dataset.train);
+        if (!window.confirm(`Retirer la rotation TRAIN ${numero} / TRAIN ${numero + 1} ?`)) return;
+        appliqueGeste(supprimeRotation(c.grille, numero));
+        break;
+      }
+      case 'ajout-rotation': {
+        const numero = numeroMonteeSuivant(c.grille);
+        const r = ajouteRotation(c.grille, numero);
+        if (!r.ok) toast(`⚠ ${r.erreur}`);
+        else appliqueGeste(r.grille);
+        break;
+      }
+      case 'retirer-nid':
+        if (
+          !window.confirm(
+            'Retirer tout passage au Nid d’Aigle ? Bellevue devient le terminus (grille d’hiver). Les trains express, qui n’existent qu’avec le Nid d’Aigle, seront signalés : à retirer ou à requalifier.',
+          )
+        ) {
+          return;
+        }
+        appliqueGeste(retireNidDaigle(c.grille));
+        break;
+    }
+  });
+  carteCorriger.addEventListener('input', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const c = correctionEnCours;
+    if (!c) return;
+    if (champ.dataset.role === 'libelle') c.libelle = champ.value;
+    if (champ.dataset.role === 'commentaire') c.commentaire = champ.value;
+    if (champ.dataset.role === 'libelle' || champ.dataset.role === 'commentaire') {
+      rendreValidationCorrection();
+    }
+  });
+  carteCorriger.addEventListener('change', (e) => {
+    const champ = e.target as HTMLInputElement;
+    const c = correctionEnCours;
+    if (!c) return;
+    const role = champ.dataset.role;
+    if (role === 'heure') {
+      const cle = cleCellule(
+        champ.dataset.sens ?? '',
+        Number(champ.dataset.train),
+        champ.dataset.gare ?? '',
+        champ.dataset.champ ?? '',
+      );
+      const r = poseHeure(
+        c.grille,
+        {
+          sens: champ.dataset.sens === 'descente' ? 'descente' : 'montee',
+          numero: Number(champ.dataset.train),
+          gare: (champ.dataset.gare ?? 'le-fayet') as GareId,
+          champ: champ.dataset.champ === 'a' ? 'a' : 'd',
+        },
+        champ.value,
+      );
+      if (r.ok) {
+        c.erreursCellules.delete(cle);
+        appliqueGeste(r.grille);
+      } else {
+        // La saisie fautive RESTE dans la cellule : l'agent voit ce qu'il a tapé.
+        const refus: SaisieRefusee = { saisie: champ.value, message: r.erreur };
+        c.erreursCellules.set(cle, refus);
+        rendreCorrection();
+      }
+      return;
+    }
+    if (role === 'acquitter') {
+      c.avertissementsAcquittes = champ.checked;
+      rendreValidationCorrection();
+      return;
+    }
+    if (role === 'jour') {
+      if (champ.checked) c.joursAReinitialiser.add(champ.dataset.date ?? '');
+      else c.joursAReinitialiser.delete(champ.dataset.date ?? '');
+      return;
+    }
+    if (role === 'du' || role === 'au') {
+      const periode = c.periodes[Number(champ.dataset.periode)];
+      if (periode) periode[role] = champ.value;
+      void chargeJoursCorrection().then(rendreCorrection);
+      return;
+    }
+    const indicateur = champ.dataset.champ;
+    if (indicateur === 'express' || indicateur === 'facultatif' || indicateur === 'velos') {
+      appliqueGeste(
+        poseIndicateur(
+          c.grille,
+          champ.dataset.sens === 'descente' ? 'descente' : 'montee',
+          Number(champ.dataset.train),
+          indicateur,
+          champ.checked,
+        ),
+      );
     }
   });
 
@@ -819,6 +1403,15 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       rendreListe();
       // La fiche ouverte suit la grille telle qu'enregistrée (sans redessiner
       // la saisie en cours) ; si la grille a disparu, la fiche se ferme.
+      if (correctionEnCours) {
+        const g = grilles.find((x) => x.version === correctionEnCours?.origine.version);
+        if (g) correctionEnCours.origine = g;
+        else {
+          // La grille de départ a disparu : la carte n'a plus de référence.
+          correctionEnCours = null;
+          rendreCorrection();
+        }
+      }
       if (editionEnCours) {
         const g = grilles.find((x) => x.version === editionEnCours?.grille.version);
         if (g) editionEnCours.grille = g;
