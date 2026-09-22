@@ -157,7 +157,11 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
           ? '<span class="etat-grille en-service">En service aujourd’hui</span>'
           : '<span class="etat-grille active">Active</span>';
     const v = echapper(g.version);
-    const actions = [`<button class="leger" data-action="voir" data-version="${v}">Voir</button>`];
+    // Télécharger n'est pas une écriture : la caisse aussi imprime le document.
+    const actions = [
+      `<button class="leger" data-action="voir" data-version="${v}">Voir</button>`,
+      `<button class="leger" data-action="telecharger" data-version="${v}" title="Télécharger le document d’exploitation (.xlsx) de cette grille">Télécharger</button>`,
+    ];
     if (peutEcrire()) {
       actions.push(
         `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
@@ -368,6 +372,60 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     } catch (erreur) {
       erreurVersToast(erreur);
       rendreValidationEdition();
+    }
+  }
+
+  // ----------------------------------------------------------- télécharger
+
+  /**
+   * Le document d'exploitation de la grille, au format .xlsx — celui qu'on
+   * imprime, qu'on diffuse, et qu'on peut recharger tel quel.
+   *
+   * L'écriture (`fflate` + le format Excel) est chargée À LA DEMANDE, ici et
+   * nulle part ailleurs : ni les écrans de gare ni le corps de la supervision
+   * n'en portent un octet.
+   */
+  async function telechargeGrille(version: string): Promise<void> {
+    const g = grilles.find((x) => x.version === version);
+    if (!g) return;
+    toast('Préparation du document…');
+    try {
+      const [{ cellulesGrille, problemesExport }, { ecritClasseur }] = await Promise.all([
+        import('../core/export-grille'),
+        import('../core/ecriture-xlsx'),
+      ]);
+      const problemes = problemesExport(g);
+      if (
+        problemes.length > 0 &&
+        !window.confirm(
+          [
+            'Ce document ne pourra pas être rechargé tel quel :',
+            '',
+            ...problemes.map((p) => `• ${p}`),
+            '',
+            'Le télécharger quand même (pour l’impression) ?',
+          ].join('\n'),
+        )
+      ) {
+        return;
+      }
+      const octets = ecritClasseur([
+        cellulesGrille(g, {
+          nomFeuille: g.libelle,
+          miseAJour: dateCourte((g.cree_le ?? '').slice(0, 10)),
+        }),
+      ]);
+      const blob = new Blob([octets as BlobPart], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `horaires-${g.version}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('✓ Document téléchargé — pensez à rediffuser la version imprimée');
+    } catch (erreur) {
+      erreurVersToast(erreur);
     }
   }
 
@@ -1080,6 +1138,9 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     if (!bouton) return;
     const version = bouton.dataset.version ?? '';
     if (bouton.dataset.action === 'voir') rendreVoir(version);
+    if (bouton.dataset.action === 'telecharger') {
+      void telechargeGrille(version).catch(erreurVersToast);
+    }
     if (bouton.dataset.action === 'modifier') void ouvreEdition(version).catch(erreurVersToast);
     if (bouton.dataset.action === 'corriger') {
       void ouvreCorrection(version, 'correction').catch(erreurVersToast);

@@ -147,7 +147,17 @@ function lireFeuille(xml: string, chaines: string[]): Cellule[][] {
   }
   // Tableau DENSE : les trous valent null, chaque ligne existe (numéros de
   // ligne des messages d'erreur = index + 1).
-  const largeur = Math.max(0, ...lignes.map((l) => l?.length ?? 0));
+  //
+  // La largeur se calcule par une BOUCLE et non par `lignes.map(...)` : une
+  // ligne entièrement vide laisse un TROU dans le tableau (rien ne lui est
+  // jamais affecté), `map` saute les trous en les recopiant tels quels, et
+  // l'étalement d'un trou vaut `undefined` — `Math.max(0, 12, undefined)`
+  // donne NaN, d'où une largeur nulle et une feuille lue entièrement vide.
+  // Excel OMET les lignes vides : le défaut attendait donc un vrai fichier
+  // avec une ligne de séparation. Trouvé par l'écriture (ecriture-xlsx.ts),
+  // qui omet les mêmes lignes.
+  let largeur = 0;
+  for (let i = 0; i < lignes.length; i++) largeur = Math.max(largeur, lignes[i]?.length ?? 0);
   const denses: Cellule[][] = [];
   for (let i = 0; i < lignes.length; i++) {
     const ligne = lignes[i] ?? [];

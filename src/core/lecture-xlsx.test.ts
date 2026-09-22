@@ -2,6 +2,7 @@
 // (src/core/__fixtures__/2026-ete-exploit-v1.cellules.json) et contre les
 // grilles officielles via parseClasseur.
 import { readFileSync } from 'node:fs';
+import { strToU8, zipSync } from 'fflate';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -89,5 +90,44 @@ describe('outils XML', () => {
     expect(decodeReference('G5')).toEqual([4, 6]);
     expect(decodeReference('AA10')).toEqual([9, 26]);
     expect(decodeReference('5G')).toBeNull();
+  });
+});
+
+describe('lignes vides omises par Excel (défaut trouvé le 22/09/2026)', () => {
+  // Excel n'écrit pas de <row> pour une ligne entièrement vide. La largeur du
+  // tableau dense se calculait alors sur un tableau À TROUS, et `Math.max`
+  // recevait `undefined` : la feuille entière revenait vide, sans la moindre
+  // erreur. Le lecteur maison lisait donc le fichier de référence par chance —
+  // ses lignes de séparation portent des cellules mises en forme.
+  function classeurAvecLigneVide(): Uint8Array {
+    const zip = zipSync({
+      '[Content_Types].xml': strToU8(
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+      ),
+      '_rels/.rels': strToU8(
+        `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      ),
+      'xl/workbook.xml': strToU8(
+        `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Essai" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      ),
+      'xl/_rels/workbook.xml.rels': strToU8(
+        `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+      ),
+      // Ligne 2 absente du fichier : c'est tout le sujet.
+      'xl/worksheets/sheet1.xml': strToU8(
+        `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>avant</t></is></c></row><row r="3"><c r="B3" t="inlineStr"><is><t>apres</t></is></c></row></sheetData></worksheet>`,
+      ),
+    });
+    return zip;
+  }
+
+  it('la feuille garde ses valeurs, et la ligne vide reste à sa place', () => {
+    const feuille = lireClasseur(classeurAvecLigneVide())[0];
+    expect(feuille?.nom).toBe('Essai');
+    expect(feuille?.lignes).toEqual([
+      ['avant', null],
+      [null, null],
+      [null, 'apres'],
+    ]);
   });
 });
