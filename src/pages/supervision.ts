@@ -108,6 +108,7 @@ import {
   type BrouillonTerminus,
 } from './brouillon';
 import { poseFavicon } from './favicon';
+import { poseMarquePreversion } from './preversion';
 import {
   anneauSur,
   contenuTicker,
@@ -192,6 +193,14 @@ import {
  * créer le fournisseur : le SDK Supabase ouvre la session depuis le fragment
  * d'URL puis l'efface.
  */
+// Marque de préversion (cadre rouge) : posée UNIQUEMENT dans le build de
+// `/preview/`, jamais dans celui de la production. Avant tout le reste :
+// si la page échoue plus bas, elle doit déjà dire qu'elle n'est pas la gare.
+// Au niveau du module, pas dans `demarre()` : l'écran de CONNEXION est vu
+// avant tout démarrage, et c’est déjà un écran où l’on peut se croire
+// ailleurs.
+poseMarquePreversion();
+
 const lienAuth = analyseLienAuth(window.location.hash, window.location.search);
 
 /**
