@@ -189,6 +189,16 @@ describe('Identifiant d’écran : il désigne un POSTE, pas une gare', () => {
     expect(identifiantEcran('\t\n')).toBeNull();
   });
 
+  it('la chaîne est rendue VERBATIM : ni casse ni tirets retouchés', () => {
+    // C'est la LIGNE en base qui fait foi, et elle ne normalise rien. Une
+    // normalisation inventée ici ferait diverger l'identifiant de la ligne
+    // déclarée : le poste disparaîtrait de la supervision, et le guetteur
+    // alerterait sur un écran qui va très bien.
+    expect(identifiantEcran('Le-Fayet-Ecran-1')).toBe('Le-Fayet-Ecran-1');
+    expect(identifiantEcran('QUAI_NORD')).toBe('QUAI_NORD');
+    expect(identifiantEcran('le--fayet')).toBe('le--fayet');
+  });
+
   it('les blancs de bordure sont retirés, jamais ceux du milieu', () => {
     expect(identifiantEcran('  le-fayet-ecran-1  ')).toBe('le-fayet-ecran-1');
     // Un nom déclaré avec un espace interne reste tel quel : c'est la ligne
