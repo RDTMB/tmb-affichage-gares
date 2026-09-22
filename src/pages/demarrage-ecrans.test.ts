@@ -242,10 +242,55 @@ describe('Content-Security-Policy — aucune page ne doit la perdre', () => {
     return (meta?.[1] ?? '').replace(/\s+/g, ' ').trim();
   }
 
+  /**
+   * Position de la balise CSP dans le fichier, en caractères — ou -1.
+   *
+   * Le CONTENU de la balise ne prouve rien : un navigateur n'applique une CSP
+   * en <meta> que si elle se trouve dans le <head>, et elle ne régit que ce
+   * qui est analysé APRÈS elle. Posée avant le doctype, elle est du texte.
+   */
+  function ouEstLaBalise(html: string): number {
+    return html.search(/<meta\s+http-equiv="Content-Security-Policy"/);
+  }
+
   for (const page of PAGES) {
     describe(page, () => {
       it('porte une balise CSP', () => {
         expect(politique(page)).not.toBe('');
+      });
+
+      it('la pose DANS le <head>, et rien d’analysable avant elle', () => {
+        // Une balise présente mais mal placée est inerte, et se lit pourtant
+        // comme une balise active : c'est exactement le défaut que ce test
+        // répare. Trois conditions, toutes nécessaires — après le doctype,
+        // dans le <head>, et précédée de rien qu'un navigateur analyse.
+        const html = source(page);
+        const debut = ouEstLaBalise(html);
+        expect(debut, `${page} n’a plus de balise CSP`).toBeGreaterThan(-1);
+
+        const doctype = html.search(/<!doctype html>/i);
+        expect(doctype, `${page} n’a pas de <!doctype html>`).toBeGreaterThan(-1);
+        expect(debut, `${page} : la balise CSP précède le doctype`).toBeGreaterThan(doctype);
+
+        const ouvre = html.search(/<head[\s>]/i);
+        const ferme = html.search(/<\/head\s*>/i);
+        expect(ouvre, `${page} n’a pas de <head>`).toBeGreaterThan(-1);
+        expect(ferme, `${page} n’a pas de </head>`).toBeGreaterThan(-1);
+        expect(debut, `${page} : la balise CSP est hors du <head>`).toBeGreaterThan(ouvre);
+        expect(debut, `${page} : la balise CSP est hors du <head>`).toBeLessThan(ferme);
+
+        // Ce qui la précède ne doit être que du décor sans effet : le doctype,
+        // l'ouverture de <html> et de <head>, d'autres <meta>, des
+        // commentaires, des espaces. Tout le reste échapperait à la politique.
+        const avant = html
+          .slice(0, debut)
+          .replace(/<!--[\s\S]*?-->/g, '')
+          .replace(/<!doctype html>/i, '')
+          .replace(/<html\b[^>]*>/i, '')
+          .replace(/<head\b[^>]*>/i, '')
+          .replace(/<meta\b[^>]*>/gi, '')
+          .trim();
+        expect(avant, `${page} : « ${avant.slice(0, 60)} » est analysé avant la CSP`).toBe('');
       });
 
       it('interdit le script INJECTÉ (ni unsafe-inline ni unsafe-eval)', () => {
