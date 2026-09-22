@@ -2,7 +2,7 @@
 // l'import, sur le fichier que nous venons d'écrire. Rien n'est vérifié sur
 // l'XML lui-même — ce qui compte est qu'il se relise, pas qu'il ressemble.
 import { describe, expect, it } from 'vitest';
-import { unzipSync } from 'fflate';
+import { strFromU8, unzipSync } from 'fflate';
 
 import grandServiceJson from '../../docs/grilles-historique/2026-ete-grand-service.json';
 import petitServiceJson from '../../docs/grilles-historique/2026-ete-petit-service.json';
@@ -116,5 +116,25 @@ describe('XML : ce qui casserait le fichier sans qu’on le voie', () => {
     const texte = 'R & b < ÿ > "guillemets" & &amp; déjà écrit';
     const relues = lireClasseur(ecritClasseur([{ nom: 'Essai', lignes: [[texte]] }]));
     expect(relues[0]?.lignes[0]?.[0]).toBe(texte);
+  });
+});
+
+// Ajout après la campagne de mutation du 22/09/2026 : retirer le style des
+// cellules d'heure ne cassait aucun test — le fichier se relisait parfaitement,
+// et Excel affichait « 0,2916666667 » là où le document imprimé dit « 7:00 ».
+// C'est le seul endroit où l'XML lui-même doit être regardé : la mise en forme
+// ne revient pas par la lecture, puisque le lecteur ignore les styles.
+describe('format d’affichage des heures (ce que la lecture ne peut pas dire)', () => {
+  it('chaque cellule d’heure porte le style au format horaire du document', () => {
+    const fichiers = unzipSync(ecritClasseur([cellulesGrille(PETIT)]));
+    const feuille = strFromU8(fichiers['xl/worksheets/sheet1.xml'] as Uint8Array);
+    const styles = strFromU8(fichiers['xl/styles.xml'] as Uint8Array);
+    // Le style 1 est bien un format d'heure, et c'est le format du document.
+    expect(styles).toContain('<numFmt numFmtId="164" formatCode="h:mm"/>');
+    expect(styles).toContain('numFmtId="164"');
+    // Toute cellule numérique — donc toute heure — le porte.
+    const numeriques = [...feuille.matchAll(/<c r="[A-Z]+\d+"([^>]*)><v>/g)].map((m) => m[1] ?? '');
+    expect(numeriques.length).toBeGreaterThan(50);
+    expect(numeriques.every((attributs) => attributs.includes('s="1"'))).toBe(true);
   });
 });

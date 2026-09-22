@@ -171,3 +171,24 @@ describe('problemesExport', () => {
     expect(allerRetour(g).erreurs.length).toBeGreaterThan(0);
   });
 });
+
+// Ajouts après la campagne de mutation du 22/09/2026 : ces trois mutations-là
+// avaient SURVÉCU — le document exporté pouvait mentir sur son terminus et
+// perdre la note qui explique l'absence de Mont Lachat, sans qu'un test bronche.
+describe('ce que le document IMPRIMÉ annonce', () => {
+  it('le sous-titre nomme le vrai sommet de la grille', () => {
+    expect(cellulesGrille(PETIT).lignes[1]?.[0]).toBe("LE FAYET <> LE NID D'AIGLE");
+    expect(cellulesGrille(retireNidDaigle(PETIT)).lignes[1]?.[0]).toBe('LE FAYET <> BELLEVUE');
+  });
+
+  it('la note dit pourquoi Mont Lachat n’y est pas', () => {
+    const notes = notesBasDeFeuille(PETIT);
+    expect(notes[0]).toMatch(/Mont Lachat/);
+    expect(notes[0]).toMatch(/halte de service/i);
+    // Et elle est bien dans la feuille, pas seulement dans la fonction.
+    const colonneA = cellulesGrille(PETIT).lignes.map((l) => l[0]);
+    expect(colonneA.filter((c) => typeof c === 'string' && c.includes('Mont Lachat'))).toHaveLength(
+      1,
+    );
+  });
+});

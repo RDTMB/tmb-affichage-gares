@@ -340,3 +340,16 @@ describe('dupliqueGrille', () => {
     expect(hiver.version).toBe('2026-2027-hiver');
   });
 });
+
+// Ajout après la campagne de mutation du 22/09/2026 : remplacer la copie des
+// périodes par le tableau lui-même ne cassait AUCUN test — le duplicata
+// partageait alors ses objets `Periode` avec l'appelant.
+describe('dupliqueGrille : copie des périodes', () => {
+  it('les périodes du duplicata sont des objets à lui', () => {
+    const periodes = [{ du: '2026-12-19', au: '2027-03-14' }];
+    const d = dupliqueGrille(PETIT, { version: 'x', libelle: 'X', periodes });
+    d.periodes[0]!.au = '2027-04-30';
+    expect(periodes[0]?.au).toBe('2027-03-14');
+    expect(d.periodes[0]).not.toBe(periodes[0]);
+  });
+});
