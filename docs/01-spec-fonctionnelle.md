@@ -1,6 +1,7 @@
 # Spécification fonctionnelle v2 — Affichage voyageurs TMB
 
-Version 2.1 — 2 septembre 2026 (grilles en base, import Excel).
+Version 2.2 — 22 septembre 2026 (grilles en base : import Excel, correction
+et duplication en supervision, export du document).
 Référence visuelle : maquettes v2 validées (`maquettes/`). Référence
 horaires : la table `grilles` (chargée depuis l'Excel exploitation) ;
 historique été 2026 dans `docs/grilles-historique/`.
@@ -107,6 +108,50 @@ une grille existante crée « …-v2 » et désactive automatiquement la
 précédente, qui reste réactivable. Rien ne change sur les écrans avant la
 première date de validité ; les journées déjà préparées ne sont réécrites
 que si l'agent le demande, journée par journée, à l'import.
+
+**Corriger une grille sans repasser par Excel.** L'Excel d'exploitation reste
+le chemin normal, mais il ne l'est plus le seul : depuis l'onglet Horaires,
+une grille enregistrée se **corrige** (bouton « Corriger », ou « Voir » puis
+« Corriger cette grille ») dans un tableau qui reprend la mise en page du
+document — trains en colonnes, gares en lignes avec A et D, bloc montées puis
+bloc descentes, indicateurs sous chaque numéro. Les heures s'y saisissent
+dans leur propre cellule, aux mêmes formats qu'à l'import ; Express,
+Facultatif et Vélos s'y cochent ; une rotation s'ajoute ou se retire.
+
+Les contrôles sont **ceux de l'import, par le même validateur** : les erreurs
+bloquent l'enregistrement et s'affichent sous la cellule ou sous la colonne du
+train concerné, les avertissements s'acquittent. L'aperçu des écarts avec la
+version d'origine est le **même composant** que celui de l'import.
+
+Enregistrer crée une **NOUVELLE version** (`…-v2`, `-v3`) qui devient active,
+la précédente étant désactivée et réactivable — une version n'est jamais
+réécrite, ici pas plus qu'à l'import. Les **métadonnées** (nom, dates de
+validité, commentaire) font exception : elles se modifient EN PLACE, par le
+bouton « Modifier », avec trace au journal, parce que prolonger une saison
+d'une semaine ne change aucune heure.
+
+**Dupliquer une grille** (bouton « Dupliquer ») ouvre le même éditeur
+pré-rempli depuis une grille existante, nom et dates vides à saisir : rien
+n'est désactivé, c'est une grille de plus. C'est le chemin de la grille
+d'hiver depuis celle d'été tant que l'Excel d'hiver n'existe pas — dupliquer,
+retirer le Nid d'Aigle, supprimer les rotations inutiles.
+
+**Modifier une grille ne change pas la journée en cours.** Les journées déjà
+générées ne sont jamais réécrites en silence : elles sont listées,
+réinitialisation décochée par défaut, journée par journée. L'interface le dit
+en toutes lettres : « Pour modifier les trains d'aujourd'hui, utilisez
+l'onglet Circulations. »
+
+**Exporter la grille** (bouton « Télécharger », accessible en LECTURE — la
+caisse imprime sans écrire) produit le document au format Excel : mêmes blocs,
+mêmes numéros de train, mêmes lettres de légende, mêmes libellés de gares, et
+il se recharge tel quel par « Charger un fichier Excel… ». Ce qu'il ne porte
+pas : la mise en forme d'impression (polices, bordures, fusions, logo), à
+refaire dans Excel, et les heures de Mont Lachat, halte de service que
+l'application n'a jamais lues. **Corriger dans l'application impose de
+rediffuser le document exporté** : sans cela l'affichage en gare et le papier
+que le voyageur a en main divergent, et c'est le papier qui fait foi à ses
+yeux (`docs/import-grilles.md`, « Rediffuser le document officiel »).
 
 **Grille d'hiver** : le Nid d'Aigle est fermé, Bellevue est le terminus
 NORMAL. La grille d'hiver n'a donc aucun passage au Nid d'Aigle (ligne

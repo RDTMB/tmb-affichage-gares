@@ -17,7 +17,7 @@ import {
   type Probleme,
 } from './import-grille';
 import { ORDRE_GARES } from './types';
-import type { GareId, Grille, PassageGrille, Sens, TrainGrille } from './types';
+import type { GareId, Grille, PassageGrille, Periode, Sens, TrainGrille } from './types';
 
 export type ChampHeure = 'a' | 'd';
 
@@ -315,4 +315,32 @@ export function validationEdition(g: Grille): ValidationEdition {
 export function versionCorrigee(version: string, existantes: readonly string[]): string {
   const racine = version.replace(/-v\d+$/, '');
   return versionDisponible(racine, [...existantes, racine]);
+}
+
+/**
+ * Copie du CONTENU d'une grille sous une nouvelle identité : mêmes trains,
+ * mêmes heures, mêmes indicateurs, mais nom et dates de validité à saisir, et
+ * aucune métadonnée d'enregistrement reprise (une duplication n'a jamais été
+ * chargée par quelqu'un d'autre un autre jour). C'est le chemin de la grille
+ * d'hiver depuis celle d'été, tant que l'Excel d'hiver n'existe pas :
+ * dupliquer, puis `retireNidDaigle` et `supprimeRotation`.
+ */
+export function dupliqueGrille(
+  g: Grille,
+  identite: { version: string; libelle: string; periodes: Periode[]; source?: string },
+): Grille {
+  const copiee = copie(g);
+  const duplicata: Grille = {
+    ...copiee,
+    version: identite.version,
+    libelle: identite.libelle,
+    periodes: identite.periodes.map((p) => ({ ...p })),
+  };
+  if (identite.source === undefined) delete duplicata.source;
+  else duplicata.source = identite.source;
+  delete duplicata.actif;
+  delete duplicata.cree_le;
+  delete duplicata.cree_par;
+  delete duplicata.commentaire;
+  return duplicata;
 }

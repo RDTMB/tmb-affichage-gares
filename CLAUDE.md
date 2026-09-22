@@ -19,7 +19,7 @@ n'aiguille rien.
 
 | Tu t'apprêtes à… | Ouvre |
 | --- | --- |
-| calculer ou déplacer une heure, limiter un terminus, retirer une desserte, numéroter ou nommer un train, choisir la grille d'une journée | `.claude/regles-horaires.md` |
+| calculer ou déplacer une heure, limiter un terminus, retirer une desserte, numéroter ou nommer un train, choisir la grille d'une journée, corriger ou dupliquer une grille enregistrée, refaire le document d'exploitation | `.claude/regles-horaires.md` |
 | changer ce qu'un écran de gare ou la grille du jour MONTRE : colonnes, pastilles de remplissage, compte à rebours, train barré, mode dégradé, messages | `.claude/regles-affichage.md` |
 | créer ou modifier une course qui ne vient pas de la grille : spécial affrété, libellé libre, accès public / privé / mixte | `.claude/regles-courses-libres.md` |
 | toucher une couleur, une police, un logo, un espacement — ou reproduire une maquette | `.claude/charte-graphique.md` |
