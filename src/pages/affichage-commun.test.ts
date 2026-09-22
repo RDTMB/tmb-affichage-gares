@@ -8,6 +8,7 @@ import { paramsValides } from '../core/params';
 import type { Grille, Message, Params } from '../core/types';
 import {
   avecDelai,
+  avertitPosteAnonyme,
   CACHE_MAX_MINUTES,
   CACHE_MIN_MINUTES,
   contenuTicker,
@@ -108,21 +109,42 @@ describe('Signal de vie : un échec ne doit jamais interrompre l’affichage', (
   });
 });
 
-describe('Identifiant de poste : déclaration et écran tombent sur la même chaîne', () => {
-  it('la convention est partagée', () => {
+describe('Identifiant de poste : déclaration et URL du kiosque tombent sur la même chaîne', () => {
+  it('la convention proposée à la déclaration est celle que l’URL doit porter', () => {
     expect(identifiantEcranDeclare('ecran', 'le-fayet')).toBe('le-fayet-ecran-1');
     expect(identifiantEcranDeclare('grille', 'bellevue', 2)).toBe('bellevue-grille-2');
-    // Ce que l'écran calcule pour lui-même doit être déclarable à l'identique
-    expect(identifiantEcran('ecran', 'motivon', null)).toBe(
+    // Ce que l'administrateur déclare est reconnu tel quel par la page qui le
+    // porte dans son URL : c'est la seule jonction entre les deux.
+    for (const declare of [
       identifiantEcranDeclare('ecran', 'motivon'),
-    );
-    expect(identifiantEcran('grille', 'col-de-voza', null)).toBe(
       identifiantEcranDeclare('grille', 'col-de-voza'),
-    );
+    ]) {
+      expect(identifiantEcran(declare)).toBe(declare);
+    }
   });
 
-  it('le paramètre ?ecran= reste prioritaire (poste nommé à la main)', () => {
-    expect(identifiantEcran('ecran', 'le-fayet', 'hall-principal')).toBe('hall-principal');
+  it('une page sans ?ecran= ne se réclame d’AUCUN poste', () => {
+    // La dérivation par gare est ce qui a laissé un onglet couvrir l'écran
+    // muet de Saint-Gervais le 19/09/2026. Elle n'existe plus.
+    expect(identifiantEcran(null)).toBeNull();
+  });
+
+  it('le poste peut porter un nom libre (deuxième écran, quai nommé)', () => {
+    expect(identifiantEcran('hall-principal')).toBe('hall-principal');
+  });
+
+  it('l’avertissement de poste anonyme nomme le paramètre qui manque', () => {
+    const traces: string[] = [];
+    const espion = vi.spyOn(console, 'warn').mockImplementation((m: unknown) => {
+      traces.push(String(m));
+    });
+    avertitPosteAnonyme();
+    espion.mockRestore();
+    expect(traces).toHaveLength(1);
+    // Sans le nom du paramètre, l'avertissement n'apprend rien à celui qui
+    // vient de poser un écran et cherche pourquoi il n'apparaît pas.
+    expect(traces[0]).toContain('?ecran=');
+    expect(traces[0]).toContain('[TMB]');
   });
 });
 

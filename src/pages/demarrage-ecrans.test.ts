@@ -67,6 +67,14 @@ for (const page of ['src/pages/ecran.ts', 'src/pages/grille.ts']) {
       // getParams() — et celle du démarrage sans réseau.
       expect(code).toContain('paramsValides(');
     });
+
+    it('expose l’identité du poste sur `body`, et SEULEMENT s’il en a une', () => {
+      // Seul repère consultable sur place : sur le Pi, l'inspecteur répond
+      // « quel poste suis-je » sans qu'il faille lire la barre d'adresse d'un
+      // navigateur en mode kiosque, qui n'en a pas. Son ABSENCE est une
+      // information de même valeur — la page n'est le poste de personne.
+      expect(code).toContain('if (idEcran) document.body.dataset.ecran = idEcran;');
+    });
   });
 }
 

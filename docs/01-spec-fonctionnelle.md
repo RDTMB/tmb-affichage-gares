@@ -13,11 +13,29 @@ historique été 2026 dans `docs/grilles-historique/`.
 | `grille.html?gare=<id>` | Grille complète du jour                    | Écran public optionnel (22", totem…) |
 | `supervision.html`      | Pilotage (onglets)                         | Agents authentifiés                  |
 
-Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant physique,
-défaut `<gare>-<type>-1` où type = `ecran` ou `grille` — les deux pages
-d'une même gare sont ainsi deux postes distincts dans « État des écrans » ;
-plusieurs écrans du même type se distinguent par `ecran=`),
-`simule=HH:MM` (démo/tests), `jour=AAAA-MM-JJ`, `zoom=`.
+Paramètres écrans : `gare` (obligatoire), `ecran=` (identifiant du POSTE,
+**sans défaut**), `simule=HH:MM` (démo/tests), `jour=AAAA-MM-JJ`, `zoom=`.
+
+`ecran=` est la **seule** source de l'identité d'un poste. Il n'est plus
+déduit de la gare : le 19/09/2026, un onglet `ecran.html?gare=saint-gervais`
+ouvert sur un poste de bureau tombait sur le même identifiant que le
+Raspberry de la gare, battait à sa place et l'a fait passer pour sain
+pendant une heure alors qu'il était muet — et le guetteur (§5.4) n'a donc
+envoyé aucune alerte. Une page lancée **sans** `ecran=` affiche les horaires
+normalement mais ne se signale pas du tout, et le dit en console : elle
+n'apparaît pas dans « État des écrans », ce qui est le comportement voulu
+pour un onglet ouvert par curiosité.
+
+La convention de nom reste `<gare>-<type>-1`, où type = `ecran` ou `grille` —
+les deux pages d'une même gare sont ainsi deux postes distincts, et plusieurs
+écrans du même type se distinguent par leur numéro. C'est la supervision qui
+la propose au moment de déclarer le poste ; le poseur recopie la chaîne
+déclarée dans l'URL du kiosque (docs/kiosque.md §1 et §12).
+
+Ce mécanisme supprime l'usurpation **accidentelle**, pas la délibérée : un
+poste en gare n'a aucun moyen de garder un secret (la clé publiable est
+publique par conception), donc qui connaît un identifiant déclaré peut
+toujours battre à sa place. Point à reprendre à la relecture générale.
 
 `jour=AAAA-MM-JJ` simule la **journée d'exploitation** : l'écran sert la
 journée demandée, ce qui permet de regarder aujourd'hui ce qu'il affichera

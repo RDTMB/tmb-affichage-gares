@@ -45,6 +45,7 @@ import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config
 import {
   badgeFraicheur,
   bandeauSimulation,
+  avertitPosteAnonyme,
   creeJournalHeartbeat,
   creeTicker,
   echapper,
@@ -115,11 +116,11 @@ if (bandeau) {
 }
 const zoom = url.get('zoom');
 if (zoom && Number(zoom) > 0) document.body.style.setProperty('zoom', zoom);
-// Identifiant physique : « <gare>-<type>-1 » (docs/01 §1) — l'écran grille
-// et l'écran des départs d'une même gare sont ainsi distincts ; plusieurs
-// écrans du même type se distinguent via ?ecran=.
-const idEcran = identifiantEcran('grille', gareParam, url.get('ecran'));
-document.body.dataset.ecran = idEcran;
+// Identifiant du POSTE (signal de vie) : il vient UNIQUEMENT de `?ecran=`,
+// comme sur l'écran des départs. Un onglet grille ouvert sur une gare ne peut
+// plus battre à la place du poste qui y est installé.
+const idEcran = identifiantEcran(url.get('ecran'));
+if (idEcran) document.body.dataset.ecran = idEcran;
 
 // Bandeau de titre : logo HORIZONTAL, comme sur l'écran des départs.
 // L'écran neutre garde le rond blanc (voir ecran.ts).
@@ -580,9 +581,15 @@ async function demarre(): Promise<void> {
   window.setInterval(() => sync?.resynchronise(), 30_000);
   window.addEventListener('online', () => sync?.resynchronise());
 
-  // Jamais de heartbeat en aperçu (?apercu=1) ni sans gare : un poste de
-  // bureau consultant la ligne entière n'est pas un écran de gare.
-  if (url.get('apercu') !== '1' && gare !== null) {
+  // Jamais de signal de vie en aperçu (?apercu=1) ni sans gare : un poste de
+  // bureau consultant la ligne entière n'est pas un écran de gare. Jamais non
+  // plus sans `?ecran=` : voir `identifiantEcran`, un onglet ne doit pas
+  // pouvoir battre à la place d'un poste installé.
+  if (url.get('apercu') === '1' || gare === null) {
+    // rien : ni signal de vie, ni avertissement
+  } else if (idEcran === null) {
+    avertitPosteAnonyme();
+  } else {
     const journaliseHeartbeat = creeJournalHeartbeat();
     const bat = (): void => {
       void provider

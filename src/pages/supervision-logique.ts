@@ -150,15 +150,14 @@ export function traductionLocale(fr: string): string {
 }
 
 /**
- * Identifiant physique d'un écran : le TYPE de page en fait partie, sinon
- * l'écran des départs et l'écran grille d'une même gare s'écrasent dans
- * « État des écrans » et le bouton « Recharger » vise le mauvais poste.
- */
-/**
- * Convention d'identifiant d'un poste, SOURCE UNIQUE : elle sert à la fois à
- * l'écran qui se signale et à l'administrateur qui le déclare — les deux
- * doivent tomber sur la même chaîne, sinon le signal de vie n'atteint
- * aucune ligne.
+ * Convention d'identifiant d'un poste, qui sert à l'administrateur qui le
+ * DÉCLARE en supervision : le TYPE de page en fait partie, sinon l'écran des
+ * départs et l'écran grille d'une même gare s'écrasent dans « État des
+ * écrans » et le bouton « Recharger » vise le mauvais poste.
+ *
+ * Ce n'est plus qu'une PROPOSITION de nom : la page, elle, ne la recalcule
+ * pas pour elle-même (voir `identifiantEcran`). C'est le poseur qui recopie
+ * la chaîne déclarée dans l'URL du kiosque.
  */
 export function identifiantEcranDeclare(
   type: 'ecran' | 'grille',
@@ -168,13 +167,31 @@ export function identifiantEcranDeclare(
   return `${gare}-${type}-${numero}`;
 }
 
-export function identifiantEcran(
-  type: 'ecran' | 'grille',
-  gare: string | null,
-  parametre: string | null,
-): string {
-  if (parametre) return parametre; // ?ecran= reste prioritaire
-  return identifiantEcranDeclare(type, gare ?? 'sans-gare');
+/**
+ * Identifiant du POSTE qui bat — `null` quand la page n'en a pas, et alors
+ * elle ne bat PAS du tout.
+ *
+ * Il ne se déduit plus de la gare ni du type de page. Le 19/09/2026, l'écran
+ * de Saint-Gervais est resté muet trois heures et la supervision l'a dit sain
+ * pendant une heure : un onglet `ecran.html?gare=saint-gervais` ouvert sur un
+ * poste de bureau tombait sur `saint-gervais-ecran-1`, exactement comme le
+ * Raspberry, et son signal de vie MASQUAIT le silence de l'écran réel. Depuis
+ * la mise en service du guetteur, un tel onglet empêche l'alerte de partir.
+ *
+ * D'où la règle : SEUL `?ecran=` désigne un poste. Un identifiant ne peut
+ * plus être usurpé par accident, puisqu'il n'est plus devinable — il faut
+ * l'avoir écrit. Un onglet ouvert par curiosité n'existe pas en supervision,
+ * ce qui est exactement ce qu'on veut : il affiche les horaires (l'affichage
+ * voyageurs ne dépend JAMAIS de la supervision) sans rien prétendre sur
+ * l'état d'une machine.
+ *
+ * Les blancs ne font pas un identifiant : `?ecran=` vide ou réduit à des
+ * espaces vaut absence, sinon une URL mal recopiée déclarerait un poste
+ * nommé « » que rien ne pourrait rapprocher d'une ligne déclarée.
+ */
+export function identifiantEcran(parametre: string | null): string | null {
+  const nom = parametre?.trim() ?? '';
+  return nom === '' ? null : nom;
 }
 
 // ---------------------------------------------------------------------------

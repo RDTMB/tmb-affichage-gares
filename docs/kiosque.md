@@ -42,10 +42,30 @@ chromium --kiosk --noerrdialogs --disable-infobars \
   --disable-session-crashed-bubble --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
   --password-store=basic --disable-features=Translate --lang=fr \
-  "https://rdtmb.github.io/tmb-affichage-gares/ecran.html?gare=${GARE}" &
+  "https://rdtmb.github.io/tmb-affichage-gares/ecran.html?gare=${GARE}&ecran=${GARE}-ecran-1" &
 ```
 
 Le binaire est `chromium` (paquet `chromium`), **pas** `chromium-browser`.
+
+> ### ⚠ `&ecran=` N'EST PAS DÉCORATIF : sans lui, le poste n'existe plus
+>
+> C'est ce paramètre, et lui seul, qui dit à la supervision QUEL poste
+> parle. Il n'est plus déduit de la gare depuis le 19/09/2026 : ce jour-là,
+> l'écran de Saint-Gervais est resté muet trois heures et un onglet
+> `ecran.html?gare=saint-gervais` ouvert sur un poste de bureau battait sous
+> le même identifiant que le Raspberry — la supervision l'a dit sain pendant
+> une heure et **le guetteur n'a envoyé aucune alerte**.
+>
+> Conséquence directe pour qui touche à ce fichier : une URL sans `&ecran=`
+> affiche parfaitement les horaires, mais le poste **disparaît de la
+> supervision** et le guetteur finit par alerter sur un écran qui va bien.
+> L'erreur ne se voit donc PAS sur l'écran — seulement en supervision, et en
+> console (`[TMB] aucun signal de vie…`).
+>
+> La chaîne doit être **exactement** celle déclarée en supervision
+> (§12). `${GARE}-ecran-1` la reconstruit pour le premier écran des départs
+> d'une gare ; pour un deuxième écran, ou un poste au nom libre, écrire la
+> chaîne en dur plutôt que de bricoler la variable.
 
 ### `~/.config/labwc/environment`
 
@@ -66,6 +86,11 @@ Si le curseur réapparaît sur un poste, c'est cette ligne qu'il faut
 regarder en premier.
 
 ## 2. La gare de l'écran = un seul fichier
+
+> Le fichier donne la GARE ; il ne donne pas le POSTE. `autostart` en déduit
+> l'identifiant `${GARE}-ecran-1`, ce qui convient au premier écran des
+> départs d'une gare et à lui seul. Tout autre poste (deuxième écran, grille
+> horaire, nom libre) porte sa chaîne en dur dans `autostart`.
 
 `/boot/firmware/gare.txt` contient UNIQUEMENT l'identifiant de la gare :
 `le-fayet`, `saint-gervais`, `motivon`, `col-de-voza`, `bellevue` ou
@@ -277,7 +302,10 @@ liste noire (`linux-image-`, `raspberrypi-kernel`, `raspberrypi-bootloader`,
    d'administration dans `~/.ssh/authorized_keys`).
    **Recopier les noms EXACTEMENT** — voir les deux encadrés ci-dessus.
 6. `sudo systemctl enable corrige-horloge`, puis la crontab root du §5.
-7. Écrire `/boot/firmware/gare.txt`, redémarrer, vérifier avec le §10.
+7. Déclarer le poste en supervision (§12) et vérifier que la chaîne déclarée
+   est bien celle que produit le `&ecran=` d'`autostart` — un poste au nom
+   libre ou un deuxième écran demande d'écrire la chaîne en dur (§1).
+8. Écrire `/boot/firmware/gare.txt`, redémarrer, vérifier avec le §10.
 
 ## 9. Échange standard en 10 minutes
 
@@ -286,11 +314,13 @@ liste noire (`linux-image-`, `raspberrypi-kernel`, `raspberrypi-bootloader`,
 3. Brancher HDMI + RJ45 (ou Wi-Fi/5G au Nid d'Aigle) + alimentation.
 4. L'écran démarre seul ; vérifier l'heure et la gare affichées.
 5. Contrôler dans Supervision → Écrans que le poste apparaît « en ligne ».
+   S'il n'apparaît pas alors que l'écran affiche bien les horaires, c'est le
+   `&ecran=` d'`autostart` qu'il faut regarder en premier (§1), pas le réseau.
 
 ## 10. Vérifier un poste, en cinq commandes
 
 ```bash
-ps -eo args | grep -m1 '[c]hromium'   # bons drapeaux, bonne gare dans l'URL
+ps -eo args | grep -m1 '[c]hromium'   # bons drapeaux, bonne gare ET &ecran= dans l'URL
 timedatectl | head -6                  # synchronisé, Europe/Paris
 systemctl is-enabled corrige-horloge lightdm
 sudo crontab -l                        # le reboot de 04:30
@@ -304,6 +334,10 @@ cat /boot/firmware/gare.txt            # la bonne gare
 - [ ] Orientation et hauteur validées avec l'exploitant, pas de reflets
 - [ ] Test PLEIN SOLEIL : lisibilité du tableau marine à 2 m
 - [ ] `gare.txt` = identifiant correct (l'écran affiche le bon nom de gare)
+- [ ] **Poste DÉCLARÉ en supervision (§12), et sa chaîne recopiée en `&ecran=`
+      dans `autostart`** — `ps -eo args | grep '[c]hromium'` doit la montrer.
+      Sans elle, l'écran affiche parfaitement les horaires et disparaît
+      pourtant de la supervision : rien sur place ne le signale.
 - [ ] Heure exacte et date française dans le bandeau ; **pile RTC en place**
 - [ ] Curseur invisible (le thème, §1) — rien ne doit apparaître à la souris
 - [ ] Écran visible « en ligne » en supervision ; test du bouton « Recharger »
@@ -314,16 +348,26 @@ cat /boot/firmware/gare.txt            # la bonne gare
 Depuis la mise en conformité des Security Advisors, un écran ne s'inscrit
 plus tout seul : Supervision → onglet **Écrans** → choisir la gare, le type
 (écran des départs / grille horaire) et le numéro, puis **+ Déclarer**.
-L'identifiant proposé (`le-fayet-ecran-1`) est exactement celui que la page
-calculera pour elle-même — inutile de le saisir sur le Raspberry Pi.
 
-Un poste non déclaré affiche correctement les horaires (l'échec du signal
-de vie n'interrompt JAMAIS l'affichage voyageurs) mais reste invisible en
-supervision : la console du navigateur porte alors un avertissement
-`[TMB] signal de vie non enregistré…`.
+**L'identifiant proposé (`le-fayet-ecran-1`) doit être RECOPIÉ dans l'URL du
+poste**, en `&ecran=` (§1). La page ne le devine plus : depuis le 19/09/2026
+elle ne se signale QUE sous le nom qu'on lui a donné. C'est ce qui empêche un
+onglet ouvert ailleurs de battre à la place de l'écran en gare — et donc de
+couvrir sa panne.
+
+Deux situations, deux symptômes qu'il ne faut pas confondre :
+
+| Ce qui manque                        | Ce que fait la page          | Console                              |
+| ------------------------------------ | ---------------------------- | ------------------------------------ |
+| `&ecran=` absent de l'URL            | horaires OK, **aucun** signal | `[TMB] aucun signal de vie…`         |
+| poste non déclaré en supervision     | horaires OK, signal perdu     | `[TMB] signal de vie non enregistré…` |
+
+Dans les deux cas l'affichage voyageurs est intact — l'échec du signal de vie
+n'interrompt JAMAIS ce que voient les voyageurs — mais le poste reste
+invisible en supervision, et le guetteur finira par alerter.
 
 Pour un deuxième écran dans la même gare, déclarer le numéro 2 et lancer la
-page avec `?ecran=le-fayet-ecran-2`.
+page avec `&ecran=le-fayet-ecran-2`.
 
 ## 13. Ce qui n'est pas résolu, et qu'il ne faut pas croire résolu
 
