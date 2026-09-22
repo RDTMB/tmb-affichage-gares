@@ -71,7 +71,12 @@ import {
 } from './resilience';
 
 import { poseFavicon } from './favicon';
+import { poseMarquePreversion } from './preversion';
 
+// Marque de préversion (cadre rouge) : posée UNIQUEMENT dans le build de
+// `/preview/`, jamais dans celui de la production. Avant tout le reste :
+// si la page échoue plus bas, elle doit déjà dire qu'elle n'est pas la gare.
+poseMarquePreversion();
 poseFavicon();
 
 const RAME_INCONNUE: Machine = { nom: '?', couleur: '#708DA4', en_service: true };

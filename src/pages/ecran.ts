@@ -76,6 +76,7 @@ import {
   meteoHtml,
 } from './affichage-commun';
 import { poseFavicon } from './favicon';
+import { poseMarquePreversion, titrePage } from './preversion';
 import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
 import {
@@ -87,6 +88,10 @@ import {
 } from './resilience';
 
 // Flèches obliques ↗ / ↙ de la maquette (inline, aucune ressource externe)
+// Marque de préversion (cadre rouge) : posée UNIQUEMENT dans le build de
+// `/preview/`, jamais dans celui de la production. Avant tout le reste :
+// si la page échoue plus bas, elle doit déjà dire qu'elle n'est pas la gare.
+poseMarquePreversion();
 poseFavicon();
 
 const FLECHE_UP =
@@ -860,7 +865,7 @@ async function demarre(): Promise<void> {
     grille = grillePourJour(d.grilles, d.jour);
     grilleDemain = serviceActif(d.grilles, dateSuivante(d.jour.date));
     if (!grille) return;
-    document.title = `TMB — ${nomGare(gare)}`;
+    document.title = titrePage(`TMB — ${nomGare(gare)}`);
     $('gare-nom').textContent = nomGare(gare);
     const altitude = grille.gares.find((g) => g.id === gare)?.altitude_m;
     $('gare-alt').textContent =

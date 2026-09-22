@@ -1,0 +1,89 @@
+/* Marque de PRÉVERSION (src/pages/preversion.ts).
+
+   Cette feuille est chargée par les QUATRE surfaces, mais elle ne peint rien
+   tant que `marquePreversion()` n'a pas posé la classe sur <html> — ce qui
+   n'arrive que dans le build bâti avec `--base=/<dépôt>/preview/`. Dans le
+   build de la production, ces règles existent et ne s'appliquent jamais : le
+   coût est de quelques centaines d'octets, et le bénéfice est qu'aucune page
+   ne peut être oubliée.
+
+   Un CADRE plutôt qu'un bandeau : les bandeaux de l'écran de gare s'empilent
+   déjà en haut, se disputent leur `top` et poussent l'en-tête (ecran.css) ; un
+   quatrième aurait à s'insérer dans cette combinatoire, sur quatre feuilles de
+   style, pour un marqueur qui n'a rien de propre à l'écran. Le cadre, lui, ne
+   prend AUCUNE place dans le flux : la mise en page qu'on est venu regarder
+   reste exactement celle de la gare.
+
+   CE QU'IL EN COÛTE, et c'est assumé : l'étiquette SUPERPOSE une bande au bas
+   de la fenêtre — sur l'écran de gare, une partie du bandeau défilant. Tout
+   marqueur superpose quelque chose ; le seul qui ne superposerait rien
+   déformerait la page, c'est-à-dire l'objet même de la préversion. Le bas est
+   le moindre mal : les départs, l'heure et les bandeaux d'essai sont ailleurs.
+   Et rien n'intercepte de clic, la supervision reste utilisable dessous. */
+
+.cadre-preversion {
+  display: none;
+}
+
+.preversion .cadre-preversion {
+  display: block;
+  position: fixed;
+  inset: 0;
+  /* Au-dessus de TOUT : le plus haut z-index du projet est 100 (médias plein
+     écran, veille, fenêtres de supervision). Un marqueur que le mode veille
+     recouvrirait ne servirait à rien — c'est justement l'écran qu'on regarde
+     de loin, sans lire. */
+  z-index: 9000;
+  /* Rien ne doit se laisser cliquer ici : la supervision reste utilisable
+     sous le cadre, y compris dans les huit pixels du bord. */
+  pointer-events: none;
+  /* Le cadre lui-même : huit pixels du rouge de la charte, sur les quatre
+     côtés. `border` plutôt qu'un `outline` — un outline se dessine à
+     l'extérieur de la boîte et se retrouve hors de la fenêtre. */
+  border: 8px solid var(--tmb-rouge);
+  /* Le fond reste visible : la préversion sert à REGARDER la page. */
+  background: transparent;
+}
+
+/* L'étiquette, en bas et centrée. En bas parce que le haut appartient aux
+   bandeaux d'essai de l'écran de gare (démonstration, heure simulée, horloge
+   déréglée), et qu'un marqueur qui en recouvre un autre fait perdre les deux. */
+.preversion .etiquette-preversion {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px 18px;
+  background: var(--tmb-rouge);
+  color: #ffffff;
+  font-family: var(--police-titres);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 6px 6px 0 0;
+}
+
+/* Écran de gare en 1080p vu à quatre mètres, ou téléphone à 390 px : la même
+   étiquette en points fixes serait illisible dans un cas et écrasante dans
+   l'autre. Elle suit donc la hauteur de la fenêtre au-delà de 900 px de haut,
+   et se resserre en dessous de 500 px de large. */
+@media (min-height: 900px) {
+  .preversion .etiquette-preversion {
+    padding: 0.8vh 2vh;
+    font-size: 1.8vh;
+  }
+}
+
+@media (max-width: 500px) {
+  .preversion .etiquette-preversion {
+    padding: 4px 10px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+}

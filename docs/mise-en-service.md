@@ -249,16 +249,30 @@ select p.email, p.actif, array_agg(pr.role order by pr.role) as roles
 ## D. Brancher le site sur Supabase (~5 min)
 
 1. GitHub → dépôt → **Settings → Secrets and variables → Actions →
-   Variables** → « New repository variable » :
-   - `VITE_SUPABASE_URL` = l'URL du projet ;
-   - `VITE_SUPABASE_PUBLISHABLE_KEY` = la clé `sb_publishable_…`.
+   Variables** → « New repository variable ». Quatre variables, DEUX
+   JEUX — le site publié a deux moitiés (§I, « La préversion ») :
+
+   | Variable | Valeur | Sert à |
+   | --- | --- | --- |
+   | `VITE_SUPABASE_URL` | URL du projet de PRODUCTION | la racine du site, ce que lisent les six écrans en gare |
+   | `VITE_SUPABASE_PUBLISHABLE_KEY` | sa clé `sb_publishable_…` | idem |
+   | `PREVERSION_SUPABASE_URL` | URL du projet de TEST (§H) | la préversion, sous `/preview/` |
+   | `PREVERSION_SUPABASE_PUBLISHABLE_KEY` | sa clé `sb_publishable_…` | idem |
+
+   Les deux jeux ne se croisent nulle part, et le workflow REFUSE de
+   publier si `VITE_SUPABASE_URL` ne désigne pas le projet de production
+   (comparaison à `REF_PROJET_PRODUCTION`, src/data/config.ts) : une
+   inversion enverrait des horaires de test sur les six écrans.
 2. GitHub → **Settings → Pages** → Source : **GitHub Actions**.
 3. Onglet **Actions** → relancer le workflow « Déploiement GitHub Pages »
    (bouton « Run workflow »). À la fin, l'URL est affichée :
    `https://<organisation>.github.io/tmb-affichage-gares/`.
-4. Sans variables, le déploiement est **refusé** par le workflow : un écran
-   de gare sans source de données afficherait des horaires fictifs (le mode
-   démonstration n'existe que sur le poste de développement, §H).
+4. Sans les variables de PRODUCTION, le déploiement est **refusé** par le
+   workflow : un écran de gare sans source de données afficherait des
+   horaires fictifs (le mode démonstration n'existe que sur le poste de
+   développement, §H). Sans celles de la PRÉVERSION, au contraire, la
+   production se publie quand même et seule la préversion manque : le
+   mécanisme existe pour protéger la gare, pas pour la bloquer.
 
 ## E. Edge Functions (traduction + invitations + guetteur) (~10 min)
 
@@ -633,8 +647,8 @@ chaque commit, `git status` ne doit jamais lister `public/config.js`.
 ## I. Mise en ligne d'une évolution
 
 Une évolution se prépare sur une branche (`chantier-…`), se teste sur le
-projet de test (§H), puis arrive sur `main` par pull request. Le rituel,
-toujours dans cet ordre :
+projet de test (§H), se REGARDE sur la préversion (ci-dessous), puis arrive
+sur `main` par pull request. Le rituel, toujours dans cet ordre :
 
 1. **Scripts SQL sur la base de production**, dans l'ordre indiqué par la
    pull request (les nouveaux scripts sont aussi ajoutés au §B). Toujours
@@ -647,7 +661,9 @@ toujours dans cet ordre :
    déploiement,
    l'ancienne version tourne sur le nouveau schéma : c'est court, mais c'est
    le moment le plus fragile du rituel.
-3. **Fusion de la pull request** sur GitHub, tests verts obligatoires.
+3. **Fusion de la pull request** sur GitHub, tests verts obligatoires —
+   après être passé par la préversion (ci-dessous) si le lot touche à
+   l'affichage.
 4. **Déploiement automatique** : onglet Actions, workflow « Tests et
    déploiement GitHub Pages ». À la fin, l'URL de production sert la
    nouvelle version.
@@ -659,6 +675,44 @@ toujours dans cet ordre :
    nouvelle version à son prochain signal de vie (moins d'une minute). Sans
    cette étape, les écrans gardent l'ancienne version jusqu'au redémarrage
    de 4 h 30.
+
+### La préversion : regarder un lot avant la gare
+
+GitHub Pages ne sert qu'un seul site par dépôt. Le même déploiement publie
+donc les deux moitiés :
+
+| Adresse | Branche | Base de données |
+| --- | --- | --- |
+| `…github.io/tmb-affichage-gares/` | `main` | **production** — les six écrans en gare |
+| `…github.io/tmb-affichage-gares/preview/` | `dev` | **base de test** (§H) |
+
+Comment on s’en sert :
+
+1. La pull request du lot vise **`dev`**, pas `main`.
+2. Une fois fusionnée dans `dev`, attendre le déploiement (onglet Actions),
+   puis ouvrir `…/preview/ecran.html?gare=saint-gervais`. **Un cadre rouge
+   entoure la page** et porte « PRÉVERSION — BASE DE TEST — PAS
+   L'AFFICHAGE EN GARE » : s'il n'y est pas, c'est la gare qu'on regarde.
+3. Quand le lot convient, une pull request **`dev` → `main`** le publie.
+
+Trois choses à savoir, et elles surprennent toutes les trois :
+
+- **Un push sur `dev` republie AUSSI la racine.** Pages remplace
+  l'artefact entier : les deux moitiés sont reconstruites à chaque fois,
+  sans quoi l'une effacerait l'autre. La racine reconstruite vient
+  toujours de `main`, donc rien ne change en gare.
+- **La préversion est un vrai site, pas une maquette.** Elle écrit dans la
+  base de test : un message publié depuis sa supervision n'atteint aucun
+  écran, mais il reste dans la base de test.
+- **Si la préversion manque, la production part quand même.** Le run
+  devient rouge (job « La préversion a-t-elle été construite ? ») et
+  `/preview/` affiche une page qui dit pourquoi ; la gare, elle, est à
+  jour. C'est voulu.
+
+La branche `dev` se crée une fois pour toutes, depuis `main` : GitHub →
+dépôt → sélecteur de branche → taper `dev` → « Create branch: dev from
+main ». Tant qu'elle n'existe pas, le workflow le signale par un
+avertissement et publie la production seule.
 
 ### Protection de la branche `main`
 

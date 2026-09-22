@@ -1,9 +1,27 @@
 # Tests sur les pull requests et sur les branches d'intégration, déploiement
-# GitHub Pages depuis `main` uniquement (docs/02 §6, docs/mise-en-service.md
-# « Mise en ligne d'une évolution »). Un test rouge bloque la mise en ligne.
+# GitHub Pages (docs/02 §6, docs/mise-en-service.md « Mise en ligne d'une
+# évolution »). Un test rouge bloque la mise en ligne.
 # config.js est généré depuis les VARIABLES de dépôt (Settings → Secrets and
 # variables → Actions → Variables) : jamais de clé dans le code. La clé
 # « publishable » Supabase est publique par conception.
+#
+# ─── DEUX MOITIÉS DE SITE, UN SEUL DÉPLOIEMENT (21/09/2026) ──────────────────
+# GitHub Pages ne sert qu'UN SEUL site par dépôt. La préversion demandée par
+# l'exploitation — regarder un lot sur un vrai site avant qu'il parte en gare —
+# ne peut donc pas avoir « son » site : le même artefact porte les deux.
+#
+#   la RACINE   : `main`, base `/<dépôt>/`,         variables de PRODUCTION ;
+#   `/preview/` : `dev`,  base `/<dépôt>/preview/`, variables de la BASE DE TEST.
+#
+# ⚠ LES DEUX MOITIÉS SONT RECONSTRUITES À CHAQUE PUBLICATION, quelle que soit
+# la branche poussée. Ce n'est pas une optimisation oubliée : `deploy-pages`
+# REMPLACE l'artefact ENTIER. Ne construire que la branche qui a bougé
+# effacerait l'autre moitié du site — un simple coup d'œil à `dev` supprimerait
+# l'affichage des six gares. Quiconque voudra « ne construire que ce qui a
+# changé » doit d'abord trouver comment publier un artefact PARTIEL : il n'y a
+# pas de moyen de le faire. Le prix de cette règle est une minute de build de
+# plus par publication.
+
 name: Tests et déploiement GitHub Pages
 
 # Les déclencheurs sont RESTREINTS depuis le 19/09/2026. `push: ['**']` ET
@@ -11,8 +29,7 @@ name: Tests et déploiement GitHub Pages
 # portait une PR, et le groupe de concurrence ci-dessous en annulait une : le
 # 13/09/2026, une PR est restée bloquée sur un contrôle obligatoire ANNULÉ —
 # et un contrôle annulé n'est pas un contrôle réussi. Une branche de chantier
-# n'a donc plus de build à elle : c'est sa PR qui le porte. `dev` n'existe pas
-# encore (lot suivant) ; il est nommé ici pour ne pas avoir à y revenir.
+# n'a donc plus de build à elle : c'est sa PR qui le porte.
 on:
   push:
     branches: [main, dev]
@@ -30,6 +47,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Le contrôle obligatoire des pull requests. Il garde son nom (`build`) :
+  # c'est celui que la protection de branche exige.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -41,34 +60,236 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run format:check
-      - name: Génère public/config.js depuis les variables de dépôt (main seulement)
-        if: github.ref == 'refs/heads/main'
+      # Le build tourne SANS config.js : il prouve que le code compile
+      # (`npm run build` = `tsc && vite build`) et se construit. Rien n'est mis
+      # en ligne ici — la publication a son propre job.
+      - name: Build (vérification de compilation)
+        run: npm run build -- --base=/${{ github.event.repository.name }}/
+
+  # La publication : les DEUX moitiés du site, dans un seul artefact.
+  site:
+    name: Construit le site (racine = main, préversion = dev)
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      # « oui » construite, « non » en échec, « sans-objet » si `dev` n'existe
+      # pas encore. Le job `preversion` en tire le verdict du run.
+      preversion: ${{ steps.verdict.outputs.constructible }}
+      raison: ${{ steps.verdict.outputs.raison }}
+    env:
+      SITE: ${{ runner.temp }}/site
+      DEPOT: ${{ github.event.repository.name }}
+    steps:
+      # On part TOUJOURS de `main`, y compris quand c'est `dev` qui a été
+      # poussé : la racine du site, c'est la gare.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # ---- La racine : `main` + la base de PRODUCTION ----------------------
+      - name: Variables de PRODUCTION → public/config.js
         env:
           SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_KEY" ]; then
-            printf 'window.TMB_CONFIG = { supabaseUrl: "%s", supabaseKey: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > public/config.js
-            echo "config.js généré (mode Supabase)"
-          else
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
             echo "::error::Variables de dépôt absentes ou mal nommées : VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY sont requises (Settings → Secrets and variables → Actions → Variables). Déploiement REFUSÉ : sans elles, les écrans de gare n'auraient aucune source de données."
             exit 1
           fi
-      # Sur une branche de travail, le build tourne SANS config.js : il prouve
-      # que le code compile et se construit, rien n'est mis en ligne.
-      - name: Build (base = /nom-du-depot/)
-        run: npm run build -- --base=/${{ github.event.repository.name }}/
+          # GARDE-FOU D'INVERSION. `REF_PROJET_PRODUCTION` (src/data/config.ts)
+          # est la référence du projet Supabase de production ; elle fait partie
+          # de l'URL publique, ce n'est donc pas un secret, et c'est DÉJÀ elle
+          # qui décide de la pastille « PRODUCTION » / « BASE DE TEST » de la
+          # supervision. La LIRE ici plutôt que de la réécrire garde une seule
+          # source de vérité : si le projet change un jour et que la constante
+          # n'est pas mise à jour, ce déploiement s'arrête — c'est le bon
+          # moment pour s'en apercevoir, la supervision mentirait déjà.
+          REF_PROD=$(sed -n "s/^export const REF_PROJET_PRODUCTION = '\([a-z0-9]*\)'.*/\1/p" src/data/config.ts)
+          if [ -z "$REF_PROD" ]; then
+            echo "::error::REF_PROJET_PRODUCTION introuvable dans src/data/config.ts : le garde-fou d'inversion ne peut pas s'appliquer. Déploiement REFUSÉ."
+            exit 1
+          fi
+          case "$SUPABASE_URL" in
+            *"$REF_PROD"*) ;;
+            *)
+              echo "::error::VITE_SUPABASE_URL ne désigne PAS le projet de production ($REF_PROD) : les six écrans en gare liraient une autre base. Les variables de la production et celles de la préversion sont vraisemblablement inversées. Déploiement REFUSÉ."
+              exit 1
+              ;;
+          esac
+          printf 'window.TMB_CONFIG = { supabaseUrl: "%s", supabaseKey: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > public/config.js
+          echo "config.js généré pour la RACINE (projet $REF_PROD)"
+
+      - name: Construit la racine (base = /<dépôt>/)
+        run: npm run build -- --base=/$DEPOT/
+
+      - name: Met la racine de côté
+        run: |
+          mv dist "$SITE"
+          # La configuration de PRODUCTION ne survit pas à cette étape. Ce qui
+          # sera écrit ensuite dans public/config.js est celle de la base de
+          # TEST ; si cette écriture échouait, la préversion se construirait
+          # SANS source — écran neutre (C-02) — plutôt qu'avec celle de la gare.
+          rm -f public/config.js
+
+      # ---- La préversion : `dev` + la base de TEST -------------------------
+      - name: La préversion est-elle constructible ?
+        id: examen
+        env:
+          URL_TEST: ${{ vars.PREVERSION_SUPABASE_URL }}
+          CLE_TEST: ${{ vars.PREVERSION_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          REF_PROD=$(sed -n "s/^export const REF_PROJET_PRODUCTION = '\([a-z0-9]*\)'.*/\1/p" src/data/config.ts)
+          etat=oui
+          raison=""
+          if ! git fetch --depth=1 origin +refs/heads/dev:refs/remotes/origin/dev 2>/dev/null; then
+            etat=sans-objet
+            raison="la branche dev n'existe pas encore dans ce dépôt"
+          elif [ -z "$URL_TEST" ] || [ -z "$CLE_TEST" ]; then
+            etat=non
+            raison="les variables de dépôt PREVERSION_SUPABASE_URL et PREVERSION_SUPABASE_PUBLISHABLE_KEY ne sont pas posées (Settings → Secrets and variables → Actions → Variables)"
+          else
+            case "$URL_TEST" in
+              *"$REF_PROD"*)
+                etat=non
+                raison="PREVERSION_SUPABASE_URL désigne le projet de PRODUCTION ($REF_PROD) : la préversion montrerait les vraies données de la gare, et un message publié depuis elle partirait sur les six écrans"
+                ;;
+            esac
+          fi
+          echo "etat=$etat" >> "$GITHUB_OUTPUT"
+          echo "raison=$raison" >> "$GITHUB_OUTPUT"
+
+      # `continue-on-error` : une préversion mal réglée NE DOIT PAS empêcher la
+      # gare d'être mise à jour. Le mécanisme existe pour protéger la gare, pas
+      # pour la bloquer. Le run deviendra rouge — mais APRÈS la publication,
+      # dans le job `preversion`.
+      - name: Construit la préversion (dev, base = /<dépôt>/preview/, BASE DE TEST)
+        if: steps.examen.outputs.etat == 'oui'
+        continue-on-error: true
+        env:
+          URL_TEST: ${{ vars.PREVERSION_SUPABASE_URL }}
+          CLE_TEST: ${{ vars.PREVERSION_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          git checkout --force origin/dev
+          npm ci
+          printf 'window.TMB_CONFIG = { supabaseUrl: "%s", supabaseKey: "%s" };\n' "$URL_TEST" "$CLE_TEST" > public/config.js
+          npm run build -- --base=/$DEPOT/preview/
+          mv dist "$SITE/preview"
+          rm -f public/config.js
+
+      # Ce qui est vérifié ici l'est sur l'ARTEFACT, pas sur l'intention. Le
+      # chemin de base et la base de données sont exactement les deux choses
+      # qu'un réglage inverse EN SILENCE, et qui ne se voient qu'une fois le
+      # site en ligne. Trois grep valent mieux qu'un écran de gare branché sur
+      # la base de test.
+      - name: Vérifie l'artefact avant publication
+        id: verdict
+        env:
+          ETAT_EXAMEN: ${{ steps.examen.outputs.etat }}
+          RAISON_EXAMEN: ${{ steps.examen.outputs.raison }}
+        run: |
+          REF_PROD=$(sed -n "s/^export const REF_PROJET_PRODUCTION = '\([a-z0-9]*\)'.*/\1/p" src/data/config.ts)
+
+          # --- la racine : bloquant, c'est la gare ---
+          if ! grep -q "$REF_PROD" "$SITE/config.js"; then
+            echo "::error::La racine construite ne pointe pas sur la base de production. Publication REFUSÉE."
+            exit 1
+          fi
+          if ! grep -q "/$DEPOT/assets/" "$SITE/ecran.html"; then
+            echo "::error::La racine construite n'a pas le chemin de base /$DEPOT/ : ses scripts ne se chargeraient pas. Publication REFUSÉE."
+            exit 1
+          fi
+
+          # --- la préversion : jamais bloquant ---
+          etat="$ETAT_EXAMEN"
+          raison="$RAISON_EXAMEN"
+          if [ "$etat" = oui ]; then
+            if [ ! -f "$SITE/preview/ecran.html" ]; then
+              etat=non
+              raison="la construction de la préversion a échoué (voir l'étape précédente)"
+            elif grep -q "$REF_PROD" "$SITE/preview/config.js"; then
+              etat=non
+              raison="la préversion construite pointe sur la base de PRODUCTION"
+            elif ! grep -q "/$DEPOT/preview/assets/" "$SITE/preview/ecran.html"; then
+              etat=non
+              raison="la préversion construite n'a pas le chemin de base /$DEPOT/preview/ : ses scripts ne se chargeraient pas"
+            fi
+          fi
+
+          if [ "$etat" != oui ]; then
+            # Une page à la place de la préversion : celui qui ouvre /preview/
+            # doit LIRE pourquoi, pas tomber sur le 404 de GitHub.
+            rm -rf "$SITE/preview"
+            mkdir -p "$SITE/preview"
+            {
+              cat <<'DEBUT'
+          <!doctype html>
+          <html lang="fr">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Préversion indisponible — TMB</title>
+              <style>
+                body { margin: 0; min-height: 100vh; display: flex; align-items: center;
+                       justify-content: center; padding: 24px; text-align: center;
+                       background: #213b57; color: #f1e5d1;
+                       font-family: 'Trebuchet MS', sans-serif; }
+                p { max-width: 34em; line-height: 1.5; }
+                .raison { color: #ffffff; font-weight: 700; }
+              </style>
+            </head>
+            <body>
+              <div>
+                <h1>Préversion indisponible</h1>
+                <p class="raison">
+          DEBUT
+              printf '%s\n' "$raison"
+              cat <<'FIN'
+                </p>
+                <p>
+                  L'affichage en gare, lui, est à la racine du site et n'est pas
+                  concerné : cette page ne dit rien de son état.
+                </p>
+              </div>
+            </body>
+          </html>
+          FIN
+            } > "$SITE/preview/index.html"
+          fi
+
+          if [ "$etat" = non ]; then
+            echo "::error::Préversion NON construite : $raison. La production, elle, est publiée."
+          elif [ "$etat" = sans-objet ]; then
+            echo "::warning::Préversion non construite : $raison. Créez la branche dev depuis main pour l'activer."
+          fi
+          echo "constructible=$etat" >> "$GITHUB_OUTPUT"
+          echo "raison=$raison" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        if: github.ref == 'refs/heads/main'
         with:
-          path: dist
+          path: ${{ runner.temp }}/site
 
   deploy:
-    # Mise en ligne depuis `main` seulement : jamais depuis une branche ni
-    # depuis une pull request.
-    if: github.ref == 'refs/heads/main'
-    needs: build
+    # Mise en ligne depuis `main` ET depuis `dev` : dans les deux cas c'est le
+    # site ENTIER qui est republié (voir l'avertissement en tête de fichier).
+    # Jamais depuis une branche de chantier ni depuis une pull request : le job
+    # `site`, dont celui-ci dépend, ne tourne pas dans ces cas-là.
+    needs: site
     runs-on: ubuntu-latest
+    # Les deux branches publient le MÊME site : deux runs simultanés se
+    # marcheraient dessus. Ils font donc la queue ici — et ne s'annulent PAS,
+    # sans quoi un coup d'œil à `dev` pourrait emporter une mise en ligne de
+    # `main` en cours.
+    concurrency:
+      group: pages-publication
+      cancel-in-progress: false
     permissions:
       contents: read
       pages: write
@@ -79,3 +300,32 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+  # Le verdict de la préversion, APRÈS la publication : c'est lui qui rend le
+  # run rouge, sans avoir jamais retenu la mise en ligne de la gare. Sans ce
+  # job, une préversion muette ne se signalerait que par une annotation au
+  # milieu d'un run vert — c'est-à-dire pas du tout.
+  preversion:
+    name: La préversion a-t-elle été construite ?
+    needs: [site, deploy]
+    if: always() && needs.site.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          ETAT: ${{ needs.site.outputs.preversion }}
+          RAISON: ${{ needs.site.outputs.raison }}
+        run: |
+          case "$ETAT" in
+            oui)
+              echo "Préversion publiée sous /preview/."
+              ;;
+            sans-objet)
+              echo "::warning::$RAISON — la préversion n'existera qu'une fois la branche dev créée."
+              ;;
+            *)
+              echo "::error::Préversion NON publiée : $RAISON"
+              echo "La production, elle, EST publiée : ce contrôle ne bloque pas la gare, il refuse seulement de laisser passer une préversion muette pour une préversion en bonne santé."
+              exit 1
+              ;;
+          esac

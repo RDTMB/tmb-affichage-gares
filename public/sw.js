@@ -37,7 +37,31 @@
  * Il est passé de v2 à v3 exprès : ce seul changement purge une fois tous les
  * caches empoisonnés existants, ce que la version figée ne faisait jamais.
  */
-const VERSION = new URL(self.location.href).searchParams.get('v') || 'tmb-v3';
+const HORODATAGE = new URL(self.location.href).searchParams.get('v') || 'tmb-v3';
+
+/**
+ * Portée de CE service worker : le dossier d'où il est servi.
+ *
+ * `/tmb-affichage-gares/` pour le site en gare, `/tmb-affichage-gares/preview/`
+ * pour la préversion de `dev` (.github/workflows/deploy.yml). Deux
+ * enregistrements distincts, deux portées disjointes — mais UN SEUL
+ * CacheStorage, car le stockage de cache est attaché à l'ORIGINE, pas à la
+ * portée. MESURÉ, pas supposé : avec un nom de cache réduit à l'horodatage de
+ * build, la préversion qui s'active trouve le cache de la production dans
+ * `caches.keys()`, ne le reconnaît pas comme le sien, et le SUPPRIME — et
+ * réciproquement. Le démarrage hors ligne de la gare tombait à chaque coup
+ * d'œil sur la préversion depuis le même navigateur.
+ */
+const PORTEE = new URL('./', self.location.href).pathname;
+
+/**
+ * Nom du cache : la portée, puis l'horodatage de build.
+ *
+ * La portée en tête est ce qui rend les deux moitiés du site étanches, et
+ * elle se lit telle quelle dans les outils du navigateur — on voit à qui
+ * appartient un cache sans avoir à le déduire.
+ */
+const VERSION = `${PORTEE}::${HORODATAGE}`;
 
 /**
  * Au-delà, un média en cache est revalidé auprès du réseau.
@@ -85,7 +109,18 @@ self.addEventListener('activate', (evenement) => {
   evenement.waitUntil(
     caches
       .keys()
-      .then((cles) => Promise.all(cles.filter((c) => c !== VERSION).map((c) => caches.delete(c))))
+      .then((cles) =>
+        Promise.all(
+          cles
+            // Ce qui est PURGÉ : les caches de notre propre portée qui ne sont
+            // plus la version courante, et ceux de l'ANCIEN schéma (nom sans
+            // `::`, donc sans portée), qui n'appartiennent plus à personne et
+            // resteraient sinon indéfiniment. Ce qui ne l’est PAS : les caches
+            // d'une AUTRE portée — c'est tout l'objet de la séparation.
+            .filter((c) => c !== VERSION && (c.startsWith(`${PORTEE}::`) || !c.includes('::')))
+            .map((c) => caches.delete(c)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });

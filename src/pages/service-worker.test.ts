@@ -86,6 +86,8 @@ interface Banc {
   cache: CacheFactice;
   /** URLs réellement demandées au réseau. */
   reseau: string[];
+  /** Joue l'événement `activate` et rend les CACHES supprimés au passage. */
+  activer(): Promise<string[]>;
 }
 
 /**
@@ -98,6 +100,12 @@ interface Banc {
 async function banc(options: {
   urlDuScript: string;
   reseau?: (url: string) => ReponseFactice | Error;
+  /**
+   * Caches DÉJÀ présents dans l'origine au moment de l'activation.
+   * CacheStorage est attaché à l’ORIGINE, pas à la portée : la racine et la
+   * préversion y trouvent les caches l’une de l’autre.
+   */
+  cachesExistants?: string[];
 }): Promise<Banc> {
   const { code } = await transformWithEsbuild(sourceSw(), 'sw.js', {
     loader: 'js',
@@ -107,6 +115,7 @@ async function banc(options: {
   const cache = new CacheFactice();
   const demandees: string[] = [];
   const ecouteurs = new Map<string, unknown>();
+  const cachesSupprimes: string[] = [];
 
   const faussSelf = {
     location: { href: options.urlDuScript, origin: 'https://rdtmb.github.io' },
@@ -140,8 +149,11 @@ async function banc(options: {
     faussSelf,
     {
       open: () => Promise.resolve(cache),
-      keys: () => Promise.resolve([]),
-      delete: () => Promise.resolve(true),
+      keys: () => Promise.resolve(options.cachesExistants ?? []),
+      delete: (nom: string) => {
+        cachesSupprimes.push(nom);
+        return Promise.resolve(true);
+      },
     },
     faussFetch,
     // `new Response(corps, { status, headers })` : on garde ce qui compte.
@@ -172,6 +184,15 @@ async function banc(options: {
     version: api.VERSION,
     cache,
     reseau: demandees,
+    activer: async () => {
+      const ecouteur = ecouteurs.get('activate') as (e: {
+        waitUntil: (p: Promise<unknown>) => void;
+      }) => void;
+      const attentes: Promise<unknown>[] = [];
+      ecouteur({ waitUntil: (p) => void attentes.push(p) });
+      await Promise.all(attentes);
+      return cachesSupprimes;
+    },
   };
 }
 
@@ -183,20 +204,20 @@ function requete(url: string) {
 const MEDIA = 'https://exemple.supabase.co/storage/v1/object/public/medias/affiche.png';
 
 describe('§A.2 — la VERSION vient de l’URL d’enregistrement', () => {
-  it('la query string `v` devient le nom du cache', async () => {
+  it('la query string `v` devient le nom du cache, derrière la PORTÉE', async () => {
     // `public/sw.js` n'est pas traité par Vite : aucun `define` ne l'atteint.
     // La query string est le seul canal qui traverse la frontière.
     const b = await banc({
-      urlDuScript: 'https://rdtmb.github.io/sw.js?v=tmb-2026-09-08-08-01-51',
+      urlDuScript: 'https://rdtmb.github.io/tmb-affichage-gares/sw.js?v=tmb-2026-09-08-08-01-51',
     });
-    expect(b.version).toBe('tmb-2026-09-08-08-01-51');
+    expect(b.version).toBe('/tmb-affichage-gares/::tmb-2026-09-08-08-01-51');
   });
 
   it('sans query string, le repli littéral s’applique', async () => {
     // Ouverture directe de `sw.js`, ou enregistrement d'une version
     // antérieure du code : le cache doit tout de même avoir un nom.
-    const b = await banc({ urlDuScript: 'https://rdtmb.github.io/sw.js' });
-    expect(b.version).toBe('tmb-v3');
+    const b = await banc({ urlDuScript: 'https://rdtmb.github.io/tmb-affichage-gares/sw.js' });
+    expect(b.version).toBe('/tmb-affichage-gares/::tmb-v3');
   });
 
   it('le repli a QUITTÉ tmb-v2 : ce seul changement purge les caches empoisonnés', async () => {
@@ -217,6 +238,69 @@ describe('§A.2 — la VERSION vient de l’URL d’enregistrement', () => {
     );
     expect(config).toContain('__VERSION_CACHE__: JSON.stringify(VERSION_CACHE)');
     expect(config).toMatch(/const VERSION_CACHE = `tmb-\$\{new Date\(\)/);
+  });
+});
+
+describe('§A.3 — la racine et la préversion ne se volent pas leur cache', () => {
+  // CE QUI A ÉTÉ MESURÉ, ET POURQUOI CE BLOC EXISTE. Avec un nom de cache
+  // réduit à l'horodatage de build, le service worker de /preview/ trouvait le
+  // cache de la racine dans `caches.keys()` — CacheStorage est attaché à
+  // l'ORIGINE, pas à la portée — ne le reconnaissait pas comme le sien, et le
+  // SUPPRIMAIT. Un coup d’œil à la préversion depuis le navigateur d’un poste
+  // suffisait donc à vider le cache de démarrage hors ligne de la gare, et
+  // réciproquement. Un sous-dossier ne sépare PAS les caches : seule la portée
+  // inscrite dans le NOM du cache le fait.
+
+  const racine = 'https://rdtmb.github.io/tmb-affichage-gares/sw.js?v=tmb-2026-09-22-10-00-00';
+  const apercu =
+    'https://rdtmb.github.io/tmb-affichage-gares/preview/sw.js?v=tmb-2026-09-22-10-02-30';
+  const cacheRacine = '/tmb-affichage-gares/::tmb-2026-09-22-10-00-00';
+  const cacheApercu = '/tmb-affichage-gares/preview/::tmb-2026-09-22-10-02-30';
+
+  it('deux portées, deux noms de cache distincts', async () => {
+    expect((await banc({ urlDuScript: racine })).version).toBe(cacheRacine);
+    expect((await banc({ urlDuScript: apercu })).version).toBe(cacheApercu);
+  });
+
+  it('la préversion qui s’active ne touche PAS au cache de la racine', async () => {
+    const b = await banc({
+      urlDuScript: apercu,
+      cachesExistants: [cacheRacine, cacheApercu],
+    });
+    expect(await b.activer()).toEqual([]);
+  });
+
+  it('la racine qui s’active ne touche PAS au cache de la préversion', async () => {
+    const b = await banc({
+      urlDuScript: racine,
+      cachesExistants: [cacheRacine, cacheApercu],
+    });
+    expect(await b.activer()).toEqual([]);
+  });
+
+  it('une version ANTÉRIEURE de la même portée est bien purgée', async () => {
+    // La séparation ne doit pas devenir un prétexte à tout garder : dans SA
+    // portée, le service worker fait le ménage comme avant.
+    const b = await banc({
+      urlDuScript: apercu,
+      cachesExistants: [
+        cacheRacine,
+        '/tmb-affichage-gares/preview/::tmb-2026-09-21-08-00-00',
+        cacheApercu,
+      ],
+    });
+    expect(await b.activer()).toEqual(['/tmb-affichage-gares/preview/::tmb-2026-09-21-08-00-00']);
+  });
+
+  it('les caches de l’ANCIEN schéma, sans portée, sont purgés une fois', async () => {
+    // `tmb-2026-…` sans portée : un cache posé avant ce correctif. Personne ne
+    // le revendique plus ; sans cette règle il resterait indéfiniment sur
+    // chaque poste et chaque Raspberry.
+    const b = await banc({
+      urlDuScript: racine,
+      cachesExistants: ['tmb-2026-09-10-07-00-00', 'tmb-v3', cacheRacine],
+    });
+    expect(await b.activer()).toEqual(['tmb-2026-09-10-07-00-00', 'tmb-v3']);
   });
 });
 

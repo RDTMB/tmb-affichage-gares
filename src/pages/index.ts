@@ -1,10 +1,15 @@
 // Portail de test : liens vers les écrans des 6 gares + la grille + la supervision.
 import { initBandeau } from './commun';
 import { poseFavicon } from './favicon';
+import { poseMarquePreversion } from './preversion';
 import { ORDRE_GARES, type GareId } from '../core/types';
 // Après ./commun (qui charge base.css) : la feuille du portail l'emporte par la cascade.
 import '../styles/index.css';
 
+// Marque de préversion (cadre rouge) : posée UNIQUEMENT dans le build de
+// `/preview/`, jamais dans celui de la production. Avant tout le reste :
+// si la page échoue plus bas, elle doit déjà dire qu'elle n'est pas la gare.
+poseMarquePreversion();
 initBandeau();
 poseFavicon();
 
