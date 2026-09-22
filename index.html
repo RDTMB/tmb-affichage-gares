@@ -1,4 +1,9 @@
-<!-- SECOND VERROU de C-01 : l'échappement (affichage-commun.ts) reste la
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SECOND VERROU de C-01 : l'échappement (affichage-commun.ts) reste la
          première défense, la CSP rattrape une injection qui passerait par un
          autre chemin. GitHub Pages n'autorisant aucune en-tête HTTP, la
          balise <meta> est le seul levier disponible.
@@ -26,9 +31,9 @@
          - style-src accepte 'unsafe-inline' parce que le code génère des
            attributs style="" (couleurs de rame, largeurs). À réduire un jour,
            pas dans ce lot. -->
-<meta
-  http-equiv="Content-Security-Policy"
-  content="default-src 'self';
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
                script-src 'self';
                style-src 'self' 'unsafe-inline';
                img-src 'self' data: https://*.supabase.co;
@@ -38,12 +43,7 @@
                object-src 'none';
                base-uri 'none';
                form-action 'none'"
-/>
-<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    />
     <title>TMB — Portail de test des écrans</title>
   </head>
   <body>
