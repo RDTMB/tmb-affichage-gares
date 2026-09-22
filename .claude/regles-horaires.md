@@ -14,6 +14,17 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
   Horaires (`docs/import-grilles.md` ; contrat de format :
   `docs/format-excel-horaires.md`). `docs/grilles-historique/` = référence
   été 2026 (oracle des tests, grilles de la démo), jamais modifiée à la main
+- Une grille enregistrée se CORRIGE aussi sans repasser par l'Excel
+  (Supervision → Horaires → « Corriger », ou « Dupliquer ») : les gestes sont
+  dans `src/core/edition-grille.ts` (PUR, testé), l'enchaînement dans
+  `src/pages/correction-grille.ts`, le rendu dans `src/pages/onglet-horaires.ts`.
+  N'écris JAMAIS une deuxième règle de validation : `validationEdition()`
+  réutilise `valideTrains()` de l'import, et c'est le point
+- Le document d'exploitation se REFAIT depuis une grille
+  (`src/core/export-grille.ts` → cellules, `src/core/ecriture-xlsx.ts` → .xlsx) :
+  la boucle export → réimport est verte, et c'est ce test qui tient le format.
+  Corriger dans l'application impose de REDIFFUSER le document imprimé, sinon
+  l'affichage et le papier divergent
 
 ## Règles qui piègent (ne pas improviser)
 
@@ -92,5 +103,10 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
   la précédente, réactivable). Les écrans affichent une journée avec la
   grille qui l'a générée, sinon celle en vigueur à sa date
   (`grillePourJour()`), jamais « la première de la liste ».
+- **Corriger une grille suit la MÊME règle qu'un rechargement** : une
+  correction à l'écran crée elle aussi « …-v2 » et désactive la précédente.
+  SEULES les métadonnées (nom, dates de validité, commentaire) se modifient
+  EN PLACE, par « Modifier » — prolonger une saison d'une semaine ne change
+  aucune heure, et créer une version pour ça brouillerait l'historique
 - **Rotation** : la rame d'une montée assure la descente suivante (ex.
   T1 07:00 → arrivée 08:05:30 → repart T2 08:13:30).
