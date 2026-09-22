@@ -79,8 +79,15 @@ jobs:
       # pas encore. Le job `preversion` en tire le verdict du run.
       preversion: ${{ steps.verdict.outputs.constructible }}
       raison: ${{ steps.verdict.outputs.raison }}
+    # ⚠ Ce bloc `env:` est évalué AVANT qu'un coureur soit attribué au job :
+    # seuls y sont lisibles `github`, `needs`, `vars`, `secrets`, `inputs`,
+    # `strategy` et `matrix`. Pas `runner`, pas `steps`, pas `env` lui-même.
+    # `SITE: ${{ runner.temp }}/site` a été écrit ici le 21/09/2026 : GitHub a
+    # REFUSÉ le fichier entier (« Unrecognized named-value: 'runner' »), donc
+    # refusé de faire tourner le moindre contrôle — et un workflow refusé ne se
+    # distingue pas, dans le dépôt, d'un workflow correct. Le chemin du site
+    # est donc posé par une ÉTAPE, où `$RUNNER_TEMP` existe (voir ci-dessous).
     env:
-      SITE: ${{ runner.temp }}/site
       DEPOT: ${{ github.event.repository.name }}
     steps:
       # On part TOUJOURS de `main`, y compris quand c'est `dev` qui a été
@@ -88,6 +95,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+
+      # `$SITE` est l'endroit où les deux moitiés s'assemblent, HORS de l'arbre
+      # de travail : le job passe de `main` à `dev` par un `git checkout
+      # --force`, qui balaierait tout ce qui serait posé dedans. `$GITHUB_ENV`
+      # le rend disponible à toutes les étapes SUIVANTES — c'est le seul canal
+      # qui traverse, un `export` ne survivant pas à la fin d'une étape.
+      - name: Où les deux moitiés s'assemblent
+        run: echo "SITE=$RUNNER_TEMP/site" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -272,9 +287,11 @@ jobs:
           echo "constructible=$etat" >> "$GITHUB_OUTPUT"
           echo "raison=$raison" >> "$GITHUB_OUTPUT"
 
+      # `env.SITE` et non `${{ runner.temp }}/site` : une seule source de vérité
+      # pour ce chemin, celle que les étapes ci-dessus ont remplie.
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
-          path: ${{ runner.temp }}/site
+          path: ${{ env.SITE }}
 
   deploy:
     # Mise en ligne depuis `main` ET depuis `dev` : dans les deux cas c'est le

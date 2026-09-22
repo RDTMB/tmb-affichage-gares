@@ -96,6 +96,34 @@ function cheminDeBase(texte: string): string {
   return trouve[1]!;
 }
 
+/** Le texte sans ses commentaires YAML : un `${{ … }}` cité en commentaire n'est pas évalué. */
+function sansCommentaires(texte: string): string {
+  return texte
+    .split('\n')
+    .filter((ligne) => !ligne.trimStart().startsWith('#'))
+    .join('\n');
+}
+
+/** Les contextes (`github`, `runner`, …) lus par les expressions d'un bloc. */
+function contextes(texte: string): string[] {
+  return [
+    ...new Set(
+      [...sansCommentaires(texte).matchAll(/\$\{\{\s*([a-z]+)\./g)].map((trouve) => trouve[1]!),
+    ),
+  ].sort();
+}
+
+/**
+ * Les noms de tous les jobs.
+ *
+ * Pris DANS le bloc `jobs:` et nulle part ailleurs : `on:` a lui aussi des
+ * clés de deuxième niveau (`push:`, `pull_request:`), et les prendre pour des
+ * jobs ferait passer les contrôles ci-dessous sur du vide.
+ */
+const JOBS = [...bloc(WORKFLOW, /^jobs:$/).matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map(
+  (trouve) => trouve[1]!,
+);
+
 const SITE = job('site');
 const RACINE_CONFIG = etape(SITE, 'Variables de PRODUCTION');
 const RACINE_BUILD = etape(SITE, 'Construit la racine');
@@ -243,5 +271,64 @@ describe('ce que le workflow dit de lui-même', () => {
     const publication = job('deploy');
     expect(publication).toContain('group: pages-publication');
     expect(publication).toContain('cancel-in-progress: false');
+  });
+});
+
+describe('le fichier est LISIBLE par GitHub', () => {
+  // POURQUOI CE BLOC EXISTE. Le 21/09/2026, `SITE: ${{ runner.temp }}/site` a
+  // été écrit dans le bloc `env:` du job `site`. GitHub a refusé le FICHIER
+  // ENTIER — « Unrecognized named-value: 'runner' » — et n'a donc fait tourner
+  // aucun contrôle : ni test, ni format, ni build. Les exécutions rouges
+  // n'étaient pas des échecs de test, c'étaient des refus de lecture, et le
+  // contrôle obligatoire restait « expected » sans que rien ne l'explique.
+  //
+  // Ce qu'il faut retenir : un workflow REFUSÉ ne se distingue pas, dans le
+  // dépôt, d'un workflow correct. Rien ne le relit avant GitHub — sauf ceci.
+
+  // Ce qu'un bloc de job peut lire : il est évalué AVANT qu'un coureur soit
+  // attribué. `runner`, `steps`, `env` et `job` n'existent pas encore.
+  const AVANT_LE_COUREUR = ['github', 'needs', 'vars', 'secrets', 'inputs', 'strategy', 'matrix'];
+
+  it.each(JOBS)('le bloc `env:` du job `%s` ne lit que ce qui existe déjà', (nom) => {
+    const corps = job(nom);
+    if (!/^ {4}env:$/m.test(corps)) return; // ce job n'a pas de bloc env
+    for (const contexte of contextes(bloc(corps, /^ {4}env:$/))) {
+      expect(AVANT_LE_COUREUR, `job ${nom} : \${{ ${contexte}.… }}`).toContain(contexte);
+    }
+  });
+
+  it('`runner` n’apparaît nulle part au niveau d’un job', () => {
+    // `runner.temp` est parfaitement valide DANS une étape. Ce qui l'est
+    // moins, c'est de le lire avant qu'un coureur existe — et la différence
+    // ne se voit pas à la lecture. Les étapes se servent de `$RUNNER_TEMP`,
+    // que le shell résout au moment voulu.
+    for (const nom of JOBS) {
+      const corps = job(nom);
+      const avantLesEtapes = sansCommentaires(corps.split(/^ {4}steps:$/m)[0]!);
+      expect(avantLesEtapes, `job ${nom}`).not.toMatch(/\$\{\{\s*runner\./);
+    }
+  });
+
+  it('les deux seules clés de job qui lisent `steps` sont celles qui le peuvent', () => {
+    // `outputs:` et `environment.url:` sont évalués à la FIN du job : eux ont
+    // le droit. Partout ailleurs au niveau du job, `steps` serait refusé.
+    for (const nom of JOBS) {
+      const corps = job(nom);
+      const avantLesEtapes = sansCommentaires(corps.split(/^ {4}steps:$/m)[0]!);
+      let horsOutputs = avantLesEtapes;
+      for (const cle of ['outputs', 'environment']) {
+        const motif = new RegExp(`^ {4}${cle}:$`, 'm');
+        if (motif.test(horsOutputs))
+          horsOutputs = horsOutputs.replace(bloc(horsOutputs, motif), '');
+      }
+      expect(horsOutputs, `job ${nom}`).not.toMatch(/\$\{\{\s*steps\./);
+    }
+  });
+
+  it('le chemin du site est posé par une ÉTAPE, et une seule', () => {
+    expect(SITE).toContain('echo "SITE=$RUNNER_TEMP/site" >> "$GITHUB_ENV"');
+    // Et c'est CE chemin que l'artefact téléverse : pas une seconde écriture
+    // du même chemin, qui pourrait diverger de la première.
+    expect(SITE).toContain('path: ${{ env.SITE }}');
   });
 });
