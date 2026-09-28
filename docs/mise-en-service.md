@@ -616,7 +616,11 @@ porte le détail de chaque étape :
 7. **Ouvrir Supervision → Écrans** : le bandeau du haut doit dire
    « Surveillance active — dernier passage il y a N min ». S'il dit « JAMAIS
    lancée » ou « À L'ARRÊT », la chaîne est coupée quelque part et c'est
-   `cron.job_run_details` puis `net._http_response` qu'il faut lire.
+   `cron.job_run_details` puis `net._http_response` qu'il faut lire. S'il dit
+   « EN ÉCHEC », la chaîne marche mais la base a refusé une lecture ou une
+   écriture au guetteur : le détail nomme la table, et les journaux de la
+   fonction (Edge Functions → `alerte-ecrans` → Logs) portent le motif
+   complet.
 
 Un poste qu'on retire du service — le Nid d'Aigle l'hiver, un écran en
 atelier — se **décoche** sur sa carte (« Surveiller ce poste »). Sans cela il

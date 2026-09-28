@@ -78,8 +78,16 @@ inopérant dès qu'une base réelle est configurée (docs/01 §1).
 ## 6. Surveillance des écrans (guetteur)
 
 - Onglet Écrans, bandeau du haut : « Surveillance active — dernier passage il
-  y a N min ». S'il dit « JAMAIS lancée » ou « À L'ARRÊT », l'alerte par
-  courriel ne partira pas, quoi qu'affichent les cartes.
+  y a N min ». S'il dit « JAMAIS lancée », « À L'ARRÊT » ou « EN ÉCHEC »,
+  l'alerte par courriel ne partira pas, quoi qu'affichent les cartes. « EN
+  ÉCHEC » = le guetteur tourne mais la base a refusé une lecture ou une
+  écriture ; le texte gris qui suit nomme la table et le motif.
+- « EN ÉCHEC » se provoque sur le projet de TEST seulement : renommer
+  l'historique (`alter table alertes_ecran rename to alertes_ecran_essai;`),
+  attendre un passage — le bandeau doit rougir et dire « historique
+  illisible » —, puis remettre le nom (`alter table alertes_ecran_essai
+  rename to alertes_ecran;`) et constater le retour au vert au passage
+  suivant.
 - Un poste muet depuis plus de dix minutes porte « En défaut depuis … » et dit
   si l'alerte est partie. « ALERTE NON ENVOYÉE » = secret Brevo absent ou
   refusé : la panne est vue, personne n'a été prévenu.

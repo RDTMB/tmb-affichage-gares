@@ -396,6 +396,15 @@ select cron.schedule(
 --      `dernier_echec = 'BREVO_API_KEY absent'`, la fonction répondre 200, et
 --      la pastille de la supervision s'afficher quand même.
 
+-- 9.h  Une lecture REFUSÉE ne doit jamais donner « aucun défaut ». Projet de
+--      TEST seulement : rendre l'historique illisible le temps d'un passage.
+-- alter table alertes_ecran rename to alertes_ecran_essai;
+--      Au passage suivant, `surveillance_etat.dernier_resultat` commence par
+--      « ÉCHEC — historique illisible », `net._http_response.status_code`
+--      vaut 500, et le bandeau de Supervision → Écrans dit « Surveillance EN
+--      ÉCHEC », en rouge. Puis remettre le nom, et constater le retour au vert :
+-- alter table alertes_ecran_essai rename to alertes_ecran;
+
 -- -----------------------------------------------------------------------------
 -- SI `pg_cron` OU `pg_net` N'ÉTAIENT PAS DISPONIBLES (section 0.a)
 --

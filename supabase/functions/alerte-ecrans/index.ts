@@ -17,6 +17,13 @@
 // affiche — c'est ce qui distingue un guetteur qui dort d'un guetteur qui
 // n'a rien à dire).
 //
+// CE QU'ELLE DIT QUAND ELLE N'A PAS PU REGARDER. Toute lecture ou écriture
+// refusée par la base est lue (`base()`), journalisée, et se termine par un
+// résultat qui commence par « ÉCHEC » et un statut 500 : la supervision
+// affiche alors « Surveillance EN ÉCHEC », en rouge. Jusqu'à septembre 2026,
+// une lecture refusée donnait « 0 surveillés, aucun défaut » et un 200 — le
+// guetteur annonçait que tout allait bien sans avoir rien lu (R-02).
+//
 // Déploiement : outils\deployer-edge-functions.cmd -Projet test
 //               supabase secrets set CLE_GUETTEUR=... BREVO_API_KEY=... BREVO_EXPEDITEUR=...
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -288,6 +295,75 @@ function secondesParis(d: Date): number {
 /** Nombre d'envois tentés pour un même épisode avant d'abandonner. */
 const MAX_TENTATIVES = 3;
 
+// Intervalle entre deux passages : la planification `pg_cron` « toutes les
+// cinq minutes » de `migrations/2026-09-alerte-ecrans.sql`. Il ne sert qu'à
+// une chose ici — reconnaître, quand l'historique des alertes est illisible,
+// le poste qui vient de franchir le seuil DEPUIS LE PASSAGE PRÉCÉDENT. Le lien
+// avec la planification est éprouvé par `src/data/alerte-ecrans.test.ts`, et
+// le seuil « À L'ARRÊT » de la supervision en est dérivé.
+const CADENCE_MS = 5 * 60_000;
+
+/**
+ * Premier mot de `surveillance_etat.dernier_resultat` quand un passage n'a pas
+ * pu faire son travail. La supervision le reconnaît (`MARQUE_ECHEC_GUETTEUR`,
+ * `src/pages/supervision-logique.ts`) et rougit au lieu d'afficher
+ * « Surveillance active ». Le banc passe le résultat ÉCRIT par cette fonction
+ * dans la décision de la page : la correspondance est éprouvée, pas promise.
+ */
+const MARQUE_ECHEC = 'ÉCHEC';
+
+/**
+ * Raison COURTE d'un refus de la base, pour `surveillance_etat` et les
+ * journaux. PostgREST ne renvoie pas de secret dans ses messages ; on masque
+ * malgré tout tout ce qui ressemble à une clé ou à un jeton, parce que ce
+ * texte est affiché en supervision.
+ */
+function raisonBase(erreur: unknown): string {
+  const brut =
+    erreur && typeof erreur === 'object' && 'message' in erreur
+      ? String((erreur as { message: unknown }).message)
+      : String(erreur);
+  const propre = brut
+    .replace(/sb_(secret|publishable)_\S+/g, '…')
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '…')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!propre) return 'erreur sans message';
+  return propre.length > 120 ? `${propre.slice(0, 119)}…` : propre;
+}
+
+/**
+ * Une requête à la base, ramenée à `{ data, echec }`.
+ *
+ * LE DÉFAUT QUE CECI RÉPARE (R-02, relecture de septembre 2026). Les trois
+ * lectures étaient déstructurées en `{ data }`, sans jamais regarder
+ * `error` : une clé révoquée ou une table renommée donnait `data: null`, lu
+ * comme « aucun écran » — puis « 0 surveillés, aucun défaut », statut 200, et
+ * « Surveillance active » en vert dans la supervision. Le guetteur, construit
+ * pour qu'un silence ne passe plus inaperçu, devenait lui-même silencieux, et
+ * son témoin disait que tout allait bien.
+ *
+ * Deux façons d'échouer, un seul chemin : `supabase-js` rend `error` pour un
+ * refus de PostgREST, et peut LEVER sur une coupure réseau. Les deux sont
+ * journalisées ici, une fois, avec le nom de la table.
+ */
+async function base<T>(
+  quoi: string,
+  requete: PromiseLike<{ data: T | null; error: unknown }>,
+): Promise<{ data: T | null; echec: string | null }> {
+  try {
+    const { data, error } = await requete;
+    if (!error) return { data, echec: null };
+    const echec = `${quoi} : ${raisonBase(error)}`;
+    console.error(`[guetteur] ${echec}`);
+    return { data: null, echec };
+  } catch (e) {
+    const echec = `${quoi} : ${raisonBase(e)}`;
+    console.error(`[guetteur] ${echec} (exception)`);
+    return { data: null, echec };
+  }
+}
+
 /** Noms de gare pour le courriel : l'identifiant technique ne se lit pas. */
 const NOM_GARE: Record<string, string> = {
   'le-fayet': 'Le Fayet',
@@ -405,15 +481,87 @@ Deno.serve(async (req) => {
   const maintenant_s = secondesParis(maintenant);
 
   // ── Ce qu'on lit ──────────────────────────────────────────────────────────
-  const [{ data: ecrans }, { data: params }, { data: alertes }] = await Promise.all([
-    admin
-      .from('ecrans')
-      .select('id, gare, surveille, derniere_vue, veille_debut, veille_fin'),
-    admin.from('params').select('cle, valeur').in('cle', ['veille_nuit', 'alertes_destinataires']),
-    admin.from('alertes_ecran').select('*'),
+  const [lectureEcrans, lectureParams, lectureAlertes] = await Promise.all([
+    base(
+      'ecrans',
+      admin.from('ecrans').select('id, gare, surveille, derniere_vue, veille_debut, veille_fin'),
+    ),
+    base(
+      'params',
+      admin
+        .from('params')
+        .select('cle, valeur')
+        .in('cle', ['veille_nuit', 'alertes_destinataires']),
+    ),
+    base('alertes_ecran', admin.from('alertes_ecran').select('*')),
   ]);
 
-  const valeur = (cle: string): unknown => params?.find((p) => p.cle === cle)?.valeur;
+  // LA PREUVE QUE LE GUETTEUR A TOURNÉ. Sans cette ligne, un `pg_cron` inerte
+  // ressemblerait trait pour trait à une flotte en bonne santé : aucun
+  // courriel, aucune pastille, rien. La supervision affiche cet horodatage et
+  // rougit s'il vieillit — un contrôle qui ne s'exécute pas doit se voir.
+  //
+  // Elle est écrite à CHAQUE passage, y compris celui qui échoue : c'est le
+  // résultat, et non l'heure, qui dit « je n'ai pas pu regarder ». Un passage
+  // qui ne parvient même pas à l'écrire (clé révoquée : la base refuse tout)
+  // laisse l'horodatage vieillir, et la supervision passe « À L'ARRÊT » au
+  // bout de trois passages manqués — rouge dans les deux cas, jamais vert.
+  const maintenantISO = maintenant.toISOString();
+  const consigner = (resume: string) =>
+    base(
+      'surveillance_etat',
+      admin
+        .from('surveillance_etat')
+        .update({ derniere_execution: maintenantISO, dernier_resultat: resume })
+        .eq('id', true),
+    );
+
+  // OÙ ATTERRIT UN ÉCHEC, ET QUI LE LIT. Trois traces, par ordre d'utilité :
+  //   1. `surveillance_etat.dernier_resultat`, qui commence alors par
+  //      « ÉCHEC » : la supervision affiche « Surveillance EN ÉCHEC » en
+  //      rouge, avec ce texte — c'est la seule qu'un exploitant regarde ;
+  //   2. `console.error`, dans les journaux de la fonction (tableau de bord
+  //      Supabase → Edge Functions → alerte-ecrans → Logs) : pour qui cherche
+  //      la cause, pas pour qui surveille ;
+  //   3. le statut 500 — vu par `pg_net` seulement (`net._http_response`,
+  //      purgée au bout de quelques heures) et par le graphique d'appels du
+  //      tableau de bord. Personne ne le lit en service : il n'est là que pour
+  //      qu'une recette (section 9.b de la migration) ne lise pas « 200 » sur
+  //      un passage qui n'a rien vu.
+  const repondre = (echec: boolean, corps: Record<string, unknown>) =>
+    new Response(JSON.stringify(corps), {
+      status: echec ? 500 : 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  // ── Un passage qui n'a pas pu lire le parc ne conclut RIEN ───────────────
+  // Les trois lectures n'ont pas le même poids.
+  //
+  // `ecrans` illisible : le guetteur ne sait rien du parc. Il ne peut ni
+  // alerter ni rassurer ; « 0 surveillés, aucun défaut » était un mensonge.
+  //
+  // `params` illisible : il ne sait ni QUI prévenir, ni QUAND les postes
+  // dorment. Juger le parc sur la veille par défaut pourrait taire un écran
+  // muet à 21 h 30 si l'exploitant a réglé 22 h ; tenter un envoi sans
+  // destinataire userait les trois tentatives de l'épisode pour rien — et
+  // l'alerte ne partirait plus quand le réglage redeviendrait lisible.
+  //
+  // Dans les deux cas, le passage est ABANDONNÉ sans toucher à
+  // `alertes_ecran` : les épisodes en cours restent tels quels, et le passage
+  // suivant (cinq minutes plus tard) reprend là où la base en était.
+  const vitales = [lectureEcrans.echec, lectureParams.echec].filter(
+    (e): e is string => e !== null,
+  );
+  if (vitales.length) {
+    const illisibles = lectureAlertes.echec ? [...vitales, lectureAlertes.echec] : vitales;
+    const resume = `${MARQUE_ECHEC} — lecture impossible (${illisibles.join(' ; ')}) : passage abandonné, aucun écran n'a été jugé, personne n'a été prévenu.`;
+    console.error(`[guetteur] ${resume}`);
+    await consigner(resume);
+    return repondre(true, { surveilles: null, en_defaut: null, echec: resume });
+  }
+
+  const params = (lectureParams.data ?? []) as { cle: string; valeur: unknown }[];
+  const valeur = (cle: string): unknown => params.find((p) => p.cle === cle)?.valeur;
   const veilleLue = valeur('veille_nuit') as VeilleNuit | undefined;
   // REPLI EXPLICITE et non silencieux : sans réglage lisible, on prend la
   // fenêtre par défaut de l'application plutôt que « jamais de veille », qui
@@ -428,9 +576,16 @@ Deno.serve(async (req) => {
       )
     : [];
 
-  const postes = (ecrans ?? []) as PosteSurveille[];
+  // `alertes_ecran` illisible : le guetteur sait QUI est muet, mais pas s'il
+  // l'a déjà dit. Annoncer tous les muets referait un courriel par passage —
+  // douze par heure, et un courriel qui se répète est un courriel qu'on cesse
+  // de lire. N'en annoncer aucun referait le 19/09. Voir `sansMemoire` plus
+  // bas : au plus UN courriel par épisode, sans rétablissement.
+  const sansMemoire = lectureAlertes.echec !== null;
+
+  const postes = (lectureEcrans.data ?? []) as PosteSurveille[];
   const connues = new Map<string, LigneAlerte>(
-    ((alertes ?? []) as LigneAlerte[]).map((l) => [l.ecran_id, l]),
+    ((lectureAlertes.data ?? []) as LigneAlerte[]).map((l) => [l.ecran_id, l]),
   );
   const bilan = bilanSurveillance(postes, veilleGlobale, maintenant_ms, maintenant_s);
 
@@ -445,6 +600,17 @@ Deno.serve(async (req) => {
   // Reparcourir `postes` rendait l'ordre de la base, c'est-à-dire l'ordre
   // alphabétique des gares — le tri était fait et jeté.
   for (const defaut of bilan.enDefaut) {
+    if (sansMemoire) {
+      // SANS MÉMOIRE, ON N'ANNONCE QUE CE QUI VIENT D'ARRIVER. Un poste
+      // franchit le seuil pendant UN SEUL intervalle entre deux passages :
+      // celui où son silence est compris entre le seuil et le seuil plus une
+      // cadence. C'est une mémoire qui ne demande aucune lecture. Le prix est
+      // connu : un poste tombé pendant un passage perdu n'est pas annoncé
+      // avant que l'historique redevienne lisible — la supervision, elle,
+      // affiche l'échec en rouge pendant tout ce temps.
+      if (defaut.silence_ms < SEUIL_DEFAUT_MS + CADENCE_MS) aAnnoncer.push(defaut);
+      continue;
+    }
     const ligne = connues.get(defaut.id);
     // NE PAS RÉPÉTER. Une tâche qui tourne toutes les cinq minutes aurait
     // envoyé trente-six courriels pendant la panne de samedi. La ligne en
@@ -456,6 +622,9 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Sans mémoire, `connues` est vide : aucun rétablissement, aucun oubli. On
+  // ne dit pas « c'est réparé » d'une panne dont on ne sait pas si elle a été
+  // dite ; la ligne restée en base sera traitée au premier passage lisible.
   const muets = new Set(bilan.enDefaut.map((p) => p.id));
   for (const poste of postes) {
     const ligne = connues.get(poste.id);
@@ -495,7 +664,10 @@ Deno.serve(async (req) => {
         'Un écran muet affiche « Informations momentanément indisponibles » après quinze minutes de cache, puis un écran neutre.',
         'À vérifier sur place : alimentation, réseau de la gare, puis docs/kiosque.md §10 (vérifier un poste en cinq commandes).',
         '',
-        'Vous recevrez un second message quand le signal reviendra.',
+        // Le destinataire doit savoir que la promesse habituelle ne tient pas.
+        sansMemoire
+          ? 'ATTENTION : le guetteur n’a pas pu relire son historique d’alertes. Il n’annonce que les écrans tombés depuis son passage précédent, et le retour du signal NE SERA PAS annoncé : vérifiez en supervision.'
+          : 'Vous recevrez un second message quand le signal reviendra.',
       ].join('\n'),
     );
   }
@@ -526,52 +698,75 @@ Deno.serve(async (req) => {
   }
 
   // ── Ce qu'on écrit ────────────────────────────────────────────────────────
-  const maintenantISO = maintenant.toISOString();
+  // Chaque écriture est CONTRÔLÉE. Une mémoire d'épisode qui ne s'écrit pas
+  // est un courriel qui se répétera au passage suivant — ce qui se voit, et
+  // vite. Mais il faut que la supervision le dise AVANT que les destinataires
+  // ne s'en plaignent, et qu'elle dise pourquoi.
+  const echecsEcriture: string[] = [];
   if (aAnnoncer.length) {
-    await admin.from('alertes_ecran').upsert(
-      aAnnoncer.map((p) => {
-        const ligne = connues.get(p.id);
-        return {
-          ecran_id: p.id,
-          depuis: p.derniere_vue || maintenantISO,
-          detectee_at: ligne?.detectee_at ?? maintenantISO,
-          envois_tentes: (ligne?.envois_tentes ?? 0) + 1,
-          envoyee_at: echecAnnonce ? null : maintenantISO,
-          dernier_echec: echecAnnonce,
-        };
-      }),
-      { onConflict: 'ecran_id' },
+    const { echec } = await base(
+      'alertes_ecran (enregistrement)',
+      admin.from('alertes_ecran').upsert(
+        aAnnoncer.map((p) => {
+          const ligne = connues.get(p.id);
+          return {
+            ecran_id: p.id,
+            depuis: p.derniere_vue || maintenantISO,
+            detectee_at: ligne?.detectee_at ?? maintenantISO,
+            envois_tentes: (ligne?.envois_tentes ?? 0) + 1,
+            envoyee_at: echecAnnonce ? null : maintenantISO,
+            dernier_echec: echecAnnonce,
+          };
+        }),
+        { onConflict: 'ecran_id' },
+      ),
     );
+    if (echec) echecsEcriture.push(echec);
   }
   // Le rétablissement referme l'épisode : la ligne disparaît, la prochaine
   // panne du même poste sera une NOUVELLE alerte. Les lignes dont l'envoi
   // avait échoué partent aussi — le poste va bien, il n'y a plus rien à dire.
   const aSupprimer = [...aRetablir.map((l) => l.ecran_id), ...aOublier];
   if (aSupprimer.length) {
-    await admin.from('alertes_ecran').delete().in('ecran_id', aSupprimer);
+    const { echec } = await base(
+      'alertes_ecran (clôture)',
+      admin.from('alertes_ecran').delete().in('ecran_id', aSupprimer),
+    );
+    if (echec) echecsEcriture.push(echec);
   }
 
-  // LA PREUVE QUE LE GUETTEUR A TOURNÉ. Sans cette ligne, un `pg_cron` inerte
-  // ressemblerait trait pour trait à une flotte en bonne santé : aucun
-  // courriel, aucune pastille, rien. La supervision affiche cet horodatage et
-  // rougit s'il vieillit — un contrôle qui ne s'exécute pas doit se voir.
-  const resume = bilan.enDefaut.length
+  // ── Ce qu'on dit ──────────────────────────────────────────────────────────
+  const constat = bilan.enDefaut.length
     ? `${bilan.enDefaut.length}/${bilan.surveilles} en défaut${echecAnnonce ? ` (envoi : ${echecAnnonce})` : ''}`
     : `${bilan.surveilles} surveillés, aucun défaut`;
-  await admin
-    .from('surveillance_etat')
-    .update({ derniere_execution: maintenantISO, dernier_resultat: resume })
-    .eq('id', true);
+  const problemes: string[] = [];
+  if (lectureAlertes.echec) {
+    problemes.push(
+      `historique illisible (${lectureAlertes.echec}) : ${aAnnoncer.length} annonce(s) sans mémoire, aucun rétablissement annoncé`,
+    );
+  }
+  if (echecsEcriture.length) {
+    problemes.push(
+      `écriture impossible (${echecsEcriture.join(' ; ')}) : la mémoire des alertes n'est pas à jour, un courriel peut se répéter au prochain passage`,
+    );
+  }
+  // « ÉCHEC » EN TÊTE, ET LE CONSTAT QUAND MÊME. Ce qui a été vu reste dit :
+  // « 1/1 en défaut » est une information juste même quand l'historique est
+  // illisible. Mais la supervision doit rougir, et c'est le premier mot qui
+  // l'y oblige.
+  const resume = problemes.length
+    ? `${MARQUE_ECHEC} — ${problemes.join(' · ')} — ${constat}`
+    : constat;
+  if (problemes.length) console.error(`[guetteur] ${resume}`);
+  const consigne = await consigner(resume);
 
-  return new Response(
-    JSON.stringify({
-      surveilles: bilan.surveilles,
-      en_defaut: bilan.enDefaut.length,
-      globale: bilan.globale,
-      annonces: aAnnoncer.length,
-      retablissements: retablisDits.length,
-      echec_envoi: echecAnnonce ?? echecRetour,
-    }),
-    { headers: { 'Content-Type': 'application/json' } },
-  );
+  return repondre(problemes.length > 0 || consigne.echec !== null, {
+    surveilles: bilan.surveilles,
+    en_defaut: bilan.enDefaut.length,
+    globale: bilan.globale,
+    annonces: aAnnoncer.length,
+    retablissements: retablisDits.length,
+    echec_envoi: echecAnnonce ?? echecRetour,
+    echec: problemes.length ? resume : consigne.echec,
+  });
 });
