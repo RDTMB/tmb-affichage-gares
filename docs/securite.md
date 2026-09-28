@@ -145,7 +145,10 @@ Ces deux points sont des décisions prises en connaissance de cause, pas des dé
   signe de vie anonymement. La portée est **strictement bornée** — cinq colonnes seulement, par
   des `GRANT` de colonnes ; `recharger_demande_at` en est exclu (un tiers ne peut pas ordonner
   le rechargement des écrans) ; et l'horodatage de la dernière vue est **forcé côté serveur** par
-  un déclencheur, l'horloge du Raspberry n'entrant pas dans le calcul de fraîcheur.
+  un déclencheur, l'horloge du Raspberry n'entrant pas dans le calcul de fraîcheur. Les deux sont
+  éprouvés par `src/data/signal-de-vie.test.ts` : les colonnes que le poste envoie réellement
+  sont comparées au `GRANT`, et le corps de `trg_signal_de_vie` est comparé instruction par
+  instruction.
   *Échéance :* fermeture en **phase 2**, où le micro-serveur interne prendra en charge les
   écritures des écrans et le rôle anonyme disparaîtra.
 - **Pas de contrôle des mots de passe compromis (HaveIBeenPwned).** Cette vérification est une

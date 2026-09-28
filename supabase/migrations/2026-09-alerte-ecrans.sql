@@ -112,8 +112,10 @@ create table if not exists alertes_ecran (
   -- le courriel annonce, et la clé qui distingue deux épisodes.
   depuis timestamptz not null,
   detectee_at timestamptz not null default now(),
-  -- Envois TENTÉS pour cet épisode. Borné côté fonction (3) : un échec qui se
-  -- rejoue toutes les cinq minutes est un journal qui déborde, pas une alerte.
+  -- Envois TENTÉS pour cet épisode : UN seul depuis que l'épisode est écrit
+  -- AVANT le courriel (un réessai faisait boucler l'envoi quand son issue ne
+  -- s'écrivait pas). Un échec reste dans `dernier_echec`, lisible en
+  -- supervision ; il n'est plus rejoué.
   envois_tentes int not null default 0,
   -- Horodatage de l'envoi RÉUSSI ; NULL = détectée mais jamais dite. C'est ce
   -- qui interdit d'annoncer un rétablissement dont personne n'a connu la panne.
@@ -395,6 +397,15 @@ select cron.schedule(
 --      rejouer 9.d. La ligne doit apparaître avec `envoyee_at` à NULL et
 --      `dernier_echec = 'BREVO_API_KEY absent'`, la fonction répondre 200, et
 --      la pastille de la supervision s'afficher quand même.
+
+-- 9.h  Une lecture REFUSÉE ne doit jamais donner « aucun défaut ». Projet de
+--      TEST seulement : rendre l'historique illisible le temps d'un passage.
+-- alter table alertes_ecran rename to alertes_ecran_essai;
+--      Au passage suivant, `surveillance_etat.dernier_resultat` commence par
+--      « ÉCHEC — historique illisible », `net._http_response.status_code`
+--      vaut 500, et le bandeau de Supervision → Écrans dit « Surveillance EN
+--      ÉCHEC », en rouge. Puis remettre le nom, et constater le retour au vert :
+-- alter table alertes_ecran_essai rename to alertes_ecran;
 
 -- -----------------------------------------------------------------------------
 -- SI `pg_cron` OU `pg_net` N'ÉTAIENT PAS DISPONIBLES (section 0.a)

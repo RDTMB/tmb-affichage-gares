@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CADENCE_GUETTEUR_MS,
+  MARQUE_ECHEC_GUETTEUR,
   SEUIL_GUETTEUR_MUET_MS,
   bandeauGuetteur,
   pastilleSurveillance,
@@ -44,6 +46,53 @@ function sousFuseau<T>(fuseau: string, action: () => T): T {
 describe('Le bandeau du guetteur', () => {
   it('quinze minutes : deux passages manqués sur une tâche de cinq', () => {
     expect(SEUIL_GUETTEUR_MUET_MS).toBe(900_000);
+    // Le lien avec la VRAIE planification `pg_cron` est éprouvé dans
+    // `src/data/alerte-ecrans.test.ts`, qui la lit dans la migration.
+    expect(SEUIL_GUETTEUR_MUET_MS).toBe(3 * CADENCE_GUETTEUR_MS);
+  });
+
+  it('passé récemment mais EN ÉCHEC : rouge, et jamais « active »', () => {
+    // R-02 : une lecture refusée donnait « Surveillance active » en vert,
+    // l'horodatage étant frais. Le passage a eu lieu ; il n'a rien pu voir.
+    const detail =
+      "ÉCHEC — lecture impossible (ecrans : Invalid API key) : passage abandonné, aucun écran n'a été jugé, personne n'a été prévenu.";
+    const b = bandeauGuetteur(
+      { derniere_execution: ilYA(2 * 60_000), dernier_resultat: detail },
+      MAINTENANT,
+    );
+    expect(b.classe).toBe('alerte');
+    expect(b.libelle).toContain('EN ÉCHEC');
+    expect(b.libelle).toContain('il y a 2 min');
+    expect(b.libelle).toContain('l’absence d’alerte ne prouve rien');
+    expect(b.libelle).not.toContain('active');
+    // Le détail dit CE qui a échoué : c'est ce qui envoie chercher au bon endroit.
+    expect(b.detail).toBe(detail);
+  });
+
+  it('seul le PREMIER mot compte : un résultat ordinaire qui parle d’échec d’envoi reste vert', () => {
+    // « 1/1 en défaut (envoi : Brevo 503) » dit une panne d'écran et un
+    // courriel raté ; la pastille du poste le montre. Le guetteur, lui, a fait
+    // son travail : il a regardé, et il l'a dit.
+    const b = bandeauGuetteur(
+      {
+        derniere_execution: ilYA(60_000),
+        dernier_resultat: '1/1 en défaut (envoi : ÉCHEC Brevo 503)',
+      },
+      MAINTENANT,
+    );
+    expect(b.classe).toBe('ok');
+    expect(MARQUE_ECHEC_GUETTEUR).toBe('ÉCHEC');
+  });
+
+  it('à l’arrêt ET en échec au dernier passage : c’est « à l’arrêt » qui est dit', () => {
+    // L'état ACTUEL d'abord. Le dernier résultat reste dans le détail.
+    const b = bandeauGuetteur(
+      { derniere_execution: ilYA(3 * 3_600_000), dernier_resultat: 'ÉCHEC — lecture impossible' },
+      MAINTENANT,
+    );
+    expect(b.libelle).toContain("À L'ARRÊT");
+    expect(b.libelle).toContain('aucun passage enregistré');
+    expect(b.detail).toContain('ÉCHEC');
   });
 
   it('un passage récent : la surveillance est annoncée ACTIVE, avec son âge', () => {
