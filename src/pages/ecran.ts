@@ -33,6 +33,7 @@ import {
   veilleEffective,
   quaiOccupe,
   trainsDuJour,
+  vueJournee,
 } from '../core/horaires';
 import type { FermetureGare } from '../core/horaires';
 import { vitesseTickerEffective } from '../core/ticker';
@@ -176,6 +177,8 @@ interface DonneesEcran {
 }
 
 let grille: Grille | null = null;
+/** Grilles actives connues : c'est sur leurs périodes que se juge le hors-saison. */
+let grilles: Grille[] = [];
 let jour: Jour | null = null;
 let grilleDemain: Grille | null = null;
 let params: Params | null = null;
@@ -695,12 +698,34 @@ function rendre(gare: GareId): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
+  // ÉCART D'HORLOGE (lot 5). Le Raspberry n'a pas de pile : à froid il repart
+  // sur une date fantaisiste. La mesure ne coûte aucune requête, elle lit
+  // l'en-tête `Date` des réponses déjà demandées (src/core/horloge.ts).
+  //   - écart modéré : l'écran continue d'afficher, et il le DIT ;
+  //   - écart important : plus aucun horaire, la fenêtre des états de quai ne
+  //     dure que 30 s et « PARTI » ferait s'en aller un voyageur.
+  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
+  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
+
+  // Données inutilisables : périmées, ou horloge trop fausse pour que les
+  // états de quai — et la DATE elle-même — veuillent encore dire quelque chose.
+  const age = sync?.ageMs() ?? null;
+  const neutreDonnees = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
+
+  // Ce que la journée permet de montrer, tranché par src/core/ AVANT toute
+  // sortie sur `!grille` : c'est `grille === null` qui DÉFINIT le hors-saison
+  // (défaut du 28/09/2026 — en-têtes vides, message de fermeture
+  // inatteignable). Jamais sur des données qu'on sait inutilisables : un
+  // Raspberry reparti sur une date fantaisiste annoncerait une fermeture.
+  const vue = neutreDonnees ? null : vueJournee(grilles, jour, grille);
+  const fermee = vue === 'fermee';
+
   // Badge calculé AVANT toute sortie : sinon il resterait peint par-dessus
   // l'écran neutre ou la veille nuit (z-index supérieur). Il porte DEUX faits
   // — l'âge des données et la nature de la journée (F-16) — et la décision
   // vit dans badgeFraicheur(), PURE et testée, partagée avec la grille.
-  const age = sync?.ageMs() ?? null;
-  const veille = estEnVeille(maintenant);
+  // Hors saison, la veille est PERMANENTE : la plage de nuit est sans objet.
+  const veille = fermee || estEnVeille(maintenant);
   const badge = badgeFraicheur({
     ageMs: age,
     seuilBadgeMs: SEUIL_BADGE_MS,
@@ -712,16 +737,12 @@ function rendre(gare: GareId): void {
   document.body.classList.toggle('mode-degrade', badge.visible);
   if (badge.visible) $('badge-cache').textContent = badge.texte;
 
-  // ÉCART D'HORLOGE (lot 5). Le Raspberry n'a pas de pile : à froid il repart
-  // sur une date fantaisiste. La mesure ne coûte aucune requête, elle lit
-  // l'en-tête `Date` des réponses déjà demandées (src/core/horloge.ts).
-  //   - écart modéré : l'écran continue d'afficher, et il le DIT ;
-  //   - écart important : plus aucun horaire, la fenêtre des états de quai ne
-  //     dure que 30 s et « PARTI » ferait s'en aller un voyageur.
-  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
-  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
-
-  // 1. Veille nuit (écran noir + horloge discrète)
+  // 1. Veille (écran noir + horloge discrète) : la nuit, ou HORS SAISON, où
+  //    le message de fermeture s'affiche sous l'horloge (`mode-fermee`). Le
+  //    bandeau de messages ne défile pas : un bandeau qui bouge sur un écran
+  //    en veille contredit l'économie cherchée, et des messages de saison
+  //    sans échéance continueraient d'être annoncés sur une ligne fermée.
+  document.body.classList.toggle('mode-fermee', fermee);
   document.body.classList.toggle('mode-veille', veille);
   if (veille) {
     $('horloge-veille').textContent = formatHeure(maintenant);
@@ -729,10 +750,12 @@ function rendre(gare: GareId): void {
     return;
   }
 
-  // 2. Écran neutre : données périmées, ou horloge trop fausse pour que les
-  //    états de quai veuillent encore dire quelque chose. JAMAIS d'horaires
-  //    dont on sait qu'ils trompent.
-  const neutre = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
+  // 2. Écran neutre : données inutilisables, ou journée sur laquelle on ne
+  //    peut rien affirmer — dont le TROU DE SAISIE entre deux périodes
+  //    (etatSaison()) : « informations momentanément indisponibles » est
+  //    vrai, « le Tramway est fermé » ne le serait pas. JAMAIS d'horaires dont
+  //    on sait qu'ils trompent.
+  const neutre = neutreDonnees || vue === 'indisponible';
   document.body.classList.toggle('mode-neutre', neutre);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
@@ -740,20 +763,8 @@ function rendre(gare: GareId): void {
     return;
   }
 
+  // Garde de TYPAGE seulement : `vue === 'horaires'` garantit les deux.
   if (!grille || !jour) return;
-
-  if (jour.hors_saison) {
-    // Hors saison : aucun service ne circule — jamais de repli sur une autre grille
-    arreteCycleMedias();
-    afficheEtatSpecial(`<h2>Aucun service aujourd'hui</h2>
-    <p>Reprise selon le calendrier saisonnier<br>
-    <span class="en">No service today — see seasonal timetable</span></p>
-    <img class="logo-fin" src="${__LOGO_ROND_BLANC__}" alt="" />`);
-    $('arrivee').innerHTML =
-      '<span class="lbl">Prochaine arrivée / Next arrival</span><span>— voir calendrier / see timetable</span>';
-    majTicker(messagesVisibles(messages, gare, [], heure.maintenantMs()), vitesseBandeau());
-    return;
-  }
 
   // Le moteur horaires ignore le remplissage : la jointure (date, numéro) se
   // fait ici, sur ce qu'il vient de calculer.
@@ -862,6 +873,7 @@ async function demarre(): Promise<void> {
     // repli, la première image après une mise à jour hors ligne planterait
     // sur un `undefined`. C'est exactement la leçon C-01.
     affluence = d.affluence ?? [];
+    grilles = d.grilles;
     grille = grillePourJour(d.grilles, d.jour);
     grilleDemain = serviceActif(d.grilles, dateSuivante(d.jour.date));
     if (!grille) return;

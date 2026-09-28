@@ -23,6 +23,7 @@ import {
   passagesPourGare,
   positionsTrains,
   trainsDuJour,
+  vueJournee,
 } from '../core/horaires';
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
@@ -131,6 +132,7 @@ if (idEcran) document.body.dataset.ecran = idEcran;
 // L'écran neutre garde le rond blanc (voir ecran.ts).
 ($('logo') as HTMLImageElement).src = __LOGO_LONG__;
 ($('logo-neutre') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
+($('logo-fermeture') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
 
 interface DonneesGrille {
   grilles: Grille[];
@@ -147,6 +149,8 @@ interface DonneesGrille {
 }
 
 let grille: Grille | null = null;
+/** Grilles actives connues : c'est sur leurs périodes que se juge le hors-saison. */
+let grilles: Grille[] = [];
 let jour: Jour | null = null;
 let params: Params | null = null;
 let messages: Message[] = [];
@@ -361,7 +365,16 @@ function rendsLegende(): void {
 
 /** En-têtes et blocs statiques, réappliqués après CHAQUE synchronisation. */
 function rendsEntetesEtPied(): void {
-  if (!grille || !params) return;
+  if (!params) return;
+  if (!grille) {
+    // Hors saison ou journée indéterminée : rien de la grille PRÉCÉDENTE ne
+    // doit survivre en tête ou en pied (passage de minuit au lendemain de la
+    // dernière période : « Petit service » sous un message de fermeture).
+    $('sous-titre').textContent = "Today's timetable";
+    $('bandeau-section').style.display = 'none';
+    $('meteo').innerHTML = '';
+    return;
+  }
   // « Today's timetable · Grand service » — libellé du service depuis la grille
   const service = jour?.hors_saison ? 'Hors saison' : (grille.libelle.split('—')[0]?.trim() ?? '');
   $('sous-titre').textContent = service ? `Today's timetable · ${service}` : "Today's timetable";
@@ -432,12 +445,25 @@ function rendre(): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
 
+  // ÉCART D'HORLOGE (lot 5), même règle que l'écran de gare : la grille
+  // affiche les mêmes heures, et son lecteur en tire les mêmes conclusions.
+  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
+  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
+
+  const age = sync?.ageMs() ?? null;
+  const neutreDonnees = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
+
+  // Décision de la journée AVANT toute sortie sur `!grille` — c'est
+  // `grille === null` qui définit le hors-saison (défaut du 28/09/2026, le
+  // même que sur l'écran de gare). Jamais sur des données inutilisables.
+  const vue = neutreDonnees ? null : vueJournee(grilles, jour, grille);
+  const fermee = vue === 'fermee';
+
   // Badge calculé AVANT toute sortie (sinon il resterait peint par-dessus
   // l'écran neutre), puis écran neutre au-delà de duree_cache_min. Il porte
   // DEUX faits — l'âge des données et la nature de la journée (F-16) — et la
   // décision vit dans badgeFraicheur(), PURE et partagée avec l'écran de gare.
   // La grille n'a pas de veille de nuit : `veille: false`.
-  const age = sync?.ageMs() ?? null;
   const badge = badgeFraicheur({
     ageMs: age,
     seuilBadgeMs: SEUIL_BADGE_MS,
@@ -449,32 +475,32 @@ function rendre(): void {
   document.body.classList.toggle('mode-degrade', badge.visible);
   if (badge.visible) $('badge-cache').textContent = badge.texte;
 
-  // ÉCART D'HORLOGE (lot 5), même règle que l'écran de gare : la grille
-  // affiche les mêmes heures, et son lecteur en tire les mêmes conclusions.
-  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
-  document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit');
-
-  const neutre = age === null || age > dureeCacheMs() || horloge === 'ecart-bloquant';
+  // Écran neutre : données inutilisables, ou journée sur laquelle on ne peut
+  // rien affirmer — dont le TROU DE SAISIE entre deux périodes (etatSaison()).
+  const neutre = neutreDonnees || vue === 'indisponible';
   document.body.classList.toggle('mode-neutre', neutre);
+  document.body.classList.toggle('mode-fermee', fermee);
   if (neutre) {
     $('horloge-neutre').textContent = formatHeure(maintenant);
     return;
   }
 
-  if (!grille || !jour) return;
-
-  if (jour.hors_saison) {
-    // Hors saison : aucun service ne circule — jamais de repli sur une autre grille
-    const message =
-      '<tbody><tr><td style="padding:2vh;border:none;color:var(--texte-sec);font-weight:700">Aucun service ne circule à cette date / No service on this date</td></tr></tbody>';
-    $('tab-montee').innerHTML = message;
-    $('tab-descente').innerHTML = message;
+  // HORS SAISON : pas de veille ici — la grille se consulte de près et sur
+  // demande. Le message de fermeture prend la place des tableaux, en pleine
+  // page. Le bandeau de messages CONTINUE : c'est là que l'exploitation peut
+  // annoncer la date de réouverture, et cette page est éclairée de toute
+  // façon — l'économie d'énergie qui l'arrête sur l'écran de gare n'a pas
+  // d'objet ici.
+  if (fermee) {
     majTicker(
       messagesVisibles(messages, gare, [], heure.maintenantMs()),
       params?.vitesse_ticker_px_s,
     );
     return;
   }
+
+  // Garde de TYPAGE seulement : `vue === 'horaires'` garantit les deux.
+  if (!grille || !jour) return;
 
   const positions = new Map(
     positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p.gare]),
@@ -567,6 +593,7 @@ async function demarre(): Promise<void> {
     params = d.params;
     messages = d.messages;
     affluence = d.affluence ?? [];
+    grilles = d.grilles;
     grille = grillePourJour(d.grilles, d.jour);
     rendsEntetesEtPied();
   };
