@@ -885,8 +885,10 @@ footer {
   inset: 0;
   background: #000;
   display: none;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  text-align: center;
   z-index: 50;
 }
 
@@ -900,6 +902,38 @@ body.mode-veille .veille {
   color: var(--bleu-gris);
   opacity: 0.55;
   font-variant-numeric: tabular-nums;
+}
+
+/* HORS SAISON : message de fermeture sous l'horloge de veille. Même famille
+   de couleur, même estompage, en retrait de l'horloge : 3,4 vh contre 9 vh
+   (≈ 37 px à 1080 p, lisible à quelques mètres), l'anglais plus petit et plus
+   discret, comme partout ailleurs. Absent la nuit en saison : la veille de
+   nuit reste une horloge seule. */
+.veille .fermeture-veille {
+  display: none;
+  margin-top: 3vh;
+  padding: 0 8vw;
+  font-size: 3.4vh;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--bleu-gris);
+  opacity: 0.55;
+}
+
+body.mode-fermee .veille .fermeture-veille {
+  display: block;
+}
+
+.veille .fermeture-veille .fr-suite {
+  font-size: 2.6vh;
+  font-weight: 300;
+}
+
+.veille .fermeture-veille .en {
+  margin-top: 1.6vh;
+  font-size: 2.2vh;
+  font-weight: 300;
+  opacity: 0.85;
 }
 
 /* ============ RÉSILIENCE (étape 4) ============ */
