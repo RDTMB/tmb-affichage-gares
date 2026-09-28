@@ -112,8 +112,10 @@ create table if not exists alertes_ecran (
   -- le courriel annonce, et la clé qui distingue deux épisodes.
   depuis timestamptz not null,
   detectee_at timestamptz not null default now(),
-  -- Envois TENTÉS pour cet épisode. Borné côté fonction (3) : un échec qui se
-  -- rejoue toutes les cinq minutes est un journal qui déborde, pas une alerte.
+  -- Envois TENTÉS pour cet épisode : UN seul depuis que l'épisode est écrit
+  -- AVANT le courriel (un réessai faisait boucler l'envoi quand son issue ne
+  -- s'écrivait pas). Un échec reste dans `dernier_echec`, lisible en
+  -- supervision ; il n'est plus rejoué.
   envois_tentes int not null default 0,
   -- Horodatage de l'envoi RÉUSSI ; NULL = détectée mais jamais dite. C'est ce
   -- qui interdit d'annoncer un rétablissement dont personne n'a connu la panne.

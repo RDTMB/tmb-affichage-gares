@@ -292,8 +292,14 @@ function secondesParis(d: Date): number {
 }
 // ─── BLOC DE DÉCISION — copie vérifiée de src/core (fin) ─────────────────────
 
-/** Nombre d'envois tentés pour un même épisode avant d'abandonner. */
-const MAX_TENTATIVES = 3;
+/**
+ * Ce que porte `dernier_echec` entre l'enregistrement de l'épisode et l'issue
+ * de son envoi. Si l'issue ne peut pas s'écrire, c'est ce motif qui reste — et
+ * la supervision affiche « ALERTE NON ENVOYÉE (envoi tenté, issue non
+ * enregistrée) » : pessimiste exprès. Une fausse alarme sur un courriel parti
+ * vaut mieux qu'une fausse assurance sur un courriel perdu.
+ */
+const ISSUE_INCONNUE = 'envoi tenté, issue non enregistrée';
 
 // Intervalle entre deux passages : la planification `pg_cron` « toutes les
 // cinq minutes » de `migrations/2026-09-alerte-ecrans.sql`. Il ne sert qu'à
@@ -543,8 +549,8 @@ Deno.serve(async (req) => {
   // `params` illisible : il ne sait ni QUI prévenir, ni QUAND les postes
   // dorment. Juger le parc sur la veille par défaut pourrait taire un écran
   // muet à 21 h 30 si l'exploitant a réglé 22 h ; tenter un envoi sans
-  // destinataire userait les trois tentatives de l'épisode pour rien — et
-  // l'alerte ne partirait plus quand le réglage redeviendrait lisible.
+  // destinataire userait l'UNIQUE envoi de l'épisode pour rien — et l'alerte
+  // ne partirait plus quand le réglage redeviendrait lisible.
   //
   // Dans les deux cas, le passage est ABANDONNÉ sans toucher à
   // `alertes_ecran` : les épisodes en cours restent tels quels, et le passage
@@ -590,7 +596,7 @@ Deno.serve(async (req) => {
   const bilan = bilanSurveillance(postes, veilleGlobale, maintenant_ms, maintenant_s);
 
   // ── Ce qu'on décide ───────────────────────────────────────────────────────
-  const aAnnoncer: PosteEnDefaut[] = []; // première annonce, ou réessai d'envoi
+  const aAnnoncer: PosteEnDefaut[] = []; // épisode nouveau : UN envoi, jamais deux
   const aRetablir: LigneAlerte[] = []; // le signal est revenu
   const aOublier: string[] = []; // poste retiré du service pendant l'épisode
 
@@ -611,15 +617,19 @@ Deno.serve(async (req) => {
       if (defaut.silence_ms < SEUIL_DEFAUT_MS + CADENCE_MS) aAnnoncer.push(defaut);
       continue;
     }
-    const ligne = connues.get(defaut.id);
     // NE PAS RÉPÉTER. Une tâche qui tourne toutes les cinq minutes aurait
     // envoyé trente-six courriels pendant la panne de samedi. La ligne en
-    // base EST la mémoire de l'épisode ; on n'y revient que si l'envoi a
-    // échoué, et trois fois au plus — un échec qui se rejoue indéfiniment est
-    // un journal qui déborde, pas une alerte.
-    if (!ligne || (!ligne.envoyee_at && ligne.envois_tentes < MAX_TENTATIVES)) {
-      aAnnoncer.push(defaut);
-    }
+    // base EST la mémoire de l'épisode, et elle est écrite AVANT le courriel
+    // (plus bas) : un épisode qui a une ligne a eu son envoi, réussi ou non.
+    //
+    // PLUS DE RÉESSAI. La version précédente retentait un envoi échoué, trois
+    // fois au plus — et c'est ce réessai qui faisait boucler le courriel dès
+    // que l'issue de l'envoi ne pouvait pas s'écrire. Un envoi échoué reste
+    // DIT, dans `dernier_echec`, et la carte du poste affiche « ALERTE NON
+    // ENVOYÉE (motif) » : quelqu'un peut le voir, personne n'est inondé. Le
+    // prix, assumé : un refus passager de Brevo n'est pas rattrapé par le
+    // passage suivant.
+    if (!connues.has(defaut.id)) aAnnoncer.push(defaut);
   }
 
   // Sans mémoire, `connues` est vide : aucun rétablissement, aucun oubli. On
@@ -640,16 +650,47 @@ Deno.serve(async (req) => {
     // une nouvelle panne.
   }
 
-  // ── Ce qu'on envoie ───────────────────────────────────────────────────────
+  // ── Ce qu'on écrit, PUIS ce qu'on envoie ─────────────────────────────────
+  // L'ORDRE EST LA RÈGLE : aucun courriel ne part pour un épisode que la base
+  // n'a pas enregistré, aucun avis de rétablissement pour un épisode qu'elle
+  // n'a pas refermé. Écrire après l'envoi laissait, sur une écriture refusée,
+  // un courriel parti sans mémoire — que le passage suivant renvoyait, sans
+  // limite tant que la table refusait. Dans l'ordre inverse, le pire devient
+  // un épisode enregistré dont le courriel n'est pas parti : la supervision
+  // l'affiche, et le bandeau rougit sur l'écriture refusée.
+  //
+  // Chaque écriture est CONTRÔLÉE, et sa conséquence est dite avec elle.
+  const echecsEcriture: string[] = [];
+
+  let annonces: PosteEnDefaut[] = [];
+  if (aAnnoncer.length) {
+    const { echec } = await base(
+      'alertes_ecran (enregistrement)',
+      admin.from('alertes_ecran').upsert(
+        aAnnoncer.map((p) => ({
+          ecran_id: p.id,
+          depuis: p.derniere_vue || maintenantISO,
+          detectee_at: maintenantISO,
+          envois_tentes: 1,
+          envoyee_at: null,
+          dernier_echec: ISSUE_INCONNUE,
+        })),
+        { onConflict: 'ecran_id' },
+      ),
+    );
+    if (echec) echecsEcriture.push(`${echec} : épisode non enregistré, aucun courriel n'est parti`);
+    else annonces = aAnnoncer;
+  }
+
   // UN seul courriel par catégorie, même pour six postes. Si toute la flotte
   // se tait, la cause est en amont et six messages ne disent rien de plus.
   let echecAnnonce: string | null = null;
-  if (aAnnoncer.length) {
+  if (annonces.length) {
     const sujet = bilan.globale
-      ? `[TMB] PANNE GÉNÉRALE — ${aAnnoncer.length} écrans muets`
-      : aAnnoncer.length === 1
-        ? `[TMB] Écran muet — ${NOM_GARE[aAnnoncer[0]!.gare] ?? aAnnoncer[0]!.gare}`
-        : `[TMB] ${aAnnoncer.length} écrans muets`;
+      ? `[TMB] PANNE GÉNÉRALE — ${annonces.length} écrans muets`
+      : annonces.length === 1
+        ? `[TMB] Écran muet — ${NOM_GARE[annonces[0]!.gare] ?? annonces[0]!.gare}`
+        : `[TMB] ${annonces.length} écrans muets`;
     const entete = bilan.globale
       ? `Les ${bilan.surveilles} écrans surveillés se taisent en même temps : la cause est probablement en amont (réseau de la Régie, Supabase injoignable) plutôt que sur chaque poste.`
       : `Un écran ne donne plus signe de vie depuis plus de ${SEUIL_DEFAUT_MS / 60_000} minutes.`;
@@ -659,7 +700,7 @@ Deno.serve(async (req) => {
       [
         entete,
         '',
-        ...aAnnoncer.map(ligneCourriel),
+        ...annonces.map(ligneCourriel),
         '',
         'Un écran muet affiche « Informations momentanément indisponibles » après quinze minutes de cache, puis un écran neutre.',
         'À vérifier sur place : alimentation, réseau de la gare, puis docs/kiosque.md §10 (vérifier un poste en cinq commandes).',
@@ -670,12 +711,47 @@ Deno.serve(async (req) => {
           : 'Vous recevrez un second message quand le signal reviendra.',
       ].join('\n'),
     );
+    // L'ISSUE, sur la ligne déjà écrite. Si elle ne s'écrit pas, la ligne
+    // garde `ISSUE_INCONNUE` : l'épisode ne repartira pas, et la supervision
+    // le dit « non envoyé » plutôt que d'affirmer un envoi qu'on ne sait pas.
+    const { echec } = await base(
+      'alertes_ecran (issue de l’envoi)',
+      admin
+        .from('alertes_ecran')
+        .update({ envoyee_at: echecAnnonce ? null : maintenantISO, dernier_echec: echecAnnonce })
+        .in(
+          'ecran_id',
+          annonces.map((p) => p.id),
+        ),
+    );
+    if (echec) {
+      echecsEcriture.push(
+        `${echec} : issue de l'envoi non enregistrée, la supervision le dit non envoyé`,
+      );
+    }
+  }
+
+  // Le rétablissement referme l'épisode : la ligne disparaît, la prochaine
+  // panne du même poste sera une NOUVELLE alerte. Les lignes dont l'envoi
+  // avait échoué partent aussi — le poste va bien, il n'y a plus rien à dire.
+  // Refermée D'ABORD : une clôture refusée qui laisserait partir l'avis le
+  // ferait repartir à chaque passage, exactement comme l'annonce.
+  const aSupprimer = [...aRetablir.map((l) => l.ecran_id), ...aOublier];
+  let clotureFaite = false;
+  if (aSupprimer.length) {
+    const { echec } = await base(
+      'alertes_ecran (clôture)',
+      admin.from('alertes_ecran').delete().in('ecran_id', aSupprimer),
+    );
+    if (echec) {
+      echecsEcriture.push(`${echec} : épisode non refermé, aucun avis de rétablissement n'est parti`);
+    } else clotureFaite = true;
   }
 
   let echecRetour: string | null = null;
   // On n'annonce le retour que de ce qui a été ANNONCÉ. Une panne détectée
   // mais jamais dite (clé Brevo absente) n'a pas de rétablissement à dire.
-  const retablisDits = aRetablir.filter((l) => l.envoyee_at);
+  const retablisDits = clotureFaite ? aRetablir.filter((l) => l.envoyee_at) : [];
   if (retablisDits.length) {
     echecRetour = await envoyer(
       destinataires,
@@ -697,44 +773,6 @@ Deno.serve(async (req) => {
     );
   }
 
-  // ── Ce qu'on écrit ────────────────────────────────────────────────────────
-  // Chaque écriture est CONTRÔLÉE. Une mémoire d'épisode qui ne s'écrit pas
-  // est un courriel qui se répétera au passage suivant — ce qui se voit, et
-  // vite. Mais il faut que la supervision le dise AVANT que les destinataires
-  // ne s'en plaignent, et qu'elle dise pourquoi.
-  const echecsEcriture: string[] = [];
-  if (aAnnoncer.length) {
-    const { echec } = await base(
-      'alertes_ecran (enregistrement)',
-      admin.from('alertes_ecran').upsert(
-        aAnnoncer.map((p) => {
-          const ligne = connues.get(p.id);
-          return {
-            ecran_id: p.id,
-            depuis: p.derniere_vue || maintenantISO,
-            detectee_at: ligne?.detectee_at ?? maintenantISO,
-            envois_tentes: (ligne?.envois_tentes ?? 0) + 1,
-            envoyee_at: echecAnnonce ? null : maintenantISO,
-            dernier_echec: echecAnnonce,
-          };
-        }),
-        { onConflict: 'ecran_id' },
-      ),
-    );
-    if (echec) echecsEcriture.push(echec);
-  }
-  // Le rétablissement referme l'épisode : la ligne disparaît, la prochaine
-  // panne du même poste sera une NOUVELLE alerte. Les lignes dont l'envoi
-  // avait échoué partent aussi — le poste va bien, il n'y a plus rien à dire.
-  const aSupprimer = [...aRetablir.map((l) => l.ecran_id), ...aOublier];
-  if (aSupprimer.length) {
-    const { echec } = await base(
-      'alertes_ecran (clôture)',
-      admin.from('alertes_ecran').delete().in('ecran_id', aSupprimer),
-    );
-    if (echec) echecsEcriture.push(echec);
-  }
-
   // ── Ce qu'on dit ──────────────────────────────────────────────────────────
   const constat = bilan.enDefaut.length
     ? `${bilan.enDefaut.length}/${bilan.surveilles} en défaut${echecAnnonce ? ` (envoi : ${echecAnnonce})` : ''}`
@@ -742,13 +780,11 @@ Deno.serve(async (req) => {
   const problemes: string[] = [];
   if (lectureAlertes.echec) {
     problemes.push(
-      `historique illisible (${lectureAlertes.echec}) : ${aAnnoncer.length} annonce(s) sans mémoire, aucun rétablissement annoncé`,
+      `historique illisible (${lectureAlertes.echec}) : ${annonces.length} annonce(s) sans mémoire, aucun rétablissement annoncé`,
     );
   }
   if (echecsEcriture.length) {
-    problemes.push(
-      `écriture impossible (${echecsEcriture.join(' ; ')}) : la mémoire des alertes n'est pas à jour, un courriel peut se répéter au prochain passage`,
-    );
+    problemes.push(`écriture impossible (${echecsEcriture.join(' ; ')})`);
   }
   // « ÉCHEC » EN TÊTE, ET LE CONSTAT QUAND MÊME. Ce qui a été vu reste dit :
   // « 1/1 en défaut » est une information juste même quand l'historique est
@@ -764,7 +800,7 @@ Deno.serve(async (req) => {
     surveilles: bilan.surveilles,
     en_defaut: bilan.enDefaut.length,
     globale: bilan.globale,
-    annonces: aAnnoncer.length,
+    annonces: annonces.length,
     retablissements: retablisDits.length,
     echec_envoi: echecAnnonce ?? echecRetour,
     echec: problemes.length ? resume : consigne.echec,
