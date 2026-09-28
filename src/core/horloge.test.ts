@@ -144,10 +144,14 @@ describe('les deux pages agissent sur l’état, et de la bonne façon', () => {
         "document.body.classList.toggle('mode-horloge', horloge === 'ecart-dit')",
       );
       // Le seuil bloquant s'ajoute aux causes EXISTANTES de l'écran neutre :
-      // une seule sortie, pas un second chemin parallèle.
+      // une seule sortie, pas un second chemin parallèle. Depuis le lot hors
+      // saison (28/09/2026), ces causes « données inutilisables » sont
+      // nommées à part — elles interdisent aussi d'annoncer une fermeture —
+      // et l'écran neutre les reprend telles quelles.
       expect(src).toMatch(
-        /const neutre = age === null \|\| age > dureeCacheMs\(\) \|\| horloge === 'ecart-bloquant'/,
+        /const neutreDonnees =\s*age === null \|\| age > dureeCacheMs\(\) \|\| horloge === 'ecart-bloquant'/,
       );
+      expect(src).toMatch(/const neutre = neutreDonnees \|\| /);
     });
 
     it(`${chemin} : le bandeau existe dans la page et n’est pas masquable`, () => {

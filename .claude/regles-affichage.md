@@ -47,6 +47,17 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
 - **Mode dégradé** : cache ≤ 15 min avec badge « données de HH:MM », puis
   ÉCRAN NEUTRE (logo + horloge + message bilingue) — jamais d'horaires
   potentiellement faux.
+- **Hors saison** (aucune grille active ne couvre la date) : l'écran de gare
+  passe en VEILLE permanente, message de fermeture bilingue sous l'horloge,
+  bandeau de messages arrêté ; la grille du jour montre le même message en
+  pleine page et GARDE son bandeau (annonce de réouverture). Automatique,
+  sans interrupteur. La décision est `vueJournee()` / `etatSaison()`
+  (`src/core/horaires.ts`), consultée AVANT toute sortie sur `!grille` —
+  c'est `grille === null` qui définit le hors-saison. Un TROU de ≤ 31 jours
+  ENTRE deux périodes est une faute de saisie probable : écran NEUTRE,
+  jamais « fermé » — une fermeture fausse est pire qu'un écran vide. Jamais
+  de fermeture annoncée sur des données périmées ou une horloge de poste
+  fantaisiste (la date elle-même n'est plus sûre).
 - **Compte à rebours** : cases (« chips ») toutes de la même taille.
 - **Messages** : modifiables après création ; traduction anglaise générée
   automatiquement (service de traduction) puis éditable.

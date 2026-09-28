@@ -112,6 +112,113 @@ export function grillePourJour(grilles: Grille[], jour: Jour): Grille | null {
   return grilles.find((g) => g.version === jour.grille_version) ?? serviceActif(grilles, jour.date);
 }
 
+// ---------------------------------------------------------------------------
+// Hors saison : fermeture annoncée, ou saisie à vérifier
+// ---------------------------------------------------------------------------
+
+/**
+ * Nature d'une date au regard des périodes des grilles ACTIVES :
+ *  - `service`    : une grille la couvre (serviceActif()) ;
+ *  - `fermee`     : aucune ne la couvre, et rien ne ressemble à une faute de
+ *                   saisie — la ligne est hors saison, l'écran le DIT ;
+ *  - `incertaine` : aucune ne la couvre, mais la donnée ressemble à une
+ *                   erreur — l'écran n'affirme RIEN.
+ */
+export type EtatSaison = 'service' | 'fermee' | 'incertaine';
+
+/**
+ * Au-delà, un intervalle sans grille ENTRE deux périodes est une intersaison ;
+ * jusque-là (bornes incluses), une faute de saisie probable.
+ *
+ * 31 jours couvrent les fautes qu'on commet en réglant une période : une
+ * borne décalée d'un jour (« au 29 » pour « au 30 »), un chiffre du jour
+ * (« 03 » pour « 30 »), un mois voisin (« 07 » pour « 08 »). Les vraies
+ * intersaisons du Tramway durent des semaines (printemps) à des mois
+ * (automne). Une fermeture programmée plus courte, encadrée par deux grilles,
+ * s'affichera en « informations indisponibles » plutôt qu'en « fermé » : c'est
+ * le côté sûr — un écran qui annonce une fermeture fausse est pire qu'un écran
+ * vide, parce qu'on le croit.
+ */
+export const TROU_SAISIE_MAX_JOURS = 31;
+
+/** Nombre de jours de `a` à `b` (« YYYY-MM-DD », calcul UTC comme dateSuivante()). */
+function ecartJours(a: string, b: string): number {
+  const utc = (d: string): number => {
+    const [annee = 0, mois = 1, jour = 1] = d.split('-').map(Number);
+    return Date.UTC(annee, mois - 1, jour);
+  };
+  // En UTC, un jour fait toujours 86 400 000 ms : la division tombe juste.
+  return (utc(b) - utc(a)) / 86_400_000;
+}
+
+/**
+ * Faut-il annoncer la FERMETURE à cette date ? Le déclenchement est
+ * automatique (aucune grille active = fermé, décision exploitant du
+ * 28/09/2026) ; cette fonction en retire le seul cas où l'automatisme
+ * mentirait de façon reconnaissable :
+ *
+ *  - aucune période connue : base vide ou lecture incomplète → `incertaine` ;
+ *  - date ENCADRÉE par deux périodes, à au plus TROU_SAISIE_MAX_JOURS jours
+ *    sans grille → `incertaine` (« une couvrait avant-hier, une autre couvre
+ *    après-demain » : c'est un trou de saisie, pas une saison) ;
+ *  - sinon (après la dernière période, avant la première, ou intersaison
+ *    longue entre deux grilles chargées d'avance) → `fermee`.
+ *
+ * LIMITE, assumée : une borne EXTRÊME mal saisie (fin de saison au 15/08 au
+ * lieu du 15/09) ou la désactivation par erreur de la seule grille d'une
+ * longue période sont indiscernables d'une vraie fin de saison. Le garde-fou
+ * est en amont : la supervision annonce « plus aucun service ne sera
+ * affiché » avant de confirmer une telle modification.
+ *
+ * Mêmes règles de couverture que serviceActif() : grilles désactivées
+ * ignorées, bornes incluses.
+ */
+export function etatSaison(grilles: Grille[], date: string): EtatSaison {
+  if (serviceActif(grilles, date)) return 'service';
+  let avant: string | null = null; // dernier jour couvert AVANT la date
+  let apres: string | null = null; // premier jour couvert APRÈS la date
+  for (const grille of grilles) {
+    if (grille.actif === false) continue;
+    for (const p of grille.periodes) {
+      if (p.au < date && (avant === null || p.au > avant)) avant = p.au;
+      if (p.du > date && (apres === null || p.du < apres)) apres = p.du;
+    }
+  }
+  if (avant === null && apres === null) return 'incertaine';
+  if (avant !== null && apres !== null && ecartJours(avant, apres) - 1 <= TROU_SAISIE_MAX_JOURS) {
+    return 'incertaine';
+  }
+  return 'fermee';
+}
+
+/**
+ * Ce qu'un écran voyageur montre de sa journée, une fois les données jugées
+ * FIABLES (fraîches, horloge du poste plausible — c'est à la page d'en juger
+ * avant d'appeler) :
+ *  - `horaires`     : la grille du jour ;
+ *  - `fermee`       : la ligne est hors saison (etatSaison() === 'fermee') ;
+ *  - `indisponible` : rien d'affirmable — écran neutre.
+ *
+ * C'est `grille === null` qui DÉFINIT le hors-saison : c'est donc ici, et non
+ * derrière une garde `if (!grille) return`, que ce cas doit être tranché
+ * (défaut constaté en gare le 28/09/2026 : en-têtes de colonnes sans une
+ * ligne, le message de fermeture existait mais restait inatteignable).
+ */
+export type VueJournee = 'horaires' | 'fermee' | 'indisponible';
+
+export function vueJournee(
+  grilles: Grille[],
+  jour: Jour | null,
+  grille: Grille | null,
+): VueJournee {
+  if (!jour) return 'indisponible';
+  if (grille && jour.hors_saison !== true) return 'horaires';
+  // Une grille trouvée sur une journée dite hors saison est une CONTRADICTION
+  // entre la couche données et les grilles : etatSaison() répond alors
+  // `service`, et l'écran ne tranche pas à leur place.
+  return etatSaison(grilles, jour.date) === 'fermee' ? 'fermee' : 'indisponible';
+}
+
 /**
  * Circulations par défaut d'une date : rames attribuées en cycle sur les
  * montées, héritées par la descente appariée (rotation), facultatifs non

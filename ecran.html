@@ -112,7 +112,18 @@
       <b>Horloge du poste déréglée</b>
       <span>Station clock out of sync — countdowns may be wrong</span>
     </div>
-    <div class="veille"><div class="horloge-veille" id="horloge-veille">--:--</div></div>
+    <!-- Veille : la nuit, l'horloge seule ; HORS SAISON (body.mode-fermee,
+         décidé par vueJournee() dans src/core/horaires.ts), le message de
+         fermeture en dessous, dans le même registre — sobre, lisible depuis
+         le quai sans éclairer la salle. Texte statique : rien d'injecté. -->
+    <div class="veille">
+      <div class="horloge-veille" id="horloge-veille">--:--</div>
+      <div class="fermeture-veille">
+        <p class="fr">Le Tramway du Mont-Blanc est fermé</p>
+        <p class="fr-suite">Reprise selon le calendrier saisonnier</p>
+        <p class="en">The Mont Blanc Tramway is closed — reopening per seasonal timetable</p>
+      </div>
+    </div>
 
     <script src="./config.js"></script>
     <script type="module" src="/src/pages/ecran.ts"></script>
