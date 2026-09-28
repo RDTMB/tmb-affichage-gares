@@ -27,6 +27,12 @@ import {
   type PosteSurveille,
 } from '../core/surveillance-ecrans';
 import { enVeille } from '../core/horaires';
+import {
+  CADENCE_GUETTEUR_MS,
+  MARQUE_ECHEC_GUETTEUR,
+  SEUIL_GUETTEUR_MUET_MS,
+  bandeauGuetteur,
+} from '../pages/supervision-logique';
 import { PARAMS_DEFAUT } from '../core/params';
 import type { VeilleNuit } from '../core/types';
 
@@ -566,7 +572,28 @@ interface Ecriture {
   lignes?: unknown;
   ids?: unknown;
   valeurs?: Record<string, unknown>;
+  /** Colonne et valeur du filtre (`eq`, `in`) : QUELLES lignes sont visées. */
+  filtre?: [string, unknown];
+  /** Options passées à l'écriture (`onConflict` d'un upsert). */
+  options?: unknown;
+  /** L'écriture a été TENTÉE, et le client d'essai l'a fait échouer. */
+  echouee?: boolean;
 }
+
+/**
+ * Chaque opération que le guetteur adresse à la base, nommée pour qu'on puisse
+ * la faire échouer SEULE. `erreur` : le client rend `{ data: null, error }`,
+ * comme PostgREST pour une clé révoquée ou une table absente ; `leve` : la
+ * promesse est REJETÉE, comme une coupure réseau sous `fetch`.
+ */
+type OperationBase =
+  | 'select:ecrans'
+  | 'select:params'
+  | 'select:alertes_ecran'
+  | 'upsert:alertes_ecran'
+  | 'delete:alertes_ecran'
+  | 'update:surveillance_etat';
+type ModeEchec = 'erreur' | 'leve';
 
 interface Courriel {
   sujet: string;
@@ -609,30 +636,83 @@ async function chargeGuetteur(): Promise<(decor: Decor) => Promise<Passage>> {
             ? decor.alertes
             : [];
 
-    const repond = (data: unknown) => ({
-      then: (r: (v: { data: unknown; error: null }) => unknown) => r({ data, error: null }),
+    // UN CLIENT QUI PEUT ÉCHOUER. La première version de ce banc rendait
+    // toujours `error: null` : elle ne pouvait pas éprouver un code qui doit
+    // savoir échouer, et c'est ainsi que R-02 (relecture de septembre 2026) a
+    // passé — lectures en échec lues comme « zéro écran, aucun défaut ».
+    // Chaque opération échoue désormais SEULE, sur demande du décor.
+    const repond = (operation: OperationBase, data: unknown) => ({
+      then: (
+        r: (v: { data: unknown; error: unknown }) => unknown,
+        rejette?: (e: unknown) => unknown,
+      ) => {
+        const mode = decor.echecs?.[operation];
+        if (mode === 'leve') return rejette?.(new TypeError('fetch failed'));
+        if (mode === 'erreur') {
+          return r({
+            data: null,
+            error: {
+              message: decor.messageErreur ?? `permission denied for ${operation}`,
+              code: '42501',
+            },
+          });
+        }
+        return r({ data, error: null });
+      },
     });
+    const echoue = (operation: OperationBase): boolean => decor.echecs?.[operation] !== undefined;
+    // UN CLIENT QUI LIT CE QU'ON LUI DEMANDE. Un second tour de mutation
+    // (lot du guetteur honnête) a vu survivre `select('ecran_id')`,
+    // `.in('id', …)`, `.eq('id', false)` et un upsert sans `onConflict` : le
+    // client d'essai ignorait ses arguments. Il projette désormais les
+    // colonnes demandées, filtre sur `in`, et note les filtres et options des
+    // écritures pour que les tests les regardent.
+    const projette = (lignes: unknown[], colonnes: string): unknown[] => {
+      if (colonnes.trim() === '*') return lignes;
+      const noms = colonnes.split(',').map((c) => c.trim());
+      return lignes.map((l) =>
+        Object.fromEntries(noms.map((n) => [n, (l as Record<string, unknown>)[n]])),
+      );
+    };
     const createClient = () => ({
       from(table: string) {
+        const lecture = `select:${table}` as OperationBase;
         return {
-          select: () => {
+          select: (colonnes = '*') => {
             lues.push(table);
-            return { ...repond(contenu(table)), in: () => repond(contenu(table)) };
+            const lignes = projette(contenu(table), colonnes);
+            return {
+              ...repond(lecture, lignes),
+              in: (col: string, valeurs: unknown[]) =>
+                repond(
+                  lecture,
+                  lignes.filter((l) => valeurs.includes((l as Record<string, unknown>)[col])),
+                ),
+            };
           },
-          upsert: (lignes: unknown) => {
-            ecritures.push({ op: 'upsert', table, lignes });
-            return repond(lignes);
+          upsert: (lignes: unknown, options?: unknown) => {
+            const op = `upsert:${table}` as OperationBase;
+            ecritures.push({ op: 'upsert', table, lignes, options, echouee: echoue(op) });
+            return repond(op, lignes);
           },
           delete: () => ({
-            in: (_col: string, ids: unknown) => {
-              ecritures.push({ op: 'delete', table, ids });
-              return repond([]);
+            in: (col: string, ids: unknown) => {
+              const op = `delete:${table}` as OperationBase;
+              ecritures.push({ op: 'delete', table, ids, filtre: [col, ids], echouee: echoue(op) });
+              return repond(op, []);
             },
           }),
           update: (valeurs: Record<string, unknown>) => ({
-            eq: () => {
-              ecritures.push({ op: 'update', table, valeurs });
-              return repond([]);
+            eq: (col: string, val: unknown) => {
+              const op = `update:${table}` as OperationBase;
+              ecritures.push({
+                op: 'update',
+                table,
+                valeurs,
+                filtre: [col, val],
+                echouee: echoue(op),
+              });
+              return repond(op, []);
             },
           }),
         };
@@ -703,6 +783,10 @@ interface Decor {
   entetes?: Record<string, string>;
   brevoStatut?: number;
   brevoLeve?: boolean;
+  /** Opérations de base à faire échouer, chacune indépendamment. */
+  echecs?: Partial<Record<OperationBase, ModeEchec>>;
+  /** Message porté par l'erreur simulée, quand le motif par défaut ne suffit pas. */
+  messageErreur?: string;
 }
 
 const passe = await chargeGuetteur();
@@ -806,6 +890,11 @@ describe('Le guetteur, exécuté — un épisode de panne', () => {
     expect(p.courriels[0]?.corps).toContain('muet depuis 20 min');
     const [ligne] = upsertAlertes(p);
     expect(ligne?.ecran_id).toBe('saint-gervais-ecran-1');
+    // Sans `onConflict`, l'upsert heurterait la clé primaire au réessai : une
+    // ligne par poste, c'est l'épisode.
+    expect(p.ecritures.find((e) => e.op === 'upsert')?.options).toEqual({
+      onConflict: 'ecran_id',
+    });
     expect(ligne?.envois_tentes).toBe(1);
     expect(ligne?.envoyee_at).toBeTruthy();
     expect(ligne?.dernier_echec).toBeNull();
@@ -846,14 +935,18 @@ describe('Le guetteur, exécuté — un épisode de panne', () => {
       dernier_echec: 'Brevo 500',
     });
     for (const tentes of [1, 2]) {
+      const ligne = jamaisDite(tentes);
       const p = await passe({
         ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
         params: [VEILLE_JAMAIS, DESTINATAIRE],
-        alertes: [jamaisDite(tentes)],
+        alertes: [ligne],
         env: ENV_COMPLET,
       });
       expect(p.courriels, `après ${tentes} tentatives`).toHaveLength(1);
       expect(upsertAlertes(p)[0]?.envois_tentes).toBe(tentes + 1);
+      // L'heure de DÉTECTION est celle du premier passage, pas du réessai :
+      // c'est elle qui dit depuis quand la panne est connue.
+      expect(upsertAlertes(p)[0]?.detectee_at).toBe(ligne.detectee_at);
     }
     const p = await passe({
       ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
@@ -883,6 +976,29 @@ describe('Le guetteur, exécuté — un épisode de panne', () => {
     expect(p.courriels).toHaveLength(1);
     expect(p.courriels[0]?.sujet).toContain('rétabli');
     expect(p.ecritures.filter((e) => e.op === 'delete')[0]?.ids).toEqual(['saint-gervais-ecran-1']);
+    // Sur la bonne colonne : `.in('id', …)` ne viserait aucune ligne, et
+    // l'épisode ne se refermerait jamais.
+    expect(p.ecritures.filter((e) => e.op === 'delete')[0]?.filtre?.[0]).toBe('ecran_id');
+  });
+
+  it('un rétablissement que Brevo refuse est RENDU dans la réponse', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'saint-gervais-ecran-1',
+          depuis: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          detectee_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          envois_tentes: 1,
+          envoyee_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+          dernier_echec: null,
+        },
+      ],
+      env: ENV_COMPLET,
+      brevoStatut: 403,
+    });
+    expect(p.corps).toMatchObject({ echec_envoi: 'Brevo 403' });
   });
 
   it('une panne que PERSONNE n’a connue n’a pas de rétablissement à annoncer', async () => {
@@ -1072,6 +1188,9 @@ describe('Le guetteur, exécuté — la preuve qu’il est passé', () => {
     const maj = p.ecritures.find((e) => e.table === 'surveillance_etat');
     expect(maj?.valeurs?.derniere_execution).toBeTruthy();
     expect(maj?.valeurs?.dernier_resultat).toBe('1 surveillés, aucun défaut');
+    // LA ligne unique de la table (`check (id)`) : un filtre faux mettrait à
+    // jour zéro ligne, sans erreur, et l'horodatage vieillirait en silence.
+    expect(maj?.filtre).toEqual(['id', true]);
   });
 
   it('et même quand il n’y a AUCUN écran déclaré', async () => {
@@ -1148,5 +1267,439 @@ describe('Le guetteur, exécuté — le fuseau et le repli de veille', () => {
     const bloc = blocDecision();
     expect(bloc).toMatch(/function secondesParis[\s\S]*?timeZone: 'Europe\/Paris'/);
     expect(bloc).toMatch(/function secondesParis[\s\S]*?hourCycle: 'h23'/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QUAND LA BASE NE RÉPOND PAS — R-02 (relecture de septembre 2026)
+//
+// Le constat, mesuré sur la fonction réelle : un client dont toutes les
+// lectures échouent donnait un statut 200, `{"surveilles":0,"en_defaut":0}`,
+// « 0 surveillés, aucun défaut » dans `surveillance_etat`, aucun courriel,
+// aucune trace. La supervision affichait « Surveillance active », en vert,
+// pendant que plus personne ne regardait les écrans.
+// ---------------------------------------------------------------------------
+
+const TOUTES_LES_LECTURES: OperationBase[] = [
+  'select:ecrans',
+  'select:params',
+  'select:alertes_ecran',
+];
+
+/** Ce que le passage a écrit dans `surveillance_etat` — la seule chose qu'un humain lit. */
+function resultatEcrit(p: Passage): string | undefined {
+  const maj = p.ecritures.find((e) => e.table === 'surveillance_etat');
+  return maj?.valeurs?.dernier_resultat as string | undefined;
+}
+
+describe('Le guetteur, exécuté — le constat R-02', () => {
+  for (const mode of ['erreur', 'leve'] as const) {
+    it(`toutes les lectures en ${mode} : ni 200, ni « aucun défaut », ni silence`, async () => {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+        echecs: Object.fromEntries(TOUTES_LES_LECTURES.map((o) => [o, mode])),
+      });
+      expect(p.statut).not.toBe(200);
+      expect(resultatEcrit(p)).not.toMatch(/aucun défaut/);
+      expect(p.corps).not.toMatchObject({ surveilles: 0, en_defaut: 0 });
+      expect(p.journal.length).toBeGreaterThan(0);
+    });
+  }
+});
+
+describe('Le guetteur, exécuté — une lecture VITALE échoue : le passage est abandonné', () => {
+  // `ecrans` : le guetteur ne sait rien du parc. `params` : il ne sait ni qui
+  // prévenir, ni quand les postes dorment. Dans les deux cas il ne conclut
+  // rien, ne touche pas aux épisodes, et le DIT.
+  const EPISODE: LigneAlerteBanc = {
+    ecran_id: 'saint-gervais-ecran-1',
+    depuis: new Date(Date.now() - MUET).toISOString(),
+    detectee_at: new Date(Date.now() - 600_000).toISOString(),
+    envois_tentes: 1,
+    envoyee_at: new Date(Date.now() - 600_000).toISOString(),
+    dernier_echec: null,
+  };
+
+  for (const lecture of ['select:ecrans', 'select:params'] as const) {
+    for (const mode of ['erreur', 'leve'] as const) {
+      it(`${lecture} en ${mode} : 500, « ÉCHEC » écrit, rien envoyé, épisodes intacts`, async () => {
+        const p = await passe({
+          // Un poste muet ET un poste rétabli avec son épisode : si le passage
+          // allait au bout, il enverrait deux courriels et toucherait la table.
+          ecrans: [posteBanc('le-fayet-ecran-1', MUET), posteBanc('saint-gervais-ecran-1', 20_000)],
+          params: [VEILLE_JAMAIS, DESTINATAIRE],
+          alertes: [EPISODE],
+          env: ENV_COMPLET,
+          echecs: { [lecture]: mode },
+        });
+        expect(p.statut).toBe(500);
+        expect(p.courriels).toEqual([]);
+        expect(p.ecritures.filter((e) => e.table === 'alertes_ecran')).toEqual([]);
+        const resultat = resultatEcrit(p) ?? '';
+        expect(resultat.startsWith('ÉCHEC — lecture impossible')).toBe(true);
+        // La table fautive est NOMMÉE : c'est ce qui envoie chercher au bon
+        // endroit (clé révoquée, table renommée).
+        expect(resultat).toContain(lecture.slice('select:'.length));
+        expect(resultat).toContain("aucun écran n'a été jugé");
+        // Le passage est quand même HORODATÉ : la chaîne pg_cron → pg_net →
+        // fonction marche, c'est la base qui ne répond pas. La supervision
+        // doit le distinguer d'un guetteur à l'arrêt.
+        const maj = p.ecritures.find((e) => e.table === 'surveillance_etat');
+        expect(maj?.valeurs?.derniere_execution).toBeTruthy();
+        // Rien qui ressemble à un bilan : « 0 surveillés » était le mensonge.
+        expect(p.corps).toMatchObject({ surveilles: null, en_defaut: null });
+        expect(p.journal.join('\n')).toContain(`[guetteur] ${lecture.slice('select:'.length)}`);
+        // Et la CONCLUSION, en une ligne : c'est elle qu'on cherche dans les
+        // journaux quand la supervision a rougi.
+        expect(p.journal.join('\n')).toContain('passage abandonné');
+      });
+    }
+  }
+
+  it('le motif de la base est rendu, sans jamais recopier une clé', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: { 'select:ecrans': 'erreur' },
+    });
+    expect(resultatEcrit(p)).toContain('ecrans : permission denied for select:ecrans');
+    for (const trace of [resultatEcrit(p) ?? '', ...p.journal]) {
+      expect(trace).not.toContain('sb_secret_abc');
+    }
+  });
+
+  it('un message de la base qui porterait une clé ou un jeton est MASQUÉ', async () => {
+    // Le résultat est affiché en supervision, à tout compte qui voit l'onglet
+    // Écrans. PostgREST ne recopie pas de clé dans ses messages ; si un jour
+    // un intermédiaire le faisait, la supervision ne doit pas la montrer.
+    const jeton = 'eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZSJ9.c2lnbmF0dXJl';
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: { 'select:ecrans': 'erreur' },
+      messageErreur: `Invalid API key sb_secret_abc123 (Bearer ${jeton})`,
+    });
+    const resultat = resultatEcrit(p) ?? '';
+    expect(resultat).toContain('Invalid API key');
+    for (const trace of [resultat, ...p.journal]) {
+      expect(trace).not.toContain('sb_secret_abc123');
+      expect(trace).not.toContain(jeton);
+    }
+  });
+
+  it('un message de la base démesuré est TRONQUÉ', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: { 'select:ecrans': 'erreur' },
+      messageErreur: 'x'.repeat(5_000),
+    });
+    expect((resultatEcrit(p) ?? '').length).toBeLessThan(400);
+  });
+
+  it('les trois lectures illisibles sont TOUTES nommées', async () => {
+    const p = await passe({
+      ecrans: [],
+      params: [],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: Object.fromEntries(TOUTES_LES_LECTURES.map((o) => [o, 'erreur'])),
+    });
+    const resultat = resultatEcrit(p) ?? '';
+    for (const table of ['ecrans :', 'params :', 'alertes_ecran :']) {
+      expect(resultat, table).toContain(table);
+    }
+  });
+});
+
+describe('Le guetteur, exécuté — l’historique des alertes est illisible', () => {
+  // Il sait QUI est muet, pas s'il l'a déjà dit. Le rapport chiffrait le
+  // risque : un courriel par passage, douze par heure. La règle retenue :
+  // n'annoncer que le poste qui a franchi le seuil depuis le passage
+  // précédent — au plus UN courriel par épisode, sans rétablissement.
+  const SANS_HISTORIQUE = { 'select:alertes_ecran': 'erreur' } as const;
+
+  it('un poste qui VIENT de franchir le seuil est annoncé, et le courriel prévient', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', SEUIL_DEFAUT_MS + 60_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: SANS_HISTORIQUE,
+    });
+    expect(p.courriels).toHaveLength(1);
+    expect(p.courriels[0]?.corps).toContain('n’a pas pu relire son historique');
+    expect(p.courriels[0]?.corps).toContain('NE SERA PAS annoncé');
+    expect(p.courriels[0]?.corps).not.toContain('Vous recevrez un second message');
+    // On tente d'écrire la mémoire : si la lecture n'a échoué qu'une fois, le
+    // passage suivant saura que c'est dit et ne répétera pas.
+    expect(upsertAlertes(p).map((l) => l.ecran_id)).toEqual(['saint-gervais-ecran-1']);
+    expect(p.statut).toBe(500);
+    const resultat = resultatEcrit(p) ?? '';
+    expect(resultat.startsWith('ÉCHEC — historique illisible')).toBe(true);
+    // Le constat reste dit : il est juste, même sans historique.
+    expect(resultat).toContain('1/1 en défaut');
+  });
+
+  it('un poste muet depuis LONGTEMPS n’est pas réannoncé : douze courriels par heure, c’est ce qu’on refuse', async () => {
+    // Douze passages d'une heure de panne, historique illisible à chacun :
+    // le poste ne se trouve dans la fenêtre d'annonce qu'à UN seul d'entre eux.
+    let courriels = 0;
+    for (let passage = 0; passage < 12; passage++) {
+      const silence = SEUIL_DEFAUT_MS - 2 * 60_000 + passage * CADENCE_GUETTEUR_MS;
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', silence)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+        echecs: SANS_HISTORIQUE,
+      });
+      courriels += p.courriels.length;
+    }
+    expect(courriels).toBe(1);
+  });
+
+  it('la fenêtre d’annonce est EXACTEMENT une cadence de pg_cron', async () => {
+    // Plus étroite, un poste pourrait la sauter entre deux passages et ne
+    // jamais être annoncé ; plus large, il serait annoncé deux fois.
+    const annonce = async (silence: number) =>
+      (
+        await passe({
+          ecrans: [posteBanc('saint-gervais-ecran-1', silence)],
+          params: [VEILLE_JAMAIS, DESTINATAIRE],
+          alertes: [],
+          env: ENV_COMPLET,
+          echecs: SANS_HISTORIQUE,
+        })
+      ).courriels.length;
+    // Une seconde de marge de part et d'autre : le banc lit l'heure réelle.
+    expect(await annonce(SEUIL_DEFAUT_MS + 1_000)).toBe(1);
+    expect(await annonce(SEUIL_DEFAUT_MS + CADENCE_GUETTEUR_MS - 2_000)).toBe(1);
+    expect(await annonce(SEUIL_DEFAUT_MS + CADENCE_GUETTEUR_MS + 2_000)).toBe(0);
+  });
+
+  it('aucun rétablissement annoncé, aucune ligne supprimée', async () => {
+    // Le poste bat de nouveau ; on ne sait pas si sa panne a été dite. Dire
+    // « c'est réparé » d'une panne jamais annoncée ferait chercher un message
+    // qu'on n'a pas reçu.
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'saint-gervais-ecran-1',
+          depuis: new Date(Date.now() - 3_600_000).toISOString(),
+          detectee_at: new Date(Date.now() - 3_600_000).toISOString(),
+          envois_tentes: 1,
+          envoyee_at: new Date(Date.now() - 3_600_000).toISOString(),
+          dernier_echec: null,
+        },
+      ],
+      env: ENV_COMPLET,
+      echecs: SANS_HISTORIQUE,
+    });
+    expect(p.courriels).toEqual([]);
+    expect(p.ecritures.filter((e) => e.op === 'delete')).toEqual([]);
+    expect(resultatEcrit(p)).toContain('aucun rétablissement annoncé');
+    expect(p.statut).toBe(500);
+  });
+
+  it('même quand le parc va bien, le passage ne se dit pas réussi', async () => {
+    // « 1 surveillés, aucun défaut » serait vrai, mais le guetteur ne peut
+    // plus tenir sa promesse d'un seul courriel par épisode : ce n'est pas un
+    // passage réussi, et la supervision doit rougir.
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+      echecs: SANS_HISTORIQUE,
+    });
+    expect(resultatEcrit(p)?.startsWith('ÉCHEC')).toBe(true);
+    expect(resultatEcrit(p)).toContain('1 surveillés, aucun défaut');
+  });
+});
+
+describe('Le guetteur, exécuté — une écriture échoue', () => {
+  for (const mode of ['erreur', 'leve'] as const) {
+    it(`mémoire de l’épisode non écrite (${mode}) : dit, avec la conséquence`, async () => {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+        echecs: { 'upsert:alertes_ecran': mode },
+      });
+      // Le courriel est parti : c'est la mémoire qui manque.
+      expect(p.courriels).toHaveLength(1);
+      expect(p.statut).toBe(500);
+      const resultat = resultatEcrit(p) ?? '';
+      expect(resultat.startsWith('ÉCHEC — écriture impossible')).toBe(true);
+      expect(resultat).toContain('alertes_ecran (enregistrement)');
+      expect(resultat).toContain('un courriel peut se répéter');
+    });
+  }
+
+  it('clôture d’épisode non écrite : dit aussi', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [
+        {
+          ecran_id: 'saint-gervais-ecran-1',
+          depuis: new Date(Date.now() - 3_600_000).toISOString(),
+          detectee_at: new Date(Date.now() - 3_600_000).toISOString(),
+          envois_tentes: 1,
+          envoyee_at: new Date(Date.now() - 3_600_000).toISOString(),
+          dernier_echec: null,
+        },
+      ],
+      env: ENV_COMPLET,
+      echecs: { 'delete:alertes_ecran': 'erreur' },
+    });
+    expect(p.statut).toBe(500);
+    expect(resultatEcrit(p)).toContain('alertes_ecran (clôture)');
+  });
+
+  for (const mode of ['erreur', 'leve'] as const) {
+    it(`surveillance_etat non écrite (${mode}) : 500 et trace, jamais une exception muette`, async () => {
+      // La seule trace qu'un humain lit ne s'écrit pas. Il reste les journaux
+      // de la fonction et le statut — et, au bout de quinze minutes, la
+      // supervision « À L'ARRÊT », puisque l'horodatage vieillit.
+      const p = await passe({
+        ecrans: [posteBanc('le-fayet-ecran-1', 20_000)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+        echecs: { 'update:surveillance_etat': mode },
+      });
+      expect(p.statut).toBe(500);
+      expect(p.journal.join('\n')).toContain('[guetteur] surveillance_etat');
+      expect(p.corps).toMatchObject({ echec: expect.stringContaining('surveillance_etat') });
+    });
+  }
+
+  it('un passage sans aucun échec reste un 200, sans « ÉCHEC » ni trace', async () => {
+    // Le contrôle inverse : un guetteur qui crierait à chaque passage serait
+    // un guetteur qu'on cesse d'écouter.
+    const p = await passe({
+      ecrans: [posteBanc('le-fayet-ecran-1', 20_000)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    expect(p.statut).toBe(200);
+    expect(resultatEcrit(p)).toBe('1 surveillés, aucun défaut');
+    expect(p.journal).toEqual([]);
+    expect(p.corps).toMatchObject({ echec: null });
+  });
+});
+
+describe('Ce que le guetteur ÉCRIT, la supervision le LIT comme il faut', () => {
+  // La correspondance entre la fonction Deno et la page ne tient qu'à un mot
+  // (`MARQUE_ECHEC_GUETTEUR`). Elle est éprouvée de bout en bout : le
+  // résultat réellement écrit par la fonction passe dans la décision réelle
+  // de la page.
+  const maintenant = () => Date.now();
+  const bandeauApres = (p: Passage) => {
+    const maj = p.ecritures.find((e) => e.table === 'surveillance_etat')?.valeurs ?? {};
+    return bandeauGuetteur(
+      {
+        derniere_execution: maj.derniere_execution as string,
+        dernier_resultat: maj.dernier_resultat as string,
+      },
+      maintenant(),
+    );
+  };
+  const decors: [string, Partial<Record<OperationBase, ModeEchec>>][] = [
+    ['écrans illisibles', { 'select:ecrans': 'erreur' }],
+    ['réglages illisibles', { 'select:params': 'leve' }],
+    ['historique illisible', { 'select:alertes_ecran': 'erreur' }],
+    ['mémoire non écrite', { 'upsert:alertes_ecran': 'erreur' }],
+    ['tout illisible', Object.fromEntries(TOUTES_LES_LECTURES.map((o) => [o, 'erreur']))],
+  ];
+  for (const [nom, echecs] of decors) {
+    it(`${nom} : la supervision affiche EN ÉCHEC, en rouge`, async () => {
+      const p = await passe({
+        ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+        params: [VEILLE_JAMAIS, DESTINATAIRE],
+        alertes: [],
+        env: ENV_COMPLET,
+        echecs,
+      });
+      const b = bandeauApres(p);
+      expect(b.classe).toBe('alerte');
+      expect(b.libelle).toContain('EN ÉCHEC');
+      expect(b.libelle).not.toContain('active');
+    });
+  }
+
+  it('un passage réussi : la supervision affiche « Surveillance active », en vert', async () => {
+    const p = await passe({
+      ecrans: [posteBanc('saint-gervais-ecran-1', MUET)],
+      params: [VEILLE_JAMAIS, DESTINATAIRE],
+      alertes: [],
+      env: ENV_COMPLET,
+    });
+    const b = bandeauApres(p);
+    expect(b.classe).toBe('ok');
+    expect(b.libelle).toContain('Surveillance active');
+  });
+
+  it('la marque est la même des deux côtés', () => {
+    expect(FONCTION).toContain(`const MARQUE_ECHEC = '${MARQUE_ECHEC_GUETTEUR}';`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R-42 — la cadence de pg_cron, le seuil « À L'ARRÊT », la fenêtre d'annonce
+// ---------------------------------------------------------------------------
+
+describe('Une seule cadence, lue dans la planification', () => {
+  /** Minutes entre deux passages, lues dans la VRAIE planification. */
+  function cadencePlanifieeMs(): number {
+    const planif = MIGRATION.match(/cron\.schedule\(\s*'surveillance-ecrans',\s*'([^']+)'/);
+    expect(planif, 'planification surveillance-ecrans introuvable').not.toBeNull();
+    // Seule forme admise : « */N * * * * ». Une autre forme (liste de minutes,
+    // heures bornées) rend la cadence irrégulière, et ce test doit alors
+    // tomber pour qu'on repense la fenêtre d'annonce et le seuil, pas passer.
+    const pas = planif?.[1]?.match(/^\*\/(\d+) \* \* \* \*$/);
+    expect(pas, `forme de planification inattendue : ${planif?.[1]}`).not.toBeNull();
+    return Number(pas?.[1]) * 60_000;
+  }
+
+  it('la supervision déclare la cadence qui est planifiée', () => {
+    expect(CADENCE_GUETTEUR_MS).toBe(cadencePlanifieeMs());
+  });
+
+  it('la fonction déclare la cadence qui est planifiée', () => {
+    // Le comportement est éprouvé plus haut (la fenêtre d'annonce vaut
+    // `CADENCE_GUETTEUR_MS`) ; ceci relie la constante à la planification.
+    const cadence = FONCTION.match(/^const CADENCE_MS = (\d+) \* 60_000;$/m);
+    expect(cadence).not.toBeNull();
+    expect(Number(cadence?.[1]) * 60_000).toBe(cadencePlanifieeMs());
+  });
+
+  it('le seuil « À L’ARRÊT » laisse passer DEUX passages manqués, et pas un de plus', () => {
+    // Une cadence relevée au-delà du seuil ferait dire « À L'ARRÊT » à un
+    // guetteur parfaitement sain — une fausse alarme sur l'organe d'alarme.
+    // Le seuil n'est donc pas une constante libre : il vaut trois cadences.
+    expect(SEUIL_GUETTEUR_MUET_MS).toBe(3 * cadencePlanifieeMs());
+  });
+
+  it('la cadence reste sous le seuil de défaut d’un écran', () => {
+    // Plus lente que dix minutes, un écran pourrait se taire et revenir entre
+    // deux passages sans que personne ne le sache — et la fenêtre d'annonce
+    // sans historique cesserait d'avoir un sens.
+    expect(cadencePlanifieeMs()).toBeLessThan(SEUIL_DEFAUT_MS);
   });
 });
