@@ -818,6 +818,14 @@ Trois choix méritent leur raison :
   pu regarder » ne se ressemblent plus. Le 500 n'est lu par personne en
   service (`net._http_response`, journaux de la fonction) : la trace qu'un
   humain regarde, c'est le bandeau.
+- **L'épisode est écrit avant le courriel, la clôture avant l'avis de
+  rétablissement.** Aucun courriel ne part pour un épisode que la base n'a
+  pas enregistré : écrire après l'envoi faisait repartir le courriel à chaque
+  passage tant qu'une écriture était refusée. Un épisode n'a qu'UN envoi ;
+  s'il échoue, le motif reste dans `dernier_echec` et la carte du poste
+  affiche « ALERTE NON ENVOYÉE (motif) », bandeau vert — le guetteur a vu,
+  personne n'a été prévenu. C'est distinct de « Surveillance EN ÉCHEC »,
+  bandeau rouge, où le guetteur n'a pas pu faire son travail.
 
 Mise en place : `supabase/migrations/2026-09-alerte-ecrans.sql`, qui commence
 par la mesure des extensions disponibles et finit par sa recette.

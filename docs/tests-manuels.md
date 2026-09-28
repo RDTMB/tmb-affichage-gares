@@ -90,7 +90,9 @@ inopérant dès qu'une base réelle est configurée (docs/01 §1).
   suivant.
 - Un poste muet depuis plus de dix minutes porte « En défaut depuis … » et dit
   si l'alerte est partie. « ALERTE NON ENVOYÉE » = secret Brevo absent ou
-  refusé : la panne est vue, personne n'a été prévenu.
+  refusé : la panne est vue, personne n'a été prévenu. Le bandeau du haut,
+  lui, reste « Surveillance active » : le guetteur a vu et enregistré. Il ne
+  retente PAS l'envoi au passage suivant — prévenir à la main.
 - Décocher « Surveiller ce poste » : la carte passe à « Hors surveillance —
   aucune alerte ne partira », et le réglage tient après rechargement.
 - La veille se vérifie sans attendre la nuit : `?simule=02:00` sur la
