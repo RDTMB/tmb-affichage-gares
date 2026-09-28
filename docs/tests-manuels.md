@@ -16,9 +16,12 @@ http://localhost:4173/ecran.html?gare=saint-gervais.
 ## 2. Coupure > `duree_cache_min` → ÉCRAN NEUTRE
 
 Pour ne pas attendre 15 min, réduire le paramètre via l'URL de test :
-`ecran.html?gare=saint-gervais&cache=0.05` (0.05 min = 3 s).
+`ecran.html?gare=saint-gervais&cache=3` (3 min — c'est le MINIMUM accepté :
+depuis le correctif M-14 du 06/09/2026, `?cache=` est borné entre 3 et 60 min
+comme le paramètre en base, et toute valeur hors bornes — `0.05`, `0`, `abc` —
+est ignorée en silence au profit des 15 min par défaut).
 
-1. Passer Offline : après ~3 s + le délai du badge, l'écran bascule sur
+1. Passer Offline : après ~3 min + le délai du badge, l'écran bascule sur
    l'écran neutre (logo blanc, horloge, message bilingue « Informations
    momentanément indisponibles »). Aucun horaire n'est plus visible.
 2. Repasser Online : retour automatique aux horaires (≤ 30 s), sans
@@ -72,7 +75,7 @@ Le troisième état ne se provoque pas autrement : sans ce drapeau, il serait
 découvert un matin, en production, par un agent seul en gare. Il est
 inopérant dès qu'une base réelle est configurée (docs/01 §1).
 
-## 5. Surveillance des écrans (guetteur)
+## 6. Surveillance des écrans (guetteur)
 
 - Onglet Écrans, bandeau du haut : « Surveillance active — dernier passage il
   y a N min ». S'il dit « JAMAIS lancée » ou « À L'ARRÊT », l'alerte par
