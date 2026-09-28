@@ -631,6 +631,58 @@ body.mode-neutre .neutre {
   font-size: 2.1vh;
 }
 
+/* ============ HORS SAISON ============ */
+/* Aucune grille active ne couvre la date, et ce n'est pas un trou de saisie
+   (vueJournee(), src/core/horaires.ts) : le message prend la place des
+   tableaux, en PLEINE PAGE — la grille se consulte de près et sur demande,
+   elle n'a pas de veille. Même registre que les états centrés de l'écran de
+   gare (fin de service, tronçon fermé) : logo rond blanc, titre Amaranth,
+   texte secondaire, anglais en dessous et plus petit. En-tête et bandeau de
+   messages restent : l'heure, la date et une éventuelle annonce de
+   réouverture ont toujours leur place. */
+.fermeture {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.6vh;
+  text-align: center;
+  padding: 0 6vw;
+}
+
+body.mode-fermee .fermeture {
+  display: flex;
+}
+
+body.mode-fermee .sens,
+body.mode-fermee .legende,
+body.mode-fermee .bandeau-section {
+  display: none;
+}
+
+.fermeture img {
+  height: 20vh;
+  width: auto;
+  opacity: 0.95;
+}
+
+.fermeture h2 {
+  font-family: 'Amaranth', sans-serif;
+  font-size: 5.6vh;
+  font-weight: 700;
+}
+
+.fermeture p {
+  font-size: 2.8vh;
+  color: var(--texte-sec);
+  line-height: 1.5;
+}
+
+.fermeture p .en {
+  font-size: 2.2vh;
+}
+
 /* ============ ERREUR DE CHARGEMENT ============ */
 .erreur-config {
   flex: 1;
@@ -1099,6 +1151,26 @@ body.mode-horloge .badge-cache {
 
   .releve {
     font-size: calc(1.5 * var(--u));
+  }
+
+  .fermeture {
+    gap: calc(2.6 * var(--u));
+  }
+
+  .fermeture img {
+    height: calc(20 * var(--u));
+  }
+
+  .fermeture h2 {
+    font-size: calc(5.6 * var(--u));
+  }
+
+  .fermeture p {
+    font-size: calc(2.8 * var(--u));
+  }
+
+  .fermeture p .en {
+    font-size: calc(2.2 * var(--u));
   }
 
   .badge-cache {
