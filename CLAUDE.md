@@ -114,7 +114,9 @@ qui n'ouvre pas le bon fichier ne doit jamais pouvoir committer un secret.
   fonction Deno est compilée, exécutée et confrontée à l'originale
   (`src/data/alerte-ecrans.test.ts`). `surveillance_etat` porte l'heure du
   dernier passage, que la supervision affiche : une tâche planifiée inerte
-  ressemble sinon à une flotte en bonne santé.
+  ressemble sinon à une flotte en bonne santé. Toute lecture ou écriture
+  refusée est lue : le passage écrit « ÉCHEC — … », répond 500, et la
+  supervision affiche « EN ÉCHEC » — jamais « aucun défaut » sans avoir lu.
 - Contraintes de FORME sur `params` (`schema.sql`, et
   `migrations/2026-08-params-forme.sql` pour une base existante) : la base
   refuse la valeur aberrante, ce que le front ne peut pas faire. Les deux

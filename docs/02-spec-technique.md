@@ -804,6 +804,28 @@ Trois choix méritent leur raison :
   supervision affiche. Une tâche planifiée qui ne se déclenche pas ressemble
   trait pour trait à une flotte en bonne santé : aucun courriel, aucune
   pastille, rien. C'est le piège déjà rencontré six fois en trois semaines.
+  Le seuil « À L'ARRÊT » (15 min) est **dérivé** de la cadence (trois
+  passages), et un test lit la planification `pg_cron` pour les relier.
+- **Un passage qui n'a pas pu lire ne conclut rien.** Chaque lecture et
+  chaque écriture est contrôlée. `ecrans` ou `params` illisible : le passage
+  est abandonné, sans courriel ni retouche des épisodes. `alertes_ecran`
+  illisible : le guetteur sait qui est muet mais pas s'il l'a dit — il
+  n'annonce que les postes qui ont franchi le seuil depuis le passage
+  précédent (au plus un courriel par épisode, jamais douze par heure) et
+  n'annonce aucun rétablissement. Dans tous ces cas, le résultat écrit
+  commence par « ÉCHEC », la fonction répond 500 et la supervision affiche
+  « Surveillance EN ÉCHEC » en rouge : « le parc va bien » et « je n'ai pas
+  pu regarder » ne se ressemblent plus. Le 500 n'est lu par personne en
+  service (`net._http_response`, journaux de la fonction) : la trace qu'un
+  humain regarde, c'est le bandeau.
+- **L'épisode est écrit avant le courriel, la clôture avant l'avis de
+  rétablissement.** Aucun courriel ne part pour un épisode que la base n'a
+  pas enregistré : écrire après l'envoi faisait repartir le courriel à chaque
+  passage tant qu'une écriture était refusée. Un épisode n'a qu'UN envoi ;
+  s'il échoue, le motif reste dans `dernier_echec` et la carte du poste
+  affiche « ALERTE NON ENVOYÉE (motif) », bandeau vert — le guetteur a vu,
+  personne n'a été prévenu. C'est distinct de « Surveillance EN ÉCHEC »,
+  bandeau rouge, où le guetteur n'a pas pu faire son travail.
 
 Mise en place : `supabase/migrations/2026-09-alerte-ecrans.sql`, qui commence
 par la mesure des extensions disponibles et finit par sa recette.

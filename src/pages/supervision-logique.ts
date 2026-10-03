@@ -283,16 +283,37 @@ export const SILENCE_A_PRECISER_MS = 2 * 60_000;
 // ---------------------------------------------------------------------------
 
 /**
+ * Intervalle entre deux passages du guetteur : la planification `pg_cron` de
+ * `supabase/migrations/2026-09-alerte-ecrans.sql`, « toutes les cinq
+ * minutes ». Les deux ne peuvent pas diverger sans qu'un test tombe
+ * (`src/data/alerte-ecrans.test.ts` lit la planification) ; la fonction Deno
+ * en porte une copie, vérifiée de la même façon.
+ */
+export const CADENCE_GUETTEUR_MS = 5 * 60_000;
+
+/**
  * Silence du guetteur au-delà duquel la supervision le déclare à l'arrêt.
  *
- * La tâche passe toutes les cinq minutes ; quinze en laissent manquer deux
- * avant de crier. C'est la seule façon de distinguer un guetteur qui DORT d'un
- * guetteur qui n'a rien à dire — les deux produisent exactement la même chose
- * à l'écran : aucune alerte. Le 19/09/2026, un `corrige-horloge.timer` visait
- * un service que systemd ne relance jamais : colonne NEXT vide, timer inerte,
- * aucun message. Une tâche `pg_cron` qui ne se déclenche pas a cette tête-là.
+ * DÉRIVÉ de la cadence, et non écrit à côté : trois cadences en laissent
+ * manquer deux avant de crier. Une cadence relevée sans toucher au seuil
+ * ferait dire « À L'ARRÊT » à un guetteur sain — une fausse alarme sur
+ * l'organe d'alarme (R-42, relecture de septembre 2026).
+ *
+ * C'est la seule façon de distinguer un guetteur qui DORT d'un guetteur qui
+ * n'a rien à dire — les deux produisent exactement la même chose à l'écran :
+ * aucune alerte. Le 19/09/2026, un `corrige-horloge.timer` visait un service
+ * que systemd ne relance jamais : colonne NEXT vide, timer inerte, aucun
+ * message. Une tâche `pg_cron` qui ne se déclenche pas a cette tête-là.
  */
-export const SEUIL_GUETTEUR_MUET_MS = 15 * 60_000;
+export const SEUIL_GUETTEUR_MUET_MS = 3 * CADENCE_GUETTEUR_MS;
+
+/**
+ * Premier mot du résultat qu'écrit un passage qui n'a pas pu faire son
+ * travail (lecture ou écriture refusée par la base). La fonction Deno porte le
+ * même mot (`MARQUE_ECHEC`) ; `src/data/alerte-ecrans.test.ts` fait passer le
+ * résultat qu'elle écrit réellement dans `bandeauGuetteur`.
+ */
+export const MARQUE_ECHEC_GUETTEUR = 'ÉCHEC';
 
 export interface PastilleSurveillance {
   classe: 'surveille' | 'defaut' | 'repos' | 'hors';
@@ -366,7 +387,11 @@ export interface BandeauGuetteur {
  * est un déploiement inachevé (la migration n'a pas été jouée, le coffre est
  * vide), le second une panne. Les confondre enverrait chercher le mauvais
  * problème, et le premier cas est le plus probable les jours qui suivent la
- * mise en service.
+ * mise en service. « Tourne, mais n'a pas pu regarder » est le troisième état
+ * rouge : la tâche planifiée marche, c'est la base qui refuse.
+ *
+ * Ordre : jamais → à l'arrêt → en échec → active. Un guetteur à l'arrêt dont
+ * le dernier passage avait échoué est d'abord à l'arrêt : c'est l'état actuel.
  */
 export function bandeauGuetteur(
   etat: { derniere_execution?: string | null; dernier_resultat?: string | null },
@@ -385,9 +410,25 @@ export function bandeauGuetteur(
   }
   const age = maintenantMs - quandMs;
   if (age >= SEUIL_GUETTEUR_MUET_MS) {
+    // « Aucun passage ENREGISTRÉ », et non « aucun passage » : un guetteur qui
+    // tourne mais ne peut plus rien écrire (clé révoquée) finit ici aussi. La
+    // base ne peut pas distinguer les deux ; le libellé ne prétend pas le
+    // faire, et le détail garde le dernier résultat qui a pu s'écrire.
     return {
       classe: 'alerte',
-      libelle: `Surveillance À L'ARRÊT — dernier passage il y a ${silenceLisible(age)}.`,
+      libelle: `Surveillance À L'ARRÊT — aucun passage enregistré depuis ${silenceLisible(age)}.`,
+      detail,
+    };
+  }
+  // LE GUETTEUR TOURNE, MAIS N'A PAS PU REGARDER (R-02). L'horodatage est
+  // frais, et c'est précisément le piège : avant ce cas, une lecture refusée
+  // donnait « Surveillance active » en vert. Un exploitant qui regarde la
+  // pastille un samedi matin doit pouvoir distinguer « le parc va bien » de
+  // « je n'ai pas pu regarder » ; le détail dit ce qui a échoué.
+  if (detail.startsWith(MARQUE_ECHEC_GUETTEUR)) {
+    return {
+      classe: 'alerte',
+      libelle: `Surveillance EN ÉCHEC — le guetteur est passé il y a ${silenceLisible(age)} sans pouvoir faire son travail : l’absence d’alerte ne prouve rien.`,
       detail,
     };
   }
