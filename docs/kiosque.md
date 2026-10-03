@@ -4,7 +4,7 @@ Objectif : un Pi qui démarre SEUL sur l'écran de sa gare, sans clavier ni
 souris, et se remet en route après toute coupure de courant. Procédure
 d'« échange standard en 10 minutes » incluse.
 
-> **Ce document décrit l'état MESURÉ du poste `tmb-ecran-test` le
+> **Ce document décrit l'état MESURÉ du poste `tmb-ecran-saint-gervais-1` le
 > 15/09/2026**, pas une procédure théorique. Chaque fichier cité a été lu sur
 > le Pi ce jour-là. La version précédente décrivait une variante
 > **Raspberry Pi OS Lite + Xorg + systemd** qui n'a jamais été celle en
@@ -162,6 +162,50 @@ ps -eo args | grep -m1 '[c]hromium'
 Ni `--enable-remote-extensions`, ni `--load-extension`, ni
 `--show-component-extension-options` ne doivent y figurer.
 
+### ⚠ RENOMMER LA MACHINE BLOQUE LE KIOSQUE (constaté le 28/09/2026)
+
+Chromium inscrit le **nom d'hôte** dans le verrou de son profil,
+`~/.config/chromium/SingletonLock`, un lien symbolique de la forme
+`<nom-d-hote>-<pid>`. Au lancement il relit ce verrou, compare au nom d'hôte
+courant, ne reconnaît plus la machine et conclut que le profil est ouvert
+**depuis un autre ordinateur**. Il refuse alors de démarrer et pose une
+question dans une boîte `zenity` :
+
+> The profile appears to be in use by another Chromium process (1337) on
+> another computer (tmb-ecran-test).
+
+Sur un poste en gare, **personne ne peut y répondre** : ni clavier, ni souris.
+Le kiosque attend indéfiniment, l'écran reste noir, et le poste devient muet
+dans la supervision.
+
+Le symptôme trompe : `ps` montre une arborescence Chromium **vivante**, et
+`systemctl status lightdm` est vert. Tout paraît normal. Le seul indice est un
+processus `zenity` dans la liste :
+
+```bash
+ps -ef | grep [z]enity
+```
+
+**Correctif — à appliquer AVANT le redémarrage qui suit tout renommage :**
+
+```bash
+pkill -f zenity
+pkill -f /usr/lib/chromium/chromium
+rm -f ~/.config/chromium/SingletonLock \
+      ~/.config/chromium/SingletonSocket \
+      ~/.config/chromium/SingletonCookie
+sudo systemctl restart lightdm
+```
+
+Chromium recrée les trois fichiers au premier lancement réussi. Un
+`SingletonLock` pointant vers le nom d'hôte **courant** est l'état SAIN : il ne
+faut pas le supprimer en exploitation normale, seulement après un renommage.
+
+> Ce point vaut pour les cinq écrans restants. Le nom d'hôte n'a aucun rôle
+> applicatif (§8), ce qui donne à croire qu'on peut le changer sans
+> conséquence — l'application, elle, s'en moque effectivement. C'est Chromium
+> qui s'y accroche, et rien ne le laisse deviner.
+
 ## 4. L'horloge : le vrai risque d'exploitation
 
 Le NTP sortant peut être filtré par le réseau de la gare. Une horloge fausse
@@ -287,8 +331,20 @@ liste noire (`linux-image-`, `raspberrypi-kernel`, `raspberrypi-bootloader`,
 
 1. Raspberry Pi Imager → **Raspberry Pi OS (64-bit)**, la version **complète**
    avec bureau — pas Lite : la chaîne ci-dessus repose sur lightdm et labwc.
-2. Options de l'imager : nom d'hôte (`tmb-ecran-<gare>`), utilisateur `tmb` +
+2. Options de l'imager : nom d'hôte (`tmb-ecran-<gare>-<n>`), utilisateur `tmb` +
    mot de passe de la Régie, Wi-Fi si besoin, SSH activé.
+
+   > **Le `-<n>` n'est pas décoratif.** Une gare peut porter plusieurs écrans
+   > (Saint-Gervais aura un écran intérieur et un extérieur), et l'application
+   > les numérote déjà : `identifiantEcranDeclare()` produit
+   > `<gare>-ecran-<n>`. Nommer la machine `tmb-ecran-<gare>-<n>` la met en
+   > décalque de sa ligne dans la supervision — qui se connecte en SSH sait
+   > immédiatement quel poste il tient. Sans le numéro, la correspondance se
+   > tient de tête, et personne ne la tiendra dans deux ans.
+   >
+   > Rappel : ce nom d'hôte **ne sert à rien** dans la chaîne applicative.
+   > L'identité d'un poste vient de `/boot/firmware/gare.txt` et du paramètre
+   > `&ecran=` de l'URL, jamais de `hostname`. Il est là pour les humains.
 3. `sudo raspi-config` → *System Options* → *Boot / Auto Login* →
    **Desktop Autologin**, puis vérifier dans `/etc/lightdm/lightdm.conf` que
    `autologin-user=tmb` et `autologin-session=rpd-labwc` sont bien là.
@@ -334,6 +390,8 @@ cat /boot/firmware/gare.txt            # la bonne gare
 - [ ] Orientation et hauteur validées avec l'exploitant, pas de reflets
 - [ ] Test PLEIN SOLEIL : lisibilité du tableau marine à 2 m
 - [ ] `gare.txt` = identifiant correct (l'écran affiche le bon nom de gare)
+- [ ] Si la machine a été RENOMMÉE : verrou de profil Chromium supprimé (§3)
+      — sinon le kiosque reste bloqué sur une question invisible
 - [ ] **Poste DÉCLARÉ en supervision (§12), et sa chaîne recopiée en `&ecran=`
       dans `autostart`** — `ps -eo args | grep '[c]hromium'` doit la montrer.
       Sans elle, l'écran affiche parfaitement les horaires et disparaît
@@ -382,6 +440,7 @@ page avec `&ecran=le-fayet-ecran-2`.
   déjà masqué par le thème et que l'outil vise X11. Il n'a pas été établi
   qu'il fasse quoi que ce soit sous Wayland. Inoffensif ; à retirer à la
   prochaine reprise du fichier plutôt qu'à recopier comme s'il était utile.
-- **Un poste de test, un seul.** Tout ce document a été relevé sur
-  `tmb-ecran-test`. Le premier poste posé en gare devra être comparé à ce
-  document, pas supposé conforme.
+- **Un poste de test, un seul.** Tout ce document a été relevé sur le poste
+  de Saint-Gervais, nommé `tmb-ecran-test` jusqu'au 28/09/2026 puis renommé
+  `tmb-ecran-saint-gervais-1`. Le premier poste posé dans une AUTRE gare devra
+  être comparé à ce document, pas supposé conforme.
