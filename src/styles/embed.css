@@ -119,8 +119,11 @@ h2,
 .message {
   background: var(--fond-doux);
   border-left: 4px solid var(--tmb-bleu-gris);
-  padding: 6px 10px;
-  margin-bottom: 6px;
+  padding: 5px 10px;
+  margin-bottom: 5px;
+  /* Plus petit que les horaires : sur un téléphone, trois messages ne
+     doivent pas repousser les départs hors de l'écran. */
+  font-size: 0.9rem;
 }
 
 .message.importante {

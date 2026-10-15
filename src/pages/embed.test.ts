@@ -148,6 +148,25 @@ describe('sans grille, l’embed n’annonce JAMAIS une fermeture', () => {
     });
   }
 
+  it('…même quand un message d’exploitation périmé dit « fermé » : sans grille, pas de messages', () => {
+    // Relevé sur la base de TEST le 15/10/2026 : un message d'été jamais
+    // désactivé s'affichait au-dessus du message neutre. L'écran de gare
+    // coupe son bandeau hors saison pour cette raison ; l'embed aussi.
+    const perime: Message = {
+      id: 'meteo',
+      texte_fr: "Tronçon Bellevue – Nid d'Aigle fermé pour raisons météorologiques.",
+      texte_en: 'The Bellevue – Nid d’Aigle section is closed due to weather conditions.',
+      cible_type: 'toutes',
+      priorite: 'importante',
+      actif: true,
+    };
+    for (const vue of ['departs', 'jour'] as const) {
+      const { html } = rendJournee(ETE, jourSansGrille(), { messages: [perime], vue });
+      expect(html).not.toMatch(/ferm|closed/i);
+      expect(html).not.toContain('class="messages"');
+    }
+  });
+
   it('la vue « Toute la journée » obéit à la même règle', () => {
     const { html } = rendJournee(ETE, jourSansGrille(), { vue: 'jour' });
     expect(html).not.toMatch(/ferm|closed/i);

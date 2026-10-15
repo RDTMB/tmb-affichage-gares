@@ -538,17 +538,23 @@ function grilleJourHtml(
 /** Le contenu ENTIER de la page, dans l'état décidé. */
 export function rendEmbed(e: EntreeRendu): string {
   const entete = enteteHtml(e);
-  const messages = messagesHtml(e);
   const badge = e.badge ? `<p class="fraicheur">${echapper(e.badge)}</p>` : '';
 
   if (e.etat === 'injoignable') {
     return `${entete}${repliHtml(MESSAGES_REPLI.injoignable.fr, MESSAGES_REPLI.injoignable.en, e.urlInfos)}`;
   }
   if (e.etat === 'sans-grille' || !e.grille || !e.jour) {
-    // Les messages restent : c'est là que l'exploitation peut annoncer ses
-    // dates, comme sur la grille du jour hors saison.
-    return `${entete}${messages}${repliHtml(MESSAGES_REPLI.sansGrille.fr, MESSAGES_REPLI.sansGrille.en, e.urlInfos)}`;
+    // PAS DE MESSAGES sans grille — la règle de l'écran de gare hors saison,
+    // et pour sa raison : un message de saison SANS ÉCHÉANCE continuerait
+    // d'être annoncé. Constaté sur la base de TEST le 15/10/2026, date sans
+    // grille : « Tronçon Bellevue – Nid d'Aigle fermé pour raisons
+    // météorologiques », message d'été jamais désactivé, s'affichait
+    // au-dessus de « Horaires pas encore disponibles en ligne ». La page
+    // d'informations du site (le lien ci-dessous) est l'endroit des annonces
+    // de saison.
+    return `${entete}${repliHtml(MESSAGES_REPLI.sansGrille.fr, MESSAGES_REPLI.sansGrille.en, e.urlInfos)}`;
   }
+  const messages = messagesHtml(e);
 
   const grille = e.grille;
   const jour = e.jour;
