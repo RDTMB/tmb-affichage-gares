@@ -49,6 +49,7 @@ import {
   vueDemandee,
   type VueEmbed,
 } from './embed-logique';
+import { URL_INFOS_SITE } from './embed-reglages';
 import { creeSourceHeure } from './horloge-source';
 import { poseMarquePreversion } from './preversion';
 import { creeSynchronisation, SEUIL_BADGE_MS, type Synchronisation } from './resilience';
@@ -64,7 +65,7 @@ const url = new URLSearchParams(window.location.search);
 const gareUrl = gareDemandee(url.get('gare'));
 const heure = creeSourceHeure(url.get('simule'), url.get('jour'));
 const simulation = bandeauSimulation({ heureSimulee: heure.simulee, jourSimule: heure.jourSimule });
-const urlInfos = urlInfosValide(import.meta.env.VITE_EMBED_URL_INFOS);
+const urlInfos = urlInfosValide(import.meta.env.VITE_EMBED_URL_INFOS || URL_INFOS_SITE);
 
 interface DonneesEmbed {
   grilles: Grille[];

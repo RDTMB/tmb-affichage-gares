@@ -143,8 +143,9 @@ export function vueDemandee(valeur: string | null): VueEmbed {
 }
 
 /**
- * Lien vers la page d'informations du site, fourni AU BUILD par l'exploitant
- * (`VITE_EMBED_URL_INFOS`). Jamais inventé : absent ou mal formé, pas de lien.
+ * Lien vers la page d'informations du site, fixé AU BUILD (`embed-reglages.ts`,
+ * ou `VITE_EMBED_URL_INFOS`) avec l'URL fournie par l'exploitant. Jamais
+ * inventé : absent ou mal formé, pas de lien.
  * `https:` seulement — un `javascript:` collé par erreur ne doit pas devenir
  * un lien cliquable.
  */

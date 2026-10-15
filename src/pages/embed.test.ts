@@ -45,6 +45,7 @@ import {
   vueDemandee,
   type EntreeRendu,
 } from './embed-logique';
+import { URL_INFOS_SITE } from './embed-reglages';
 import { tableHtml } from './grille-tableau';
 
 const RACINE = fileURLToPath(new URL('../../', import.meta.url));
@@ -203,6 +204,15 @@ describe('sans grille, l’embed n’annonce JAMAIS une fermeture', () => {
     }).html;
     expect(avec).toContain('href="https://www.example.org/infos"');
     expect(avec).toContain('target="_top"');
+  });
+
+  it('le réglage de l’URL est vide, ou une URL https valide — jamais une faute de frappe', () => {
+    // Vide tant que l'exploitant ne l'a pas fournie ; une valeur saisie qui ne
+    // passerait pas `urlInfosValide` ferait disparaître le lien sans bruit.
+    expect(URL_INFOS_SITE === '' || urlInfosValide(URL_INFOS_SITE) !== null).toBe(true);
+    expect(codeSeul('src/pages/embed.ts')).toContain(
+      'urlInfosValide(import.meta.env.VITE_EMBED_URL_INFOS || URL_INFOS_SITE)',
+    );
   });
 
   it('seule une URL https devient un lien', () => {
