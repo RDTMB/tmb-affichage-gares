@@ -28,7 +28,11 @@ import { dateSuivante, grillePourJour, serviceActif, vueJournee } from '../core/
 import { etatHorloge } from '../core/horloge';
 import { paramsValides } from '../core/params';
 import type { Affluence, GareId, Grille, Jour, Message, Params } from '../core/types';
-import { creeProviderReel } from '../data';
+// Le fournisseur de démonstration voyage dans le bundle, comme sur les
+// écrans : `data/index.ts` l'importe statiquement, et un import dynamique ici
+// n'y changerait rien (vérifié au build le 15/10/2026). Il ne s'instancie que
+// sur `?demo=1` explicite.
+import { creeProviderDemo, creeProviderReel } from '../data';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import type { DataProvider } from '../data/provider';
 import {
@@ -188,13 +192,6 @@ function relis(): void {
   if (document.visibilityState === 'visible') sync?.resynchronise();
 }
 
-async function fournisseurDemo(): Promise<DataProvider> {
-  // Chargé À LA DEMANDE : le fournisseur de démonstration (et ses grilles de
-  // référence) n'a rien à faire dans le bundle servi aux visiteurs.
-  const { MockProvider } = await import('../data/mock');
-  return new MockProvider();
-}
-
 async function demarre(): Promise<void> {
   rendre(); // « indisponible » tant que rien n'est chargé : jamais un tableau vide
 
@@ -208,7 +205,7 @@ async function demarre(): Promise<void> {
   }
   const provider =
     mode === 'demo'
-      ? await fournisseurDemo()
+      ? creeProviderDemo()
       : creeProviderReel(window.TMB_CONFIG!.supabaseUrl!, window.TMB_CONFIG!.supabaseKey!);
   fournisseur = provider;
 

@@ -310,11 +310,14 @@ describe('embed.ts — rien de ce qui pèse sur les écrans de gare', () => {
     expect(doc).not.toMatch(/src="[^"]*(grille|ecran)\.html/);
   });
 
-  it('n’instancie la démonstration que sur `?demo=1`, chargée à la demande', () => {
+  it('n’instancie la démonstration que sur `?demo=1` explicite', () => {
     expect(code).toContain('modeDonnees(');
     expect(code).toContain("mode === 'demo'");
+    expect(code).toContain('creeProviderDemo(');
+    // `creeProvider()` retombe silencieusement sur le mock : jamais ici.
     expect(code).not.toMatch(/\bcreeProvider\s*\(/);
-    expect(code).toContain("await import('../data/mock')");
+    // Sans source : la garde sort AVANT tout fournisseur réel.
+    expect(code.indexOf("mode === 'aucune'")).toBeLessThan(code.indexOf('creeProviderReel('));
   });
 
   it('n’atteint ni le lecteur Excel ni le code de la supervision', () => {
