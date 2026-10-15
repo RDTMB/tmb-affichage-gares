@@ -41,6 +41,7 @@ import {
   ongletRetenu,
   ongletsGares,
   rendEmbed,
+  TYPE_MESSAGE_HAUTEUR,
   urlInfosValide,
   vueDemandee,
   type EntreeRendu,
@@ -292,6 +293,21 @@ describe('embed.ts — rien de ce qui pèse sur les écrans de gare', () => {
       "window.parent.postMessage({ type: TYPE_MESSAGE_HAUTEUR, hauteur }, '*');",
     );
     expect(code.match(/postMessage\(/g)?.length).toBe(1);
+  });
+
+  it('la doc du CMS et la page d’essai écoutent CE message, et vérifient l’origine', () => {
+    const doc = source('docs/integration-site-web.md');
+    const essai = source('docs/exemple-integration-site.html');
+    for (const texte of [doc, essai]) {
+      expect(texte).toContain(`d.type !== '${TYPE_MESSAGE_HAUTEUR}'`);
+      expect(texte).toContain("if (e.origin !== 'https://rdtmb.github.io') return;");
+      expect(texte).toContain('e.source !== cadre.contentWindow');
+    }
+    // Le code à coller pointe sur la PRODUCTION, la page d'essai sur la préversion.
+    expect(doc).toContain('src="https://rdtmb.github.io/tmb-affichage-gares/embed.html"');
+    expect(essai).toContain('src="https://rdtmb.github.io/tmb-affichage-gares/preview/embed.html"');
+    // Et jamais les pages des écrans de gare.
+    expect(doc).not.toMatch(/src="[^"]*(grille|ecran)\.html/);
   });
 
   it('n’instancie la démonstration que sur `?demo=1`, chargée à la demande', () => {
