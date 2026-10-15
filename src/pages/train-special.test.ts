@@ -715,7 +715,7 @@ describe('les rotations se rangent à leur HEURE, pas après la grille', () => {
     // elle ne le faisait pas. `trainsDuJour()` rend les trains de grille PUIS
     // les hors grille, et `colonnesDuSens()` reprenait cet ordre tel quel —
     // un spécial de 10 h 30 finissait en dernière colonne.
-    const ts = source('src/pages/grille.ts');
+    const ts = source('src/pages/grille-tableau.ts');
     const bloc = /function colonnesDuSens\([\s\S]*?\n}/.exec(ts)?.[0] ?? '';
     expect(bloc, 'colonnesDuSens introuvable').not.toBe('');
     expect(bloc, 'les colonnes ne sont pas triées par l’heure').toContain('.sort((a, b) => {');

@@ -107,7 +107,12 @@ describe('les onze sites de construction passent par les validateurs', () => {
   // Le relevé du prompt en comptait sept, tous sur `couleur`. `cercle` est
   // injecté de la même façon dans quatre autres, et un `box-shadow` détourné
   // couvre l'écran aussi bien qu'un `background`. D'où onze.
-  const FICHIERS = ['src/pages/ecran.ts', 'src/pages/grille.ts', 'src/pages/supervision.ts'];
+  const FICHIERS = [
+    'src/pages/ecran.ts',
+    'src/pages/grille.ts',
+    'src/pages/grille-tableau.ts',
+    'src/pages/supervision.ts',
+  ];
 
   it('plus AUCUNE couleur brute concaténée dans les trois pages', () => {
     // Le verrou qui compte : une huitième construction ajoutée demain sans
@@ -184,7 +189,7 @@ describe('les onze sites de construction passent par les validateurs', () => {
     // mal réglée n'auraient pas la même couleur — deux pannes qui se
     // ressemblent et ne se distinguent plus.
     expect(couleurSure(null)).toBe(BLEU_GRIS);
-    for (const fichier of ['src/pages/ecran.ts', 'src/pages/grille.ts']) {
+    for (const fichier of ['src/pages/ecran.ts', 'src/pages/grille-tableau.ts']) {
       expect(source(fichier), fichier).toContain(`couleur: '${BLEU_GRIS}'`);
     }
   });
