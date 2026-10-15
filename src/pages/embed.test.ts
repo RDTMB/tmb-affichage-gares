@@ -355,29 +355,56 @@ describe('embed.html — même politique de sécurité que les autres pages', ()
 
 describe('les prochains départs sont ceux de l’écran de gare', () => {
   const jour = generationJour(GRAND, '2026-07-15');
+  // Une journée PERTURBÉE : sans elle, une liste qui écarterait les trains en
+  // retard ou supprimés passerait ce test (survivant de la campagne de
+  // mutation du 15/10/2026). Un retard de 25 min peut aussi inverser l'ordre.
+  const perturbee: Jour = {
+    ...jour,
+    circulations: jour.circulations.map((c) =>
+      c.numero % 5 === 0
+        ? { ...c, statut: 'supprime', motif: 'Panne' }
+        : c.numero % 3 === 0
+          ? { ...c, statut: 'retard', retard_min: 25 }
+          : c,
+    ),
+  };
 
-  for (const [gare, heure] of [
-    ['saint-gervais', '10:30'],
-    ['le-fayet', '07:00'],
-    ['bellevue', '16:00'],
-    ['nid-daigle', '12:00'],
+  for (const [nom, j] of [
+    ['journée nominale', jour],
+    ['journée perturbée', perturbee],
   ] as const) {
-    it(`${gare} à ${heure} : mêmes trains, même ordre, coupés à ${DEPARTS_PAR_SENS} par sens`, () => {
-      const maintenant = h(heure);
-      // La liste de `ecran.ts` (`rendre()`), avant sa coupe à cinq lignes.
-      const ecran = appliqueAffluence(passagesPourGare(GRAND, jour, gare, maintenant), []).filter(
-        (p) => p.depart_s !== null,
-      );
-      const d = departsParSens(GRAND, jour, gare, maintenant, []);
-      for (const sens of ['montee', 'descente'] as const) {
-        const attendu = ecran.filter((p) => p.sens === sens).slice(0, DEPARTS_PAR_SENS);
-        expect(d[sens].map((p) => p.numero)).toEqual(attendu.map((p) => p.numero));
-      }
-      // Les cinq premières lignes de l'écran sont TOUTES dans l'embed.
-      const montres = new Set([...d.montee, ...d.descente].map((p) => p.numero));
-      for (const p of ecran.slice(0, DEPARTS_PAR_SENS)) expect(montres.has(p.numero)).toBe(true);
-    });
+    for (const [gare, heure] of [
+      ['saint-gervais', '10:30'],
+      ['le-fayet', '07:00'],
+      ['motivon', '11:10'],
+      ['bellevue', '16:00'],
+      ['nid-daigle', '12:00'],
+    ] as const) {
+      it(`${nom}, ${gare} à ${heure} : mêmes trains, même ordre, ${DEPARTS_PAR_SENS} par sens`, () => {
+        const maintenant = h(heure);
+        // La liste de `ecran.ts` (`rendre()`), avant sa coupe à cinq lignes.
+        const ecran = appliqueAffluence(passagesPourGare(GRAND, j, gare, maintenant), []).filter(
+          (p) => p.depart_s !== null,
+        );
+        const d = departsParSens(GRAND, j, gare, maintenant, []);
+        for (const sens of ['montee', 'descente'] as const) {
+          const attendu = ecran.filter((p) => p.sens === sens).slice(0, DEPARTS_PAR_SENS);
+          expect(d[sens].map((p) => p.numero)).toEqual(attendu.map((p) => p.numero));
+          expect(d[sens].map((p) => p.statut)).toEqual(attendu.map((p) => p.statut));
+        }
+        // Les premières lignes de l'écran sont TOUTES dans l'embed.
+        const montres = new Set([...d.montee, ...d.descente].map((p) => p.numero));
+        for (const p of ecran.slice(0, DEPARTS_PAR_SENS)) expect(montres.has(p.numero)).toBe(true);
+      });
+    }
   }
+
+  it('la journée perturbée l’est bien là où on regarde', () => {
+    const d = departsParSens(GRAND, perturbee, 'saint-gervais', h('10:30'), []);
+    const statuts = new Set([...d.montee, ...d.descente].map((p) => p.statut));
+    expect(statuts.has('retard')).toBe(true);
+    expect(statuts.has('supprime')).toBe(true);
+  });
 
   it('le remplissage déclaré arrive sur la ligne, par la jointure de l’écran', () => {
     const maintenant = h('10:30');
