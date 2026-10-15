@@ -1,0 +1,650 @@
+/* Horaires pour le SITE WEB (embed.html, en iframe).
+
+   Ce n'est pas un écran de quai : fond clair et sobre, la page vit à
+   l'intérieur d'un site. Mobile d'abord — lisible sans défilement horizontal
+   de la page à 320 px ; seule la grille complète défile, dans son propre
+   conteneur. Couleurs de la charte (tokens.css), polices auto-hébergées.
+   Rien du kiosque : ni curseur masqué, ni anti-burn-in, ni veille. */
+
+:root {
+  --texte: var(--tmb-marine);
+  --texte-sec: #4d6a85;
+  --fond: #ffffff;
+  --fond-doux: #f6f2ea;
+  --filet: #d9e6f2;
+  /* États : mêmes rôles que sur la grille du jour, assombris pour tenir le
+     contraste sur fond clair (texte sombre sur clair, ≥ 4,5:1). */
+  --ok: #24744a;
+  --retard: #a35a00;
+  --supprime: var(--tmb-rouge-fonce);
+  --bleu-clair: var(--tmb-bleu-clair);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police-textes);
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.embed {
+  /* La hauteur envoyée à la page parente est celle de ce bloc : rien ne doit
+     dépasser de lui (marges comprises dans son padding). */
+  padding: 12px 12px 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+
+.en {
+  color: var(--texte-sec);
+  font-size: 0.85em;
+}
+
+h1,
+h2,
+.titre {
+  font-family: var(--police-titres);
+  font-weight: 700;
+  margin: 0;
+}
+
+/* ---- En-tête ----------------------------------------------------------- */
+
+.entete {
+  border-bottom: 3px solid var(--tmb-rouge);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+
+.entete h1 {
+  font-size: 1.35rem;
+}
+
+.entete .date {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+
+.entete .jour::first-letter {
+  text-transform: uppercase;
+}
+
+.entete .maj {
+  color: var(--texte-sec);
+}
+
+.simulation {
+  background: var(--tmb-rouge);
+  color: #fff;
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.simulation .en {
+  color: #fff;
+}
+
+.fraicheur {
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  border-left: 4px solid var(--retard);
+  background: #fff6e8;
+  font-size: 0.85rem;
+}
+
+/* ---- Messages : bloc statique, jamais défilant ------------------------- */
+
+.messages {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.message {
+  background: var(--fond-doux);
+  border-left: 4px solid var(--tmb-bleu-gris);
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+
+.message.importante {
+  border-left-color: var(--tmb-rouge);
+  font-weight: 700;
+}
+
+.message .en {
+  display: block;
+  font-weight: 400;
+}
+
+.bandeau-section {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  background: #fdecea;
+  border-left: 4px solid var(--tmb-rouge);
+}
+
+.bandeau-section .fr {
+  font-weight: 700;
+}
+
+.bandeau-section .en {
+  display: block;
+}
+
+/* ---- Repli : sans grille, ou base injoignable --------------------------- */
+
+.repli,
+.fin-service {
+  text-align: center;
+  padding: 24px 12px;
+  background: var(--fond-doux);
+  border-radius: 6px;
+}
+
+.repli p,
+.fin-service p {
+  margin: 0 0 4px;
+}
+
+.repli .titre,
+.fin-service .titre {
+  font-size: 1.2rem;
+}
+
+.infos {
+  margin-top: 12px !important;
+}
+
+.infos a,
+.bascule {
+  color: var(--tmb-marine);
+  font-weight: 700;
+}
+
+.infos a .en,
+.bascule .en {
+  font-weight: 400;
+}
+
+.chargement {
+  color: var(--texte-sec);
+  margin: 12px 0;
+}
+
+/* ---- Bascule « Toute la journée » -------------------------------------- */
+
+.barre {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.bascule {
+  background: none;
+  border: 0;
+  padding: 6px 0;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* ---- Onglets des gares -------------------------------------------------- */
+
+.onglets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.onglet {
+  font-family: var(--police-titres);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 7px 12px;
+  border: 2px solid var(--tmb-marine);
+  border-radius: 999px;
+  background: var(--fond);
+  color: var(--tmb-marine);
+  cursor: pointer;
+}
+
+.onglet.choisi {
+  background: var(--tmb-marine);
+  color: #fff;
+}
+
+.onglet.inactif {
+  border-color: var(--filet);
+  color: #8aa0b5;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.onglet:focus-visible,
+.bascule:focus-visible,
+.infos a:focus-visible,
+.defile:focus-visible {
+  outline: 3px solid var(--tmb-rouge);
+  outline-offset: 2px;
+}
+
+/* ---- Prochains départs -------------------------------------------------- */
+
+.departs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .departs {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.sens h2 {
+  font-size: 1.05rem;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--filet);
+}
+
+.liste-departs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.depart {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 4px 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--filet);
+}
+
+.depart .heure {
+  font-weight: 900;
+  font-size: 1.3rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+}
+
+.depart .theorique {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--texte-sec);
+}
+
+.depart .corps {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.depart .dest {
+  font-weight: 700;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.badge-train {
+  font-size: 0.75rem;
+  font-weight: 900;
+  background: var(--tmb-marine);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.express {
+  font-size: 0.7rem;
+  font-weight: 900;
+  color: var(--tmb-marine);
+  background: #f5ce5e;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.mention {
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.mention span {
+  text-transform: none;
+  font-weight: 400;
+}
+
+.mention.complet {
+  background: var(--tmb-rouge);
+  color: #fff;
+}
+
+.mention.limite {
+  background: var(--affluence-limite);
+  color: #2b1d00;
+}
+
+.mention.prive {
+  background: var(--tmb-bleu-gris);
+  color: #fff;
+}
+
+.depart .note {
+  font-size: 0.8rem;
+  color: var(--texte-sec);
+}
+
+.depart .rame {
+  font-size: 0.8rem;
+  color: var(--texte-sec);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pastille {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px var(--anneau, transparent),
+    0 0 0 3px rgba(33, 59, 87, 0.25);
+}
+
+.depart .etat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  text-align: right;
+}
+
+.rebours {
+  font-weight: 900;
+  font-size: 0.85rem;
+  border: 1px solid var(--filet);
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.rebours .en {
+  font-weight: 400;
+}
+
+.rebours.quai,
+.rebours.imminent {
+  background: var(--tmb-marine);
+  color: #fff;
+  border-color: var(--tmb-marine);
+}
+
+.rebours.quai .en,
+.rebours.imminent .en {
+  color: #fff;
+}
+
+.rebours.parti {
+  color: var(--texte-sec);
+}
+
+.statut {
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+}
+
+.statut .en {
+  font-weight: 400;
+}
+
+.statut.ok {
+  color: var(--ok);
+}
+
+.statut.retard {
+  color: var(--retard);
+}
+
+.statut.supp {
+  color: var(--supprime);
+}
+
+.depart.supprime .heure,
+.depart.supprime .nom-dest {
+  text-decoration: line-through;
+  color: var(--texte-sec);
+}
+
+.depart.supprime .note {
+  color: var(--supprime);
+  font-weight: 700;
+}
+
+.vide {
+  color: var(--texte-sec);
+  margin: 8px 0;
+}
+
+/* Très petite largeur (320 px) : l'état passe sous la destination. */
+@media (max-width: 359px) {
+  .depart {
+    grid-template-columns: auto 1fr;
+  }
+
+  .depart .etat {
+    grid-column: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .statut {
+    flex-direction: row;
+    gap: 4px;
+  }
+}
+
+/* ---- Toute la journée : le gabarit de grille-tableau.ts ---------------- */
+
+.sens-jour {
+  margin-bottom: 16px;
+}
+
+.sens-jour h2 {
+  font-size: 1.05rem;
+  margin-bottom: 6px;
+}
+
+.defile {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--filet);
+  border-radius: 6px;
+}
+
+table.grille {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table.grille thead th {
+  background: var(--tmb-marine);
+  color: #fff;
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: top;
+  font-weight: 700;
+}
+
+table.grille thead .num {
+  display: block;
+  font-weight: 900;
+}
+
+table.grille thead .picto {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+table.grille .motrice {
+  height: 1em;
+  vertical-align: -0.1em;
+}
+
+table.grille .picto .badge {
+  font-weight: 900;
+}
+
+/* Les couleurs d'état sont écrites EN LIGNE par grille-tableau.ts
+   (`color:var(--retard)`) : sur l'en-tête marine, on reprend les teintes
+   claires de la grille du jour. */
+table.grille thead {
+  --retard: #f2a33c;
+  --supprime: #ff8a7e;
+}
+
+table.grille .picto .mention {
+  display: inline-block;
+  margin-left: 2px;
+}
+
+table.grille .picto .mention small {
+  font-weight: 400;
+  text-transform: none;
+  margin-left: 3px;
+}
+
+table.grille thead th.col-gare,
+table.grille tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+}
+
+table.grille tbody th {
+  background: var(--fond-doux);
+  font-family: var(--police-titres);
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--filet);
+}
+
+table.grille tbody th small {
+  display: block;
+  font-family: var(--police-textes);
+  font-size: 0.7rem;
+  color: var(--texte-sec);
+}
+
+table.grille td {
+  text-align: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--filet);
+  position: relative;
+}
+
+table.grille td.saute {
+  color: var(--texte-sec);
+}
+
+table.grille td.passe,
+table.grille th.passe {
+  opacity: 0.45;
+}
+
+table.grille thead th.next {
+  background: var(--tmb-rouge);
+}
+
+table.grille td.next {
+  background: #eaf3fb;
+  font-weight: 900;
+}
+
+table.grille td.supp {
+  text-decoration: line-through;
+  color: var(--supprime);
+}
+
+table.grille td.retard {
+  color: var(--retard);
+  font-weight: 700;
+}
+
+.train-pos {
+  display: inline-block;
+  width: 0.65em;
+  height: 0.65em;
+  border-radius: 50%;
+  margin-left: 4px;
+  background: var(--tmb-marine);
+  box-shadow:
+    0 0 0 2px var(--anneau, transparent),
+    0 0 0 3px rgba(33, 59, 87, 0.35);
+  vertical-align: 0.05em;
+}
+
+.legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.8rem;
+  margin: 4px 0 0;
+}
+
+.legende .item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legende .retard .fr {
+  color: var(--retard);
+  font-weight: 700;
+}
+
+.legende .supp .fr {
+  color: var(--supprime);
+  text-decoration: line-through;
+}

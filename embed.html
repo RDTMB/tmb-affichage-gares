@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Horaires pour le SITE WEB, en iframe (docs/integration-site-web.md).
+
+         MÊME politique de sécurité que les quatre autres pages, au caractère
+         près (embed.test.ts le vérifie) : voir le commentaire de grille.html
+         pour l'origine de chaque directive. connect-src garde wss: parce que
+         la politique est commune, PAS parce que cette page s'en sert : elle
+         n'ouvre aucun canal temps réel, et embed.test.ts l'interdit.
+
+         frame-ancestors reste absente : ignorée dans un <meta>, et cette page
+         est FAITE pour être embarquée. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self';
+               style-src 'self' 'unsafe-inline';
+               img-src 'self' data: https://*.supabase.co;
+               media-src 'self' https://*.supabase.co;
+               font-src 'self' data:;
+               connect-src 'self' https://*.supabase.co wss://*.supabase.co;
+               object-src 'none';
+               base-uri 'none';
+               form-action 'none'"
+    />
+    <meta name="robots" content="noindex" />
+    <title>TMB — Horaires en direct</title>
+  </head>
+  <body>
+    <!-- Pas d'aria-live ici : le contenu est reposé toutes les dix secondes,
+         un lecteur d'écran le relirait en boucle. Seuls les messages de repli
+         portent role="status". -->
+    <main id="embed" class="embed">
+      <p class="chargement">Chargement des horaires… <span lang="en">Loading timetable…</span></p>
+    </main>
+    <script src="./config.js"></script>
+    <script type="module" src="/src/pages/embed.ts"></script>
+  </body>
+</html>
