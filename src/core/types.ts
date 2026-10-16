@@ -214,6 +214,15 @@ export interface TrainGrille {
   express: boolean;
   facultatif: boolean;
   velos: boolean;
+  /**
+   * Jours de circulation, en jours ISO (1 = lundi … 7 = dimanche), triés et
+   * sans doublon. ABSENT = tous les jours des périodes de la grille : c'est le
+   * cas de tous les trains, sauf ceux que le document marque d'un jour dans
+   * la ligne des lettres (« Samedi » au-dessus du TRAIN 20 d'hiver). Jamais
+   * un tableau vide : un train qui ne circule aucun jour n'a rien à faire
+   * dans une grille.
+   */
+  jours?: number[];
   /** Liste ordonnée : les express n'ont AUCUN passage à col-de-voza ni bellevue. */
   passages: PassageGrille[];
 }

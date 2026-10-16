@@ -53,9 +53,26 @@ function estPassage(v: unknown): v is PassageGrille {
   return v.a !== undefined || v.d !== undefined;
 }
 
+/**
+ * Jours de circulation : absents (tous les jours), ou une liste NON VIDE de
+ * jours ISO 1–7 distincts. Une liste illisible rend la grille illisible, comme
+ * un passage illisible : la remplacer par « tous les jours » annoncerait le
+ * TRAIN 20 du samedi un lundi, la vider le ferait disparaître le samedi.
+ */
+function estJours(v: unknown): boolean {
+  if (v === undefined) return true;
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every((j) => Number.isInteger(j) && j >= 1 && j <= 7) &&
+    new Set(v).size === v.length
+  );
+}
+
 function estTrain(v: unknown): v is TrainGrille {
   return (
     estObjet(v) &&
+    estJours(v.jours) &&
     typeof v.numero === 'number' &&
     Number.isInteger(v.numero) &&
     v.numero > 0 &&
@@ -120,6 +137,9 @@ function trainNormalise(t: TrainGrille): TrainGrille {
     express: t.express === true,
     facultatif: t.facultatif === true,
     velos: t.velos === true,
+    // Le champ n'est POSÉ que s'il existe : absent = tous les jours, et une
+    // clé `jours: undefined` explicite ferait un écart fantôme à la comparaison.
+    ...(t.jours ? { jours: [...t.jours].sort((a, b) => a - b) } : {}),
     passages: t.passages.map((p) => {
       const passage: PassageGrille = { gare: p.gare };
       if (p.a !== undefined) passage.a = p.a;

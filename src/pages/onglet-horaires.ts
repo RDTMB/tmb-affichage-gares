@@ -27,7 +27,7 @@ import {
   effetChangementPeriodes,
   type EffetPeriodes,
 } from '../core/grilles-periodes';
-import { formatHeure, heureVersSecondes, serviceActif } from '../core/horaires';
+import { formatHeure, heureVersSecondes, libelleJours, serviceActif } from '../core/horaires';
 import { nomGare, parseClasseur, type Probleme } from '../core/import-grille';
 import { ORDRE_GARES } from '../core/types';
 import type { GareId, Grille, Role, Sens, TrainGrille } from '../core/types';
@@ -745,7 +745,13 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
             : '';
         return `<th class="${[o.ajoutes?.has(`${sens}|${t.numero}`) ? 'ajoute' : '', messages.length > 0 ? 'en-erreur' : ''].filter(Boolean).join(' ')}" title="${
           o.ajoutes?.has(`${sens}|${t.numero}`) ? 'Train absent de la grille en service' : ''
-        }">TRAIN ${t.numero}${t.express ? '<small>EXPRESS</small>' : ''}${retirer}${
+        }">TRAIN ${t.numero}${t.express ? '<small>EXPRESS</small>' : ''}${
+          // Jours de circulation : le TRAIN 20 d'hiver ne roule que le samedi,
+          // et une grille qui ne le dit pas le ferait lire comme quotidien.
+          t.jours
+            ? `<small class="jours-train" title="Ne circule que ce(s) jour(s)">${echapper(libelleJours(t.jours))}</small>`
+            : ''
+        }${retirer}${
           messages.length > 0
             ? `<small class="erreur-cellule">${messages.map(echapper).join(' ')}</small>`
             : ''

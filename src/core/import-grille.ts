@@ -8,7 +8,7 @@
 // Deux niveaux de problèmes : les ERREURS bloquent l'enregistrement (rien
 // n'est jamais enregistré à moitié), les AVERTISSEMENTS s'acquittent. Chaque
 // message nomme le train, la gare et la cellule (feuille, ligne, colonne).
-import { formatHeure, heureVersSecondes } from './horaires';
+import { formatHeure, heureVersSecondes, libelleJours, NOMS_JOURS } from './horaires';
 import { ecarts } from './ecarts-grille';
 import { ORDRE_GARES } from './types';
 import type {
@@ -132,6 +132,12 @@ const LETTRE_FACULTATIF = 'R';
 const LETTRE_VELOS = 'b';
 const LETTRE_EXPRESS = 'ÿ';
 
+/**
+ * Jours de la semaine dans la ligne des lettres (document 2025-2026 :
+ * « Samedi » au-dessus du TRAIN 20). Mêmes noms, même ordre que le moteur.
+ */
+const JOURS_FR: readonly string[] = NOMS_JOURS;
+
 const MOIS = [
   'janvier',
   'fevrier',
@@ -203,6 +209,49 @@ export function formatDuree(s: number): string {
   const secondes = s % 60;
   if (minutes === 0) return `${secondes} s`;
   return secondes === 0 ? `${minutes} min` : `${minutes} min ${secondes} s`;
+}
+
+// ---------------------------------------------------------------------------
+// Ligne des lettres
+// ---------------------------------------------------------------------------
+
+export interface IndicateursLus {
+  /** Lettres R / b / ÿ, telles qu'écrites (la casse compte : R ≠ r, b ≠ B). */
+  lettres: string;
+  /** Jours ISO (1 = lundi … 7 = dimanche), triés, sans doublon ; vide = tous les jours. */
+  jours: number[];
+  /** Caractères qui ne sont ni une lettre connue ni dans un nom de jour. */
+  inconnus: string;
+}
+
+/**
+ * Une cellule de la ligne des lettres : « R », « Rb », « Samedi »,
+ * « R Samedi », « Samedi et dimanche », « samedi, dimanche »…
+ *
+ * LES JOURS SE RECONNAISSENT AVANT LES LETTRES : un mot entier qui est un nom
+ * de jour (casse et accents indifférents) est retiré avant que le reste soit
+ * lu lettre à lettre. Dans l'ordre inverse, le R de « MERCREDI » écrit en
+ * majuscules ferait du train un facultatif — et ses autres lettres une
+ * erreur qui n'aurait aucun sens pour l'agent.
+ *
+ * Séparateurs : espace, virgule, point-virgule, et le mot « et » (seulement
+ * quand un jour est indiqué : « R et b » reste une erreur, comme avant).
+ */
+export function lisIndicateurs(brut: string): IndicateursLus {
+  const mots = brut.split(/[\s,;]+/).filter((m) => m !== '');
+  const jours = new Set<number>();
+  const restants: string[] = [];
+  for (const mot of mots) {
+    const j = JOURS_FR.indexOf(normalise(mot));
+    if (j >= 0) jours.add(j + 1);
+    else restants.push(mot);
+  }
+  const reste = jours.size > 0 ? restants.filter((m) => normalise(m) !== 'et') : restants;
+  const lettres = reste.join('');
+  const inconnus = [...lettres]
+    .filter((l) => l !== LETTRE_FACULTATIF && l !== LETTRE_VELOS && l !== LETTRE_EXPRESS)
+    .join('');
+  return { lettres, jours: [...jours].sort((a, b) => a - b), inconnus };
 }
 
 // ---------------------------------------------------------------------------
@@ -459,26 +508,23 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
 
   // 2. La ligne des lettres (facultative)
   let r = ligneEntete + 1;
-  const indicateurs = new Map<number, string>();
+  const indicateurs = new Map<number, IndicateursLus>();
   const ligneIndicateurs = lignes[r] ?? [];
   if (r < fin && !estLigneDeGare(ligneIndicateurs) && normalise(ligneIndicateurs[0]) === '') {
     for (const { colonne, numero } of colonnes) {
       const v = ligneIndicateurs[colonne];
       if (estVide(v)) continue;
-      const lettres = String(v).replace(/\s+/g, '');
-      const inconnues = [...lettres].filter(
-        (l) => l !== LETTRE_FACULTATIF && l !== LETTRE_VELOS && l !== LETTRE_EXPRESS,
-      );
-      if (inconnues.length > 0) {
+      const lus = lisIndicateurs(String(v));
+      if (lus.inconnus !== '') {
         erreurs.push(
           probleme(
             'erreur',
-            `TRAIN ${numero} : indicateur « ${lettres} » inconnu (lettres acceptées : R facultatif, b vélos, ÿ express)`,
+            `TRAIN ${numero} : indicateur « ${texteBrut(v)} » inconnu (lettres acceptées : R facultatif, b vélos, ÿ express, ou des jours (Samedi…))`,
             { feuille, ligne: r + 1, colonne: lettreColonne(colonne), train: numero },
           ),
         );
       }
-      indicateurs.set(colonne, lettres);
+      indicateurs.set(colonne, lus);
     }
     r++;
   }
@@ -564,10 +610,15 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
   const trains: TrainGrille[] = [];
   for (const { colonne, numero } of colonnes) {
     if (doublons.has(colonne)) continue;
-    const lettres = indicateurs.get(colonne) ?? '';
+    const lus = indicateurs.get(colonne);
+    const lettres = lus?.lettres ?? '';
     const parGare =
       lectures.get(colonne) ?? new Map<GareId, { a?: LectureCellule; d?: LectureCellule }>();
     const passages: PassageGrille[] = [];
+    // Tiret sur la ligne D d'une gare dont la ligne A porte une heure : admis
+    // si cette gare est le TERMINUS du train (montée qui s'arrête avant le
+    // sommet), ce qu'on ne sait qu'une fois toutes les gares lues.
+    const tiretsD: Array<{ gare: GareId; erreur: Probleme }> = [];
     for (const gare of ordreGares) {
       const entree = parGare.get(gare);
       if (!entree) continue;
@@ -604,15 +655,21 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
               ),
             );
             break;
-          case 'sansArret':
-            erreurs.push(
-              probleme(
-                'erreur',
-                `TRAIN ${numero}, ${nomGare(gare)} : tiret sur la ligne ${champ.toUpperCase()} mais une heure sur l'autre — un train qui ne s'arrête pas porte un tiret sur les deux lignes`,
-                ou,
-              ),
+          case 'sansArret': {
+            // GARE D'ORIGINE INTERMÉDIAIRE : tiret en A, heure en D, sur la
+            // PREMIÈRE gare desservie (TRAIN 20 d'hiver, au départ de Col de
+            // Voza). Symétrique : heure en A, tiret en D sur la dernière. Partout
+            // ailleurs, « tiret sur A et sur D » reste la règle.
+            const erreur = probleme(
+              'erreur',
+              `TRAIN ${numero}, ${nomGare(gare)} : tiret sur la ligne ${champ.toUpperCase()} mais une heure sur l'autre — un train qui ne s'arrête pas porte un tiret sur les deux lignes`,
+              ou,
             );
+            if (champ === 'a' && passages.length === 0) break; // origine du train
+            if (champ === 'd') tiretsD.push({ gare, erreur });
+            else erreurs.push(erreur);
             break;
+          }
           case 'invalide':
             erreurs.push(
               probleme(
@@ -626,6 +683,8 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
       }
       if (passage.a !== undefined || passage.d !== undefined) passages.push(passage);
     }
+    const terminus = passages[passages.length - 1]?.gare;
+    for (const { gare, erreur } of tiretsD) if (gare !== terminus) erreurs.push(erreur);
     // Point de départ : jamais d'arrivée ; terminus : jamais de départ.
     for (const retire of normaliseExtremites(passages)) {
       ctx.avertissements.push(
@@ -643,6 +702,9 @@ function lireBloc(ctx: ContexteFeuille, debut: number, fin: number, sens: Sens):
       express: lettres.includes(LETTRE_EXPRESS),
       facultatif: lettres.includes(LETTRE_FACULTATIF),
       velos: lettres.includes(LETTRE_VELOS),
+      // Aucun jour indiqué = tous les jours : la clé n'est alors PAS posée,
+      // et aucune grille d'avant ce champ ne change de sens.
+      ...(lus && lus.jours.length > 0 ? { jours: lus.jours } : {}),
       passages,
     });
   }
@@ -708,16 +770,35 @@ export function valideTrains(
   }
 
   // Appariement : la descente n suit la montée n − 1 (même rame).
+  //
+  // EXCEPTION, décision de l'exploitant du 16/10/2026 : une course qui part
+  // (descente) ou s'arrête (montée) à une gare INTERMÉDIAIRE — ni Le Fayet ni
+  // le sommet de la feuille — peut vivre seule. Le TRAIN 20 d'hiver part de
+  // Col de Voza le samedi pour redescendre les gens : aucune montée ne l'y a
+  // amené. Le sommet se lit sur la grille elle-même (Bellevue en hiver, Nid
+  // d'Aigle en été), jamais sur une constante.
+  const sommet = sommetDesTrains([...montees, ...descentes]);
   for (const descente of descentes) {
     const montee = montees.find((m) => m.numero === descente.numero - 1);
     if (!montee) {
-      erreurs.push(
-        probleme(
-          'erreur',
-          `TRAIN ${descente.numero} : descente sans montée appariée (TRAIN ${descente.numero - 1} absent)`,
-          { feuille, train: descente.numero },
-        ),
-      );
+      const origine = descente.passages[0]?.gare;
+      if (origine !== undefined && origine !== sommet && origine !== 'le-fayet') {
+        avertissements.push(
+          probleme(
+            'avertissement',
+            `TRAIN ${descente.numero} : descente sans montée appariée, au départ de ${nomGare(origine)}`,
+            { feuille, train: descente.numero },
+          ),
+        );
+      } else {
+        erreurs.push(
+          probleme(
+            'erreur',
+            `TRAIN ${descente.numero} : descente sans montée appariée (TRAIN ${descente.numero - 1} absent)`,
+            { feuille, train: descente.numero },
+          ),
+        );
+      }
       continue;
     }
     // Rotation : la rame doit être arrivée avant de repartir, du bon endroit.
@@ -742,17 +823,32 @@ export function valideTrains(
       );
     }
   }
+  // Même règle dans l'autre sens. Une montée sans retour était DÉJÀ un simple
+  // avertissement jusqu'au sommet (la rame peut redescendre à vide) : elle le
+  // reste, et la seule différence est que le message nomme la gare où une
+  // montée intermédiaire s'arrête.
   for (const montee of montees) {
     if (!descentes.some((d) => d.numero === montee.numero + 1)) {
+      const terminus = montee.passages[montee.passages.length - 1]?.gare;
+      const intermediaire = terminus !== undefined && terminus !== sommet;
       avertissements.push(
         probleme(
           'avertissement',
-          `TRAIN ${montee.numero} : montée sans descente appariée (TRAIN ${montee.numero + 1} absent)`,
+          intermediaire
+            ? `TRAIN ${montee.numero} : montée sans descente appariée, jusqu'à ${nomGare(terminus)}`
+            : `TRAIN ${montee.numero} : montée sans descente appariée (TRAIN ${montee.numero + 1} absent)`,
           { feuille, train: montee.numero },
         ),
       );
     }
   }
+}
+
+/** Gare la plus haute desservie par au moins un train : le sommet de la feuille. */
+function sommetDesTrains(trains: TrainGrille[]): GareId | undefined {
+  let haut = -1;
+  for (const t of trains) for (const p of t.passages) haut = Math.max(haut, indexGare(p.gare));
+  return ORDRE_GARES[haut];
 }
 
 function valideTrain(
@@ -905,6 +1001,16 @@ export function avertissementsGrillePrecedente(nouvelle: Grille, precedente: Gri
         'avertissement',
         `TRAIN ${i.numero} : ${i.champ} ${ouiNon(i.avant)} → ${ouiNon(i.apres)} dans le fichier (le fichier fait foi)`,
         { train: i.numero },
+      ),
+    );
+  }
+  for (const j of e.jours) {
+    const texte = (l: number[] | null): string => (l ? libelleJours(l) : 'tous les jours');
+    resultat.push(
+      probleme(
+        'avertissement',
+        `TRAIN ${j.numero} : circule ${texte(j.avant)} → ${texte(j.apres)} dans le fichier (le fichier fait foi)`,
+        { train: j.numero },
       ),
     );
   }

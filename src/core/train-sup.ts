@@ -29,10 +29,18 @@ function cle(depuis: GareId, vers: GareId): string {
   return `${depuis}|${vers}`;
 }
 
-/** Le train de référence d'un sens : le premier NON express, qui dessert tout. */
+/**
+ * Le train de référence d'un sens : le premier NON express, qui dessert tout
+ * — et donc, parmi eux, l'un de ceux qui ont le PLUS de gares. « Le premier
+ * non express » ne suffisait plus en hiver : le TRAIN 20 du samedi est en
+ * première colonne des descentes et part de Col de Voza, et le tronçon
+ * Bellevue → Col de Voza aurait manqué à tout renfort descendant.
+ */
 function trainDeReference(grille: Grille, sens: Sens): TrainGrille {
   const liste = sens === 'montee' ? grille.montees : grille.descentes;
-  const train = liste.find((t) => !t.express);
+  const candidats = liste.filter((t) => !t.express);
+  const plusLong = Math.max(0, ...candidats.map((t) => t.passages.length));
+  const train = candidats.find((t) => t.passages.length === plusLong);
   if (!train) {
     throw new Error(
       `Grille « ${grille.version} » : aucun train non express en ${sens} — impossible d'en déduire les temps de parcours.`,

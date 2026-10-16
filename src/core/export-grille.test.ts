@@ -157,18 +157,29 @@ describe('problemesExport', () => {
     expect(problemesExport(GRAND)).toEqual([]);
   });
 
-  it('signale le train dont le terminus diffère de celui de ses voisins', () => {
-    // TRAIN 1 s'arrête à Bellevue quand les autres montent au Nid d'Aigle :
-    // la case « Bellevue / D » de sa colonne n'a plus de sens dans le document.
-    let g = PETIT;
-    const r = poseHeure(g, { sens: 'montee', numero: 1, gare: 'nid-daigle', champ: 'a' }, '');
+  it('un terminus différent de celui des voisins s’écrit d’un TIRET, et revient à l’identique', () => {
+    // TRAIN 1 s'arrête à Bellevue quand les autres montent au Nid d'Aigle.
+    // Jusqu'au 16/10/2026 le document ne savait pas écrire la case
+    // « Bellevue / D » de sa colonne ; c'est désormais un tiret, la même
+    // convention que la gare d'origine intermédiaire du TRAIN 20 d'hiver.
+    const r = poseHeure(PETIT, { sens: 'montee', numero: 1, gare: 'nid-daigle', champ: 'a' }, '');
     if (!r.ok) throw new Error(r.erreur);
-    g = r.grille;
-    const problemes = problemesExport(g);
+    const g = r.grille;
+    expect(problemesExport(g)).toEqual([]);
+    const lu = allerRetour(g);
+    expect(lu.erreurs).toEqual([]);
+    expect(ecarts(g, lu.grille as Grille).aucun).toBe(true);
+  });
+
+  it('signale une gare INTERMÉDIAIRE à laquelle il manque une heure', () => {
+    // Motivon sans arrivée, au milieu du parcours : là, le document n'a
+    // toujours aucune écriture, et la boucle échouerait.
+    const r = poseHeure(PETIT, { sens: 'montee', numero: 1, gare: 'motivon', champ: 'a' }, '');
+    if (!r.ok) throw new Error(r.erreur);
+    const problemes = problemesExport(r.grille);
     expect(problemes).toHaveLength(1);
-    expect(problemes[0]).toMatch(/TRAIN 1 : Bellevue sans départ/);
-    // Et la boucle échouerait bien : c'est ce que l'avertissement annonce.
-    expect(allerRetour(g).erreurs.length).toBeGreaterThan(0);
+    expect(problemes[0]).toMatch(/TRAIN 1 : Motivon sans arrivée/);
+    expect(allerRetour(r.grille).erreurs.length).toBeGreaterThan(0);
   });
 });
 

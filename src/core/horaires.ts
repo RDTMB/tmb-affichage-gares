@@ -74,6 +74,53 @@ export function datePrecedente(date: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Jours de circulation d'un train de grille
+// ---------------------------------------------------------------------------
+
+/** Noms des jours, dans l'ordre ISO (index 0 = lundi = 1). */
+export const NOMS_JOURS = [
+  'lundi',
+  'mardi',
+  'mercredi',
+  'jeudi',
+  'vendredi',
+  'samedi',
+  'dimanche',
+] as const;
+
+/**
+ * Jour ISO d'une date « YYYY-MM-DD » : 1 = lundi … 7 = dimanche.
+ *
+ * La date d'une journée EST la date civile à Europe/Paris (`jours.date`) : son
+ * jour de la semaine se lit sur la date elle-même, calculée en UTC pour ne
+ * dépendre d'aucun fuseau — le coureur de CI est en UTC, le poste à Paris, et
+ * minuit local n'a rien à faire dans ce calcul.
+ */
+export function jourIso(date: string): number {
+  const [annee = 0, mois = 1, jour = 1] = date.split('-').map(Number);
+  const j = new Date(Date.UTC(annee, mois - 1, jour)).getUTCDay(); // 0 = dimanche
+  return j === 0 ? 7 : j;
+}
+
+/**
+ * Le train circule-t-il à cette date ? Sans `jours` : tous les jours des
+ * périodes de la grille (c'est le cas de tous les trains d'avant ce champ, et
+ * aucune grille existante ne change de sens). La SEULE règle : la génération
+ * de la journée ET la jointure grille × journée la lisent ici.
+ */
+export function circuleLe(train: Pick<TrainGrille, 'jours'>, date: string): boolean {
+  if (!train.jours) return true;
+  return train.jours.includes(jourIso(date));
+}
+
+/** [6] → « samedi » ; [6, 7] → « samedi et dimanche » ; [1, 2, 3] → « lundi, mardi et mercredi ». */
+export function libelleJours(jours: readonly number[]): string {
+  const noms = [...jours].sort((a, b) => a - b).map((j) => NOMS_JOURS[j - 1] ?? `jour ${j}`);
+  if (noms.length <= 1) return noms[0] ?? '';
+  return `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`;
+}
+
+// ---------------------------------------------------------------------------
 // Service actif et génération du jour
 // ---------------------------------------------------------------------------
 
@@ -223,11 +270,21 @@ export function vueJournee(
  * Circulations par défaut d'une date : rames attribuées en cycle sur les
  * montées, héritées par la descente appariée (rotation), facultatifs non
  * activés, tout le monde à l'heure, terminus Nid d'Aigle.
+ *
+ * Un train à `jours` n'est créé que les jours où il circule (`circuleLe()`).
+ * Le cycle des rames garde l'index de la montée dans la GRILLE : un train du
+ * samedi ne décale pas les rames des autres jours.
+ *
+ * Une descente SANS montée appariée dans la grille (TRAIN 20 d'hiver, qui part
+ * de Col de Voza) n'hérite de rien et ne reçoit PAS de rame d'office : la
+ * rame vide se lit « à attribuer » en supervision, où elle se choisit comme
+ * sur toute montée.
  */
 export function generationJour(grille: Grille, date: string, rames: string[] = RAMES_DEFAUT): Jour {
   const circulations: Circulation[] = [];
 
   grille.montees.forEach((train, index) => {
+    if (!circuleLe(train, date)) return;
     circulations.push({
       date,
       numero: train.numero,
@@ -264,7 +321,9 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
   });
 
   for (const train of grille.descentes) {
+    if (!circuleLe(train, date)) continue;
     const monteeAppariee = circulations.find((c) => c.numero === train.numero - 1);
+    const sansMontee = !grille.montees.some((m) => m.numero === train.numero - 1);
     circulations.push({
       date,
       numero: train.numero,
@@ -273,7 +332,7 @@ export function generationJour(grille: Grille, date: string, rames: string[] = R
       facultatif: train.facultatif,
       facultatif_actif: false,
       velos: train.velos,
-      rame: monteeAppariee?.rame ?? rames[0] ?? '',
+      rame: sansMontee ? '' : (monteeAppariee?.rame ?? rames[0] ?? ''),
       terminus: 'nid-daigle',
       statut: 'ok',
       retard_min: 0,
@@ -599,6 +658,11 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
 
   for (const [sens, liste] of listes) {
     for (const trainGrille of liste) {
+      // Jour de circulation : la jointure part de la GRILLE, et un train sans
+      // circulation y passerait quand même (statut « ok » par défaut). Le
+      // filtre de la génération ne suffit donc pas — c'est ICI que le TRAIN 20
+      // du samedi disparaît d'un lundi, sur tous les écrans à la fois.
+      if (!circuleLe(trainGrille, jour.date)) continue;
       const circulation = circulationParNumero.get(trainGrille.numero);
       if (trainGrille.facultatif && !(circulation?.facultatif_actif ?? false)) continue;
       // Course à vide : elle existe pour l'exploitation, jamais pour les

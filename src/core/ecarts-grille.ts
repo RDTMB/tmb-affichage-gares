@@ -1,7 +1,7 @@
 // Écarts entre deux grilles (l'active et celle qu'on importe) — PUR et testé.
 // Sert à l'aperçu d'import (« qu'est-ce qui change ? »), aux avertissements
 // et au résumé consigné dans le journal à la validation.
-import { formatHeure, heureVersSecondes } from './horaires';
+import { formatHeure, heureVersSecondes, libelleJours } from './horaires';
 import { ORDRE_GARES } from './types';
 import type { GareId, Grille, Periode, Sens, TrainGrille } from './types';
 
@@ -30,11 +30,20 @@ export interface EcartIndicateur {
   apres: boolean;
 }
 
+/** Jours de circulation changés ; null = tous les jours. */
+export interface EcartJours {
+  numero: number;
+  sens: Sens;
+  avant: number[] | null;
+  apres: number[] | null;
+}
+
 export interface EcartsGrilles {
   trainsAjoutes: TrainRef[];
   trainsRetires: TrainRef[];
   heures: EcartHeure[];
   indicateurs: EcartIndicateur[];
+  jours: EcartJours[];
   periodes: { avant: Periode[]; apres: Periode[]; identiques: boolean };
   /** true si trains, heures et indicateurs sont identiques (les périodes sont jugées à part). */
   aucun: boolean;
@@ -48,6 +57,7 @@ export function ecarts(ancienne: Grille, nouvelle: Grille): EcartsGrilles {
     trainsRetires: [],
     heures: [],
     indicateurs: [],
+    jours: [],
     periodes: {
       avant: ancienne.periodes,
       apres: nouvelle.periodes,
@@ -80,6 +90,11 @@ export function ecarts(ancienne: Grille, nouvelle: Grille): EcartsGrilles {
           });
         }
       }
+      const joursAvant = ancien.jours ? [...ancien.jours].sort((a, b) => a - b) : null;
+      const joursApres = t.jours ? [...t.jours].sort((a, b) => a - b) : null;
+      if (String(joursAvant) !== String(joursApres)) {
+        resultat.jours.push({ numero: t.numero, sens, avant: joursAvant, apres: joursApres });
+      }
       resultat.heures.push(...ecartsHeures(sens, ancien, t));
     }
   }
@@ -87,7 +102,8 @@ export function ecarts(ancienne: Grille, nouvelle: Grille): EcartsGrilles {
     resultat.trainsAjoutes.length === 0 &&
     resultat.trainsRetires.length === 0 &&
     resultat.heures.length === 0 &&
-    resultat.indicateurs.length === 0;
+    resultat.indicateurs.length === 0 &&
+    resultat.jours.length === 0;
   return resultat;
 }
 
@@ -158,6 +174,10 @@ export function decritEcarts(e: EcartsGrilles): string[] {
   for (const i of e.indicateurs) {
     const ouiNon = (b: boolean): string => (b ? 'oui' : 'non');
     lignes.push(`TRAIN ${i.numero} : ${i.champ} ${ouiNon(i.avant)} → ${ouiNon(i.apres)}`);
+  }
+  for (const j of e.jours) {
+    const texte = (l: number[] | null): string => (l ? libelleJours(l) : 'tous les jours');
+    lignes.push(`TRAIN ${j.numero} : circule ${texte(j.avant)} → ${texte(j.apres)}`);
   }
   if (!e.periodes.identiques) {
     lignes.push(
