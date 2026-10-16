@@ -16,6 +16,7 @@ import { etatSurveillance, silenceLisible } from '../core/surveillance-ecrans';
 
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
+  circuleLe,
   formatHeure,
   grillePourJour,
   heureVersSecondes,
@@ -179,6 +180,8 @@ import {
   POLICE_BADGE_CHARGEMENT,
   departOrigine,
   ordreRotations,
+  rotationsDeGrille,
+  type RotationGrille,
   champsFormulaireCourse,
   commanditairePourAcces,
   dureeHoraireSaisie,
@@ -1562,13 +1565,19 @@ function ligneCirculation(
   const heure = formatHeure(heureVersSecondes(depart));
   const n = c.numero;
 
-  const rame = montee
+  // La rame se choisit sur la montée ; une descente SANS montée ce jour-là
+  // (TRAIN 20 du samedi, qui part de Col de Voza) n'a rien dont hériter et se
+  // choisit donc comme une montée. Elle naît sans rame : « à attribuer ».
+  const choisie = montee || !circMontee;
+  const rame = choisie
     ? `<select data-action="rame" data-numero="${n}"${verrou}>${
         // Rame absente des machines (renommée ou retirée) : on la garde en
         // tête pour ne pas afficher silencieusement une autre rame.
-        (params?.machines ?? []).some((m) => m.nom === rameEffective)
-          ? ''
-          : `<option selected>${echapper(rameEffective)}</option>`
+        rameEffective === ''
+          ? '<option value="" selected>— à attribuer —</option>'
+          : (params?.machines ?? []).some((m) => m.nom === rameEffective)
+            ? ''
+            : `<option selected>${echapper(rameEffective)}</option>`
       }${(params?.machines ?? [])
         .filter((m) => m.en_service || m.nom === rameEffective)
         .map(
@@ -1884,33 +1893,34 @@ function rendreCirculations(): void {
   // Les trains hors grille sont convertis d'abord : `commeTrainGrille()` leur
   // donne la même forme, ce qui permet UN rendu de ligne et UNE clé de tri
   // plutôt que deux de chaque.
-  const rotations = new Map<number, { montee: TrainGrille; descente: TrainGrille | undefined }>();
-  for (const montee of grille.montees) {
-    rotations.set(montee.numero, {
-      montee,
-      descente: grille.descentes.find((d) => d.numero === montee.numero + 1),
-    });
-  }
+  //
+  // Une descente de grille SANS montée (TRAIN 20 du samedi d'hiver) est une
+  // rotation à elle seule (`rotationsDeGrille()`) ; un autre jour, sa
+  // circulation n'existe pas et `ligneCirculation()` ne rend rien.
+  const rotations = new Map<number, RotationGrille>(
+    rotationsDeGrille(grille).map((r) => [r.numero, r]),
+  );
   for (const c of jour.circulations) {
     if (!horsGrille(c) || c.sens !== 'montee') continue;
     const descente = jour.circulations.find((x) => horsGrille(x) && x.numero === c.numero + 1);
     rotations.set(c.numero, {
+      numero: c.numero,
       montee: commeTrainGrille(c),
       descente: descente ? commeTrainGrille(descente) : undefined,
     });
   }
 
   tbody.innerHTML = ordreRotations(
-    [...rotations.values()].map(({ montee }) => ({
-      numero: montee.numero,
-      depart_s: departOrigine(montee.passages),
+    [...rotations.values()].map(({ numero, montee, descente }) => ({
+      numero,
+      depart_s: departOrigine((montee ?? descente)?.passages),
     })),
   )
     .map((numero) => {
       const rotation = rotations.get(numero);
       if (!rotation) return '';
       return (
-        ligneCirculation(rotation.montee, 'montee', lectureSeule) +
+        (rotation.montee ? ligneCirculation(rotation.montee, 'montee', lectureSeule) : '') +
         (rotation.descente ? ligneCirculation(rotation.descente, 'descente', lectureSeule) : '')
       );
     })
@@ -3096,8 +3106,8 @@ function exporteCsv(): void {
       'motif',
     ].join(';'),
   ];
-  for (const montee of grille.montees) {
-    for (const t of [montee, grille.descentes.find((d) => d.numero === montee.numero + 1)]) {
+  for (const rotation of rotationsDeGrille(grille)) {
+    for (const t of [rotation.montee, rotation.descente]) {
       if (!t) continue;
       const c = circulationDe(t.numero);
       if (!c) continue;
@@ -3558,9 +3568,12 @@ function majChampsCible(cible: Message['cible_type'], trainSelectionne: number |
   if (cible !== 'train') return;
   // Trains de la grille du JOUR AFFICHÉ (et non toujours la première grille)
   const g = grilleDuJour() ?? grilles[0] ?? null;
-  const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])].sort(
-    (a, b) => a.numero - b.numero,
-  );
+  // … et seulement ceux qui CIRCULENT ce jour-là : le TRAIN 20 du samedi
+  // n'est pas une cible un lundi (il retombe alors sur « hors grille de cette
+  // date » s'il était déjà la cible du message).
+  const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])]
+    .filter((t) => circuleLe(t, dateSel))
+    .sort((a, b) => a.numero - b.numero);
   const options = trains.map((t) => {
     const heure = formatHeure(heureVersSecondes(t.passages[0]?.d ?? t.passages[0]?.a ?? '00:00'));
     return `<option value="${t.numero}" ${t.numero === trainSelectionne ? 'selected' : ''}>TRAIN ${t.numero} — ${heure} ${t.numero % 2 === 1 ? '↗' : '↙'}${t.express ? ' (Express)' : ''}</option>`;

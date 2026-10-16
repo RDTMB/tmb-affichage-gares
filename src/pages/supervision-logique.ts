@@ -17,6 +17,7 @@ import type {
   PassageGrille,
   Profil,
   Sens,
+  TrainGrille,
 } from '../core/types';
 import type { Onglet, VisibiliteOnglets } from '../core/types';
 import type { NatureCirculation } from '../core/types';
@@ -590,6 +591,34 @@ export function departOrigine(
   if (heure === undefined) return null;
   const secondes = heureVersSecondes(heure);
   return Number.isFinite(secondes) ? secondes : null;
+}
+
+/**
+ * Une rotation de GRILLE : sa montée, sa descente appariée — et l'une des
+ * deux peut manquer. Une DESCENTE SANS MONTÉE (TRAIN 20 d'hiver, au départ de
+ * Col de Voza) est une rotation à elle seule, rangée au numéro de la montée
+ * qu'elle n'a pas (19) et à l'heure de son propre départ : sans cela, le
+ * tableau ne la montrait pas du tout, puisqu'il partait des montées.
+ */
+export interface RotationGrille {
+  /** Numéro de la MONTÉE (impair) — celui de la rotation, même si elle manque. */
+  numero: number;
+  montee?: TrainGrille;
+  descente?: TrainGrille;
+}
+
+export function rotationsDeGrille(grille: Pick<Grille, 'montees' | 'descentes'>): RotationGrille[] {
+  const rotations: RotationGrille[] = grille.montees.map((montee) => ({
+    numero: montee.numero,
+    montee,
+    descente: grille.descentes.find((d) => d.numero === montee.numero + 1),
+  }));
+  for (const descente of grille.descentes) {
+    if (!grille.montees.some((m) => m.numero === descente.numero - 1)) {
+      rotations.push({ numero: descente.numero - 1, descente });
+    }
+  }
+  return rotations;
 }
 
 /** Une rotation à ranger : son numéro de MONTÉE, et l'heure de ce départ. */

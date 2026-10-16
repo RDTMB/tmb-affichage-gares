@@ -7,6 +7,7 @@ import type { GareId, Message } from '../core/types';
 import { ORDRE_GARES } from '../core/types';
 import { ONGLETS, ROLES, ROLES_QUI_ROUVRENT, plafondOnglets } from '../core/roles';
 import {
+  rotationsDeGrille,
   datetimeLocalVersIso,
   identifiantEcran,
   identifiantEcranDeclare,
@@ -815,5 +816,32 @@ describe('etatVisibiliteOnglets : le repli se DIT, il ne se devine pas', () => {
   it('tout est réglé : pas de bruit inutile', () => {
     const complet = Object.fromEntries(ROLES.map((r) => [r, plafondOnglets(r)]));
     expect(etatVisibiliteOnglets(complet)).toBe('');
+  });
+});
+
+describe('rotationsDeGrille : une descente sans montée est une rotation à elle seule', () => {
+  const train = (numero: number) => ({
+    numero,
+    express: false,
+    facultatif: false,
+    velos: false,
+    passages: [],
+  });
+
+  it('apparie montée et descente, et garde la descente orpheline (TRAIN 20 d’hiver)', () => {
+    const r = rotationsDeGrille({
+      montees: [train(1), train(3)],
+      descentes: [train(20), train(2), train(4)],
+    });
+    expect(r.map((x) => [x.numero, x.montee?.numero, x.descente?.numero])).toEqual([
+      [1, 1, 2],
+      [3, 3, 4],
+      [19, undefined, 20],
+    ]);
+  });
+
+  it('une montée sans retour reste une rotation, sans descente', () => {
+    const r = rotationsDeGrille({ montees: [train(1)], descentes: [] });
+    expect(r).toEqual([{ numero: 1, montee: train(1), descente: undefined }]);
   });
 });

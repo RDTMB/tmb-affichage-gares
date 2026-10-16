@@ -692,14 +692,19 @@ describe('les rotations se rangent à leur HEURE, pas après la grille', () => {
     const bloc = /const rotations = new Map<number[\s\S]*?\.join\(''\);/.exec(ts)?.[0] ?? '';
     expect(bloc, 'la liste unique de rotations est introuvable').not.toBe('');
     // Les descentes ne sont jamais rangées : elles sont portées par la montée.
-    expect(bloc).toContain(
+    // L'appariement des trains de GRILLE vit dans `rotationsDeGrille()`
+    // (testée pour elle-même dans supervision-logique.test.ts) ; celui des
+    // hors-grille reste ici.
+    expect(bloc).toContain('rotationsDeGrille(grille)');
+    expect(source('src/pages/supervision-logique.ts')).toContain(
       'descente: grille.descentes.find((d) => d.numero === montee.numero + 1)',
     );
     expect(bloc).toContain('x.numero === c.numero + 1');
-    expect(bloc).toContain('ligneCirculation(rotation.montee, ');
+    expect(bloc).toContain('rotation.montee ? ligneCirculation(rotation.montee, ');
     expect(bloc).toContain('rotation.descente ? ligneCirculation(rotation.descente, ');
-    // Et le tri porte bien sur la MONTÉE.
-    expect(bloc).toContain('depart_s: departOrigine(montee.passages)');
+    // Et le tri porte bien sur la MONTÉE — sur la descente seulement quand
+    // la rotation n'a pas de montée (TRAIN 20 du samedi d'hiver).
+    expect(bloc).toContain('depart_s: departOrigine((montee ?? descente)?.passages)');
   });
 
   it('plus DEUX blocs concaténés : c’est le défaut lui-même', () => {
