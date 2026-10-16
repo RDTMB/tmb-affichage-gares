@@ -187,7 +187,8 @@ plus fréquents :
 | « TRAIN 9 : passages absents à Col de Voza et Bellevue sans ÿ »    | Tirets sans le symbole express                            | Ajouter ÿ (Wingdings) sur la ligne des lettres, ou saisir les heures      |
 | « TRAIN 3 : symbole express (ÿ) mais des heures à Col de Voza »    | Symbole express sur un train qui s'arrête                 | Retirer le ÿ, ou mettre des tirets à Col de Voza et Bellevue              |
 | « TRAIN 1 apparaît deux fois »                                     | Même numéro sur deux colonnes                             | Corriger les numéros (montées impaires, descentes paires)                 |
-| « TRAIN 4 : descente sans montée appariée (TRAIN 3 absent) »       | Rotation incomplète                                       | Ajouter la montée, ou renuméroter la descente                             |
+| « TRAIN 4 : descente sans montée appariée (TRAIN 3 absent) »       | Rotation incomplète, descente au départ du sommet         | Ajouter la montée, ou renuméroter la descente                             |
+| « TRAIN 20 : indicateur « Samdi » inconnu (… ou des jours) »       | Mot mal orthographié dans la ligne des lettres            | Écrire le jour en toutes lettres (« Samedi »), ou R / b / ÿ               |
 | « Gare inconnue « … » »                                            | Nom de gare non reconnu                                   | Utiliser Le Fayet, St Gervais, Motivon, Col de Voza, Bellevue, Nid d'Aigle |
 | « Les dates de « A » et de « B » se chevauchent »                  | Deux feuilles valides le même jour                        | Corriger les dates de validité de l'une des deux feuilles                 |
 

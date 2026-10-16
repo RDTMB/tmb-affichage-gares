@@ -1,6 +1,8 @@
 # Format du fichier Excel des horaires — contrat d'import
 
-Version 1.0 — 2 septembre 2026 (décisions de l'exploitant intégrées).
+Version 1.1 — 16 octobre 2026 (jours de circulation, train au départ
+d'une gare intermédiaire). Version 1.0 — 2 septembre 2026 (décisions de
+l'exploitant intégrées).
 Ce document décrit ce que la Supervision attend d'un classeur Excel
 d'horaires pour pouvoir le charger sans intervention d'un développeur.
 Il a été écrit à partir du document d'exploitation été 2026
@@ -65,7 +67,8 @@ Chaque bloc (montées, puis descentes) se lit ainsi :
    numéros **impairs**, les descentes des numéros **pairs** ; la descente
    d'une rotation porte le numéro de sa montée + 1 (TRAIN 1 → TRAIN 2).
 2. **La ligne des lettres** (facultative) : juste sous les trains, elle
-   contient les indicateurs R / b / ÿ (voir §5). L'import la reconnaît
+   contient les indicateurs R / b / ÿ et, le cas échéant, les jours de
+   circulation (« Samedi », voir §5). L'import la reconnaît
    parce qu'elle n'a ni nom de gare en colonne A, ni « A »/« D » en
    colonne B. Si aucun train n'a d'indicateur, la ligne peut être vide ou
    absente.
@@ -76,6 +79,11 @@ Chaque bloc (montées, puis descentes) se lit ainsi :
    - La gare de **départ** n'a qu'une ligne D (Le Fayet en montée, Nid
      d'Aigle en descente) ; la gare **terminus** n'a qu'une ligne A.
    - Les gares intermédiaires ont une ligne A puis une ligne D.
+   - Un train qui **part d'une gare intermédiaire** (TRAIN 20 d'hiver, au
+     départ de Col de Voza) porte `-` sur la ligne A et son heure sur la
+     ligne D de cette gare ; les gares en amont (Bellevue) sont à `-` sur
+     leurs lignes. Symétriquement, une montée qui **s'arrête** à une gare
+     intermédiaire y porte son heure en A et `-` en D (voir §4 et §8).
    - **Mont Lachat** (halte de service) est **lu puis ignoré** : ses heures
      n'apparaissent jamais sur les écrans.
    - Les noms de gares sont reconnus par mot-clé, ce qui tolère les
@@ -119,6 +127,10 @@ Supervision reste réservée aux fermetures imprévues.
 - Un **tiret** `-` signifie « ce train ne s'arrête pas ici » (c'est ainsi
   que le document marque les express à Col de Voza et Bellevue). Le tiret
   doit être présent sur la ligne A **et** sur la ligne D de la gare.
+  **Seule exception** : la première gare desservie d'un train peut porter
+  `-` en A et une heure en D (il en part), la dernière une heure en A et
+  `-` en D (il s'y arrête). Partout ailleurs, un tiret d'un seul côté fait
+  refuser le fichier.
 - Une cellule **vide** là où une heure est attendue fait refuser le fichier
   (« Heure manquante : TRAIN 9, Motivon, arrivée (feuille Grand service,
   ligne 9, colonne G) »). Une heure oubliée ne doit jamais devenir un train
@@ -140,6 +152,32 @@ Les lettres se combinent (`Rb` = facultatif + vélos, `Rÿ` = facultatif +
 express). La police ne change rien à la lecture : c'est le caractère qui
 compte. Une cellule vide = train normal.
 
+### Jours de circulation
+
+Comme le document d'exploitation 2025-2026 (« Samedi » au-dessus du
+« Train 20 »), la même cellule peut porter un ou plusieurs **noms de jours
+en français** : `Lundi` … `Dimanche`, sans tenir compte de la casse ni des
+accents, séparés par une virgule, une espace ou « et ». Exemples acceptés :
+`Samedi`, `samedi`, `SAMEDI`, `Samedi et dimanche`, `samedi, dimanche`,
+`R Samedi` (facultatif, le samedi seulement).
+
+- Le train ne circule alors **que ces jours-là**, dans les périodes de la
+  grille : il apparaît tout seul sur les écrans ces jours-là, sans aucune
+  saisie en Supervision, et jamais les autres jours.
+- **Aucun jour indiqué = tous les jours**, comme toujours.
+- Les jours se reconnaissent **avant** les lettres : le R de « MERCREDI »
+  écrit en majuscules ne fait pas du train un facultatif.
+- Un mot qui n'est ni un jour ni une lettre connue fait refuser le fichier :
+  « TRAIN 20 : indicateur « Samdi » inconnu (lettres acceptées : R
+  facultatif, b vélos, ÿ express, ou des jours (Samedi…)) ».
+- Un train qui ne circule que certains jours **n'a pas de rame d'office**
+  quand il part d'une gare intermédiaire (aucune montée ne l'y amène) : elle
+  s'attribue en Supervision, comme sur une montée.
+
+Un train « supprimable par fortes chutes de neige » (lettre « T » du
+document 2025-2026) n'a **pas** de lettre : un matin de neige, on le barre en
+Supervision.
+
 Cohérence vérifiée à l'import, dans les deux sens, en **erreur bloquante** :
 
 - un train marqué `ÿ` qui a pourtant des heures à Col de Voza ou Bellevue →
@@ -159,6 +197,7 @@ mot**, et chaque différence apparaît dans la liste des écarts de l'aperçu.
 | Feuilles d'horaires   | Feuilles contenant les deux titres HORAIRES DES …                                 | **Refus** : aucune feuille reconnue                                                |
 | Numéros de trains     | Ligne sous chaque titre, cellules « Train N »                                     | **Refus** : bloc sans aucun train ; numéro en double ; parité fausse               |
 | Indicateurs R / b / ÿ | Ligne sous les numéros de trains                                                  | Train considéré normal (pas d'erreur) ; comparé à la grille précédente             |
+| Jours de circulation  | Même ligne, en toutes lettres (« Samedi »)                                        | Tous les jours ; comparés à la grille précédente                                   |
 | Noms de gares         | Colonne A des lignes d'horaires                                                   | **Refus** : gare inconnue ; **ignoré** : Mont Lachat                               |
 | Arrivée / Départ      | Colonne B : `A` ou `D`                                                            | **Refus** : ligne d'horaires sans A ni D                                           |
 | Heures                | Une cellule par train et par ligne A/D                                            | **Refus** : cellule vide ou illisible ; `-` = pas d'arrêt                          |
@@ -201,8 +240,11 @@ colonne) :
 
 - aucune feuille d'horaires reconnue ; titre MONTEES ou DESCENTES absent ;
 - numéro de train manquant, en double, montée paire ou descente impaire ;
-- descente sans montée appariée (TRAIN 8 sans TRAIN 7) ;
-- gare inconnue ; ligne sans A/D ; heure vide ou illisible ;
+- descente sans montée appariée (TRAIN 8 sans TRAIN 7) qui part du
+  **sommet** de la feuille (Bellevue en hiver, Nid d'Aigle en été) ;
+- indicateur qui n'est ni R, b, ÿ, ni un jour de la semaine ;
+- gare inconnue ; ligne sans A/D ; heure vide ou illisible ; tiret d'un
+  seul côté ailleurs qu'à l'origine ou au terminus du train ;
 - heures qui ne se suivent pas le long de la ligne (arrivée à Motivon avant
   le départ de Saint-Gervais) ; arrivée après le départ dans une même gare ;
 - symbole express incohérent avec les heures de Col de Voza et Bellevue
@@ -214,4 +256,9 @@ colonne) :
 - durée d'arrêt inhabituelle dans une gare ;
 - train présent dans la grille précédente et absent de la nouvelle ;
 - descente qui part avant l'arrivée de sa montée (rotation impossible) ;
-- indicateur différent de la grille précédente pour le même numéro.
+- descente sans montée appariée qui part d'une gare **intermédiaire** :
+  « TRAIN 20 : descente sans montée appariée, au départ de Col de Voza » ;
+- montée sans descente appariée (« … jusqu'à Col de Voza » quand elle
+  s'arrête avant le sommet) ;
+- indicateur ou jours de circulation différents de la grille précédente
+  pour le même numéro.
