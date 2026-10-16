@@ -5,7 +5,7 @@
 // chaque samedi de la saison — jamais un autre jour.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { ecarts } from './ecarts-grille';
 import { cellulesGrille } from './export-grille';
@@ -179,7 +179,10 @@ describe('le fichier de référence 2026-2027-hiver-service-unique.xlsx', () => 
 });
 
 describe('la journée générée', () => {
-  const g = grilleHiver();
+  let g: Grille;
+  beforeAll(() => {
+    g = grilleHiver();
+  });
   const cas: Array<[string, number, number]> = [
     ['2026-12-12', 17, 9], // samedi, premier jour de la saison
     ['2026-12-13', 16, 8], // dimanche
@@ -342,7 +345,10 @@ describe('montée sans descente : même règle, dans l’autre sens', () => {
 });
 
 describe('le document d’exploitation se refait, « Samedi » compris', () => {
-  const g = grilleHiver();
+  let g: Grille;
+  beforeAll(() => {
+    g = grilleHiver();
+  });
 
   it('export → import : 0 écart, jours compris', () => {
     const f = cellulesGrille(g);
@@ -373,7 +379,10 @@ describe('le document d’exploitation se refait, « Samedi » compris', () => {
 });
 
 describe('lecture en base (contenu jsonb)', () => {
-  const g = grilleHiver();
+  let g: Grille;
+  beforeAll(() => {
+    g = grilleHiver();
+  });
   const ligne = (contenu: unknown) => ({
     version: '2026-2027-hiver',
     libelle: 'Hiver 2026-2027',
