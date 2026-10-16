@@ -48,7 +48,7 @@ import { creeSourceHeure } from './horloge-source';
 import { identifiantEcran } from './supervision-logique';
 // Les tableaux montée / descente : construits par un module PUR, partagé
 // avec la page du site web (embed.ts) — une seule source pour leurs règles.
-import { tableHtml } from './grille-tableau';
+import { tableHtml, titresDesSens } from './grille-tableau';
 import {
   creeSynchronisation,
   demarreAntiBurnIn,
@@ -201,11 +201,14 @@ function rendsEntetesEtPied(): void {
   // SECTION EXPLOITÉE : les titres des deux sens suivent les bornes réelles,
   // et une restriction est annoncée en tête de page — la grille du jour dit
   // la même chose que les écrans de gare.
+  // Les TITRES s'arrêtent au sommet de la grille (Bellevue en hiver) ; le
+  // bandeau, lui, annonce la section — une fermeture, pas une saison.
   const { debut, fin } = jour
     ? sectionDuJour(jour)
     : { debut: 'le-fayet' as GareId, fin: 'nid-daigle' as GareId };
-  $('titre-montee').textContent = `Montée — ${nomGare(debut)} → ${nomGare(fin)}`;
-  $('titre-descente').textContent = `Descente — ${nomGare(fin)} → ${nomGare(debut)}`;
+  const titres = titresDesSens(grille, jour, nomGare);
+  $('titre-montee').textContent = titres.montee;
+  $('titre-descente').textContent = titres.descente;
   const restreinte = jour !== null && !sectionComplete(jour);
   const bandeau = $('bandeau-section');
   bandeau.style.display = restreinte ? '' : 'none';
