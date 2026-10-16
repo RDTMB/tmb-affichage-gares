@@ -2855,7 +2855,13 @@ function initCirculations(): void {
     if (action === 'rame') {
       c.rame = (cible as HTMLSelectElement).value;
       stageCirculationEtRafraichit(c, `rame TRAIN ${numero} → ${c.rame}`);
-      toast('Rame en attente de publication (la descente de la même rotation suivra)');
+      // Une descente sans montée (TRAIN 20 du samedi) n'a pas de rotation
+      // derrière elle : ne pas annoncer une descente qui n'existe pas.
+      toast(
+        c.sens === 'montee'
+          ? 'Rame en attente de publication (la descente de la même rotation suivra)'
+          : 'Rame en attente de publication',
+      );
     } else if (action === 'depart-sup') {
       ouvreDepartSup(numero);
     } else if (action === 'terminus') {
