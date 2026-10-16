@@ -248,7 +248,7 @@ describe('3.4c — sans `?gare=`, la règle reste celle de l’origine, par choi
 
   it('grille.ts passe bien SA gare, celle de `?gare=`', () => {
     // Sans cette ligne, tout ce qui précède serait vrai et sans effet.
-    const src = source('src/pages/grille.ts');
+    const src = source('src/pages/grille-tableau.ts');
     expect(src).toContain('indexProchainDepart(colonnes, gare, maintenant_s)');
     // …et l'ancienne règle n'est plus nulle part.
     expect(src).not.toContain('c.departReel_s <= maintenant_s');
@@ -266,7 +266,7 @@ describe('3.5 — la pastille de position et la légende dessinent le MÊME anne
   it('les deux pastilles de la grille sont construites par la même fonction', () => {
     // C'était le défaut : chacune écrivait son propre `box-shadow`, et l'une
     // des deux l'avait oublié. Une seule source, donc plus d'écart possible.
-    const src = source('src/pages/grille.ts');
+    const src = source('src/pages/grille.ts') + source('src/pages/grille-tableau.ts');
     expect(src).toContain('class="train-pos" style="${styleRame(machineDe(c.train.rame))}"');
     expect(src).toContain('class="rame-dot" style="${styleRame(m)}"');
     // Et plus aucun `box-shadow` écrit à la main dans la page.

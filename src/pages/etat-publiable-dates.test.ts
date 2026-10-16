@@ -33,6 +33,7 @@ function params(): Params {
     mode_medias: 'alterne',
     vitesse_ticker_px_s: 90,
     a_quai_origine_s: 300,
+    periodes_exploitation: [],
     machines: [{ nom: 'Marie', couleur: '#2E74B5', en_service: true }],
     motifs: [{ fr: 'Météo', en: 'Weather' }],
     ciels: [],

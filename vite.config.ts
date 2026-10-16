@@ -65,6 +65,9 @@ export default defineConfig(({ mode }) => ({
         ecran: fileURLToPath(new URL('ecran.html', import.meta.url)),
         grille: fileURLToPath(new URL('grille.html', import.meta.url)),
         supervision: fileURLToPath(new URL('supervision.html', import.meta.url)),
+        // Horaires pour le site web, en iframe : SANS temps réel ni service
+        // worker (src/pages/embed.ts, docs/integration-site-web.md).
+        embed: fileURLToPath(new URL('embed.html', import.meta.url)),
       },
       output: {
         // supabase-js partagé entre les trois pages (cache commun des écrans)

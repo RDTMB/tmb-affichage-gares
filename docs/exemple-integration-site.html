@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Page d'ESSAI, à ouvrir d'un double-clic : elle reproduit une page du
+         site web qui embarque les horaires, avec EXACTEMENT le code de
+         docs/integration-site-web.md, pointé sur la PRÉVERSION.
+
+         Elle n'est pas publiée (hors des entrées de vite.config.ts). Pour
+         essayer la production, remplacer « /preview/embed.html » par
+         « /embed.html ». -->
+    <title>Essai d'intégration — horaires du Tramway</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 16px;
+        background: #eee;
+      }
+      .contenu-du-site {
+        background: #fff;
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="contenu-du-site">
+      <h1>Page du site (essai)</h1>
+      <p>Texte du site au-dessus des horaires.</p>
+
+      <!-- ===== Début du code à coller dans le CMS ===== -->
+      <iframe
+        id="tmb-horaires"
+        src="https://rdtmb.github.io/tmb-affichage-gares/preview/embed.html"
+        title="Horaires du Tramway du Mont-Blanc"
+        style="width: 100%; border: 0; height: 900px; display: block"
+        loading="lazy"
+      ></iframe>
+      <script>
+        // Ajuste la hauteur du cadre à son contenu (sinon, barre de défilement).
+        window.addEventListener('message', function (e) {
+          if (e.origin !== 'https://rdtmb.github.io') return;
+          var d = e.data;
+          if (!d || d.type !== 'tmb-embed-hauteur' || typeof d.hauteur !== 'number') return;
+          var cadre = document.getElementById('tmb-horaires');
+          if (!cadre || e.source !== cadre.contentWindow) return;
+          cadre.style.height = Math.max(200, Math.min(d.hauteur, 6000)) + 'px';
+        });
+      </script>
+      <!-- ===== Fin du code à coller ===== -->
+
+      <p>Texte du site sous les horaires : il doit suivre la hauteur du cadre.</p>
+    </div>
+  </body>
+</html>

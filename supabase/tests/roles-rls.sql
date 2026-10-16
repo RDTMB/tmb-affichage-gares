@@ -293,6 +293,18 @@ begin
   if touchees = 0 then raise notice 'OK — supervision : les rames lui sont refusées';
   else raise exception 'ÉCHEC — supervision : a pu modifier une rame'; end if;
 
+  -- Périodes d'ouverture du site web : au chef d'exploitation seul. L'UPSERT
+  -- que le front envoie (`saveParams`), pas un UPDATE qui toucherait zéro
+  -- ligne sans rien prouver.
+  begin
+    insert into public.params (cle, valeur)
+      values ('periodes_exploitation', '[{"du":"2026-01-01","au":"2026-01-02"}]'::jsonb)
+      on conflict (cle) do update set valeur = excluded.valeur;
+    raise exception 'ÉCHEC — supervision : a pu écrire les périodes d''ouverture';
+  exception when insufficient_privilege then
+    raise notice 'OK — supervision : les périodes d''ouverture lui sont refusées';
+  end;
+
   -- Grilles et écrans : PARTAGÉS avec l'exploitation.
   update public.grilles set commentaire = coalesce(commentaire, '') where version is not null;
   get diagnostics touchees = row_count;
@@ -339,6 +351,18 @@ begin
   get diagnostics touchees = row_count;
   if touchees = 1 then raise notice 'OK — admin : crée un train spécial (upsert du front)';
   else raise exception 'ÉCHEC — admin : n''a pas pu créer un train spécial'; end if;
+
+  -- Périodes d'ouverture : l'admin les écrit, par l'upsert du front. Il
+  -- réécrit la valeur EN PLACE (rien ne change pour le site), ou les valeurs
+  -- initiales de la migration si la clé manque.
+  insert into public.params (cle, valeur)
+    values ('periodes_exploitation', coalesce(
+      (select valeur from public.params where cle = 'periodes_exploitation'),
+      '[{"du":"2026-06-13","au":"2026-09-27"},{"du":"2026-12-12","au":"2027-03-29"}]'::jsonb))
+    on conflict (cle) do update set valeur = excluded.valeur;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — admin : écrit les périodes d''ouverture (upsert du front)';
+  else raise exception 'ÉCHEC — admin : n''a pas pu écrire les périodes d''ouverture'; end if;
 
   -- Le même upsert une SECONDE fois : la branche de conflit s'exécute, et
   -- c'est elle qui exige le `using` de la politique d'UPDATE. Sans lui, le
@@ -759,6 +783,16 @@ begin
   get diagnostics touchees = row_count;
   if touchees = 0 then raise notice 'OK — caisse : le délai « à quai » lui est refusé';
   else raise exception 'ÉCHEC — caisse : a pu régler le délai « à quai »'; end if;
+
+  -- …comme les périodes d'ouverture du site web (même upsert que le front).
+  begin
+    insert into public.params (cle, valeur)
+      values ('periodes_exploitation', '[{"du":"2026-01-01","au":"2026-01-02"}]'::jsonb)
+      on conflict (cle) do update set valeur = excluded.valeur;
+    raise exception 'ÉCHEC — caisse : a pu écrire les périodes d''ouverture';
+  exception when insufficient_privilege then
+    raise notice 'OK — caisse : les périodes d''ouverture lui sont refusées';
+  end;
 
   -- Paramètres TECHNIQUES : la veille GLOBALE n'est pas la veille d'un poste.
   update public.params set valeur = '{"debut":"22:00","fin":"05:00"}'::jsonb

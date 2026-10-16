@@ -642,9 +642,22 @@ export interface Params {
    * que la vitesse de lecture reste constante (défaut 90).
    */
   vitesse_ticker_px_s: number;
+  /**
+   * Périodes d'ouverture DÉCLARÉES par l'exploitant (clé `periodes_exploitation`),
+   * triées, sans chevauchement, bornes incluses — liste vide si la valeur en
+   * base est absente ou corrompue. Lues par le SITE WEB seulement (intersaison
+   * annoncée), voir src/core/periodes-exploitation.ts.
+   */
+  periodes_exploitation: PeriodeExploitation[];
   machines: Machine[];
   motifs: Motif[];
   ciels: Ciel[];
+}
+
+/** Une période d'exploitation déclarée, « AAAA-MM-JJ », bornes incluses. */
+export interface PeriodeExploitation {
+  du: string;
+  au: string;
 }
 
 /** Message préenregistré bilingue, proposé dans le formulaire Messages. */
