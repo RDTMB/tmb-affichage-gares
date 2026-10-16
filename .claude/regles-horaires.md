@@ -110,3 +110,18 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
   aucune heure, et créer une version pour ça brouillerait l'historique
 - **Rotation** : la rame d'une montée assure la descente suivante (ex.
   T1 07:00 → arrivée 08:05:30 → repart T2 08:13:30).
+- **Jours de circulation** (`TrainGrille.jours`, jours ISO 1 = lundi … 7 =
+  dimanche ; ABSENT = tous les jours) : « Samedi » dans la ligne des lettres
+  (TRAIN 20 d'hiver). UNE règle, `circuleLe()`, lue à DEUX endroits qui ne
+  se remplacent pas : `generationJour()` (la journée créée) ET
+  `trainsDuJour()` (la jointure part de la GRILLE : sans son propre filtre,
+  un train sans circulation revient avec le statut « ok » par défaut). Aucune
+  génération côté SQL. Le jour se lit sur la DATE (UTC), jamais sur l'heure
+  locale
+- **Descente sans montée** : admise SEULEMENT si elle part d'une gare
+  intermédiaire (ni le sommet de la feuille — lu sur la grille, jamais une
+  constante —, ni Le Fayet) → avertissement ; depuis le sommet, erreur.
+  Elle n'hérite d'aucune rame et n'en reçoit PAS d'office (`rame = ''`,
+  « à attribuer » en supervision, où elle se choisit comme une montée). En
+  supervision elle est une rotation à elle seule (`rotationsDeGrille()`).
+  Au document, sa gare d'origine porte `-` en A et l'heure en D

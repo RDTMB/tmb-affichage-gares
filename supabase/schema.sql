@@ -983,8 +983,14 @@ create policy "roles: params medias" on params for all to authenticated
     and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 create policy "roles: params exploitation" on params for all to authenticated
-  using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
-  with check (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')));
+  using (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  )
+  with check (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  );
 create policy "roles: params technique" on params for all to authenticated
   using ((select private.a_le_role('technique')))
   with check ((select private.a_le_role('technique')));
@@ -1932,6 +1938,55 @@ alter table params add constraint params_alertes_destinataires_forme check (
 -- `surveillance_etat.dernier_resultat`, que la supervision affiche — l'oubli
 -- est donc VISIBLE, il n'est pas silencieux.
 insert into params (cle, valeur) values ('alertes_destinataires', '[]'::jsonb)
+on conflict (cle) do nothing;
+
+-- PÉRIODES D'OUVERTURE déclarées par l'exploitant (16/10/2026,
+-- migrations/2026-10-periodes-exploitation.sql). Lues par le SITE WEB, qui en
+-- tire « fermé pour l'intersaison, réouverture le … » ; les écrans de gare
+-- n'en savent rien. Écriture : admin (« roles: params exploitation »).
+-- Lecture : publique. Même forme que les alertes : une CHECK ne peut pas
+-- parcourir un tableau, d'où la fonction IMMUTABLE. Le front valide de son
+-- côté (src/core/periodes-exploitation.ts) : une liste corrompue vaut VIDE.
+create or replace function private.periodes_exploitation_valides(v jsonb)
+returns boolean language sql immutable set search_path = '' as $fn$
+  select jsonb_typeof(v) = 'array'
+     and jsonb_array_length(v) <= 20
+     and not exists (
+       select 1 from jsonb_array_elements(v) e
+       where case
+         when jsonb_typeof(e) <> 'object' then true
+         when not (e ? 'du' and e ? 'au') then true
+         when (select count(*) from jsonb_object_keys(e)) <> 2 then true
+         when jsonb_typeof(e -> 'du') <> 'string' or jsonb_typeof(e -> 'au') <> 'string' then true
+         when (e ->> 'du') !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' then true
+         when (e ->> 'au') !~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' then true
+         when (e ->> 'du') > (e ->> 'au') then true
+         else false
+       end
+     )
+     and not exists (
+       select 1
+         from jsonb_array_elements(v) with ordinality a(e, i),
+              jsonb_array_elements(v) with ordinality b(f, j)
+        where a.i < b.j
+          and (a.e ->> 'du') <= (b.f ->> 'au')
+          and (b.f ->> 'du') <= (a.e ->> 'au')
+     );
+$fn$;
+
+alter table params drop constraint if exists params_periodes_exploitation_forme;
+alter table params add constraint params_periodes_exploitation_forme check (
+  cle <> 'periodes_exploitation' or (
+    case when jsonb_typeof(valeur) = 'array'
+         then private.periodes_exploitation_valides(valeur)
+         else false end
+  )
+);
+
+insert into params (cle, valeur) values (
+  'periodes_exploitation',
+  '[{"du":"2026-06-13","au":"2026-09-27"},{"du":"2026-12-12","au":"2027-03-29"}]'::jsonb
+)
 on conflict (cle) do nothing;
 
 -- Le déclencheur de la tâche planifiée. La logique vit dans une FONCTION et

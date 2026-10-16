@@ -23,7 +23,7 @@ function source(chemin: string): string {
   );
 }
 
-const grille = source('src/pages/grille.ts');
+const grille = source('src/pages/grille.ts') + source('src/pages/grille-tableau.ts');
 const css = source('src/styles/grille.css');
 
 /** Le bloc qui construit un `<th>` de colonne, en-tête comprise. */
@@ -157,7 +157,7 @@ describe('5.5 — grille et écran de gare ne peuvent pas diverger', () => {
       complet: { fr: 'Complet', en: 'Full' },
       limite: { fr: 'Dernières places', en: 'Few seats' },
     });
-    for (const page of ['src/pages/grille.ts', 'src/pages/ecran.ts']) {
+    for (const page of ['src/pages/grille-tableau.ts', 'src/pages/ecran.ts']) {
       expect(source(page), `${page} n’emploie pas la table des mots`).toContain('LIBELLE_MENTION');
       expect(source(page), `${page} n’emploie pas la règle partagée`).toContain('mentionCourse(');
     }
@@ -165,7 +165,11 @@ describe('5.5 — grille et écran de gare ne peuvent pas diverger', () => {
 
   it('aucune des deux pages ne réécrit un libellé à la main', () => {
     // Le défaut à éviter : un mot recopié dans une page, modifié dans l'autre.
-    for (const page of ['src/pages/grille.ts', 'src/pages/ecran.ts']) {
+    for (const page of [
+      'src/pages/grille.ts',
+      'src/pages/grille-tableau.ts',
+      'src/pages/ecran.ts',
+    ]) {
       const src = source(page);
       for (const mot of ['Dernières places', 'Few seats', 'Complet', 'Full', 'Private']) {
         expect(src, `${page} écrit « ${mot} » en dur`).not.toContain(`>${mot}`);

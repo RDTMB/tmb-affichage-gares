@@ -19,7 +19,7 @@ import {
   type Cellule,
   type FeuilleCellules,
 } from './import-grille';
-import { heureVersSecondes } from './horaires';
+import { heureVersSecondes, libelleJours } from './horaires';
 import { ORDRE_GARES } from './types';
 import type { GareId, Grille, Periode, Sens, TrainGrille } from './types';
 
@@ -88,12 +88,33 @@ export function fractionDeJour(h: string): number {
   return heureVersSecondes(h) / 86400;
 }
 
+/**
+ * La cellule de la ligne des lettres : « R », « Rb »… puis les jours de
+ * circulation en toutes lettres, comme le document 2025-2026 (« Samedi »
+ * au-dessus du TRAIN 20), et que l'import relit.
+ */
 function lettresIndicateurs(t: TrainGrille): string {
-  return (
+  const lettres =
     (t.facultatif ? LETTRE_FACULTATIF : '') +
     (t.velos ? LETTRE_VELOS : '') +
-    (t.express ? LETTRE_EXPRESS : '')
-  );
+    (t.express ? LETTRE_EXPRESS : '');
+  if (!t.jours) return lettres;
+  const jours = libelleJours(t.jours);
+  const texte = jours.charAt(0).toUpperCase() + jours.slice(1);
+  return lettres === '' ? texte : `${lettres} ${texte}`;
+}
+
+/**
+ * Case d'un train à une gare qu'il ne dessert QUE d'un côté parce qu'elle est
+ * son origine (pas d'arrivée) ou son terminus (pas de départ), alors que ses
+ * voisins y ont les deux lignes : le document y écrit un TIRET — Col de Voza
+ * pour le TRAIN 20 d'hiver, qui en part. Une case vide serait relue « heure
+ * manquante ».
+ */
+function extremiteSansCote(t: TrainGrille, gare: GareId, champ: 'a' | 'd'): boolean {
+  const premier = t.passages[0];
+  const dernier = t.passages[t.passages.length - 1];
+  return (champ === 'a' && premier?.gare === gare) || (champ === 'd' && dernier?.gare === gare);
 }
 
 /** Une ligne dense de `largeur` cellules, remplie de null. */
@@ -140,7 +161,9 @@ function lignesBloc(sens: Sens, trains: TrainGrille[], largeur: number): Cellule
         const h = passage?.[champ];
         ligne[COLONNE_PREMIER_TRAIN + k] = passage
           ? h === undefined
-            ? null
+            ? extremiteSansCote(t, gare, champ)
+              ? '-'
+              : null
             : fractionDeJour(h)
           : '-';
       });
@@ -245,7 +268,7 @@ export function problemesExport(g: Grille): string[] {
         if (!existe) continue;
         for (const t of trains) {
           const passage = t.passages.find((p) => p.gare === gare);
-          if (passage && passage[champ] === undefined) {
+          if (passage && passage[champ] === undefined && !extremiteSansCote(t, gare, champ)) {
             problemes.push(
               `TRAIN ${t.numero} : ${nomGare(gare)} sans ${champ === 'a' ? 'arrivée' : 'départ'} alors que les autres trains en ont un — le document d'exploitation ne sait pas écrire cette case, et le fichier exporté ne pourrait pas être rechargé tel quel.`,
             );

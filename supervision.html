@@ -982,6 +982,26 @@
               réelle qui fait foi. La veille des écrans est réglée dans l'onglet Écrans, le bandeau
               et la météo dans l'onglet Bandeau.
             </div>
+            <!-- PÉRIODES D'OUVERTURE (site web), 16/10/2026. Dans cette carte, donc
+                 visibles et modifiables par le seul droit `parametres.exploitation`
+                 (admin), comme le délai « à quai » ; la base le tient aussi (RLS
+                 « roles: params exploitation »). Seul le site web les lit. -->
+            <div class="periodes-ouverture" id="periodes-ouverture">
+              <h3>Périodes d'ouverture (site web)</h3>
+              <div id="periodes-liste"></div>
+              <div class="periodes-actions">
+                <button class="leger" id="btn-periode-ajout">+ Ajouter une période</button>
+              </div>
+              <div class="note periodes-erreur" id="periodes-erreur" role="alert" hidden></div>
+              <div class="note periodes-apercu" id="periodes-apercu"></div>
+              <div class="note">
+                Entre deux périodes, et seulement là, le site web annonce « fermé pour l'intersaison
+                » avec la date de réouverture. Une grille horaire qui couvre la date l'emporte
+                toujours. Avant la première période, après la dernière, ou dans une période sans
+                grille : le message neutre « Horaires pas encore disponibles en ligne ». Les écrans
+                de gare ne lisent pas ce réglage.
+              </div>
+            </div>
           </div>
         </div>
       </section>

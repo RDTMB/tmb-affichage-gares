@@ -16,6 +16,7 @@ import { etatSurveillance, silenceLisible } from '../core/surveillance-ecrans';
 
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
+  circuleLe,
   formatHeure,
   grillePourJour,
   heureVersSecondes,
@@ -32,6 +33,8 @@ import {
   serviceActif,
 } from '../core/horaires';
 import { construitCourse, prepareDepartSup, prochainNumeroHorsGrille } from '../core/train-sup';
+import { apercuSiteWeb, erreurPeriodes, periodesValides } from '../core/periodes-exploitation';
+import type { PeriodeExploitation } from '../core/types';
 import type { FormeCourse } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
 import {
@@ -177,6 +180,8 @@ import {
   POLICE_BADGE_CHARGEMENT,
   departOrigine,
   ordreRotations,
+  rotationsDeGrille,
+  type RotationGrille,
   champsFormulaireCourse,
   commanditairePourAcces,
   dureeHoraireSaisie,
@@ -376,6 +381,13 @@ let traductionManuelle = false;
 // partout ailleurs dans ce fichier pour l'affichage.
 let messagesBase: Message[] = [];
 let paramsBase: Params | null = null;
+/**
+ * Périodes d'ouverture EN COURS DE SAISIE, ou `null` quand le bloc suit la
+ * base. Une ligne ajoutée reste vide (donc invalide, donc non enregistrée)
+ * le temps que l'agent la remplisse : sans ce brouillon, le rafraîchissement
+ * suivant l'effacerait.
+ */
+let periodesSaisie: { du: string; au: string }[] | null = null;
 const brouillonCirc: BrouillonCirculations = new Map();
 /** Trains sup dont la suppression attend la publication (numéro de montée). */
 const brouillonSupSupprimes: BrouillonSupSupprimes = new Map();
@@ -1553,13 +1565,19 @@ function ligneCirculation(
   const heure = formatHeure(heureVersSecondes(depart));
   const n = c.numero;
 
-  const rame = montee
+  // La rame se choisit sur la montée ; une descente SANS montée ce jour-là
+  // (TRAIN 20 du samedi, qui part de Col de Voza) n'a rien dont hériter et se
+  // choisit donc comme une montée. Elle naît sans rame : « à attribuer ».
+  const choisie = montee || !circMontee;
+  const rame = choisie
     ? `<select data-action="rame" data-numero="${n}"${verrou}>${
         // Rame absente des machines (renommée ou retirée) : on la garde en
         // tête pour ne pas afficher silencieusement une autre rame.
-        (params?.machines ?? []).some((m) => m.nom === rameEffective)
-          ? ''
-          : `<option selected>${echapper(rameEffective)}</option>`
+        rameEffective === ''
+          ? '<option value="" selected>— à attribuer —</option>'
+          : (params?.machines ?? []).some((m) => m.nom === rameEffective)
+            ? ''
+            : `<option selected>${echapper(rameEffective)}</option>`
       }${(params?.machines ?? [])
         .filter((m) => m.en_service || m.nom === rameEffective)
         .map(
@@ -1875,33 +1893,34 @@ function rendreCirculations(): void {
   // Les trains hors grille sont convertis d'abord : `commeTrainGrille()` leur
   // donne la même forme, ce qui permet UN rendu de ligne et UNE clé de tri
   // plutôt que deux de chaque.
-  const rotations = new Map<number, { montee: TrainGrille; descente: TrainGrille | undefined }>();
-  for (const montee of grille.montees) {
-    rotations.set(montee.numero, {
-      montee,
-      descente: grille.descentes.find((d) => d.numero === montee.numero + 1),
-    });
-  }
+  //
+  // Une descente de grille SANS montée (TRAIN 20 du samedi d'hiver) est une
+  // rotation à elle seule (`rotationsDeGrille()`) ; un autre jour, sa
+  // circulation n'existe pas et `ligneCirculation()` ne rend rien.
+  const rotations = new Map<number, RotationGrille>(
+    rotationsDeGrille(grille).map((r) => [r.numero, r]),
+  );
   for (const c of jour.circulations) {
     if (!horsGrille(c) || c.sens !== 'montee') continue;
     const descente = jour.circulations.find((x) => horsGrille(x) && x.numero === c.numero + 1);
     rotations.set(c.numero, {
+      numero: c.numero,
       montee: commeTrainGrille(c),
       descente: descente ? commeTrainGrille(descente) : undefined,
     });
   }
 
   tbody.innerHTML = ordreRotations(
-    [...rotations.values()].map(({ montee }) => ({
-      numero: montee.numero,
-      depart_s: departOrigine(montee.passages),
+    [...rotations.values()].map(({ numero, montee, descente }) => ({
+      numero,
+      depart_s: departOrigine((montee ?? descente)?.passages),
     })),
   )
     .map((numero) => {
       const rotation = rotations.get(numero);
       if (!rotation) return '';
       return (
-        ligneCirculation(rotation.montee, 'montee', lectureSeule) +
+        (rotation.montee ? ligneCirculation(rotation.montee, 'montee', lectureSeule) : '') +
         (rotation.descente ? ligneCirculation(rotation.descente, 'descente', lectureSeule) : '')
       );
     })
@@ -2836,7 +2855,13 @@ function initCirculations(): void {
     if (action === 'rame') {
       c.rame = (cible as HTMLSelectElement).value;
       stageCirculationEtRafraichit(c, `rame TRAIN ${numero} → ${c.rame}`);
-      toast('Rame en attente de publication (la descente de la même rotation suivra)');
+      // Une descente sans montée (TRAIN 20 du samedi) n'a pas de rotation
+      // derrière elle : ne pas annoncer une descente qui n'existe pas.
+      toast(
+        c.sens === 'montee'
+          ? 'Rame en attente de publication (la descente de la même rotation suivra)'
+          : 'Rame en attente de publication',
+      );
     } else if (action === 'depart-sup') {
       ouvreDepartSup(numero);
     } else if (action === 'terminus') {
@@ -3087,8 +3112,8 @@ function exporteCsv(): void {
       'motif',
     ].join(';'),
   ];
-  for (const montee of grille.montees) {
-    for (const t of [montee, grille.descentes.find((d) => d.numero === montee.numero + 1)]) {
+  for (const rotation of rotationsDeGrille(grille)) {
+    for (const t of [rotation.montee, rotation.descente]) {
       if (!t) continue;
       const c = circulationDe(t.numero);
       if (!c) continue;
@@ -3549,9 +3574,12 @@ function majChampsCible(cible: Message['cible_type'], trainSelectionne: number |
   if (cible !== 'train') return;
   // Trains de la grille du JOUR AFFICHÉ (et non toujours la première grille)
   const g = grilleDuJour() ?? grilles[0] ?? null;
-  const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])].sort(
-    (a, b) => a.numero - b.numero,
-  );
+  // … et seulement ceux qui CIRCULENT ce jour-là : le TRAIN 20 du samedi
+  // n'est pas une cible un lundi (il retombe alors sur « hors grille de cette
+  // date » s'il était déjà la cible du message).
+  const trains = [...(g?.montees ?? []), ...(g?.descentes ?? [])]
+    .filter((t) => circuleLe(t, dateSel))
+    .sort((a, b) => a.numero - b.numero);
   const options = trains.map((t) => {
     const heure = formatHeure(heureVersSecondes(t.passages[0]?.d ?? t.passages[0]?.a ?? '00:00'));
     return `<option value="${t.numero}" ${t.numero === trainSelectionne ? 'selected' : ''}>TRAIN ${t.numero} — ${heure} ${t.numero % 2 === 1 ? '↗' : '↙'}${t.express ? ' (Express)' : ''}</option>`;
@@ -4562,6 +4590,7 @@ function rendreParametres(): void {
   $('btn-vers-horaires').addEventListener('click', () => {
     document.querySelector<HTMLButtonElement>('nav.tabs button[data-t="horaires"]')?.click();
   });
+  rendrePeriodesOuverture();
   // Vitesse du bandeau + aperçu en direct. `choixVitesseTicker()` (PURE) dit
   // si l'on est sur un niveau ou sur une vitesse LIBRE : une valeur hors
   // niveaux — saisie à la main, ou posée directement en base — ouvre le champ
@@ -4714,6 +4743,68 @@ function majVerdictLargeur(): void {
   ligne.textContent = deborde
     ? '↔ Plus long que l’écran le plus étroit (4/3) : ce message défilera, même en priorité importante.'
     : '✓ Tient sur tous les écrans : en priorité importante, il restera immobile.';
+}
+
+/**
+ * Bloc « Périodes d'ouverture (site web) » : une ligne par période, l'erreur
+ * de saisie en clair, et la phrase d'APERÇU — ce que le site affiche
+ * aujourd'hui avec ces périodes, par la fonction même que l'embed appelle
+ * (`apercuSiteWeb` → `messageSansHoraires`). L'exploitant voit l'effet de sa
+ * saisie sans ouvrir le site.
+ */
+function rendrePeriodesOuverture(): void {
+  if (!params) return;
+  const lignes: { du: string; au: string }[] = periodesSaisie ?? params.periodes_exploitation;
+  const liste = $('periodes-liste');
+  // Lignes reconstruites SAUF pendant une saisie : un rafraîchissement ne
+  // doit pas effacer la date que l'agent est en train de choisir.
+  if (!liste.contains(document.activeElement)) {
+    liste.innerHTML =
+      lignes.length === 0
+        ? '<div class="machine-row note">Aucune période déclarée.</div>'
+        : lignes
+            .map(
+              (p, i) => `
+    <div class="machine-row" data-i="${i}">
+      <label>Du <input type="date" data-champ="du" value="${echapper(p.du)}" /></label>
+      <label>au <input type="date" data-champ="au" value="${echapper(p.au)}" /></label>
+      <button class="leger" data-champ="retirer">Retirer</button>
+    </div>`,
+            )
+            .join('');
+  }
+  const erreur = erreurPeriodes(lignes);
+  const blocErreur = $('periodes-erreur');
+  blocErreur.hidden = erreur === null;
+  blocErreur.textContent = erreur
+    ? `${erreur} Rien n'est enregistré tant que ce n'est pas corrigé.`
+    : '';
+  // L'aperçu porte sur ce qui est ENREGISTRÉ si la saisie est fautive : c'est
+  // ce que le site montre réellement.
+  const effectives: PeriodeExploitation[] =
+    erreur === null ? periodesValides(lignes) : params.periodes_exploitation;
+  $('periodes-apercu').textContent = apercuSiteWeb(grilles, effectives, dateISO(0));
+}
+
+/** Relit les lignes du bloc, et enregistre si la saisie est acceptable. */
+function enregistrePeriodes(lignes: { du: string; au: string }[]): void {
+  periodesSaisie = lignes;
+  rendrePeriodesOuverture();
+  if (erreurPeriodes(lignes) !== null) return;
+  const periodes = periodesValides(lignes);
+  // Même circuit que le délai « à quai » : écriture, relecture, trace, toast.
+  void provider
+    .saveParams({ periodes_exploitation: periodes })
+    .then(() => {
+      periodesSaisie = null;
+      return rechargeParams();
+    })
+    .then(() => {
+      const resume = periodes.map((p) => `${p.du} → ${p.au}`).join(', ') || 'aucune';
+      bump(`périodes d'ouverture (site web) → ${resume}`);
+      toast("Le site web suit les nouvelles périodes d'ouverture");
+    })
+    .catch(erreurVersToast);
 }
 
 async function rechargeParams(): Promise<void> {
@@ -5160,6 +5251,28 @@ function initParametres(): void {
         })
         .catch(erreurVersToast);
     }
+  });
+
+  // Périodes d'ouverture (site web) : enregistrées dès que la saisie est
+  // complète et cohérente, comme le délai « à quai » juste au-dessus.
+  const lignesPeriodes = (): { du: string; au: string }[] =>
+    [...$('periodes-liste').querySelectorAll<HTMLElement>('[data-i]')].map((ligne) => ({
+      du: ligne.querySelector<HTMLInputElement>('[data-champ="du"]')?.value ?? '',
+      au: ligne.querySelector<HTMLInputElement>('[data-champ="au"]')?.value ?? '',
+    }));
+  $('periodes-liste').addEventListener('change', () => enregistrePeriodes(lignesPeriodes()));
+  $('periodes-liste').addEventListener('click', (ev) => {
+    const bouton = (ev.target as HTMLElement).closest<HTMLElement>('[data-champ="retirer"]');
+    const ligne = bouton?.closest<HTMLElement>('[data-i]');
+    if (!ligne) return;
+    const lignes = lignesPeriodes();
+    lignes.splice(Number(ligne.dataset.i), 1);
+    (document.activeElement as HTMLElement | null)?.blur();
+    enregistrePeriodes(lignes);
+  });
+  $('btn-periode-ajout').addEventListener('click', () => {
+    periodesSaisie = [...lignesPeriodes(), { du: '', au: '' }];
+    rendrePeriodesOuverture();
   });
 
   // « À quai » en gare d'origine : exprimé en MINUTES à la saisie, stocké en

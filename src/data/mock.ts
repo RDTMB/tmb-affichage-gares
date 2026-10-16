@@ -210,6 +210,11 @@ const PARAMS_DEMO: Params = {
   mode_medias: 'alterne',
   a_quai_origine_s: A_QUAI_ORIGINE_DEFAUT_S,
   vitesse_ticker_px_s: 90,
+  // Valeurs initiales données par l'exploitant le 16/10/2026.
+  periodes_exploitation: [
+    { du: '2026-06-13', au: '2026-09-27' },
+    { du: '2026-12-12', au: '2027-03-29' },
+  ],
   machines: [
     { nom: 'Marie', couleur: '#2E74B5', en_service: true },
     { nom: 'Anne', couleur: '#7FA51E', en_service: true },

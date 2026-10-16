@@ -19,6 +19,7 @@
 // couleurs de rames (injectées dans des attributs `style`) relève d'un autre
 // constat d'audit et n'est volontairement pas traité ici.
 import { A_QUAI_ORIGINE_DEFAUT_S } from './horaires';
+import { periodesValides } from './periodes-exploitation';
 import { VITESSE_TICKER_DEFAUT, vitesseTickerValide } from './ticker';
 import type { Ciel, Machine, MeteoSommet, Motif, Params, VeilleNuit } from './types';
 import type { ModeMedias } from './cycle-medias';
@@ -53,6 +54,7 @@ export const PARAMS_DEFAUT: Params = {
   mode_medias: 'alterne',
   a_quai_origine_s: A_QUAI_ORIGINE_DEFAUT_S,
   vitesse_ticker_px_s: VITESSE_TICKER_DEFAUT,
+  periodes_exploitation: [],
   machines: [],
   motifs: [],
   ciels: [],
@@ -215,6 +217,20 @@ export function paramsAvecCorrections(brut: unknown): {
   note('a_quai_origine_s', o.a_quai_origine_s, params.a_quai_origine_s);
   note('vitesse_ticker_px_s', o.vitesse_ticker_px_s, params.vitesse_ticker_px_s);
   note('mode_medias', o.mode_medias, params.mode_medias);
+  // Une liste VALIDE mais saisie dans le désordre n'est pas une correction :
+  // le tri ne change rien à ce que l'exploitant a déclaré. Seule la liste
+  // rejetée (devenue vide) se signale.
+  if (
+    o.periodes_exploitation !== undefined &&
+    params.periodes_exploitation.length === 0 &&
+    !(Array.isArray(o.periodes_exploitation) && o.periodes_exploitation.length === 0)
+  ) {
+    corriges.push({
+      cle: 'periodes_exploitation',
+      recu: lisible(o.periodes_exploitation),
+      retenu: 'aucune période (liste rejetée)',
+    });
+  }
   // Veille : les deux bornes sont reprises ENSEMBLE, donc la correction se
   // note sur la paire — la moitié d'une plage ne veut rien dire.
   note('veille_nuit', o.veille_nuit, params.veille_nuit);
@@ -259,6 +275,9 @@ export function paramsValides(brut: unknown): Params {
     mode_medias: (o.mode_medias === 'serie' ? 'serie' : 'alterne') satisfies ModeMedias,
     a_quai_origine_s: entierBorne(o.a_quai_origine_s, 0, 1800, PARAMS_DEFAUT.a_quai_origine_s),
     vitesse_ticker_px_s: vitesseTickerValide(o.vitesse_ticker_px_s),
+    // Liste corrompue → liste VIDE : sans période déclarée, le site se
+    // comporte comme avant que la déclaration existe. Triée ici, une fois.
+    periodes_exploitation: periodesValides(o.periodes_exploitation),
     machines: tableau<Machine>(o.machines),
     motifs: tableau<Motif>(o.motifs),
     ciels: tableau<Ciel>(o.ciels),

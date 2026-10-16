@@ -210,11 +210,17 @@ export function resumeCorrection(c: CorrectionEnCours, enregistree: Grille): str
   }
   const e = ecartsCorrection(c);
   const compte =
-    e.trainsAjoutes.length + e.trainsRetires.length + e.heures.length + e.indicateurs.length;
+    e.trainsAjoutes.length +
+    e.trainsRetires.length +
+    e.heures.length +
+    e.indicateurs.length +
+    e.jours.length;
   morceaux.push(
     compte === 0
       ? 'contenu identique'
-      : `${compte} écart(s) avec « ${c.origine.libelle} » : ${e.trainsAjoutes.length} train(s) ajouté(s), ${e.trainsRetires.length} retiré(s), ${e.heures.length} heure(s) et ${e.indicateurs.length} indicateur(s) modifié(s)`,
+      : `${compte} écart(s) avec « ${c.origine.libelle} » : ${e.trainsAjoutes.length} train(s) ajouté(s), ${e.trainsRetires.length} retiré(s), ${e.heures.length} heure(s) et ${e.indicateurs.length} indicateur(s) modifié(s)${
+          e.jours.length > 0 ? `, ${e.jours.length} jour(s) de circulation modifié(s)` : ''
+        }`,
   );
   if (c.commentaire.trim() !== '') morceaux.push(c.commentaire.trim());
   const reinitialisees = [...c.joursAReinitialiser].sort();
