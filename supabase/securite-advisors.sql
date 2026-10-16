@@ -234,8 +234,14 @@ create policy "roles: params medias" on params for all to authenticated
     and (select private.a_un_des_roles(array['admin','supervision','caisse']))
   );
 create policy "roles: params exploitation" on params for all to authenticated
-  using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
-  with check (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')));
+  using (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  )
+  with check (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  );
 create policy "roles: params technique" on params for all to authenticated
   using ((select private.a_le_role('technique')))
   with check ((select private.a_le_role('technique')));

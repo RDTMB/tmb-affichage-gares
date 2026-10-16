@@ -11,8 +11,9 @@
  * il n'a pas d'horaires à montrer (aucune grille saisie pour la date, ou base
  * injoignable).
  *
- * À COMPLÉTER — URL fournie par l'exploitant. JAMAIS inventée : tant qu'elle
- * est vide, l'embed n'affiche aucun lien. `https://` uniquement (toute autre
- * forme est ignorée, voir `urlInfosValide`).
+ * URL fournie par l'exploitant le 16/10/2026 : page « Horaires et Tarifs » du
+ * site, vérifiée ce jour-là (elle répond, et annonçait déjà la fermeture
+ * automnale). JAMAIS inventée : vide, l'embed n'affiche aucun lien.
+ * `https://` uniquement (toute autre forme est ignorée, voir `urlInfosValide`).
  */
-export const URL_INFOS_SITE = '';
+export const URL_INFOS_SITE = 'https://www.tramwaydumontblanc.fr/horaires-tarifs/';

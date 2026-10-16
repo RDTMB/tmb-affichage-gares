@@ -1663,3 +1663,107 @@ describe('affluence — la table du guichet', () => {
     expect(code).not.toMatch(/create table[^\n]*(?!affluence)\bcirculations\b/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Périodes d'ouverture du site web (16/10/2026) — `params.periodes_exploitation`.
+//
+// Une clé nouvelle de `params` n'est ouverte qu'au rôle technique par défaut.
+// Celle-ci est un réglage d'EXPLOITATION : elle rejoint `a_quai_origine_s`
+// dans « roles: params exploitation » (admin seul). Quatre scripts recréent
+// cette politique ; en oublier un, et le rejouer un jour d'audit retirerait
+// la clé à l'admin sans un mot — la supervision montrerait le bloc, la base
+// refuserait l'écriture.
+// ---------------------------------------------------------------------------
+
+describe('Périodes d’ouverture : la forme en base, et l’écriture au seul admin', () => {
+  const MIGRATION = 'migrations/2026-10-periodes-exploitation.sql';
+  const PORTEURS = ['schema.sql', 'securite-advisors.sql', 'ajout-bandeau-veille.sql', MIGRATION];
+
+  function politique(fichier: string): string | undefined {
+    return instructions(sql(fichier)).match(
+      /create policy "roles: params exploitation"[\s\S]*?;/,
+    )?.[0];
+  }
+
+  /** Le texte d'un bloc, du début donné jusqu'à sa fin, espaces normalisés. */
+  function bloc(fichier: string, debut: string, fin: string): string {
+    const code = instructions(sql(fichier));
+    const i = code.indexOf(debut);
+    expect(i, `${debut} introuvable dans ${fichier}`).toBeGreaterThan(-1);
+    return code
+      .slice(i, code.indexOf(fin, i) + fin.length)
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  for (const fichier of PORTEURS) {
+    it(`${fichier} : la politique porte la clé, et reste au seul admin`, () => {
+      const p = politique(fichier);
+      expect(p, 'politique introuvable').toBeDefined();
+      expect(p).toContain("cle in ('a_quai_origine_s', 'periodes_exploitation')");
+      expect(p).toContain("private.a_le_role('admin')");
+      expect(p).not.toContain('caisse');
+      expect(p).not.toContain('supervision');
+      expect(p).not.toContain('a_un_des_roles');
+    });
+  }
+
+  it('aucune AUTRE politique de `params` ne cite la clé : elle n’est ouverte qu’ici', () => {
+    for (const fichier of PORTEURS) {
+      const code = instructions(sql(fichier));
+      for (const p of code.match(/create policy "[^"]*" on params[\s\S]*?;/g) ?? []) {
+        if (p.includes('"roles: params exploitation"')) continue;
+        expect(p, `${fichier}`).not.toContain('periodes_exploitation');
+      }
+    }
+  });
+
+  it('la fonction de forme et la contrainte sont IDENTIQUES dans schema.sql et la migration', () => {
+    for (const [debut, fin] of [
+      ['create or replace function private.periodes_exploitation_valides', '$fn$;'],
+      ['alter table params add constraint params_periodes_exploitation_forme', ');'],
+    ] as const) {
+      expect(bloc('schema.sql', debut, fin)).toBe(bloc(MIGRATION, debut, fin));
+    }
+    expect(instructions(sql('schema.sql'))).toContain(
+      'drop constraint if exists params_periodes_exploitation_forme',
+    );
+  });
+
+  it('la forme refuse ce que le front refuse : tableau, deux clés, dates, ordre, chevauchement', () => {
+    const f = bloc(
+      MIGRATION,
+      'create or replace function private.periodes_exploitation_valides',
+      '$fn$;',
+    );
+    expect(f).toContain("jsonb_typeof(v) = 'array'");
+    expect(f).toContain('jsonb_array_length(v) <= 20'); // PERIODES_MAX, côté front
+    expect(f).toContain('(select count(*) from jsonb_object_keys(e)) <> 2');
+    expect(f).toContain("(e ->> 'du') > (e ->> 'au')");
+    expect(f).toContain("(a.e ->> 'du') <= (b.f ->> 'au')");
+    // Le type d'élément est vérifié AVANT `jsonb_object_keys`, qui lèverait.
+    expect(f.indexOf("jsonb_typeof(e) <> 'object'")).toBeLessThan(f.indexOf('jsonb_object_keys'));
+    expect(f).toContain('immutable');
+    expect(f).toContain("set search_path = ''");
+  });
+
+  it('les valeurs initiales de l’exploitant sont posées, sans jamais écraser une saisie', () => {
+    for (const fichier of ['schema.sql', MIGRATION]) {
+      const code = instructions(sql(fichier));
+      expect(code).toContain(
+        `'[{"du":"2026-06-13","au":"2026-09-27"},{"du":"2026-12-12","au":"2027-03-29"}]'::jsonb`,
+      );
+      expect(code).toMatch(/'periodes_exploitation',[\s\S]{0,200}on conflict \(cle\) do nothing/);
+    }
+  });
+
+  it('la recette RLS rejoue l’UPSERT du front, pour l’admin comme pour les refus', () => {
+    const recette = sql('tests/roles-rls.sql');
+    expect(recette).toContain("OK — admin : écrit les périodes d''ouverture (upsert du front)");
+    expect(recette).toContain("OK — caisse : les périodes d''ouverture lui sont refusées");
+    expect(recette).toContain("OK — supervision : les périodes d''ouverture lui sont refusées");
+    expect(
+      recette.match(/'periodes_exploitation'[\s\S]{0,200}on conflict \(cle\) do update/g)?.length,
+    ).toBe(3);
+  });
+});

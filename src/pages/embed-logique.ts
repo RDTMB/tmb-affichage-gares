@@ -30,6 +30,7 @@ import {
   type FermetureGare,
   type VueJournee,
 } from '../core/horaires';
+import { MESSAGE_NEUTRE, messageSansHoraires } from '../core/periodes-exploitation';
 import { garesSautees } from '../core/train-sup';
 import { courseFermee, horsGrille, ORDRE_GARES } from '../core/types';
 import type {
@@ -103,16 +104,15 @@ export const MOTS_EMBED = {
 } as const;
 
 /**
- * Les deux messages de repli. AUCUN ne dit « fermé » : l'absence de grille en
- * ligne ne prouve pas que le Tramway ne roule pas — seules les grilles d'été
- * sont saisies à ce jour (constaté en production le 15/10/2026), et une
- * fermeture annoncée à tort sur le site public est pire qu'un horaire absent.
+ * Les messages de repli. Ni l'un ni l'autre ne dit « fermé » : l'absence de
+ * grille en ligne ne prouve pas que le Tramway ne roule pas — seules les
+ * grilles d'été étaient saisies le 15/10/2026, et une fermeture annoncée à
+ * tort sur le site public est pire qu'un horaire absent. Le SEUL cas où
+ * « fermé » s'écrit est l'intersaison DÉCLARÉE en supervision
+ * (`messageSansHoraires`, src/core/periodes-exploitation.ts).
  */
 export const MESSAGES_REPLI = {
-  sansGrille: {
-    fr: 'Horaires pas encore disponibles en ligne',
-    en: 'Timetable not yet available online',
-  },
+  sansGrille: MESSAGE_NEUTRE,
   injoignable: {
     fr: 'Horaires en direct momentanément indisponibles',
     en: 'Live timetable temporarily unavailable',
@@ -168,10 +168,15 @@ export function urlInfosValide(valeur: string | undefined | null): string | null
  * - `horaires` : une grille couvre la journée ;
  * - `sans-grille` : `vueJournee()` répond `fermee` OU `indisponible`. Les écrans
  *   de gare distinguent les deux ; le site NON, par décision de l'exploitant
- *   du 15/10/2026 : seules les grilles saisies existent, et « fermé » serait
- *   faux pour toute période d'exploitation pas encore saisie ;
- * - `injoignable` : aucune donnée, ou données trop vieilles (`duree_cache_min`),
- *   ou horloge du visiteur trop fausse pour qu'un compte à rebours dise vrai.
+ *   du 15/10/2026 : seules les grilles saisies existent, et la déduction des
+ *   écrans dirait « fermé » pour toute période pas encore saisie. Ce que le
+ *   site affiche alors dépend des périodes DÉCLARÉES (décision du 16/10/2026,
+ *   `messageSansHoraires`) : intersaison avec date de réouverture, ou message
+ *   neutre ;
+ * - `injoignable` : aucune donnée, ou données trop vieilles (`duree_cache_min`).
+ *   L'horloge du visiteur n'en fait plus partie : l'embed se cale sur l'heure
+ *   du serveur (`embed.ts`), le visiteur n'ayant aucun moyen de régler la
+ *   sienne.
  *
  * `vueJournee()` n'est PAS modifiée : c'est cette page qui traduit sa réponse.
  */
@@ -272,6 +277,8 @@ export interface EntreeRendu {
   vue: VueEmbed;
   maintenant_s: number;
   maintenantMs: number;
+  /** « AAAA-MM-JJ » du jour regardé : se compare aux périodes déclarées. */
+  dateISO: string;
   /** « Mercredi 15 juillet ». */
   dateLongue: string;
   /** « HH:MM » de la dernière lecture réussie. */
@@ -327,8 +334,21 @@ function enteteHtml(e: EntreeRendu): string {
   return `${simulation}<header class="entete"><h1>${bilingue('Horaires en direct', 'Live timetable')}</h1><p class="date"><span class="jour">${echapper(e.dateLongue)}</span>${maj}</p></header>`;
 }
 
-function repliHtml(fr: string, en: string, url: string | null): string {
-  return `<div class="repli" role="status"><p class="titre">${echapper(fr)}</p><p class="en" lang="en">${echapper(en)}</p>${lienInfos(url)}</div>`;
+/**
+ * Bloc de repli : première ligne française en titre, les suivantes dessous,
+ * puis l'anglais. Pour l'intersaison : « …fermé pour l'intersaison. » en
+ * titre, « Réouverture le … » dessous.
+ */
+function repliHtml(
+  fr: readonly string[],
+  en: readonly string[],
+  url: string | null,
+  classe = '',
+): string {
+  const [titre = '', ...suite] = fr;
+  const lignesFr = suite.map((l) => `<p>${echapper(l)}</p>`).join('');
+  const lignesEn = en.map(echapper).join('<br>');
+  return `<div class="repli${classe ? ` ${classe}` : ''}" role="status"><p class="titre">${echapper(titre)}</p>${lignesFr}<p class="en" lang="en">${lignesEn}</p>${lienInfos(url)}</div>`;
 }
 
 /** Retard, ou suppression, avec son motif dans les deux langues quand il est connu. */
@@ -542,7 +562,7 @@ export function rendEmbed(e: EntreeRendu): string {
   const badge = e.badge ? `<p class="fraicheur">${echapper(e.badge)}</p>` : '';
 
   if (e.etat === 'injoignable') {
-    return `${entete}${repliHtml(MESSAGES_REPLI.injoignable.fr, MESSAGES_REPLI.injoignable.en, e.urlInfos)}`;
+    return `${entete}${repliHtml([MESSAGES_REPLI.injoignable.fr], [MESSAGES_REPLI.injoignable.en], e.urlInfos)}`;
   }
   if (e.etat === 'sans-grille' || !e.grille || !e.jour) {
     // PAS DE MESSAGES sans grille — la règle de l'écran de gare hors saison,
@@ -552,8 +572,14 @@ export function rendEmbed(e: EntreeRendu): string {
     // météorologiques », message d'été jamais désactivé, s'affichait
     // au-dessus de « Horaires pas encore disponibles en ligne ». La page
     // d'informations du site (le lien ci-dessous) est l'endroit des annonces
-    // de saison.
-    return `${entete}${repliHtml(MESSAGES_REPLI.sansGrille.fr, MESSAGES_REPLI.sansGrille.en, e.urlInfos)}`;
+    // de saison. Intersaison comprise : son annonce est le message lui-même.
+    //
+    // Le texte vient de `messageSansHoraires`, la fonction même dont la
+    // supervision tire sa phrase d'aperçu : « fermé pour l'intersaison » SEULEMENT
+    // si la date tombe strictement entre deux périodes déclarées, le message
+    // neutre partout ailleurs.
+    const m = messageSansHoraires(e.params?.periodes_exploitation ?? [], e.dateISO);
+    return `${entete}${repliHtml(m.fr, m.en, e.urlInfos, m.intersaison ? 'intersaison' : '')}`;
   }
   const messages = messagesHtml(e);
 

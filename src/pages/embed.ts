@@ -25,7 +25,6 @@ import '../styles/tokens.css';
 import '../styles/embed.css';
 
 import { dateSuivante, grillePourJour, serviceActif, vueJournee } from '../core/horaires';
-import { etatHorloge } from '../core/horloge';
 import { paramsValides } from '../core/params';
 import type { Affluence, GareId, Grille, Jour, Message, Params } from '../core/types';
 // Le fournisseur de démonstration voyage dans le bundle, comme sur les
@@ -67,7 +66,15 @@ const conteneur: HTMLElement = racine;
 
 const url = new URLSearchParams(window.location.search);
 const gareUrl = gareDemandee(url.get('gare'));
-const heure = creeSourceHeure(url.get('simule'), url.get('jour'));
+// L'HEURE DU SERVEUR, pas celle du visiteur : l'écart mesuré sur l'en-tête
+// `Date` des réponses (positif = horloge locale en avance) corrige l'heure,
+// les comptes à rebours ET la date du jour. Tant qu'aucune réponse ne l'a
+// mesuré, l'horloge locale sert, puis la page se recale d'elle-même.
+const heure = creeSourceHeure(
+  url.get('simule'),
+  url.get('jour'),
+  () => fournisseur?.ecartHorlogeMs() ?? null,
+);
 const simulation = bandeauSimulation({ heureSimulee: heure.simulee, jourSimule: heure.jourSimule });
 const urlInfos = urlInfosValide(import.meta.env.VITE_EMBED_URL_INFOS || URL_INFOS_SITE);
 
@@ -122,14 +129,18 @@ function dureeCacheMs(): number {
 }
 
 function rendre(): void {
-  if (jour && jour.date !== heure.dateISO()) sync?.resynchronise(); // passage de minuit
+  // Passage de minuit — ET premier recalage : une horloge visiteur décalée
+  // d'un jour a chargé la mauvaise journée ; dès que la première réponse a
+  // mesuré l'écart, `dateISO()` change et la bonne journée est relue.
+  if (jour && jour.date !== heure.dateISO()) sync?.resynchronise();
 
-  // Mêmes conditions que les écrans pour des données INUTILISABLES : trop
-  // vieilles, ou horloge du visiteur trop fausse pour qu'un compte à rebours
-  // dise vrai (l'écart se mesure sur l'en-tête `Date` des réponses).
+  // Données INUTILISABLES : trop vieilles, comme sur les écrans. L'écart
+  // d'horloge, lui, n'en fait PLUS partie (décision du 16/10/2026) : sur un
+  // quai une horloge fausse se répare, sur le site le visiteur n'y peut rien
+  // et ne verrait aucun horaire. La page se cale donc sur l'heure du serveur
+  // (`creeSourceHeure`, ci-dessus) au lieu de se taire.
   const age = sansSource ? null : (sync?.ageMs() ?? null);
-  const horloge = etatHorloge(fournisseur?.ecartHorlogeMs() ?? null);
-  const utilisables = age !== null && age <= dureeCacheMs() && horloge !== 'ecart-bloquant';
+  const utilisables = age !== null && age <= dureeCacheMs();
   const etat = etatEmbed(utilisables, utilisables ? vueJournee(grilles, jour, grille) : null);
 
   const badge = badgeFraicheur({
@@ -159,6 +170,7 @@ function rendre(): void {
     vue,
     maintenant_s: heure.maintenantS(),
     maintenantMs: heure.maintenantMs(),
+    dateISO: heure.dateISO(),
     dateLongue: heure.dateLongue(),
     heureSync: sync?.heureSync() ?? null,
     badge: badge.visible ? badge.texte : '',

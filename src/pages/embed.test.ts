@@ -83,6 +83,7 @@ function entree(partiel: Partial<EntreeRendu>): EntreeRendu {
     vue: 'departs',
     maintenant_s: h('10:30'),
     maintenantMs: Date.UTC(2026, 6, 15, 8, 30),
+    dateISO: '2026-07-15',
     dateLongue: 'mercredi 15 juillet',
     heureSync: '10:29',
     badge: '',
@@ -100,7 +101,9 @@ function rendJournee(
 ): { html: string; vue: string } {
   const grille = grillePourJour(grilles, jour);
   const vue = vueJournee(grilles, jour, grille);
-  const html = rendEmbed(entree({ etat: etatEmbed(true, vue), grille, jour, ...extra }));
+  const html = rendEmbed(
+    entree({ etat: etatEmbed(true, vue), grille, jour, dateISO: jour.date, ...extra }),
+  );
   return { html, vue };
 }
 
@@ -123,10 +126,15 @@ function jourSansGrille(date = '2026-10-15'): Jour {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Sans grille, jamais « fermé »
+// 1. Sans grille et sans intersaison DÉCLARÉE, jamais « fermé »
+//
+// Ces cas rendent la page SANS période déclarée (`params: null`) : c'était
+// toute la règle au 15/10/2026, c'est encore celle d'une base où la clé
+// `periodes_exploitation` manque ou est corrompue. L'intersaison déclarée,
+// seul cas où « fermé » s'écrit depuis le 16/10/2026, est testée plus bas.
 // ---------------------------------------------------------------------------
 
-describe('sans grille, l’embed n’annonce JAMAIS une fermeture', () => {
+describe('sans grille ni intersaison déclarée, l’embed n’annonce JAMAIS une fermeture', () => {
   it('le cas est bien celui des écrans « fermé » : vueJournee() répond `fermee`', () => {
     // Sans cette vérification, le test suivant pourrait passer sur un autre
     // état et ne rien prouver.
@@ -207,10 +215,11 @@ describe('sans grille, l’embed n’annonce JAMAIS une fermeture', () => {
     expect(avec).toContain('target="_top"');
   });
 
-  it('le réglage de l’URL est vide, ou une URL https valide — jamais une faute de frappe', () => {
-    // Vide tant que l'exploitant ne l'a pas fournie ; une valeur saisie qui ne
-    // passerait pas `urlInfosValide` ferait disparaître le lien sans bruit.
-    expect(URL_INFOS_SITE === '' || urlInfosValide(URL_INFOS_SITE) !== null).toBe(true);
+  it('le réglage de l’URL est l’adresse fournie par l’exploitant, et elle passe la validation', () => {
+    // Une valeur qui ne passerait pas `urlInfosValide` ferait disparaître le
+    // lien sans bruit. Adresse fournie et vérifiée le 16/10/2026.
+    expect(URL_INFOS_SITE).toBe('https://www.tramwaydumontblanc.fr/horaires-tarifs/');
+    expect(urlInfosValide(URL_INFOS_SITE)).toBe(URL_INFOS_SITE);
     expect(codeSeul('src/pages/embed.ts')).toContain(
       'urlInfosValide(import.meta.env.VITE_EMBED_URL_INFOS || URL_INFOS_SITE)',
     );

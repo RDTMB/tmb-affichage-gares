@@ -32,6 +32,8 @@ import {
   serviceActif,
 } from '../core/horaires';
 import { construitCourse, prepareDepartSup, prochainNumeroHorsGrille } from '../core/train-sup';
+import { apercuSiteWeb, erreurPeriodes, periodesValides } from '../core/periodes-exploitation';
+import type { PeriodeExploitation } from '../core/types';
 import type { FormeCourse } from '../core/train-sup';
 import type { RotationSup } from '../core/train-sup';
 import {
@@ -376,6 +378,13 @@ let traductionManuelle = false;
 // partout ailleurs dans ce fichier pour l'affichage.
 let messagesBase: Message[] = [];
 let paramsBase: Params | null = null;
+/**
+ * Périodes d'ouverture EN COURS DE SAISIE, ou `null` quand le bloc suit la
+ * base. Une ligne ajoutée reste vide (donc invalide, donc non enregistrée)
+ * le temps que l'agent la remplisse : sans ce brouillon, le rafraîchissement
+ * suivant l'effacerait.
+ */
+let periodesSaisie: { du: string; au: string }[] | null = null;
 const brouillonCirc: BrouillonCirculations = new Map();
 /** Trains sup dont la suppression attend la publication (numéro de montée). */
 const brouillonSupSupprimes: BrouillonSupSupprimes = new Map();
@@ -4562,6 +4571,7 @@ function rendreParametres(): void {
   $('btn-vers-horaires').addEventListener('click', () => {
     document.querySelector<HTMLButtonElement>('nav.tabs button[data-t="horaires"]')?.click();
   });
+  rendrePeriodesOuverture();
   // Vitesse du bandeau + aperçu en direct. `choixVitesseTicker()` (PURE) dit
   // si l'on est sur un niveau ou sur une vitesse LIBRE : une valeur hors
   // niveaux — saisie à la main, ou posée directement en base — ouvre le champ
@@ -4714,6 +4724,68 @@ function majVerdictLargeur(): void {
   ligne.textContent = deborde
     ? '↔ Plus long que l’écran le plus étroit (4/3) : ce message défilera, même en priorité importante.'
     : '✓ Tient sur tous les écrans : en priorité importante, il restera immobile.';
+}
+
+/**
+ * Bloc « Périodes d'ouverture (site web) » : une ligne par période, l'erreur
+ * de saisie en clair, et la phrase d'APERÇU — ce que le site affiche
+ * aujourd'hui avec ces périodes, par la fonction même que l'embed appelle
+ * (`apercuSiteWeb` → `messageSansHoraires`). L'exploitant voit l'effet de sa
+ * saisie sans ouvrir le site.
+ */
+function rendrePeriodesOuverture(): void {
+  if (!params) return;
+  const lignes: { du: string; au: string }[] = periodesSaisie ?? params.periodes_exploitation;
+  const liste = $('periodes-liste');
+  // Lignes reconstruites SAUF pendant une saisie : un rafraîchissement ne
+  // doit pas effacer la date que l'agent est en train de choisir.
+  if (!liste.contains(document.activeElement)) {
+    liste.innerHTML =
+      lignes.length === 0
+        ? '<div class="machine-row note">Aucune période déclarée.</div>'
+        : lignes
+            .map(
+              (p, i) => `
+    <div class="machine-row" data-i="${i}">
+      <label>Du <input type="date" data-champ="du" value="${echapper(p.du)}" /></label>
+      <label>au <input type="date" data-champ="au" value="${echapper(p.au)}" /></label>
+      <button class="leger" data-champ="retirer">Retirer</button>
+    </div>`,
+            )
+            .join('');
+  }
+  const erreur = erreurPeriodes(lignes);
+  const blocErreur = $('periodes-erreur');
+  blocErreur.hidden = erreur === null;
+  blocErreur.textContent = erreur
+    ? `${erreur} Rien n'est enregistré tant que ce n'est pas corrigé.`
+    : '';
+  // L'aperçu porte sur ce qui est ENREGISTRÉ si la saisie est fautive : c'est
+  // ce que le site montre réellement.
+  const effectives: PeriodeExploitation[] =
+    erreur === null ? periodesValides(lignes) : params.periodes_exploitation;
+  $('periodes-apercu').textContent = apercuSiteWeb(grilles, effectives, dateISO(0));
+}
+
+/** Relit les lignes du bloc, et enregistre si la saisie est acceptable. */
+function enregistrePeriodes(lignes: { du: string; au: string }[]): void {
+  periodesSaisie = lignes;
+  rendrePeriodesOuverture();
+  if (erreurPeriodes(lignes) !== null) return;
+  const periodes = periodesValides(lignes);
+  // Même circuit que le délai « à quai » : écriture, relecture, trace, toast.
+  void provider
+    .saveParams({ periodes_exploitation: periodes })
+    .then(() => {
+      periodesSaisie = null;
+      return rechargeParams();
+    })
+    .then(() => {
+      const resume = periodes.map((p) => `${p.du} → ${p.au}`).join(', ') || 'aucune';
+      bump(`périodes d'ouverture (site web) → ${resume}`);
+      toast("Le site web suit les nouvelles périodes d'ouverture");
+    })
+    .catch(erreurVersToast);
 }
 
 async function rechargeParams(): Promise<void> {
@@ -5160,6 +5232,28 @@ function initParametres(): void {
         })
         .catch(erreurVersToast);
     }
+  });
+
+  // Périodes d'ouverture (site web) : enregistrées dès que la saisie est
+  // complète et cohérente, comme le délai « à quai » juste au-dessus.
+  const lignesPeriodes = (): { du: string; au: string }[] =>
+    [...$('periodes-liste').querySelectorAll<HTMLElement>('[data-i]')].map((ligne) => ({
+      du: ligne.querySelector<HTMLInputElement>('[data-champ="du"]')?.value ?? '',
+      au: ligne.querySelector<HTMLInputElement>('[data-champ="au"]')?.value ?? '',
+    }));
+  $('periodes-liste').addEventListener('change', () => enregistrePeriodes(lignesPeriodes()));
+  $('periodes-liste').addEventListener('click', (ev) => {
+    const bouton = (ev.target as HTMLElement).closest<HTMLElement>('[data-champ="retirer"]');
+    const ligne = bouton?.closest<HTMLElement>('[data-i]');
+    if (!ligne) return;
+    const lignes = lignesPeriodes();
+    lignes.splice(Number(ligne.dataset.i), 1);
+    (document.activeElement as HTMLElement | null)?.blur();
+    enregistrePeriodes(lignes);
+  });
+  $('btn-periode-ajout').addEventListener('click', () => {
+    periodesSaisie = [...lignesPeriodes(), { du: '', au: '' }];
+    rendrePeriodesOuverture();
   });
 
   // « À quai » en gare d'origine : exprimé en MINUTES à la saisie, stocké en

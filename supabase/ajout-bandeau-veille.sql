@@ -61,8 +61,14 @@ create policy "roles: params medias" on params for all to authenticated
 
 -- Réglage d'exploitation : le chef d'exploitation.
 create policy "roles: params exploitation" on params for all to authenticated
-  using (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')))
-  with check (cle in ('a_quai_origine_s') and (select private.a_le_role('admin')));
+  using (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  )
+  with check (
+    cle in ('a_quai_origine_s', 'periodes_exploitation')
+    and (select private.a_le_role('admin'))
+  );
 
 -- Infrastructure (veille de nuit globale, durée du cache) et toute clé
 -- INCONNUE : le rôle technique. Une clé nouvelle est un réglage

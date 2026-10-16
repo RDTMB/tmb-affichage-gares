@@ -1957,6 +1957,36 @@ tr.paire-fin td {
   font-size: 14px;
 }
 
+/* Périodes d'ouverture (site web) — carte « Grille en service et durées ». */
+.periodes-ouverture {
+  border-top: 1px solid var(--bord);
+  margin-top: 6px;
+}
+
+.periodes-ouverture h3 {
+  font-size: 14px;
+  margin: 12px 18px 4px;
+}
+
+.periodes-ouverture .machine-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.periodes-actions {
+  padding: 8px 18px 0;
+}
+
+.periodes-erreur {
+  color: var(--rouge);
+  font-weight: 700;
+}
+
+.periodes-apercu {
+  color: var(--texte);
+}
+
 .saison .per {
   color: var(--sec);
 }

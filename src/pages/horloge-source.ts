@@ -62,32 +62,53 @@ function jourRetenu(jour: string | null): string | null {
   return jour;
 }
 
-function secondesParis(): number {
-  const [h = 0, m = 0, s = 0] = FORMAT_HMS.format(new Date()).split(':').map(Number);
+function secondesParis(instantMs: number): number {
+  const [h = 0, m = 0, s = 0] = FORMAT_HMS.format(new Date(instantMs)).split(':').map(Number);
   return h * 3600 + m * 60 + s;
 }
 
-export function creeSourceHeure(simule: string | null, jour?: string | null): SourceHeure {
+/**
+ * @param ecartHorlogeMs FACULTATIF — écart mesuré entre l'horloge locale et
+ *   celle du serveur (`DataProvider.ecartHorlogeMs()`, positif = locale EN
+ *   AVANCE), ou `null` tant qu'aucune réponse ne l'a mesuré. Fourni, il
+ *   CORRIGE l'heure : la source suit le serveur, pas le poste. Seul le site
+ *   web s'en sert (embed.ts) : son visiteur ne peut pas régler son horloge.
+ *   Les écrans de gare ne le passent PAS — ils gardent leur règle (dire
+ *   l'écart, puis écran neutre), et donc leur comportement.
+ *
+ *   La correction ne s'applique pas à une heure SIMULÉE (`?simule=`) : elle
+ *   la ferait sauter de la valeur de l'écart à la première réponse, et une
+ *   heure simulée n'a de toute façon aucune réalité à rejoindre.
+ */
+export function creeSourceHeure(
+  simule: string | null,
+  jour?: string | null,
+  ecartHorlogeMs?: () => number | null,
+): SourceHeure {
   let decalage = 0;
   let simulee = false;
   const jourSimule = jourRetenu(jour ?? null);
+  // Instant RÉEL : l'horloge locale, ramenée sur celle du serveur quand un
+  // écart est mesuré. Écart = locale − serveur, donc serveur = locale − écart.
+  const instantMs = (): number => Date.now() - (simulee ? 0 : (ecartHorlogeMs?.() ?? 0));
   // Midi UTC : le formatage en Europe/Paris tombe sur le même jour toute
   // l'année, changements d'heure d'été compris.
-  const dateDuJour = (): Date => (jourSimule ? new Date(`${jourSimule}T12:00:00Z`) : new Date());
+  const dateDuJour = (): Date =>
+    jourSimule ? new Date(`${jourSimule}T12:00:00Z`) : new Date(instantMs());
   // Les secondes sont acceptées : les états « À QUAI » / « DÉPART IMMINENT »
   // se jouent sur une fenêtre de 30 s, impossible à viser à la minute près.
   if (simule && /^\d{1,2}:\d{2}(:\d{2})?$/.test(simule)) {
     const [h = 0, m = 0, s = 0] = simule.split(':').map(Number);
-    decalage = h * 3600 + m * 60 + s - secondesParis();
+    decalage = h * 3600 + m * 60 + s - secondesParis(Date.now());
     simulee = true;
   }
   return {
     simulee,
     jourSimule,
     // `?jour=` ne touche NI `maintenantS` NI `maintenantMs` : voir l'en-tête.
-    maintenantS: () => (((secondesParis() + decalage) % 86400) + 86400) % 86400,
-    maintenantMs: () => Date.now() + decalage * 1000,
-    dateISO: () => jourSimule ?? FORMAT_DATE_ISO.format(new Date()),
+    maintenantS: () => (((secondesParis(instantMs()) + decalage) % 86400) + 86400) % 86400,
+    maintenantMs: () => instantMs() + decalage * 1000,
+    dateISO: () => jourSimule ?? FORMAT_DATE_ISO.format(new Date(instantMs())),
     dateLongue: () => {
       const d = FORMAT_DATE_LONGUE.format(dateDuJour());
       return d.charAt(0).toUpperCase() + d.slice(1);
