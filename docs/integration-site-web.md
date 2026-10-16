@@ -6,8 +6,14 @@ page du site, et les horaires s'affichent et se mettent à jour tout seuls.
 
 ## Le code à coller
 
-Dans le CMS, ajoutez un bloc « HTML personnalisé » (ou « code », « embed »,
-selon le CMS) et collez **les deux parties** ci-dessous, telles quelles.
+Le site du Tramway est un **WordPress** (réalisé par l'agence Novius). Dans
+l'éditeur de la page, ajoutez un bloc **« HTML personnalisé »** et collez
+**les deux parties** ci-dessous, telles quelles.
+
+Si, à l'enregistrement, le bloc retire l'`<iframe>` (ou le `<script>`), ce
+n'est pas une erreur de collage : votre compte n'a pas le droit d'insérer ce
+type de code. C'est un droit à demander à l'administrateur du site WordPress
+(ou à l'agence Novius) — il n'y a rien à changer au code.
 
 ```html
 <iframe
@@ -87,16 +93,36 @@ pointé sur la préversion.
 - **Pas de « temps réel » à la seconde** : une modification saisie en
   supervision (retard, suppression) apparaît sur le site **au plus une minute
   plus tard**. Les écrans de gare, eux, la reçoivent immédiatement.
-- **Elle n'annonce jamais que le Tramway est fermé.** Quand aucune grille
-  horaire n'est saisie pour la date du jour, elle affiche « Horaires pas encore
-  disponibles en ligne / Timetable not yet available online », suivi d'un lien
-  vers la page d'informations du site lorsque son adresse a été fournie
-  (réglage `src/pages/embed-reglages.ts`, à faire compléter). Les annonces de
-  saison (dates d'ouverture) se font donc **sur le site lui-même**.
-- Si la base de données est injoignable, elle affiche « Horaires en direct
-  momentanément indisponibles » et réessaie seule ; jamais d'horaires
-  périmés de plus de quelques minutes.
+- **Elle n'invente pas de fermeture.** Elle ne dit « fermé » que pendant une
+  intersaison que l'exploitation a déclarée (voir plus bas).
+- **Pas de messages de l'exploitation quand il n'y a pas d'horaires** : un
+  message d'été oublié resterait sinon affiché tout l'hiver.
+- Jamais d'horaires périmés de plus de quelques minutes.
 - Pas de réservation ni de vente.
+
+## Les quatre messages possibles
+
+| Quand | La page affiche |
+| --- | --- |
+| Des horaires existent pour aujourd'hui | Les horaires (onglets par gare, journée complète). |
+| Pas d'horaires aujourd'hui, et on est **entre deux périodes d'ouverture** déclarées | « Le Tramway du Mont-Blanc est fermé pour l'intersaison. Réouverture le samedi 12 décembre 2026. » (et en anglais), suivi du lien « Plus d'informations ». |
+| Pas d'horaires aujourd'hui, **pendant** une période d'ouverture, **avant** la première ou **après** la dernière, ou aucune période déclarée | « Horaires pas encore disponibles en ligne / Timetable not yet available online », suivi du même lien. La page ne dit rien qu'on ne lui a pas dit. |
+| La base de données ne répond pas | « Horaires en direct momentanément indisponibles », et la page réessaie toute seule. |
+
+Le lien « Plus d'informations » mène à la page « Horaires et Tarifs » du site
+(`https://www.tramwaydumontblanc.fr/horaires-tarifs/`) : c'est là que se font
+les annonces de saison.
+
+L'heure affichée est celle du serveur, pas celle de l'ordinateur ou du
+téléphone du visiteur : une horloge mal réglée ne change rien à ce qu'il voit.
+
+## Où changer les périodes d'ouverture
+
+**Rien à faire côté site.** Les dates d'ouverture (été, hiver) se règlent dans
+la **Supervision**, onglet **Paramètres**, carte « Grille en service et durées
+d'affichage », bloc **« Périodes d'ouverture (site web) »**, avec un compte
+**admin**. Une phrase sous la liste dit ce que le site affiche aujourd'hui avec
+ces dates ; le site suit dans la minute.
 
 ## Ne JAMAIS intégrer `grille.html` ou `ecran.html` à la place
 
