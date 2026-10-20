@@ -716,7 +716,7 @@ main {
 /* ARRIVÉE au terminus exceptionnel : case NEUTRE et fixe, de la taille des
    autres. Ni vert (« À QUAI » dit qu'on peut monter), ni gris éteint
    (« PARTI ») : un liseré orange la rattache à la note qui l'explique. */
-.chip.arrivee {
+.chip.arrivee-terminus {
   background: #1a3454;
   border-color: var(--retard);
   color: var(--retard);

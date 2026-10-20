@@ -18,6 +18,47 @@
   --retard: #a35a00;
   --supprime: var(--tmb-rouge-fonce);
   --bleu-clair: var(--tmb-bleu-clair);
+  /* Rôles que la marine tenait EN DUR : titres, accent (onglet choisi,
+     badge, case « À QUAI »), et ce qui se pose dessus. En clair ce sont les
+     mêmes valeurs qu'avant ; seul le thème sombre les distingue. */
+  --titre: var(--tmb-marine);
+  --accent: var(--tmb-marine);
+  --sur-accent: #fff;
+  --inactif: #8aa0b5;
+  --fraicheur-bg: #fff6e8;
+  --section-bg: #fdecea;
+  --suivant-bg: #eaf3fb;
+  --lisere-pastille: rgba(33, 59, 87, 0.25);
+  --lisere-position: rgba(33, 59, 87, 0.35);
+  color-scheme: light dark;
+}
+
+/* THÈME SOMBRE (20/10/2026) — suit le réglage du VISITEUR, pas celui du site
+   qui contient l'iframe (docs/integration-site-web.md). On remappe les alias
+   ci-dessus sur la palette de tokens.css : aucune règle n'est dupliquée.
+   Contrastes mesurés sur la carte #182c42 (fond de la page) : texte 12,27,
+   texte-sec 7,59, ok 6,33, retard 6,82, supprimé 6,22, accent 9,95 ; sur le
+   fond doux #1f3550 (repli, cellules d'en-tête) : texte 10,77, texte-sec 6,66. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --texte: var(--sombre-texte);
+    --texte-sec: var(--sombre-texte-sec);
+    --fond: var(--sombre-carte);
+    --fond-doux: var(--sombre-doux);
+    --filet: var(--sombre-filet);
+    --ok: var(--sombre-ok);
+    --retard: var(--sombre-retard);
+    --supprime: var(--sombre-alerte);
+    --titre: var(--sombre-titre);
+    --accent: var(--sombre-accent);
+    --sur-accent: var(--sombre-sur-accent);
+    --inactif: #6f88a3;
+    --fraicheur-bg: var(--sombre-retard-bg);
+    --section-bg: var(--sombre-alerte-bg);
+    --suivant-bg: var(--sombre-bleu-bg);
+    --lisere-pastille: var(--sombre-anneau);
+    --lisere-position: var(--sombre-anneau);
+  }
 }
 
 *,
@@ -54,6 +95,7 @@ body {
 h1,
 h2,
 .titre {
+  color: var(--titre);
   font-family: var(--police-titres);
   font-weight: 700;
   margin: 0;
@@ -104,7 +146,7 @@ h2,
   margin: 0 0 8px;
   padding: 4px 8px;
   border-left: 4px solid var(--retard);
-  background: #fff6e8;
+  background: var(--fraicheur-bg);
   font-size: 0.85rem;
 }
 
@@ -139,7 +181,7 @@ h2,
 .bandeau-section {
   margin: 0 0 10px;
   padding: 6px 10px;
-  background: #fdecea;
+  background: var(--section-bg);
   border-left: 4px solid var(--tmb-rouge);
 }
 
@@ -177,7 +219,7 @@ h2,
 
 .infos a,
 .bascule {
-  color: var(--tmb-marine);
+  color: var(--accent);
   font-weight: 700;
 }
 
@@ -224,21 +266,21 @@ h2,
   font-weight: 700;
   font-size: 0.95rem;
   padding: 7px 12px;
-  border: 2px solid var(--tmb-marine);
+  border: 2px solid var(--accent);
   border-radius: 999px;
   background: var(--fond);
-  color: var(--tmb-marine);
+  color: var(--accent);
   cursor: pointer;
 }
 
 .onglet.choisi {
-  background: var(--tmb-marine);
-  color: #fff;
+  background: var(--accent);
+  color: var(--sur-accent);
 }
 
 .onglet.inactif {
   border-color: var(--filet);
-  color: #8aa0b5;
+  color: var(--inactif);
   cursor: not-allowed;
   text-decoration: line-through;
 }
@@ -336,8 +378,8 @@ h2,
 .badge-train {
   font-size: 0.75rem;
   font-weight: 900;
-  background: var(--tmb-marine);
-  color: #fff;
+  background: var(--accent);
+  color: var(--sur-accent);
   border-radius: 4px;
   padding: 1px 5px;
 }
@@ -411,7 +453,7 @@ h2,
   border-radius: 50%;
   box-shadow:
     0 0 0 2px var(--anneau, transparent),
-    0 0 0 3px rgba(33, 59, 87, 0.25);
+    0 0 0 3px var(--lisere-pastille);
 }
 
 .depart .etat {
@@ -437,14 +479,14 @@ h2,
 
 .rebours.quai,
 .rebours.imminent {
-  background: var(--tmb-marine);
-  color: #fff;
-  border-color: var(--tmb-marine);
+  background: var(--accent);
+  color: var(--sur-accent);
+  border-color: var(--accent);
 }
 
 .rebours.quai .en,
 .rebours.imminent .en {
-  color: #fff;
+  color: var(--sur-accent);
 }
 
 .rebours.parti {
@@ -452,7 +494,7 @@ h2,
 }
 
 /* Arrivée au terminus exceptionnel : pas un compte à rebours, une étiquette. */
-.rebours.arrivee {
+.rebours.arrivee-terminus {
   color: var(--retard);
   border-color: var(--retard);
 }
@@ -635,7 +677,7 @@ table.grille thead th.next {
 }
 
 table.grille td.next {
-  background: #eaf3fb;
+  background: var(--suivant-bg);
   font-weight: 900;
 }
 
@@ -655,10 +697,10 @@ table.grille td.retard {
   height: 0.65em;
   border-radius: 50%;
   margin-left: 4px;
-  background: var(--tmb-marine);
+  background: var(--accent);
   box-shadow:
     0 0 0 2px var(--anneau, transparent),
-    0 0 0 3px rgba(33, 59, 87, 0.35);
+    0 0 0 3px var(--lisere-position);
   vertical-align: 0.05em;
 }
 

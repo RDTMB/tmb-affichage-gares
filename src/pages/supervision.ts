@@ -5663,9 +5663,18 @@ async function demarre(): Promise<void> {
   ($('logo') as HTMLImageElement).src = __LOGO_ROND_BLANC__;
   // Logo sur les cartes de connexion : les seuls écrans vus avant d'être
   // identifié, et les seuls où le logo COULEUR a sa place (fond blanc).
-  document
-    .querySelectorAll<HTMLImageElement>('.logo-connexion')
-    .forEach((img) => (img.src = __LOGO_ROND__));
+  // THÈME SOMBRE (20/10/2026) : la carte devient sombre, et le logo couleur
+  // y perd ses traits NOIRS (#0a0b09) — on prend alors le logo rond BLANC,
+  // celui de l'en-tête. Suivi en direct : le visiteur peut basculer son
+  // système sans recharger la page.
+  const sombre = window.matchMedia('(prefers-color-scheme: dark)');
+  const poseLogosConnexion = (): void => {
+    document
+      .querySelectorAll<HTMLImageElement>('.logo-connexion')
+      .forEach((img) => (img.src = sombre.matches ? __LOGO_ROND_BLANC__ : __LOGO_ROND__));
+  };
+  poseLogosConnexion();
+  sombre.addEventListener('change', poseLogosConnexion);
   rendreBaseServie();
   rendreVersion();
   initOnglets();

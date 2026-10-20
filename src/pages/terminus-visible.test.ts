@@ -124,7 +124,7 @@ describe('§2 — au terminus exceptionnel, une ligne d’ARRIVÉE', () => {
     const montee = html.slice(html.indexOf('sens-montee'), html.indexOf('sens-descente'));
     const t5 = ligneDuTrain(montee, 5);
     expect(t5).not.toBe('');
-    expect(t5.startsWith(' arrivee"')).toBe(true);
+    expect(t5.startsWith(' arrivee-terminus"')).toBe(true);
     expect(t5).toContain('<span class="heure">09:40</span>');
     const mots = neContinuePas('bellevue', 'Bellevue');
     expect(t5).toContain(`<b class="alerte">${echapper(`${mots.fr} / ${mots.en}`)}</b>`);
@@ -134,7 +134,7 @@ describe('§2 — au terminus exceptionnel, une ligne d’ARRIVÉE', () => {
   it('pas de compte à rebours de départ, pas de « PARTI » — une étiquette « Arrivée »', () => {
     for (const heure of ['09:00', '09:40', '09:42']) {
       const t5 = ligneDuTrain(rend(HIVER, hiverT5AuColDeVoza(), 'col-de-voza', heure), 5);
-      expect(t5, heure).toContain('class="rebours arrivee"');
+      expect(t5, heure).toContain('class="rebours arrivee-terminus"');
       expect(t5, heure).toContain(MOT_ARRIVEE.fr);
       expect(t5, heure).not.toContain('PARTI');
       expect(t5, heure).not.toContain(' min<');
@@ -147,8 +147,8 @@ describe('§2 — au terminus exceptionnel, une ligne d’ARRIVÉE', () => {
     const descente = html.slice(html.indexOf('sens-descente'));
     const t6 = ligneDuTrain(descente, 6);
     expect(t6).not.toBe('');
-    expect(t6.startsWith(' arrivee"')).toBe(false);
-    expect(t6).not.toContain('rebours arrivee');
+    expect(t6.startsWith(' arrivee-terminus"')).toBe(false);
+    expect(t6).not.toContain('rebours arrivee-terminus');
   });
 
   it('la ligne disparaît 2 min après l’heure d’arrivée', () => {
@@ -160,8 +160,8 @@ describe('§2 — au terminus exceptionnel, une ligne d’ARRIVÉE', () => {
 
   it('terminus NORMAL (Bellevue en hiver) : aucune ligne d’arrivée', () => {
     const html = rend(HIVER, generationJour(HIVER, DATE_HIVER), 'bellevue', '08:00');
-    expect(html).not.toContain('depart arrivee');
-    expect(html).not.toContain('rebours arrivee');
+    expect(html).not.toContain('depart arrivee-terminus');
+    expect(html).not.toContain('rebours arrivee-terminus');
   });
 
   it('train SUPPRIMÉ : aucune ligne d’arrivée', () => {
@@ -198,7 +198,7 @@ describe('l’écran de gare suit les mêmes règles', () => {
 
   it('la case et la note de l’arrivée viennent de la règle commune', () => {
     expect(ecran).toMatch(
-      /if \(arriveeAuTerminusExceptionnel\(p\)\) \{\s*return `<span class="chip arrivee">/,
+      /if \(arriveeAuTerminusExceptionnel\(p\)\) \{\s*return `<span class="chip arrivee-terminus">/,
     );
     expect(ecran).toContain('neContinuePas(vers, nomGare(vers))');
   });
@@ -224,6 +224,24 @@ describe('l’écran de gare suit les mêmes règles', () => {
       '`${formatHeure(reelle)}<span class="retard-old">théorique ${formatHeure(theorique)}</span>`',
     );
     expect(ecran).toMatch(/: formatHeure\(theorique\);/);
+  });
+
+  it('jamais la classe `arrivee` : c’est celle du bandeau « prochaine arrivée »', () => {
+    // Constaté au navigateur le 20/10/2026 : une rangée `.arrivee` héritait du
+    // bandeau (flex, marges de 2vw) et ses colonnes se décalaient de 160 à
+    // 290 px par rapport aux autres rangées.
+    expect(source('src/styles/ecran.css')).toMatch(/^\.arrivee \{/m);
+    // (`$('arrivee')`, l'identifiant du bandeau lui-même, reste permis.)
+    expect(ecran).not.toMatch(/' arrivee'|class="chip arrivee"|rangee arrivee/);
+    expect(ecran).toContain("${arrivee ? ' arrivee-terminus' : ''}");
+  });
+
+  it('la note d’arrivée prend la taille réduite des longues mentions (mesuré à 1920×1080)', () => {
+    // 81 caractères à 1,95vh : 795,6 px pour 748 px utiles — la colonne
+    // Destination s'élargissait de 47 px. En `note-exp` (1,62vh), elle tient.
+    expect(ecran).toContain(
+      "p.express || sansArret !== '' || prive !== '' || arrivee ? ' note-exp' : ''",
+    );
   });
 
   it('la note d’arrivée porte la classe d’alerte', () => {

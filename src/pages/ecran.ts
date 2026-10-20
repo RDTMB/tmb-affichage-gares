@@ -238,7 +238,7 @@ function chipHtml(p: PassageGare, maintenant_s: number): string {
   // les autres (charte) — ni compte à rebours, ni « PARTI » : ce train ne
   // repart pas d'ici.
   if (arriveeAuTerminusExceptionnel(p)) {
-    return `<span class="chip arrivee"><b>${MOT_ARRIVEE.fr.toUpperCase()}</b><small>${MOT_ARRIVEE.en.toUpperCase()}</small></span>`;
+    return `<span class="chip arrivee-terminus"><b>${MOT_ARRIVEE.fr.toUpperCase()}</b><small>${MOT_ARRIVEE.en.toUpperCase()}</small></span>`;
   }
   if (p.depart_s === null) return '';
   const c = compteARebours(
@@ -444,12 +444,12 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     ]),
   )}</span></span>`;
 
-  return `<div class="gridrow rangee${supprime ? ' supprime' : ''}${arrivee ? ' arrivee' : ''}">
+  return `<div class="gridrow rangee${supprime ? ' supprime' : ''}${arrivee ? ' arrivee-terminus' : ''}">
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
       <div class="txt"><div class="dest">${badge}<span class="nom-dest${limitee ? ' alerte' : ''}">${echapper(nomGare(p.destination))}</span>${priveHtml}${affluenceHtml}${motrice}</div><div class="note${
-        p.express || sansArret !== '' || prive !== '' ? ' note-exp' : ''
+        p.express || sansArret !== '' || prive !== '' || arrivee ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
     <div class="r-train">${pastille}<div class="txt"><span class="nom-rame">${echapper(p.rame)}</span></div></div>

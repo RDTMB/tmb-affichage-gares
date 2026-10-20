@@ -473,7 +473,7 @@ function ligneDepart(
   // une minute se lirait comme le prochain.
   let rebours = '';
   if (arrivee) {
-    rebours = `<span class="rebours arrivee">${bilingue(MOT_ARRIVEE.fr, MOT_ARRIVEE.en)}</span>`;
+    rebours = `<span class="rebours arrivee-terminus">${bilingue(MOT_ARRIVEE.fr, MOT_ARRIVEE.en)}</span>`;
   } else if (!supprime && p.depart_s !== null) {
     const c = compteARebours(
       p.depart_s,
@@ -542,7 +542,7 @@ function ligneDepart(
     ...trains.values(),
   ]);
 
-  return `<li class="depart${supprime ? ' supprime' : ''}${retard ? ' en-retard' : ''}${arrivee ? ' arrivee' : ''}">
+  return `<li class="depart${supprime ? ' supprime' : ''}${retard ? ' en-retard' : ''}${arrivee ? ' arrivee-terminus' : ''}">
 <span class="heure">${heure}</span>
 <span class="corps"><span class="dest"><span class="badge-train">${echapper(badge)}</span> <span class="nom-dest${limitee ? ' alerte' : ''}">${echapper(nomGare(p.destination))}</span>${pastilleMention}${
     p.express ? '<span class="express">EXPRESS</span>' : ''
