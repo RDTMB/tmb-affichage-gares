@@ -216,11 +216,29 @@ describe('monteChoixTheme — le sélecteur', () => {
       expect(c.classes.has('choix-theme')).toBe(true);
       expect(c.enfants.map((b) => b.textContent)).toEqual(['Auto', 'Clair', 'Sombre']);
       expect(c.enfants.map((b) => b.dataset.choix)).toEqual(['auto', 'clair', 'sombre']);
-      for (const b of c.enfants) {
-        expect(b.type).toBe('button');
-        expect(b.title).not.toBe('');
-      }
+      expect(c.enfants.map((b) => b.title)).toEqual([
+        'Suivre le réglage de l’appareil',
+        'Toujours en clair',
+        'Toujours en sombre',
+      ]);
+      for (const b of c.enfants) expect(b.type).toBe('button');
     }
+  });
+
+  it('un conteneur déjà garni est VIDÉ : trois boutons, pas un de plus', () => {
+    vi.stubGlobal('document', { createElement: () => new FauxElement() });
+    const conteneur = new FauxElement();
+    conteneur.append(new FauxElement());
+    monteChoixTheme({
+      conteneurs: [conteneur] as unknown as HTMLElement[],
+      racine: new FauxElement() as unknown as HTMLElement,
+      stockage: () => stockageMemoire(),
+      appareilSombre: Object.assign(new FauxElement(), {
+        matches: false,
+      }) as unknown as MediaQueryList,
+      surChangement: () => {},
+    });
+    expect(conteneur.enfants).toHaveLength(3);
   });
 
   it('au montage : le choix retenu est annoncé, posé, et le thème effectif transmis', () => {
