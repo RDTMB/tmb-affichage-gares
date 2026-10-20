@@ -255,6 +255,10 @@ export const ONGLETS = [
   'parametres',
   'utilisateurs',
   'journal',
+  // « Version » : le code en ligne et ses nouveautés (src/core/version.ts,
+  // nouveautes/). Il SUIT le Journal — même plafond, même réglage : c'est de
+  // la consultation après coup. Voir ONGLETS_ADOSSES.
+  'version',
 ] as const;
 
 export type Onglet = (typeof ONGLETS)[number];
@@ -285,7 +289,33 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   parametres: ['parametres.exploitation'],
   utilisateurs: ['comptes.lire'],
   journal: ['journal'],
+  version: ['journal'],
 };
+
+/**
+ * Onglets ADOSSÉS à un autre : ils n'ont pas de réglage propre dans
+ * `onglets_par_role` et suivent celui de leur hôte. « Version » est visible
+ * exactement quand « Journal » l'est — même plafond, même rangement.
+ *
+ * Pourquoi pas une ligne à eux : la base n'en connaît pas le nom (contrainte
+ * CHECK de `onglets_par_role.onglet`), et chaque rôle y a déjà ses lignes.
+ * Sans cette règle, un onglet ajouté côté code serait RETRANCHÉ à tous les
+ * rôles réglés — c'est-à-dire à tous.
+ *
+ * Ce n'est pas une porte : le plafond s'applique toujours, et masquer l'hôte
+ * masque l'onglet adossé. La carte de réglage ne les propose pas.
+ */
+export const ONGLETS_ADOSSES: Readonly<Partial<Record<Onglet, Onglet>>> = { version: 'journal' };
+
+/** Onglets sans réglage propre (voir ONGLETS_ADOSSES). */
+export const ONGLETS_NON_REGLABLES: readonly Onglet[] = ONGLETS.filter(
+  (o) => ONGLETS_ADOSSES[o] !== undefined,
+);
+
+/** Onglets que la carte « Onglets visibles par rôle » règle (et que la base connaît). */
+export const ONGLETS_REGLABLES: readonly Onglet[] = ONGLETS.filter(
+  (o) => !ONGLETS_NON_REGLABLES.includes(o),
+);
 
 /**
  * PLAFOND d'un rôle : les onglets que ses droits ouvrent. C'est la limite
@@ -335,7 +365,10 @@ export function ongletsVisibles(
   for (const role of roles) {
     const plafond = plafondOnglets(role);
     const regles = visibilite?.[role];
-    const vus = regles && regles.length > 0 ? plafond.filter((o) => regles.includes(o)) : plafond;
+    const vus =
+      regles && regles.length > 0
+        ? plafond.filter((o) => regles.includes(ONGLETS_ADOSSES[o] ?? o))
+        : plafond;
     for (const onglet of vus) retenus.add(onglet);
   }
   return ONGLETS.filter((onglet) => retenus.has(onglet));

@@ -11,7 +11,8 @@ import {
   ATTRIBUABLE_PAR,
   aLeDroit,
   LIBELLE_ROLE,
-  ONGLETS,
+  ONGLETS_NON_REGLABLES,
+  ONGLETS_REGLABLES,
   ONGLET_DE_SECOURS,
   ROLES,
   ROLES_PROTEGES,
@@ -1319,7 +1320,10 @@ describe('Table onglets_par_role : forme et droits', () => {
     it(`${fichier} : les huit onglets sont énumérés par une CONTRAINTE`, () => {
       // Un onglet inconnu n'a aucun sens et ne doit pas pouvoir entrer.
       const contrainte = code.match(/check \(onglet in \(([\s\S]*?)\)\)/)?.[1] ?? '';
-      for (const onglet of ONGLETS) expect(contrainte).toContain(`'${onglet}'`);
+      for (const onglet of ONGLETS_REGLABLES) expect(contrainte).toContain(`'${onglet}'`);
+      // …et ceux qui ne se règlent pas n'y sont PAS : la base ne les connaît
+      // pas, c'est ce qui les tient hors du réglage (src/core/roles.ts).
+      for (const onglet of ONGLETS_NON_REGLABLES) expect(contrainte).not.toContain(`'${onglet}'`);
     });
 
     it(`${fichier} : RLS activée et droits par défaut RÉVOQUÉS`, () => {
@@ -1435,6 +1439,8 @@ describe('onglets_par_role : le seed est la PHOTOGRAPHIE de la matrice', () => {
     ROLES.flatMap((r) =>
       plafondOnglets(r)
         .filter((o) => !(r === 'caisse' && o === 'horaires'))
+        // Un onglet NON RÉGLABLE n'a pas de ligne : la base ne connaît pas son nom.
+        .filter((o) => !ONGLETS_NON_REGLABLES.includes(o))
         .map((o) => `${r} ${o}`),
     ),
   );

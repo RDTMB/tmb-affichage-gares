@@ -112,6 +112,9 @@ import {
 } from './brouillon';
 import { poseFavicon } from './favicon';
 import { poseMarquePreversion } from './preversion';
+import nouveautes from 'virtual:nouveautes';
+import { libelleVersion, lireVersionApp } from '../core/version';
+import { detailVersionHtml, nouveautesHtml } from './version-onglet';
 import {
   anneauSur,
   contenuTicker,
@@ -1078,6 +1081,55 @@ function rendreBaseServie(): void {
   window.setInterval(tic, 1000);
 }
 
+/** Version du code en ligne, figée au build (vite.config.ts, deploy.yml). */
+const VERSION = lireVersionApp(__VERSION_APP__);
+
+/**
+ * Version : le libellé court dans le sous-titre de l'en-tête (pour TOUS les
+ * rôles, et avant même la connexion), et l'onglet Version en entier. Posée une
+ * fois : le code qui tourne ne change pas en cours de session.
+ *
+ * Dans le `<small>` et non en pastille : l'en-tête se replie déjà à trois
+ * badges de rôle (canevas 1g), une pastille de plus le ferait descendre d'un
+ * rang de plus. Le libellé devient un lien vers l'onglet dans
+ * `appliqueRoles()`, pour les seuls rôles qui voient cet onglet.
+ */
+function rendreVersion(): void {
+  const entete = $('version-entete');
+  entete.textContent = ` · ${libelleVersion(VERSION)}`;
+  const ouvrir = (): void => {
+    if (!entete.classList.contains('cliquable')) return;
+    document.querySelector<HTMLButtonElement>('nav.tabs button[data-t="version"]')?.click();
+  };
+  entete.addEventListener('click', ouvrir);
+  entete.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    ouvrir();
+  });
+  $('version-detail').innerHTML = detailVersionHtml(
+    VERSION,
+    baseServie(window.TMB_CONFIG?.supabaseUrl),
+  );
+  $('version-nouveautes').innerHTML = nouveautesHtml(nouveautes);
+}
+
+/** Le libellé de version n'est un lien que si l'onglet Version est visible. */
+function brancheLienVersion(visibles: readonly Onglet[]): void {
+  const entete = $('version-entete');
+  const cliquable = visibles.includes('version');
+  entete.classList.toggle('cliquable', cliquable);
+  if (cliquable) {
+    entete.setAttribute('role', 'button');
+    entete.tabIndex = 0;
+    entete.title = 'Voir le détail de la version et les nouveautés';
+  } else {
+    entete.removeAttribute('role');
+    entete.removeAttribute('tabindex');
+    entete.removeAttribute('title');
+  }
+}
+
 /**
  * Applique les rôles CUMULÉS de l'agent : onglets visibles par union des
  * droits, puis cartes et commandes que ses rôles n'ouvrent pas. Masquer vaut
@@ -1101,6 +1153,7 @@ function appliqueRoles(): void {
   // d'onglets étant réglable en exploitation, « Administration » suivi de rien
   // flotterait sinon à droite d'une barre de quatre onglets.
   const groupes = groupesNavigation(visibles);
+  brancheLienVersion(visibles);
   montreSi('groupe-exploitation', groupes.exploitation.length > 0);
   montreSi('groupe-administration', groupes.administration.length > 0);
   // …et s'il ne reste QUE l'administration, elle s'ancre à gauche : un filet
@@ -5552,6 +5605,7 @@ async function demarre(): Promise<void> {
     .querySelectorAll<HTMLImageElement>('.logo-connexion')
     .forEach((img) => (img.src = __LOGO_ROND__));
   rendreBaseServie();
+  rendreVersion();
   initOnglets();
   initCirculations();
   initMessages();

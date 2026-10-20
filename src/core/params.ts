@@ -183,6 +183,30 @@ function lisible(v: unknown): string {
 }
 
 /**
+ * Forme canonique pour COMPARER deux valeurs : clés d'objet triées,
+ * récursivement. jsonb ne garde pas l'ordre de saisie — il range les clés par
+ * longueur, `{debut, fin}` revient `{fin, debut}` — et une comparaison des
+ * chaînes brutes y voyait une correction que le réenregistrement ne pouvait
+ * jamais lever. L'ordre des tableaux, lui, reste significatif.
+ */
+function comparable(v: unknown): string {
+  const trie = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(trie);
+    if (x !== null && typeof x === 'object') {
+      const r: Record<string, unknown> = {};
+      for (const k of Object.keys(x).sort()) r[k] = trie((x as Record<string, unknown>)[k]);
+      return r;
+    }
+    return x;
+  };
+  try {
+    return lisible(trie(v));
+  } catch {
+    return lisible(v);
+  }
+}
+
+/**
  * Paramètres sûrs À AFFICHER, ET la liste de ce qui a dû être corrigé.
  *
  * POURQUOI DEUX PORTES ET UNE SEULE FONCTION. L'assainissement remplaçait une
@@ -208,7 +232,7 @@ export function paramsAvecCorrections(brut: unknown): {
   /** Note une correction — seulement si la valeur reçue EXISTAIT. */
   const note = (cle: string, recu: unknown, retenu: unknown): void => {
     if (recu === undefined) return; // paramètre jamais posé : ce n'est pas une correction
-    if (lisible(recu) === lisible(retenu)) return;
+    if (comparable(recu) === comparable(retenu)) return;
     corriges.push({ cle, recu: lisible(recu), retenu: lisible(retenu) });
   };
   const params = paramsValides(o);
