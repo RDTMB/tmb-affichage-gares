@@ -155,6 +155,7 @@ import {
 } from '../core/ticker';
 import type { ChoixVitesse } from '../core/ticker';
 import { cielUtilise, optionsCiel, ordonneCiels } from './meteo-ciel';
+import { monteChoixTheme } from './theme-supervision';
 import {
   actionGroupeeFacultatifs,
   ajusteSection,
@@ -5665,16 +5666,18 @@ async function demarre(): Promise<void> {
   // identifié, et les seuls où le logo COULEUR a sa place (fond blanc).
   // THÈME SOMBRE (20/10/2026) : la carte devient sombre, et le logo couleur
   // y perd ses traits NOIRS (#0a0b09) — on prend alors le logo rond BLANC,
-  // celui de l'en-tête. Suivi en direct : le visiteur peut basculer son
-  // système sans recharger la page.
-  const sombre = window.matchMedia('(prefers-color-scheme: dark)');
-  const poseLogosConnexion = (): void => {
-    document
-      .querySelectorAll<HTMLImageElement>('.logo-connexion')
-      .forEach((img) => (img.src = sombre.matches ? __LOGO_ROND_BLANC__ : __LOGO_ROND__));
-  };
-  poseLogosConnexion();
-  sombre.addEventListener('change', poseLogosConnexion);
+  // celui de l'en-tête. Il suit le thème EFFECTIF (choix du poste, sinon
+  // réglage de l'appareil), en direct : changer l'un ou l'autre suffit.
+  monteChoixTheme({
+    conteneurs: document.querySelectorAll<HTMLElement>('[data-choix-theme]'),
+    racine: document.documentElement,
+    stockage: () => localStorage,
+    appareilSombre: window.matchMedia('(prefers-color-scheme: dark)'),
+    surChangement: (theme) =>
+      document
+        .querySelectorAll<HTMLImageElement>('.logo-connexion')
+        .forEach((img) => (img.src = theme === 'sombre' ? __LOGO_ROND_BLANC__ : __LOGO_ROND__)),
+  });
   rendreBaseServie();
   rendreVersion();
   initOnglets();
