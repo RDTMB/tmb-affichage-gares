@@ -111,11 +111,10 @@ describe('supervision.css — les seuils', () => {
       .map(Number)
       .sort((a, b) => b - a);
     expect(largeurs).toEqual([1150, 1100, 768, 700]);
-    // Depuis le 20/10/2026, une cinquième requête — et une seule — ne parle
-    // pas de largeur : le thème sombre (`prefers-color-scheme: dark`).
-    const sombre = medias.filter((b) => b.requete.includes('prefers-color-scheme: dark'));
-    expect(sombre).toHaveLength(1);
-    expect(medias.filter((b) => !sombre.includes(b))).toHaveLength(4);
+    // Le thème sombre (20/10/2026) n'est PAS une requête média : depuis le
+    // choix Auto / Clair / Sombre, c'est `color-scheme` qui bascule les
+    // `light-dark()` (theme-supervision.test.ts).
+    expect(medias).toHaveLength(4);
   });
 
   it('les seuils préexistants gardent leur rôle', () => {
