@@ -61,6 +61,9 @@ Un **titre** (une ligne, ce que le lot change du point de vue de qui l'utilise)
 et une **description** complète en bloc Markdown : le constat, ce qui a été
 fait, le risque et ce qui le couvre, ce qui reste ouvert. La description est
 écrite d'avance : si elle ne s'écrit pas, le lot n'est pas clair.
+Rappeler dans le prompt : la session ouvre la PR elle-même avec cette
+description, et ni les commits ni la PR ne portent de lien de session
+(voir « Commits et pull requests » dans `CLAUDE.md`).
 
 ## `## Reste ouvert`
 
