@@ -287,7 +287,7 @@ describe('terminus hors section : on le DIT, on laisse passer', () => {
       terminus: 'nid-daigle',
       gareDebut: 'le-fayet',
       gareFin: 'bellevue',
-      terminusBellevue: false,
+      gareBascule: null,
       nomGare,
     });
     expect(message, 'aucun avertissement sur un terminus hors section').not.toBeNull();
@@ -299,10 +299,32 @@ describe('terminus hors section : on le DIT, on laisse passer', () => {
       terminus: 'nid-daigle',
       gareDebut: 'le-fayet',
       gareFin: 'nid-daigle',
-      terminusBellevue: true,
+      gareBascule: 'bellevue',
       nomGare,
     });
     expect(message).toContain('à traiter');
+  });
+
+  it('au-delà du Col de Voza un jour de bascule au Col de Voza : Bellevue aussi est fermée', () => {
+    const message = avertissementTerminusCourse({
+      terminus: 'bellevue',
+      gareDebut: 'le-fayet',
+      gareFin: 'nid-daigle',
+      gareBascule: 'col-de-voza',
+      nomGare,
+    });
+    expect(message).toContain('limitée à col-de-voza');
+    expect(message).toContain('bellevue et nid-daigle');
+    // …mais un terminus AU Col de Voza, lui, n'appelle rien.
+    expect(
+      avertissementTerminusCourse({
+        terminus: 'col-de-voza',
+        gareDebut: 'le-fayet',
+        gareFin: 'nid-daigle',
+        gareBascule: 'col-de-voza',
+        nomGare,
+      }),
+    ).toBeNull();
   });
 
   it('dans la section : rien à dire', () => {
@@ -311,7 +333,7 @@ describe('terminus hors section : on le DIT, on laisse passer', () => {
         terminus: 'col-de-voza',
         gareDebut: 'le-fayet',
         gareFin: 'nid-daigle',
-        terminusBellevue: false,
+        gareBascule: null,
         nomGare,
       }),
     ).toBeNull();

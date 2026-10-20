@@ -30,7 +30,15 @@ import {
   ongletsVisibles,
   plafondOnglets,
 } from '../core/roles';
-import { heureVersSecondes, origineReelle, sectionComplete, terminusReel } from '../core/horaires';
+import {
+  heureVersSecondes,
+  limiteEffective,
+  origineReelle,
+  sectionComplete,
+  terminusAffiche,
+  terminusReel,
+  valeurTerminus,
+} from '../core/horaires';
 import type { FormeCourse } from '../core/train-sup';
 import { echapper } from './affichage-commun';
 import { INTERVALLE_HEARTBEAT_MS } from './affichage-commun';
@@ -1053,8 +1061,8 @@ export function avertissementTerminusCourse(e: {
   terminus: GareId;
   gareDebut: GareId;
   gareFin: GareId;
-  /** La bascule « terminus Bellevue » est-elle active ce jour ? */
-  terminusBellevue: boolean;
+  /** Gare de la bascule « Terminus [gare] à partir du TRAIN N » du jour, null si levée. */
+  gareBascule: GareId | null;
   /** Noms officiels, qui viennent de la grille — jamais écrits en dur ici. */
   nomGare: (g: GareId) => string;
 }): string | null {
@@ -1066,10 +1074,13 @@ export function avertissementTerminusCourse(e: {
       `ce train n'y sera pas annoncé.`
     );
   }
-  if (e.terminusBellevue && rang(e.terminus) > rang('bellevue')) {
+  if (e.gareBascule !== null && rang(e.terminus) > rang(e.gareBascule)) {
+    const fermees = ORDRE_GARES.filter((g) => rang(g) > rang(e.gareBascule ?? g))
+      .map(e.nomGare)
+      .join(' et ');
     return (
-      'La journée est limitée à Bellevue : ce train sera signalé « à traiter » en supervision, ' +
-      "et l'écran du Nid d'Aigle reste en « tronçon fermé »."
+      `La journée est limitée à ${e.nomGare(e.gareBascule)} : ce train sera signalé « à traiter » ` +
+      `en supervision, et l'écran de ${fermees} reste en « tronçon fermé ».`
     );
   }
   return null;
@@ -1485,7 +1496,21 @@ export interface EntreesCelluleTerminus {
    * n'apparaît pas.
    */
   monteeArrivee?: boolean;
+  /**
+   * Terminus proposés à une montée de GRILLE, sommet du jour d'abord
+   * (`terminusProposes()`). Défaut : l'été sur la ligne complète.
+   */
+  choix?: readonly GareId[];
+  /**
+   * Sommet de la GRILLE du jour (`sommetDeLaGrille()`) : une colonne qui ne
+   * descend pas au-dessous ne limite rien (« bellevue » en hiver). Défaut :
+   * Nid d'Aigle.
+   */
+  sommetGrille?: GareId;
 }
+
+/** Terminus proposés par défaut : l'été, ligne complète. */
+const CHOIX_ETE: readonly GareId[] = ['nid-daigle', 'bellevue', 'col-de-voza'];
 
 /** Infobulle du terminus d'un train supplémentaire : il se change en le recréant. */
 export const AIDE_TERMINUS_SUP =
@@ -1517,7 +1542,10 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
     nomGare,
     passagesEffectifs,
     monteeArrivee,
+    choix = CHOIX_ETE,
+    sommetGrille = 'nid-daigle',
   } = e;
+  const sommet = choix[0] ?? sommetGrille;
   const n = c.numero;
   const verrou = lectureSeule ? ' disabled' : '';
   const montee = sens === 'montee';
@@ -1550,43 +1578,61 @@ export function celluleTerminus(e: EntreesCelluleTerminus): string {
     return `${fixe}${parti}${bouton}`;
   }
 
-  // Rotation limitée = colonne Terminus de la MONTÉE sur Bellevue (pour une
-  // montée, circulationMontee est la ligne elle-même). Un facultatif non
-  // activé ou un train supprimé ne circule pas : plus rien à traiter (sinon
-  // toute journée grand service afficherait le signalement par défaut).
-  const aTraiter =
-    circulationMontee?.terminus === 'bellevue' && c.statut !== 'supprime' && !inactif;
+  // Rotation limitée = colonne Terminus de la MONTÉE sur une gare au-dessous
+  // du sommet de la GRILLE (pour une montée, circulationMontee est la ligne
+  // elle-même) — même borne qu'`expressATraiter()`. Un facultatif non activé
+  // ou un train supprimé ne circule pas : plus rien à traiter (sinon toute
+  // journée grand service afficherait le signalement par défaut).
+  const limite = limiteEffective(circulationMontee?.terminus, sommetGrille);
+  const aTraiter = limite !== null && c.statut !== 'supprime' && !inactif;
+  const nomLimite = limite === null ? '' : echapper(nomGare(limite));
 
-  return montee
-    ? express
-      ? aTraiter
-        ? // Express dans une plage limitée : il n'est jamais tronqué (il ne
-          // dessert pas Bellevue) — l'agent tranche explicitement.
-          `<span class="term-bv" title="Un express ne dessert pas Bellevue : à supprimer, ou à maintenir jusqu'au Nid d'Aigle">À traiter ⚠</span>
+  if (montee && express) {
+    if (aTraiter) {
+      // Express dans une plage limitée : il n'est jamais tronqué (il ne
+      // dessert ni Voza ni Bellevue) — l'agent tranche explicitement.
+      return `<span class="term-bv" title="Un express ne dessert pas ${nomLimite} : à supprimer, ou à maintenir jusqu'au ${echapper(nomGare(sommetGrille))}">À traiter ⚠</span>
            <span class="a-traiter">
              <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
              <button class="leger" data-action="express-maintenir" data-numero="${n}"${verrou}>Maintenir</button>
-           </span>`
-        : c.terminus === 'bellevue'
-          ? '<span class="term-fixe">Rotation limitée</span>'
-          : '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>'
-      : `<select data-action="terminus" data-numero="${n}"${verrou}>
-          <option value="nid-daigle" ${c.terminus === 'nid-daigle' ? 'selected' : ''}>Nid d'Aigle</option>
-          <option value="bellevue" ${c.terminus === 'bellevue' ? 'selected' : ''}>Bellevue ⚠</option>
-        </select>`
-    : circulationMontee?.terminus === 'bellevue'
-      ? express
-        ? // Descente EXPRESS d'une rotation limitée : elle ne dessert pas
-          // Bellevue, elle partirait donc du Nid d'Aigle sur un tronçon fermé.
-          !aTraiter
-          ? '<span class="term-fixe">Rotation limitée</span>'
-          : `<span class="term-bv" title="Un express ne part pas de Bellevue : à supprimer, ou à maintenir depuis le Nid d'Aigle">À traiter ⚠</span>
+           </span>`;
+    }
+    return limite !== null
+      ? '<span class="term-fixe">Rotation limitée</span>'
+      : `<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue ni au Col de Voza">${echapper(nomGare(sommet))}</span>`;
+  }
+
+  if (montee) {
+    // Une seule gare possible (section qui s'arrête sous le Col de Voza) :
+    // rien à choisir, donc pas de commande.
+    if (choix.length <= 1) return `<span class="term-fixe">${echapper(nomGare(sommet))}</span>`;
+    // Le SOMMET DU JOUR s'écrit « non limité » (`valeurTerminus`) : en hiver,
+    // la valeur 'nid-daigle' s'affiche donc « Bellevue », jamais « Nid d'Aigle ».
+    const affiche = terminusAffiche(c.terminus, sommet);
+    const options = choix
+      .map(
+        (g, i) =>
+          `<option value="${valeurTerminus(g, sommet)}" ${g === affiche ? 'selected' : ''}>${echapper(
+            nomGare(g),
+          )}${i > 0 ? ' ⚠' : ''}</option>`,
+      )
+      .join('\n          ');
+    return `<select data-action="terminus" data-numero="${n}"${verrou}>
+          ${options}
+        </select>`;
+  }
+
+  if (limite === null) return '<span class="term-fixe">Le Fayet</span>';
+  if (!express) return `<span class="term-bv">Départ de ${nomLimite}</span>`;
+  // Descente EXPRESS d'une rotation limitée : elle ne dessert pas la gare de
+  // limite, elle partirait donc du sommet sur un tronçon fermé.
+  return !aTraiter
+    ? '<span class="term-fixe">Rotation limitée</span>'
+    : `<span class="term-bv" title="Un express ne part pas de ${nomLimite} : à supprimer, ou à maintenir depuis le ${echapper(nomGare(sommetGrille))}">À traiter ⚠</span>
              <span class="a-traiter">
                <button class="leger" data-action="express-supprimer" data-numero="${n}"${verrou}>Supprimer</button>
                <button class="leger" data-action="express-maintenir-descente" data-numero="${n}"${verrou}>Maintenir</button>
-             </span>`
-        : '<span class="term-bv">Départ de Bellevue</span>'
-      : '<span class="term-fixe">Le Fayet</span>';
+             </span>`;
 }
 
 // ---------------------------------------------------------------------------
