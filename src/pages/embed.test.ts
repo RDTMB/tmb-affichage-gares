@@ -80,6 +80,7 @@ function entree(partiel: Partial<EntreeRendu>): EntreeRendu {
     affluence: [],
     gareUrl: null,
     ongletDemande: null,
+    raisonDe: null,
     vue: 'departs',
     maintenant_s: h('10:30'),
     maintenantMs: Date.UTC(2026, 6, 15, 8, 30),
@@ -307,14 +308,33 @@ describe('embed.ts — rien de ce qui pèse sur les écrans de gare', () => {
   it('la doc du CMS et la page d’essai écoutent CE message, et vérifient l’origine', () => {
     const doc = source('docs/integration-site-web.md');
     const essai = source('docs/exemple-integration-site.html');
+    // La version transmise au gestionnaire du site le 20/10/2026 : cadres
+    // repérés par la CLASSE, un seul script pour tous.
+    const scripts = (texte: string): string[] =>
+      [...texte.matchAll(/^([ \t]*)<script>\n([\s\S]*?)^\1<\/script>/gm)].map((m) =>
+        (m[2] ?? '')
+          .split('\n')
+          .map((l) => l.slice((m[1] ?? '').length))
+          .join('\n'),
+      );
     for (const texte of [doc, essai]) {
       expect(texte).toContain(`d.type !== '${TYPE_MESSAGE_HAUTEUR}'`);
       expect(texte).toContain("if (e.origin !== 'https://rdtmb.github.io') return;");
-      expect(texte).toContain('e.source !== cadre.contentWindow');
+      expect(texte).toContain("document.querySelectorAll('iframe.tmb-horaires')");
+      expect(texte).toContain('cadres[i].contentWindow === e.source');
+      expect(texte).not.toContain('id="tmb-horaires"');
+      expect(texte.match(/<iframe\s+class="tmb-horaires"/g)).toHaveLength(2);
+      expect(scripts(texte)).toHaveLength(1);
     }
+    // MOT POUR MOT le même script dans la doc et dans la page d'essai.
+    expect(scripts(essai)).toEqual(scripts(doc));
     // Le code à coller pointe sur la PRODUCTION, la page d'essai sur la préversion.
     expect(doc).toContain('src="https://rdtmb.github.io/tmb-affichage-gares/embed.html"');
+    expect(doc).toContain('src="https://rdtmb.github.io/tmb-affichage-gares/embed.html?vue=jour"');
     expect(essai).toContain('src="https://rdtmb.github.io/tmb-affichage-gares/preview/embed.html"');
+    expect(essai).toContain(
+      'src="https://rdtmb.github.io/tmb-affichage-gares/preview/embed.html?vue=jour"',
+    );
     // Et jamais les pages des écrans de gare.
     expect(doc).not.toMatch(/src="[^"]*(grille|ecran)\.html/);
   });
@@ -609,7 +629,11 @@ describe('section exploitée — une gare hors section n’a pas d’onglet acti
     const inactifs = onglets.filter((o) => o.inactif !== null).map((o) => o.id);
     expect(inactifs).toEqual(['col-de-voza', 'bellevue', 'nid-daigle']);
     const html = rendEmbed(entree({ grille: GRAND, jour }));
-    expect(html).toMatch(/class="onglet inactif" disabled[^>]*>Bellevue</);
+    // `aria-disabled` et non `disabled` : le toucher doit pouvoir montrer la raison.
+    expect(html).toMatch(
+      /class="onglet inactif" data-inactif="bellevue" aria-disabled="true"[^>]*>Bellevue</,
+    );
+    expect(html).not.toMatch(/\sdisabled[\s>]/);
     expect(html).not.toContain('data-gare="bellevue"');
   });
 

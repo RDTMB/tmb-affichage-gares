@@ -10,6 +10,7 @@
 // message nomme le train, la gare et la cellule (feuille, ligne, colonne).
 import { formatHeure, heureVersSecondes, libelleJours, NOMS_JOURS } from './horaires';
 import { ecarts } from './ecarts-grille';
+import { saisonDepuisPeriodes } from './saison';
 import { ORDRE_GARES } from './types';
 import type {
   GareGrille,
@@ -1057,15 +1058,8 @@ export function periodesDepuisTitre(titre: string): Periode[] {
   return periodes;
 }
 
-export type Saison = 'ete' | 'hiver';
-
-/** Saison déduite de la première période : mai → octobre = été, sinon hiver. */
-export function saisonDepuisPeriodes(periodes: Periode[]): Saison | null {
-  const premiere = [...periodes].sort((a, b) => a.du.localeCompare(b.du))[0];
-  if (!premiere) return null;
-  const mois = Number(premiere.du.slice(5, 7));
-  return mois >= 5 && mois <= 10 ? 'ete' : 'hiver';
-}
+// La règle vit dans `saison.ts`, que l'embed du site importe sans tirer ce module.
+export { saisonDepuisPeriodes, type Saison } from './saison';
 
 /** « 2026 », ou « 2026-2027 » si les périodes franchissent le Nouvel An. */
 export function anneesDepuisPeriodes(periodes: Periode[]): string | null {
