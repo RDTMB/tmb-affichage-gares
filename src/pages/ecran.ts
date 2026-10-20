@@ -3,7 +3,8 @@
 // défaut : sans lui la page ne se signale pas), simule=HH:MM, zoom, cache=N
 // (minutes, tests du mode dégradé) et
 // demo=1 (démonstration EXPLICITE : horaires fictifs, bandeau permanent) et,
-// en mode démo, terminus=N (bascule « à partir du TRAIN N »).
+// en mode démo, terminus=N (bascule « à partir du TRAIN N »),
+// &terminus-gare=col-de-voza (bascule au Col de Voza).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/300.css';
@@ -30,6 +31,7 @@ import {
   passagesPourGare,
   prochaineArrivee,
   serviceActif,
+  sommetDeLaGrille,
   veilleEffective,
   quaiOccupe,
   trainsDuJour,
@@ -775,7 +777,9 @@ function rendre(gare: GareId): void {
   // jamais annoncer « service terminé », qui laisserait croire à une reprise
   // le lendemain.
   const tronconFerme = etatTronconFerme(grille, jour, gare, maintenant);
-  const fermeture = tronconFerme ? fermetureGare(jour, gare, nomGare) : null;
+  const fermeture = tronconFerme
+    ? fermetureGare(jour, gare, nomGare, sommetDeLaGrille(grille, jour.date))
+    : null;
   const fin = tronconFerme ? null : finDeService(grille, jour, gare, maintenant, grilleDemain);
   if (fermeture) afficheEtatSpecial(htmlTronconFerme(fermeture));
   else if (fin) afficheEtatSpecial(htmlFinDeService(fin));
@@ -841,7 +845,13 @@ async function demarre(): Promise<void> {
   const ecartParam = Number(url.get('ecart'));
   const optionsDemo = {
     ...(terminusParam !== null && Number(terminusParam) > 0
-      ? { terminusAPartirDuTrain: Number(terminusParam) }
+      ? {
+          terminusAPartirDuTrain: Number(terminusParam),
+          // Démo : bascule au Col de Voza (`&terminus-gare=col-de-voza`), Bellevue sinon.
+          ...(url.get('terminus-gare') === 'col-de-voza'
+            ? { terminusGare: 'col-de-voza' as const }
+            : {}),
+        }
       : {}),
     ...(Number.isFinite(ecartParam) && ecartParam !== 0 ? { ecartHorlogeS: ecartParam } : {}),
   };

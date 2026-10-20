@@ -137,8 +137,14 @@ export function instantaneJours(jours: JourPubliable[]): Instantane {
       }
     }
     const flag = jour?.terminus_bellevue;
+    // Bellevue garde sa forme d'avant (« 9 ») ; une autre gare s'ajoute
+    // (« 9 col-de-voza ») : changer la seule GARE est une modification.
     instantane[`jour|${date}|terminus_bellevue`] = normalise(
-      flag === false || !flag ? '' : flag.a_partir_du_train,
+      flag === false || !flag
+        ? ''
+        : flag.gare === 'col-de-voza'
+          ? `${flag.a_partir_du_train} col-de-voza`
+          : flag.a_partir_du_train,
     );
     // SECTION EXPLOITÉE : restreindre la ligne retire des trains de tous les
     // écrans, c'est une modification au moins aussi lourde qu'un retard —
@@ -237,7 +243,7 @@ export function libelleDeCle(cle: string): string {
         case 'message_troncon_en':
           return 'message gares fermées (EN)';
         default:
-          return 'terminus Bellevue';
+          return 'bascule de terminus';
       }
     case 'message':
       return `message ${b}`;
@@ -300,6 +306,11 @@ export function ecartsPublies(
     if (!estCleDatee(cle)) reference[cle] = valeur;
   }
   return ecarts(reference, instantanePubliable(courant));
+}
+
+/** Gare d'une valeur d'instantané de bascule (« 9 » ou « 9 col-de-voza »). */
+function nomBascule(v: string): string {
+  return v.split(' ')[1] === 'col-de-voza' ? 'Col de Voza' : 'Bellevue';
 }
 
 /** « oui » → true, tout le reste → false (valeurs normalisées). */
@@ -367,7 +378,9 @@ export function phraseEcart(e: Ecart): string {
   if (type === 'jour') {
     switch (b) {
       case 'terminus_bellevue':
-        return vers ? `terminus Bellevue à partir du TRAIN ${vers}` : 'terminus Bellevue levé';
+        return vers
+          ? `terminus ${nomBascule(vers)} à partir du TRAIN ${vers.split(' ')[0] ?? ''}`
+          : `terminus ${nomBascule(de)} levé`;
       case 'gare_debut':
         return `ligne exploitée — début ${vers}`;
       case 'gare_fin':

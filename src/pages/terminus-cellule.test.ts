@@ -293,8 +293,12 @@ describe('NON-RÉGRESSION : la cellule d’un train de grille est inchangée', (
   it('montée normale : le <select> Terminus, avec Nid d’Aigle sélectionné', () => {
     const html = cellule(grille(1), 'montee');
     expect(html).toContain('<select data-action="terminus" data-numero="1"');
-    expect(html).toContain('<option value="nid-daigle" selected>Nid d\'Aigle</option>');
+    // Le nom de gare est désormais ÉCHAPPÉ (il vient de la grille, plus d'une
+    // chaîne écrite en dur), d'où « &#39; ».
+    expect(html).toContain('<option value="nid-daigle" selected>Nid d&#39;Aigle</option>');
     expect(html).toContain('<option value="bellevue" >Bellevue ⚠</option>');
+    // Été, ligne complète : le Col de Voza est la troisième gare proposée.
+    expect(html).toContain('<option value="col-de-voza" >Col de Voza ⚠</option>');
   });
 
   it('montée limitée : le <select> passe sur Bellevue', () => {
@@ -331,7 +335,7 @@ describe('NON-RÉGRESSION : la cellule d’un train de grille est inchangée', (
   it('montée EXPRESS hors plage : « Nid d’Aigle », avec son infobulle', () => {
     const html = cellule(grille(9), 'montee', { express: true });
     expect(html).toBe(
-      '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue">Nid d\'Aigle</span>',
+      '<span class="term-fixe" title="Un express ne peut pas être limité à Bellevue ni au Col de Voza">Nid d&#39;Aigle</span>',
     );
   });
 
@@ -356,11 +360,64 @@ describe('NON-RÉGRESSION : la cellule d’un train de grille est inchangée', (
     expect(html).toBe('<span class="term-fixe">Rotation limitée</span>');
   });
 
+  it('descente d’une rotation limitée au Col de Voza : « Départ de Col de Voza »', () => {
+    const html = cellule(grille(2), 'descente', {
+      circulationMontee: { ...grille(1), terminus: 'col-de-voza' },
+    });
+    expect(html).toBe('<span class="term-bv">Départ de Col de Voza</span>');
+  });
+
+  it('montée limitée au Col de Voza : le <select> passe sur Col de Voza', () => {
+    const html = cellule({ ...grille(1), terminus: 'col-de-voza' }, 'montee');
+    expect(html).toContain('<option value="col-de-voza" selected>Col de Voza ⚠</option>');
+  });
+
+  it('montée EXPRESS dans une plage Col de Voza : « À traiter », comme pour Bellevue', () => {
+    const c = { ...grille(9), terminus: 'col-de-voza' as const, facultatif_actif: true };
+    const html = cellule(c, 'montee', { express: true, circulationMontee: c });
+    expect(html).toContain('À traiter ⚠');
+    expect(html).toContain('Un express ne dessert pas Col de Voza');
+  });
+
   it('les passages effectifs n’influencent PAS un train de grille', () => {
     // Ils ne servent qu'au terminus d'un train sup : la cellule d'un train de
     // grille doit rester octet pour octet la même.
     expect(cellule(grille(1), 'montee', { passagesEffectifs: [{ gare: 'bellevue' }] })).toBe(
       cellule(grille(1), 'montee'),
     );
+  });
+});
+
+describe('HIVER : la colonne ne propose jamais le Nid d’Aigle', () => {
+  const jour = generationJour(GRAND, DATE);
+  const t1 = jour.circulations.find((x) => x.numero === 1) as Circulation;
+  const hiver = {
+    choix: ['bellevue', 'col-de-voza'] as GareId[],
+    sommetGrille: 'bellevue' as const,
+  };
+
+  it('« non limité » s’affiche Bellevue, et s’écrit « non limité »', () => {
+    const html = cellule(t1, 'montee', hiver);
+    expect(terminusAnnonce(html)).toBe('Bellevue');
+    expect(html).toContain('<option value="nid-daigle" selected>Bellevue</option>');
+    expect(html).toContain('<option value="col-de-voza" >Col de Voza ⚠</option>');
+    expect(decode(html)).not.toContain("Nid d'Aigle");
+  });
+
+  it('une colonne « bellevue » d’avant s’affiche aussi au sommet : elle ne limite rien', () => {
+    const html = cellule({ ...t1, terminus: 'bellevue' }, 'montee', hiver);
+    expect(terminusAnnonce(html)).toBe('Bellevue');
+    // …et sa descente n'annonce pas un « Départ de Bellevue » exceptionnel.
+    expect(
+      cellule({ ...t1, numero: 2, sens: 'descente' }, 'descente', {
+        ...hiver,
+        circulationMontee: { ...t1, terminus: 'bellevue' },
+      }),
+    ).toBe('<span class="term-fixe">Le Fayet</span>');
+  });
+
+  it('section jusqu’au Col de Voza : une seule gare, aucune commande', () => {
+    const html = cellule(t1, 'montee', { choix: ['col-de-voza'], sommetGrille: 'bellevue' });
+    expect(html).toBe('<span class="term-fixe">Col de Voza</span>');
   });
 });

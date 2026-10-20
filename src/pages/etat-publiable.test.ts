@@ -186,7 +186,20 @@ describe('Portée de l’état de référence', () => {
       instantanePubliable(entrees(params(8), limite)),
     );
     expect(liste).toHaveLength(1);
-    expect(liste[0]?.libelle).toBe('terminus Bellevue');
+    expect(liste[0]?.libelle).toBe('bascule de terminus');
+  });
+
+  it('changer la seule GARE de la bascule (Bellevue → Col de Voza) est une modification', () => {
+    const bellevue = generationJour(GRAND, DATE);
+    bellevue.terminus_bellevue = { a_partir_du_train: 19 };
+    const voza = generationJour(GRAND, DATE);
+    voza.terminus_bellevue = { a_partir_du_train: 19, gare: 'col-de-voza' };
+    const liste = ecarts(
+      instantanePubliable(entrees(params(8), bellevue)),
+      instantanePubliable(entrees(params(8), voza)),
+    );
+    expect(liste).toHaveLength(1);
+    expect(liste[0]?.libelle).toBe('bascule de terminus');
   });
 });
 

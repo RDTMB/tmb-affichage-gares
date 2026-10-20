@@ -27,6 +27,11 @@ import {
   sectionComplete,
   sectionDuJour,
   terminusPossiblesSup,
+  terminusProposes,
+  garesDeBasculeProposees,
+  gareDeBascule,
+  sommetDeLaGrille,
+  valeurTerminus,
   trainsDuJour,
   monteesSansRetour,
   terminusReel,
@@ -54,6 +59,7 @@ import type {
   Sens,
   EcranInfo,
   GareId,
+  GareLimite,
   NiveauAffluence,
   Grille,
   Jour,
@@ -1589,6 +1595,10 @@ function optionsMotifs(selection: string | null): string {
  * Bellevue, seule vérité sur ce que les écrans montreront.
  */
 let trainsEffectifs = new Map<number, TrainJour>();
+/** Terminus proposés aux montées de grille du jour affiché, sommet du jour d'abord. */
+let choixTerminus: GareId[] = [];
+/** Sommet de la GRILLE du jour affiché : une colonne qui ne descend pas plus bas ne limite rien. */
+let sommetGrilleJour: GareId = 'nid-daigle';
 
 /** Vue « train de grille » d'un train sup, pour réutiliser le même rendu. */
 function commeTrainGrille(c: Circulation): TrainGrille {
@@ -1654,6 +1664,8 @@ function ligneCirculation(
     nomGare: nomDeGare,
     passagesEffectifs: trainsEffectifs.get(c.numero)?.passages ?? null,
     monteeArrivee: monteeSupArrivee(circMontee),
+    choix: choixTerminus,
+    sommetGrille: sommetGrilleJour,
   });
 
   const facultatif = c.facultatif
@@ -1851,6 +1863,7 @@ function rendreCirculations(): void {
   const lectureSeule = (!horsSaison && jour.enregistre === false) || !peutModifierCirculations();
   ($('chk-terminus') as HTMLInputElement).disabled = horsSaison || lectureSeule;
   ($('sel-terminus-train') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
+  ($('sel-terminus-gare') as HTMLSelectElement).disabled = horsSaison || lectureSeule;
   ($('btn-reinitialiser') as HTMLButtonElement).disabled = horsSaison || lectureSeule;
   // « + Train supplémentaire » restait ACTIF sur une journée en lecture seule
   // ou hors saison, alors que son gestionnaire refuse d'ouvrir le formulaire :
@@ -1881,10 +1894,32 @@ function rendreCirculations(): void {
   $('compte-facultatifs').textContent = resume.facultatifsLibelle;
   $('compte-sups').textContent = resume.supsLibelle;
 
-  // Bascule Terminus Bellevue « à partir du TRAIN N ». Même règle que la
+  // Bascule « Terminus [gare] à partir du TRAIN N ». Même règle que la
   // section : quand elle est ACTIVE, elle est mise en évidence, jamais
-  // discrète.
+  // discrète. Gares : celles de la colonne Terminus, sans le sommet du jour
+  // (une bascule au sommet ne limite rien) — Bellevue et Col de Voza l'été,
+  // Col de Voza seul l'hiver.
   const flag = jour.terminus_bellevue;
+  const garesBascule: GareId[] = garesDeBasculeProposees(grille, jour);
+  const gareActive = gareDeBascule(flag);
+  // La bascule ENREGISTRÉE reste lisible même hors des gares proposées (une
+  // bascule Bellevue d'avant, un jour d'hiver) : l'écran dit ce qui est en base.
+  if (gareActive !== null && !garesBascule.includes(gareActive)) garesBascule.push(gareActive);
+  const selGare = $('sel-terminus-gare') as HTMLSelectElement;
+  selGare.innerHTML = garesBascule
+    .map(
+      (g) =>
+        `<option value="${g}" ${g === (gareActive ?? garesBascule[0]) ? 'selected' : ''}>${echapper(
+          nomDeGare(g),
+        )}</option>`,
+    )
+    .join('');
+  // Rien à proposer (section qui s'arrête sous le Col de Voza) : la case
+  // reste décochable si une bascule est enregistrée, jamais cochable.
+  if (garesBascule.length === 0) {
+    ($('chk-terminus') as HTMLInputElement).disabled = true;
+    selGare.disabled = true;
+  }
   ($('chk-terminus') as HTMLInputElement).checked = flag !== false;
   $('bloc-terminus').className = `terminus${resume.terminusActif ? ' actif' : ''}`;
   const sel = $('sel-terminus-train') as HTMLSelectElement;
@@ -1928,6 +1963,10 @@ function rendreCirculations(): void {
   // bascule Bellevue appliquées. Les facultatifs non activés et les courses à
   // vide n'y figurent pas — leur ligne retombe sur les passages enregistrés.
   trainsEffectifs = new Map(trainsDuJour(grille, jour).map((t) => [t.numero, t]));
+  // Colonne Terminus : le sommet du jour, puis chaque gare au-dessous jusqu'au
+  // Col de Voza — jamais le Nid d'Aigle un jour où la grille n'y monte pas.
+  choixTerminus = terminusProposes(grille, jour);
+  sommetGrilleJour = sommetDeLaGrille(grille, jour.date);
 
   // Ordre APPARIÉ : chaque montée suivie de sa descente (même rotation)
   const tbody = document.querySelector('#tab-circ tbody');
@@ -2079,8 +2118,8 @@ function initCirculations(): void {
    * Terminus proposés pour un train supplémentaire : TOUTES les gares situées
    * après la gare de départ dans la section du jour — le renfort peut être
    * limité à Saint-Gervais ou Motivon, pas seulement aux trois du haut. La
-   * bascule Terminus Bellevue retire en plus ce qui est au-dessus de
-   * Bellevue, puisque le train n'y circulerait pas.
+   * bascule « Terminus [gare] » retire en plus ce qui est au-dessus de sa
+   * gare, puisque le train n'y circulerait pas.
    */
   /** Nature choisie dans le formulaire. */
   // Le type EXCLUT 'grille' : ce formulaire ne crée que des courses hors
@@ -2121,9 +2160,12 @@ function initCirculations(): void {
       const debut = ORDRE_GARES.indexOf(section.gare_debut);
       return ORDRE_GARES.slice(debut + 1);
     }
-    const possibles = terminusPossiblesSup(section);
-    if (jour?.terminus_bellevue === false) return possibles;
-    const plafond = ORDRE_GARES.indexOf('bellevue');
+    // Borne haute = sommet du jour (pas de Nid d'Aigle en hiver), puis la
+    // gare de la bascule quand elle est active.
+    const possibles = terminusPossiblesSup({ ...section, date: dateSel }, grilleDuJour());
+    const bascule = gareDeBascule(jour?.terminus_bellevue);
+    if (bascule === null) return possibles;
+    const plafond = ORDRE_GARES.indexOf(bascule);
     return possibles.filter((g) => ORDRE_GARES.indexOf(g) <= plafond);
   };
 
@@ -2332,7 +2374,7 @@ function initCirculations(): void {
       terminus,
       gareDebut: section.gare_debut,
       gareFin: section.gare_fin,
-      terminusBellevue: jour?.terminus_bellevue !== false,
+      gareBascule: gareDeBascule(jour?.terminus_bellevue),
       nomGare: nomDeGare,
     });
     avert.textContent = message ?? '';
@@ -2603,12 +2645,12 @@ function initCirculations(): void {
       velos: nature === 'special' && ($('sup-velos') as HTMLInputElement).checked,
       rame: ($('sup-rame') as HTMLSelectElement).value,
       // ATTENTION : cette colonne ne dit RIEN du terminus du renfort, qui est
-      // le dernier de ses `passages`. Elle ne porte que deux valeurs (contrainte
-      // CHECK) et ne sert qu'à la bascule Terminus Bellevue, qui s'applique
+      // le dernier de ses `passages`. Elle ne porte que trois valeurs (contrainte
+      // CHECK) et ne sert qu'à la bascule de terminus, qui s'applique
       // aussi à un train sup. Ne JAMAIS l'afficher comme terminus : c'est ce
       // qui annonçait « Nid d'Aigle » pour un renfort créé jusqu'au Col de
       // Voza (voir `celluleTerminus()`).
-      terminus: jour.terminus_bellevue === false ? 'nid-daigle' : 'bellevue',
+      terminus: gareDeBascule(jour.terminus_bellevue) ?? 'nid-daigle',
       statut: 'ok',
       retard_min: 0,
       motif: null,
@@ -2831,22 +2873,38 @@ function initCirculations(): void {
   const terminusChange = (): void => {
     const coche = ($('chk-terminus') as HTMLInputElement).checked;
     const n = Number(($('sel-terminus-train') as HTMLSelectElement).value) || 1;
-    brouillonTerminus.set(dateSel, coche ? { a_partir_du_train: n } : false);
+    const gare: GareLimite =
+      ($('sel-terminus-gare') as HTMLSelectElement).value === 'col-de-voza'
+        ? 'col-de-voza'
+        : 'bellevue';
+    // Bellevue garde la forme d'avant du drapeau (sans `gare`).
+    brouillonTerminus.set(
+      dateSel,
+      !coche
+        ? false
+        : gare === 'bellevue'
+          ? { a_partir_du_train: n }
+          : { a_partir_du_train: n, gare },
+    );
+    const nom = nomDeGare(gare);
     rafraichitJourEffectif();
     bumpEnAttente(
       coche
-        ? `terminus Bellevue à partir du TRAIN ${n} (en attente)`
-        : 'terminus Bellevue désactivé (en attente)',
+        ? `terminus ${nom} à partir du TRAIN ${n} (en attente)`
+        : 'bascule de terminus désactivée (en attente)',
     );
     rendreCirculations();
     toast(
       coche
-        ? `Terminus Bellevue à partir du TRAIN ${n} en attente de publication : colonne Terminus pré-remplie, express signalés « à traiter »`
-        : 'Retour au service normal jusqu’au Nid d’Aigle, en attente de publication',
+        ? `Terminus ${nom} à partir du TRAIN ${n} en attente de publication : colonne Terminus pré-remplie, express signalés « à traiter »`
+        : 'Retour au service normal jusqu’au sommet, en attente de publication',
     );
   };
   $('chk-terminus').addEventListener('change', terminusChange);
   $('sel-terminus-train').addEventListener('change', () => {
+    if (($('chk-terminus') as HTMLInputElement).checked) terminusChange();
+  });
+  $('sel-terminus-gare').addEventListener('change', () => {
     if (($('chk-terminus') as HTMLInputElement).checked) terminusChange();
   });
 
@@ -2918,12 +2976,16 @@ function initCirculations(): void {
     } else if (action === 'depart-sup') {
       ouvreDepartSup(numero);
     } else if (action === 'terminus') {
-      c.terminus = (cible as HTMLSelectElement).value as Circulation['terminus'];
+      // Les options portent déjà la valeur à écrire (`valeurTerminus`) ; on
+      // la repasse par la même règle pour ne jamais écrire une gare inconnue.
+      const choisie = (cible as HTMLSelectElement).value as GareId;
+      const sommet = choixTerminus[0] ?? 'nid-daigle';
+      c.terminus = valeurTerminus(choisie, sommet);
       stageCirculationEtRafraichit(c, `terminus TRAIN ${numero} → ${c.terminus}`);
       toast(
-        c.terminus === 'bellevue'
-          ? `TRAIN ${numero} limité à Bellevue en attente de publication (sa descente partira de Bellevue)`
-          : `TRAIN ${numero} en attente de publication (rétabli jusqu'au Nid d'Aigle)`,
+        c.terminus !== 'nid-daigle'
+          ? `TRAIN ${numero} limité à ${nomDeGare(c.terminus)} en attente de publication (sa descente partira de ${nomDeGare(c.terminus)})`
+          : `TRAIN ${numero} en attente de publication (rétabli jusqu'à ${nomDeGare(sommet)})`,
       );
     } else if (action === 'actif') {
       const actif = (cible as HTMLInputElement).checked;
@@ -3018,7 +3080,7 @@ Il disparaîtra des écrans à la publication. Les trains de la grille, eux, ne 
       c.statut = 'supprime';
       c.retard_min = 0;
       c.motif ??= params?.motifs[0]?.fr ?? null;
-      stageCirculationEtRafraichit(c, `express TRAIN ${numero} supprimé (plage Bellevue)`);
+      stageCirculationEtRafraichit(c, `express TRAIN ${numero} supprimé (plage limitée)`);
       toast(`Express TRAIN ${numero} en attente de publication (signalement levé)`);
       // Même règle que pour une montée normale (docs/01 §5.1)
       if (c.sens === 'montee') proposeSuppressionDescente(c);
@@ -5442,7 +5504,7 @@ async function publieLeBrouillon(): Promise<boolean> {
       await provider.setTerminusBellevue(date, flag);
       brouillonTerminus.delete(date);
     } catch (erreur) {
-      echoue(`terminus Bellevue du ${date}`, erreur);
+      echoue(`bascule de terminus du ${date}`, erreur);
     }
   }
 
