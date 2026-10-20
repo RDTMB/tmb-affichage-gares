@@ -11,7 +11,14 @@
 // Aucun DOM, aucune donnée lue ici : la page passe ce qu'elle a chargé, ce
 // module rend une chaîne. C'est ce qui le rend appelable par deux pages, et
 // testable.
-import { formatHeure, gareHorsSection, libelleTrain, trainsDuJour } from '../core/horaires';
+import {
+  bornesAffichees,
+  formatHeure,
+  gareHorsSection,
+  gareNonDesservie,
+  libelleTrain,
+  trainsDuJour,
+} from '../core/horaires';
 import type {
   Affluence,
   GareId,
@@ -22,6 +29,7 @@ import type {
   Sens,
   TrainJour,
 } from '../core/types';
+import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
 import { echapper, LIBELLE_MENTION, mentionCourse, styleRame } from './affichage-commun';
 import { indexProchainDepart } from './grille-logique';
 
@@ -92,6 +100,26 @@ export function colonnesDuSens(
   );
 }
 
+/**
+ * Titres français des deux tableaux, « Montée — Le Fayet → Bellevue ». Les
+ * bornes sont celles de `bornesAffichees` : la section du jour, coupée au
+ * sommet de la grille — en hiver, le Nid d'Aigle n'est le terminus de rien.
+ * Sans journée, la ligne complète, comme avant.
+ */
+export function titresDesSens(
+  grille: Grille,
+  jour: Jour | null,
+  nomGare: (id: GareId) => string,
+): Record<Sens, string> {
+  const { debut, fin } = jour
+    ? bornesAffichees(grille, jour)
+    : { debut: GARE_DEBUT_DEFAUT, fin: GARE_FIN_DEFAUT };
+  return {
+    montee: `Montée — ${nomGare(debut)} → ${nomGare(fin)}`,
+    descente: `Descente — ${nomGare(fin)} → ${nomGare(debut)}`,
+  };
+}
+
 function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {
   return [
     colonne.supprime ? 'supp' : '',
@@ -134,7 +162,12 @@ export function tableHtml(
   // Les gares HORS section n'ont rien à montrer : trois lignes de « — »
   // seraient du bruit, et laisseraient croire à un service interrompu plutôt
   // qu'à un tronçon fermé (celui-ci est annoncé par le bandeau).
-  const dansLaSection = grille.gares.filter((g) => !gareHorsSection(jour, g.id));
+  // Une gare qu'aucune montée de la GRILLE n'atteint (Nid d'Aigle en hiver)
+  // n'a pas de ligne non plus : la saison ne la dessert pas, il n'y a rien à
+  // annoncer.
+  const dansLaSection = grille.gares.filter(
+    (g) => !gareHorsSection(jour, g.id) && !gareNonDesservie(grille, jour.date, g.id),
+  );
   const gares = sens === 'montee' ? dansLaSection : [...dansLaSection].reverse();
   // Colonne éclairée : le prochain départ DE LA GARE DE L'ÉCRAN (`?gare=`), et
   // non plus de l'origine de la ligne — décision de l'exploitant du
