@@ -20,14 +20,15 @@ import {
   fermetureGare,
   finDeService,
   formatHeure,
+  gareNonDesservie,
   libelleTrainCourt,
   messageTronconDefaut,
   passagesPourGare,
   positionsTrains,
   sectionComplete,
   sectionDuJour,
+  sommetDeLaGrille,
   trainsDuJour,
-  type FermetureGare,
   type VueJournee,
 } from '../core/horaires';
 import { MESSAGE_NEUTRE, messageSansHoraires } from '../core/periodes-exploitation';
@@ -52,7 +53,7 @@ import {
   messagesVisibles,
   styleRame,
 } from './affichage-commun';
-import { RAME_INCONNUE, tableHtml } from './grille-tableau';
+import { RAME_INCONNUE, tableHtml, titresDesSens } from './grille-tableau';
 
 // ---------------------------------------------------------------------------
 // Constantes de la page
@@ -187,6 +188,18 @@ export function etatEmbed(donneesUtilisables: boolean, vue: VueJournee | null): 
   return vue === 'horaires' ? 'horaires' : 'sans-grille';
 }
 
+/** Raison bilingue d'un onglet grisé, en infobulle. */
+export interface RaisonInactif {
+  texte_fr: string;
+  texte_en: string;
+}
+
+/** Gare que la grille du jour ne dessert jamais (Nid d'Aigle en hiver). */
+export const NON_DESSERVIE: RaisonInactif = {
+  texte_fr: 'Non desservie aujourd’hui',
+  texte_en: 'Not served today',
+};
+
 /** Un onglet de gare : son nom officiel, et sa fermeture du moment s'il y en a une. */
 export interface OngletGare {
   id: GareId;
@@ -194,20 +207,26 @@ export interface OngletGare {
   /**
    * Non nul quand l'écran de cette gare afficherait « ligne fermée » à cet
    * instant (`etatTronconFerme`) : hors de la section exploitée, ou Nid d'Aigle
-   * sous le terminus Bellevue. L'onglet est alors grisé, et non cliquable.
+   * sous le terminus Bellevue. À défaut, non nul quand aucune montée de la
+   * GRILLE du jour ne l'atteint (`gareNonDesservie`). L'onglet est alors
+   * grisé, et non cliquable.
    */
-  inactif: FermetureGare | null;
+  inactif: RaisonInactif | null;
 }
 
 export function ongletsGares(grille: Grille, jour: Jour, maintenant_s: number): OngletGare[] {
   const nomGare = (id: GareId): string => grille.gares.find((g) => g.id === id)?.nom ?? id;
-  return ORDRE_GARES.map((id) => ({
-    id,
-    nom: nomGare(id),
-    inactif: etatTronconFerme(grille, jour, id, maintenant_s)
-      ? (fermetureGare(jour, id, nomGare) ?? null)
-      : null,
-  }));
+  // La FERMETURE annoncée l'emporte : c'est un état du jour, que l'écran de la
+  // gare affiche avec son propre message. « Non desservie » ne parle que de
+  // ce que la saison ne prévoit pas.
+  const raison = (id: GareId): RaisonInactif | null => {
+    if (etatTronconFerme(grille, jour, id, maintenant_s)) {
+      const f = fermetureGare(jour, id, nomGare);
+      if (f) return f;
+    }
+    return gareNonDesservie(grille, jour.date, id) ? NON_DESSERVIE : null;
+  };
+  return ORDRE_GARES.map((id) => ({ id, nom: nomGare(id), inactif: raison(id) }));
 }
 
 /** L'onglet affiché : celui demandé s'il est actif, sinon le premier actif de la ligne. */
@@ -501,12 +520,15 @@ function departsHtml(
     return `<div class="fin-service"><p class="titre">${bilingue(MOTS_EMBED.serviceTermine, 'Service ended')}</p><p>${demain}</p></div>`;
   }
 
+  // Le haut de la ligne est celui de la GRILLE du jour : Bellevue en hiver.
+  // Une bascule ou une section ne le change pas — ce sont des fermetures du
+  // moment, annoncées par leur propre bandeau.
+  const sommet = sommetDeLaGrille(grille, jour.date);
+  const versLeHaut = sommet === 'nid-daigle' ? 'Vers le Nid d’Aigle' : `Vers ${nomGare(sommet)}`;
   const bloc = (sens: Sens, liste: PassageGare[]): string => {
     if (!d.sensDuJour[sens]) return '';
     const titre =
-      sens === 'montee'
-        ? bilingue('Vers le Nid d’Aigle', 'Uphill')
-        : bilingue('Vers Le Fayet', 'Downhill');
+      sens === 'montee' ? bilingue(versLeHaut, 'Uphill') : bilingue('Vers Le Fayet', 'Downhill');
     const corps =
       liste.length > 0
         ? `<ol class="liste-departs">${liste.map((p) => ligneDepart(p, e, grille, trains, nomGare)).join('')}</ol>`
@@ -536,13 +558,12 @@ function grilleJourHtml(
   const positions = new Map(
     positionsTrains(grille, jour, e.maintenant_s).map((p) => [p.numero, p.gare]),
   );
-  const { debut, fin } = sectionDuJour(jour);
+  // Mêmes titres que `grille.html`, par la même fonction : la section du
+  // jour, coupée au sommet de la grille (Bellevue en hiver).
+  const titres = titresDesSens(grille, jour, nomGare);
   const tableau = (sens: Sens): string => {
-    const [de, a] = sens === 'montee' ? [debut, fin] : [fin, debut];
     const titre =
-      sens === 'montee'
-        ? bilingue(`Montée — ${nomGare(de)} → ${nomGare(a)}`, 'Ascent')
-        : bilingue(`Descente — ${nomGare(de)} → ${nomGare(a)}`, 'Descent');
+      sens === 'montee' ? bilingue(titres.montee, 'Ascent') : bilingue(titres.descente, 'Descent');
     return `<section class="sens-jour"><h2>${titre}</h2><div class="defile" tabindex="0"><table class="grille">${tableHtml(ctx, sens, e.maintenant_s, positions)}</table></div></section>`;
   };
   const rames = (e.params?.machines ?? [])

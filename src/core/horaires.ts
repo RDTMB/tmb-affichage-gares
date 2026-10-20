@@ -468,6 +468,67 @@ export function gareHorsSection(
   return rang < ORDRE_GARES.indexOf(debut) || rang > ORDRE_GARES.indexOf(fin);
 }
 
+/** Une vraie heure (« 7:26 », « 07:27:30 ») — jamais un tiret ni une case vide. */
+function heureReelle(valeur: unknown): boolean {
+  return typeof valeur === 'string' && /^\d{1,2}:\d{2}(:\d{2})?$/.test(valeur.trim());
+}
+
+/**
+ * SOMMET DE LA GRILLE — la plus haute gare desservie, ce jour-là, par au
+ * moins une montée de la GRILLE : trains filtrés par leurs jours de
+ * circulation (`circuleLe`), passage portant une heure réelle (un tiret n'est
+ * pas une desserte). Été : Nid d'Aigle ; hiver : Bellevue, terminus NORMAL
+ * (docs/format-excel-horaires.md §3).
+ *
+ * Lue sur la grille SEULE, AVANT la bascule « terminus Bellevue » et AVANT la
+ * section exploitée : celles-ci sont des fermetures TEMPORAIRES, annoncées
+ * comme telles (`etatTronconFerme`, `fermetureGare`), et ne doivent pas se
+ * confondre avec une gare que la saison ne dessert jamais.
+ *
+ * Aucune montée exploitable (grille vide ou illisible) : la ligne complète —
+ * mieux vaut afficher trop que retirer une gare desservie.
+ */
+export function sommetDeLaGrille(grille: Pick<Grille, 'montees'>, date: string): GareId {
+  let rangMax = -1;
+  for (const train of grille.montees) {
+    if (!circuleLe(train, date)) continue;
+    for (const p of train.passages) {
+      if (!heureReelle(p.a) && !heureReelle(p.d)) continue;
+      rangMax = Math.max(rangMax, ORDRE_GARES.indexOf(p.gare));
+    }
+  }
+  return ORDRE_GARES[rangMax] ?? GARE_FIN_DEFAUT;
+}
+
+/** Gare qu'AUCUNE montée de la grille du jour n'atteint (Nid d'Aigle en hiver). */
+export function gareNonDesservie(
+  grille: Pick<Grille, 'montees'>,
+  date: string,
+  gare: GareId,
+): boolean {
+  return ORDRE_GARES.indexOf(gare) > ORDRE_GARES.indexOf(sommetDeLaGrille(grille, date));
+}
+
+/**
+ * Bornes des TITRES de la grille du jour (« Montée — Le Fayet → Bellevue ») :
+ * le début de la section, et la plus basse des deux fins — celle de la
+ * section, celle de la grille. Le bandeau de section, lui, garde
+ * `sectionDuJour` : il annonce une fermeture, pas une saison.
+ */
+export function bornesAffichees(
+  grille: Pick<Grille, 'montees'>,
+  jour: Pick<Jour, 'date' | 'gare_debut' | 'gare_fin'>,
+): { debut: GareId; fin: GareId } {
+  const { debut, fin } = sectionDuJour(jour);
+  const sommet = sommetDeLaGrille(grille, jour.date);
+  const rang = ORDRE_GARES.indexOf(sommet);
+  // Un sommet au-dessous du début de section ferait un titre à l'envers :
+  // la section l'emporte alors, comme partout ailleurs.
+  return rang < ORDRE_GARES.indexOf(fin) && rang > ORDRE_GARES.indexOf(debut)
+    ? { debut, fin: sommet }
+    : { debut, fin };
+}
+
 /**
  * TRONCATURE UNIQUE — seule fonction du moteur qui coupe un train hors de la
  * partie de ligne exploitée, dans les deux sens. « Terminus Bellevue » en est
