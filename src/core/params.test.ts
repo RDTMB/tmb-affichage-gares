@@ -3,7 +3,7 @@
 // n'importe quoi dans les clés qui lui sont ouvertes.
 import { describe, expect, it } from 'vitest';
 
-import { PARAMS_DEFAUT, paramsValides } from './params';
+import { PARAMS_DEFAUT, paramsAvecCorrections, paramsValides } from './params';
 
 describe('paramsValides — température du sommet (vecteur de C-01)', () => {
   it('neutralise une chaîne contenant du HTML, sans fabriquer de température', () => {
@@ -145,5 +145,23 @@ describe('paramsValides — robustesse générale', () => {
     const copie = structuredClone(brut);
     paramsValides(brut);
     expect(brut).toEqual(copie);
+  });
+});
+
+describe('paramsAvecCorrections — veille_nuit et ordre des clés jsonb', () => {
+  it('la forme EXACTE renvoyée par jsonb ({fin, debut}) n’est pas une correction', () => {
+    // jsonb range les clés par longueur : `{debut, fin}` revient `{fin, debut}`.
+    const brut = JSON.parse('{"veille_nuit":{"fin":"06:15","debut":"17:15"}}');
+    const { params, corriges } = paramsAvecCorrections(brut);
+    expect(params.veille_nuit).toEqual({ debut: '17:15', fin: '06:15' });
+    expect(corriges.filter((c) => c.cle === 'veille_nuit')).toEqual([]);
+  });
+
+  it('une veille INVALIDE reste signalée', () => {
+    const { params, corriges } = paramsAvecCorrections({
+      veille_nuit: { fin: '06:15', debut: '25:99' },
+    });
+    expect(params.veille_nuit).toEqual(PARAMS_DEFAUT.veille_nuit);
+    expect(corriges.filter((c) => c.cle === 'veille_nuit')).toHaveLength(1);
   });
 });
