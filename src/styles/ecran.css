@@ -560,6 +560,20 @@ main {
   font-weight: 700;
 }
 
+/* TERMINUS EXCEPTIONNEL (décision de l'exploitant du 20/10/2026) : le nom de
+   la destination prend l'orange du retard, comme la mention en gras de la
+   note (`.note b`, ci-dessus). Mesuré : #f2a33c fait 5,51:1 sur la rangée
+   marine #213b57 et 4,81:1 sur la rangée paire #26436a — au-dessus de 4,5:1,
+   la teinte reste celle du retard. Le rouge reste à « Supprimé » / « Complet ». */
+.r-dest .dest .nom-dest.alerte {
+  color: var(--retard);
+}
+
+.r-dest .note b.alerte {
+  color: var(--retard);
+  font-weight: 700;
+}
+
 /* La mention « privé » dans la note : en CRÈME, la couleur de la pastille
    qui la résume au-dessus — le lien entre les deux se lit sans être
    expliqué. Pas en jaune : le jaune est celui de l'express, et deux
@@ -697,6 +711,15 @@ main {
   background: #24384f;
   border-color: #35506e;
   color: #8ea4bb;
+}
+
+/* ARRIVÉE au terminus exceptionnel : case NEUTRE et fixe, de la taille des
+   autres. Ni vert (« À QUAI » dit qu'on peut monter), ni gris éteint
+   (« PARTI ») : un liseré orange la rattache à la note qui l'explique. */
+.chip.arrivee-terminus {
+  background: #1a3454;
+  border-color: var(--retard);
+  color: var(--retard);
 }
 
 .r-statut {
