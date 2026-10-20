@@ -218,7 +218,7 @@ describe('rotation limitée au Col de Voza : on TRONQUE, on ne recalcule rien', 
   it('hiver : même troncature sous le sommet Bellevue', () => {
     const jour = hiver();
     circ(jour, 5).terminus = 'col-de-voza';
-    expect(gares(train(HIVER, jour, 5)).at(-1)).toBe('col-de-voza');
+    expect(gares(train(HIVER, jour, 5)).slice(-1)[0]).toBe('col-de-voza');
     expect(train(HIVER, jour, 5).terminusExceptionnel).toBe(true);
     expect(gares(train(HIVER, jour, 6))[0]).toBe('col-de-voza');
   });
@@ -227,14 +227,14 @@ describe('rotation limitée au Col de Voza : on TRONQUE, on ne recalcule rien', 
     const jour = hiver();
     circ(jour, 5).terminus = 'bellevue';
     const t5 = train(HIVER, jour, 5);
-    expect(gares(t5).at(-1)).toBe('bellevue');
+    expect(gares(t5).slice(-1)[0]).toBe('bellevue');
     expect(t5.terminusExceptionnel).toBe(false);
   });
 
   it('une section plus courte gagne : limite au Col de Voza, section jusqu’à Motivon', () => {
     const jour = { ...ete(), gare_fin: 'motivon' as const };
     circ(jour, 5).terminus = 'col-de-voza';
-    expect(gares(train(ETE, jour, 5)).at(-1)).toBe('motivon');
+    expect(gares(train(ETE, jour, 5)).slice(-1)[0]).toBe('motivon');
   });
 });
 
@@ -282,7 +282,7 @@ describe('bascule « Terminus Col de Voza à partir du TRAIN N »', () => {
     expect(expressATraiter(ETE, jour)).toEqual(aTraiter);
     // L'express circule normalement jusqu'au Nid d'Aigle…
     const t9 = train(ETE, jour, 9);
-    expect(gares(t9).at(-1)).toBe('nid-daigle');
+    expect(gares(t9).slice(-1)[0]).toBe('nid-daigle');
     expect(t9.terminusExceptionnel).toBe(false);
     expect(gares(train(ETE, jour, 10))[0]).toBe('nid-daigle');
     // …mais la descente NON express d'un express limité part du Col de Voza.
@@ -417,9 +417,9 @@ describe('trains supplémentaires : même borne haute', () => {
   });
 
   it('été : jusqu’au Nid d’Aigle ; sans grille, la section seule (ancien appel)', () => {
-    expect(terminusPossiblesSup(ete(), ETE).at(-1)).toBe('nid-daigle');
-    expect(terminusPossiblesSup({ gare_debut: 'le-fayet', gare_fin: 'nid-daigle' }).at(-1)).toBe(
-      'nid-daigle',
-    );
+    expect(terminusPossiblesSup(ete(), ETE).slice(-1)[0]).toBe('nid-daigle');
+    expect(
+      terminusPossiblesSup({ gare_debut: 'le-fayet', gare_fin: 'nid-daigle' }).slice(-1)[0],
+    ).toBe('nid-daigle');
   });
 });
