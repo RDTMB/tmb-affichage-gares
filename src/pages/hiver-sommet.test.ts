@@ -152,7 +152,9 @@ describe('embed — onglets', () => {
   it('été sans Nid d’Aigle (ouverture « fin juin ») : « Non desservie aujourd’hui », jamais « hivernale »', () => {
     const grille = eteSansNidDaigle();
     const jour = generationJour(grille, '2026-06-13');
-    const inactif = ongletsGares(grille, jour, h('10:30')).find((o) => o.id === 'nid-daigle')?.inactif;
+    const inactif = ongletsGares(grille, jour, h('10:30')).find(
+      (o) => o.id === 'nid-daigle',
+    )?.inactif;
     expect(inactif).toBe(NON_DESSERVIE);
     expect(rendEmbed(entree(grille, jour, { maintenant_s: h('10:30') }))).not.toContain(
       'hivernale',

@@ -630,7 +630,9 @@ describe('section exploitée — une gare hors section n’a pas d’onglet acti
     expect(inactifs).toEqual(['col-de-voza', 'bellevue', 'nid-daigle']);
     const html = rendEmbed(entree({ grille: GRAND, jour }));
     // `aria-disabled` et non `disabled` : le toucher doit pouvoir montrer la raison.
-    expect(html).toMatch(/class="onglet inactif" data-inactif="bellevue" aria-disabled="true"[^>]*>Bellevue</);
+    expect(html).toMatch(
+      /class="onglet inactif" data-inactif="bellevue" aria-disabled="true"[^>]*>Bellevue</,
+    );
     expect(html).not.toMatch(/\sdisabled[\s>]/);
     expect(html).not.toContain('data-gare="bellevue"');
   });
