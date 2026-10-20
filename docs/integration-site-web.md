@@ -105,6 +105,33 @@ pointé sur la préversion.
   s'affiche au survol de la souris et, sur téléphone, au toucher, dans une
   ligne sous les onglets qui disparaît au bout de 5 secondes.
 - **En français et en anglais**, lisible sur téléphone.
+- **Terminus exceptionnel** : un train limité avant son terminus habituel a
+  sa destination et la mention « Terminus exceptionnel » en orange. À la gare
+  où il s'arrête, une ligne « Arrivée » annonce son heure d'arrivée et
+  « Terminus — ne continue pas vers Bellevue » (ou le Nid d'Aigle en été).
+- **Mode sombre** : la page suit le réglage clair / sombre **du visiteur**
+  (téléphone, ordinateur), pas celui du site. Voir ci-dessous.
+
+## Mode sombre : ce que ça donne dans un site clair
+
+La page n'a ni bouton ni réglage : elle s'affiche en sombre quand l'appareil
+du visiteur est réglé en mode sombre (`prefers-color-scheme`), en clair
+sinon.
+
+**Le site, lui, ne change pas.** Si le site de l'exploitant reste clair, un
+visiteur en mode sombre voit donc un **bloc marine** au milieu d'une page
+blanche : c'est volontaire et lisible (mesuré dans Chrome le 20/10/2026 :
+l'iframe passe en sombre, le site autour reste blanc), mais c'est un
+contraste fort. Rien ne déborde : le cadre garde sa largeur et sa hauteur
+automatique.
+
+- Le site **ne peut pas** imposer le clair à l'iframe depuis son propre CSS
+  dans Chrome et Edge : la page des horaires lit le réglage du visiteur. Ce
+  comportement n'a pas été vérifié dans Firefox ni Safari, qui peuvent suivre
+  le thème du site parent.
+- Si l'exploitant préfère un rendu toujours clair, il faudra le demander :
+  c'est un paramètre à ajouter (par exemple `?theme=clair`), pas un réglage
+  qui existe aujourd'hui.
 
 ## Ce qu'elle ne fait pas
 

@@ -597,7 +597,9 @@ describe('la mention « privé » tient à l’écran', () => {
     // Mesuré à 1280×720 : privé + express remplissent la ligne à 456,5 px pour
     // 456,5 px disponibles. La pastille porte déjà l'information ; la mention
     // express, elle, n'a pas d'autre endroit où aller.
-    expect(ecran).toContain("const noteLibre = !p.express && sansArret === '';");
+    // Depuis le 20/10/2026, la ligne d'ARRIVÉE au terminus exceptionnel n'est
+    // pas libre non plus : sa note dit déjà « ne continue pas vers … ».
+    expect(ecran).toContain("const noteLibre = !p.express && sansArret === '' && !arrivee;");
     expect(ecran).toContain("if (prive !== '' && !supprime && noteLibre)");
   });
 

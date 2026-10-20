@@ -26,4 +26,51 @@
   /* Amaranth : titres, noms de gares — Lato : textes, heures. Auto-hébergées, jamais de CDN. */
   --police-titres: 'Amaranth', 'Trebuchet MS', sans-serif;
   --police-textes: 'Lato', 'Segoe UI', sans-serif;
+
+  /* THÈME SOMBRE (20/10/2026) — la PALETTE, rien d'autre.
+     Ces jetons ne s'appliquent à RIEN par eux-mêmes : chaque feuille thémée
+     (embed.css, supervision.css) remappe ses propres alias sur eux, dans UN
+     bloc `prefers-color-scheme: dark`. Cette feuille-ci ne porte AUCUNE
+     requête média (verrou de responsive-supervision.test.ts), et c'est
+     voulu — deux raisons de ne PAS y basculer les jetons de la charte :
+       - l'écran de gare importe aussi cette feuille, et il est EXCLU du
+         thème — un navigateur kiosque réglé en sombre ne doit rien changer
+         sur un quai ;
+       - la grille du jour et le portail sont DÉJÀ sombres (maquette validée) :
+         ils n'ont rien à remapper.
+     Famille marine de la charte : la carte est le `--marine-fonce` de l'écran
+     de gare, la bordure son `--marine-ligne`. Titres en crème, accent (onglet
+     choisi, bouton) en bleu clair, rouge TMB inchangé.
+     Contrastes MESURÉS (WCAG, texte ≥ 4,5:1), sur page / carte / doux :
+       texte     #e9eff5  14,84 / 12,27 / 10,77
+       texte-sec #a9c0d8   9,19 /  7,59 /  6,66
+       titre     #f1e5d1  13,81 / 11,41 / 10,02
+       ok        #4cc283   7,66 /  6,33 /  5,56   (sur ok-bg 5,37)
+       retard    #f2a33c   8,25 /  6,82 /  5,99   (sur retard-bg 6,31)
+       alerte    #ff8a7e   7,52 /  6,22 /  5,46   (sur alerte-bg 6,21)
+       bleu      #7fb5e8   7,92 /  6,55 /  5,75   (sur bleu-bg 5,35)
+       accent    #bddcf4  12,04 /  9,95 /  8,74   (marine dessus : 8,05)
+     Pastilles des rames (élément graphique, ≥ 3:1) sur la carte : Marie 2,90
+     et Jeanne 2,98 ne passent PAS — d'où `--sombre-anneau`, un liseré clair
+     autour de chaque pastille ; Marguerite (blanche, cercle rouge) fait 14,2. */
+  --sombre-page: #0f1c2b;
+  --sombre-carte: #182c42;
+  --sombre-doux: #1f3550;
+  --sombre-relief: #26436a; /* survol, rangée paire — JAMAIS sous un texte d'état */
+  --sombre-bord: #33517a;
+  --sombre-filet: #2a4566;
+  --sombre-texte: #e9eff5;
+  --sombre-texte-sec: #a9c0d8;
+  --sombre-titre: var(--tmb-creme);
+  --sombre-accent: var(--tmb-bleu-clair);
+  --sombre-sur-accent: var(--tmb-marine);
+  --sombre-ok: #4cc283;
+  --sombre-ok-bg: #173d2c;
+  --sombre-retard: #f2a33c;
+  --sombre-retard-bg: #3d2e12;
+  --sombre-alerte: #ff8a7e;
+  --sombre-alerte-bg: #45201f;
+  --sombre-bleu: #7fb5e8;
+  --sombre-bleu-bg: #1c3a5c;
+  --sombre-anneau: rgba(233, 239, 245, 0.6);
 }

@@ -15,6 +15,7 @@
 // que la MISE EN PAGE propre à un site web.
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
+  arriveeAuTerminusExceptionnel,
   compteARebours,
   etatTronconFerme,
   fermetureGare,
@@ -22,12 +23,14 @@ import {
   formatHeure,
   gareNonDesservie,
   libelleTrainCourt,
+  lignesDuTableau,
   messageTronconDefaut,
   passagesPourGare,
   positionsTrains,
   sectionComplete,
   sectionDuJour,
   sommetDeLaGrille,
+  terminusDeGrille,
   trainsDuJour,
   type VueJournee,
 } from '../core/horaires';
@@ -52,6 +55,8 @@ import {
   LIBELLE_MENTION,
   mentionCourse,
   messagesVisibles,
+  MOT_ARRIVEE,
+  neContinuePas,
   styleRame,
 } from './affichage-commun';
 import { RAME_INCONNUE, tableHtml, titresDesSens } from './grille-tableau';
@@ -305,11 +310,11 @@ export function departsParSens(
   affluence: readonly Affluence[],
 ): DepartsGare {
   // EXACTEMENT la liste de l'écran de gare (`ecran.ts`, `rendre()`), avant sa
-  // coupe à cinq lignes : mêmes trains, même ordre, mêmes trains barrés.
-  const departs = appliqueAffluence(
-    passagesPourGare(grille, jour, gare, maintenant_s),
-    affluence,
-  ).filter((p) => p.depart_s !== null);
+  // coupe à cinq lignes : mêmes trains, même ordre, mêmes trains barrés — et
+  // la même ligne d'arrivée au terminus exceptionnel (`lignesDuTableau`).
+  const departs = lignesDuTableau(
+    appliqueAffluence(passagesPourGare(grille, jour, gare, maintenant_s), affluence),
+  );
   const duJour = passagesPourGare(grille, jour, gare).filter((p) => p.depart_s !== null);
   const pourSens = (sens: Sens): PassageGare[] =>
     departs.filter((p) => p.sens === sens).slice(0, DEPARTS_PAR_SENS);
@@ -441,10 +446,21 @@ function ligneDepart(
     nom: p.rame,
   };
 
+  // Montée LIMITÉE avant son terminus de grille (décision de l'exploitant du
+  // 20/10/2026) : la destination et la mention prennent l'orange du RETARD, la
+  // mention en gras — la perturbation doit se voir. Le rouge reste réservé à
+  // « Supprimé » et « Complet ». Un train supprimé garde son seul barré.
+  const limitee = !supprime && p.terminusExceptionnel && p.sens === 'montee';
+  // …et à la gare où elle s'arrête, sa ligne est une ARRIVÉE : heure
+  // d'arrivée, pas de compte à rebours, pas de « PARTI ».
+  const arrivee = arriveeAuTerminusExceptionnel(p);
+
+  const reelle = arrivee ? p.arrivee_s : p.depart_s;
+  const theorique = arrivee ? p.arrivee_theorique_s : p.depart_theorique_s;
   const heure =
-    retard && p.depart_s !== null
-      ? `${formatHeure(p.depart_s)}<s class="theorique" aria-label="${MOTS_EMBED.theorique}">${formatHeure(p.depart_theorique_s)}</s>`
-      : formatHeure(p.depart_theorique_s);
+    retard && reelle !== null
+      ? `${formatHeure(reelle)}<s class="theorique" aria-label="${MOTS_EMBED.theorique}">${formatHeure(theorique)}</s>`
+      : formatHeure(theorique);
 
   const statut = supprime
     ? `<span class="statut supp">${bilingue(MOTS_EMBED.supprime.fr, MOTS_EMBED.supprime.en)}</span>`
@@ -456,7 +472,9 @@ function ligneDepart(
   // dit « PARTI » d'un train encore listé — sans elle, un train parti depuis
   // une minute se lirait comme le prochain.
   let rebours = '';
-  if (!supprime && p.depart_s !== null) {
+  if (arrivee) {
+    rebours = `<span class="rebours arrivee-terminus">${bilingue(MOT_ARRIVEE.fr, MOT_ARRIVEE.en)}</span>`;
+  } else if (!supprime && p.depart_s !== null) {
     const c = compteARebours(
       p.depart_s,
       e.maintenant_s,
@@ -492,31 +510,43 @@ function ligneDepart(
     }
   }
 
+  // Morceaux de note DÉJÀ échappés : la mention d'alerte porte sa balise.
   const notes: string[] = [];
+  const note = (texte: string): void => {
+    notes.push(echapper(texte));
+  };
+  const alerte = (texte: string): void => {
+    notes.push(`<b class="alerte">${echapper(texte)}</b>`);
+  };
   if (supprime) {
-    notes.push(motifBilingue(e.params, p.motif ?? MOTS_EMBED.supprime.fr));
+    note(motifBilingue(e.params, p.motif ?? MOTS_EMBED.supprime.fr));
+  } else if (arrivee) {
+    const vers = terminusDeGrille(grille, p.numero, e.jour?.date ?? e.dateISO);
+    const mots = neContinuePas(vers, nomGare(vers));
+    alerte(`${mots.fr} / ${mots.en}`);
+    if (retard && p.motif) note(motifBilingue(e.params, p.motif));
   } else {
-    if (courseFermee(p)) notes.push(MOTS_EMBED.prive);
-    notes.push(
+    if (courseFermee(p)) note(MOTS_EMBED.prive);
+    note(
       p.express
         ? MOTS_EMBED.express
         : sansArret || (p.sens === 'montee' ? MOTS_EMBED.montee : MOTS_EMBED.descente),
     );
-    if (p.terminusExceptionnel && p.sens === 'montee') notes.push(MOTS_EMBED.terminusExceptionnel);
-    if (p.departConfirme) notes.push(MOTS_EMBED.departConfirme);
-    if (p.velos) notes.push(MOTS_EMBED.velos);
-    if (retard && p.motif) notes.push(motifBilingue(e.params, p.motif));
+    if (limitee) alerte(MOTS_EMBED.terminusExceptionnel);
+    if (p.departConfirme) note(MOTS_EMBED.departConfirme);
+    if (p.velos) note(MOTS_EMBED.velos);
+    if (retard && p.motif) note(motifBilingue(e.params, p.motif));
   }
 
   const badge = libelleTrainCourt({ numero: p.numero, nature: p.nature, libelle: p.libelle }, [
     ...trains.values(),
   ]);
 
-  return `<li class="depart${supprime ? ' supprime' : ''}${retard ? ' en-retard' : ''}">
+  return `<li class="depart${supprime ? ' supprime' : ''}${retard ? ' en-retard' : ''}${arrivee ? ' arrivee-terminus' : ''}">
 <span class="heure">${heure}</span>
-<span class="corps"><span class="dest"><span class="badge-train">${echapper(badge)}</span> <span class="nom-dest">${echapper(nomGare(p.destination))}</span>${pastilleMention}${
+<span class="corps"><span class="dest"><span class="badge-train">${echapper(badge)}</span> <span class="nom-dest${limitee ? ' alerte' : ''}">${echapper(nomGare(p.destination))}</span>${pastilleMention}${
     p.express ? '<span class="express">EXPRESS</span>' : ''
-  }</span><span class="note">${notes.map(echapper).join(' · ')}</span><span class="rame"><span class="pastille" style="${styleRame(machine)}"></span>${echapper(p.rame)}</span></span>
+  }</span><span class="note">${notes.join(' · ')}</span><span class="rame"><span class="pastille" style="${styleRame(machine)}"></span>${echapper(p.rame)}</span></span>
 <span class="etat">${rebours}${statut}</span>
 </li>`;
 }

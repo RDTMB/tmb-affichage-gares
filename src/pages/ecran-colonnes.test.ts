@@ -94,7 +94,10 @@ describe('src/pages/ecran.ts : plus aucune cellule d’arrivée', () => {
     // Le nom vit dans un `<span class="nom-dest">` : il porte une largeur
     // FIXE pour que la pastille d'affluence commence toujours au même
     // endroit d'une rangée à l'autre (86,5 px de balancement sans lui).
-    expect(ts).toMatch(/<div class="dest">\$\{badge\}<span class="nom-dest">\$\{echapper\(nomGare/);
+    // (La classe `alerte` d'un terminus exceptionnel, 20/10/2026, s'y ajoute.)
+    expect(ts).toMatch(
+      /<div class="dest">\$\{badge\}<span class="nom-dest\$\{limitee \? ' alerte' : ''\}">\$\{echapper\(nomGare/,
+    );
     // …et le picto motrice de l'express reste le DERNIER élément de la ligne.
     // Entre les deux vient désormais la pastille d'affluence : elle se lit
     // avec le nom, le picto termine (décision de l'exploitant du 09/09/2026).

@@ -21,6 +21,159 @@
   --alerte-bg: #fcebea;
   --bleu: #2e74b5;
   --bleu-bg: #eaf2fa;
+
+  /* THÈME SOMBRE (20/10/2026). Les contrôles natifs — champs, listes,
+     barres de défilement, sélecteur de couleur — suivent le thème du poste. */
+  color-scheme: light dark;
+
+  /* Alias SÉMANTIQUES. Leur valeur claire est EXACTEMENT l'ancienne valeur
+     écrite en dur (ou l'alias de charte qu'elle employait) : en clair, rien
+     ne bouge au pixel. Le bloc `prefers-color-scheme: dark` plus bas les
+     remappe sur les `--sombre-*` de tokens.css — jamais `--marine`, `--rouge`
+     ni `--creme` eux-mêmes : là où le marine sert de FOND (en-tête, tête du
+     tableau d'aperçu, vignette média), il reste marine.
+     Marine employé comme TEXTE ou BORDURE sur une carte : */
+  --titre: var(--marine); /* titres, noms de journée — crème en sombre */
+  --accent: var(--marine); /* onglet, puce, case cochée, bouton principal */
+  --sur-accent: #fff; /* texte posé SUR l'accent */
+  --accent-survol: #17293c;
+  --onglet-actif: var(--rouge); /* texte de l'onglet choisi (le filet reste rouge) */
+  --rouge-texte: var(--rouge); /* rouge en TEXTE : lien de section, erreur */
+  --lien-discret: var(--bleu-gris);
+  --fond-connexion: var(--marine);
+  /* Surfaces et filets */
+  --carte-douce: #fbfcfe;
+  --entete-table: #fafbfd;
+  --indic-bg: #f5f8fb;
+  --note-bg: #f7f9fb;
+  --inactif-bg: #fafbfc;
+  --filet: #eef2f6;
+  --bord-fort: #c9d6e2; /* fin de rotation */
+  --bord-survol: #b4c4d4;
+  --bouton-bg: #fff;
+  --champ-bg: #fff;
+  --desactive-bg: #e7edf3;
+  --desactive-texte: #9fb0c0;
+  --hachure: #b9c6d4;
+  --interrupteur: #cbd6e0;
+  --prio-normale: #c3d0dd;
+  --saute: #a9b8c6;
+  /* Étiquettes neutres (sens descendant, gares, motifs, grille inactive) */
+  --neutre-bg: #eef2f6;
+  --neutre-texte: #4a6078;
+  /* Variantes d'état qui n'avaient pas leur alias */
+  --sur-etat: #fff; /* texte posé sur un aplat --bleu / --alerte / --retard */
+  --enregistree-bg: #e6f4ec;
+  --enregistree: #1d6b3f;
+  --retard-fonce: #7a6017;
+  --retard-bord: #f0dcb4;
+  --edition-bg: #fdf8ec;
+  --modif-bg: #fff3c4;
+  --alerte-bord: #f2c9c5;
+  --erreur-bg: #fff1f1;
+  /* Aplats sous un texte BLANC qui le reste en sombre (tête marine du
+     tableau d'aperçu, où l'ajout et l'erreur colorent la colonne). */
+  --bleu-plein: var(--bleu);
+  --alerte-plein: var(--alerte);
+  /* Violets : train spécial, rôle technique, course à vide */
+  --violet: #7c3aed;
+  --violet-bg: #f3e8fd;
+  --technique: #4a3b7a;
+  --technique-bg: #e8e2f4;
+  --a-vide-bg: #fbf7ff;
+  /* Liseré des pastilles de rame : invisible en clair. */
+  --anneau-rame: transparent;
+  /* Ombres et voile */
+  --ombre-barre: rgba(15, 30, 50, 0.08);
+  --ombre-toast: rgba(0, 0, 0, 0.25);
+  --ombre-modale: rgba(0, 0, 0, 0.3);
+  --voile: rgba(33, 59, 87, 0.45);
+}
+
+/* THÈME SOMBRE — suit le réglage du poste, sans bouton ni mémoire. UN SEUL
+   bloc, qui ne fait que REMAPPER des alias : aucune règle n'est réécrite ici.
+   Contrastes mesurés (WCAG) dans tokens.css pour la palette, et pour les
+   couples propres à cette feuille :
+     sur-etat (page) sur bleu / alerte / retard  7,92 / 7,52 / 8,25
+     sur-accent (marine) sur accent / survol     8,05 / 9,92
+     accent sur bleu-bg (onglet admin, étiquette de service) 8,13
+     texte-sec sur relief (étiquettes neutres)   5,36
+     violet #c9b6ff sur #2e2552                  7,73
+     texte / texte-sec sur à-vide #1f2747       12,59 / 7,79
+     bleu-gris (désactivé) sur page              4,94
+   Les aplats « pleins » gardent leur valeur claire : le blanc y fait
+   4,90 (bleu) et 5,85 (alerte), comme en clair. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: var(--sombre-page);
+    --carte: var(--sombre-carte);
+    --bord: var(--sombre-bord);
+    --texte: var(--sombre-texte);
+    --sec: var(--sombre-texte-sec);
+    --ok: var(--sombre-ok);
+    --ok-bg: var(--sombre-ok-bg);
+    --retard: var(--sombre-retard);
+    --retard-bg: var(--sombre-retard-bg);
+    --alerte: var(--sombre-alerte);
+    --alerte-bg: var(--sombre-alerte-bg);
+    --bleu: var(--sombre-bleu);
+    --bleu-bg: var(--sombre-bleu-bg);
+
+    --titre: var(--sombre-titre);
+    --accent: var(--sombre-accent);
+    --sur-accent: var(--sombre-sur-accent);
+    --accent-survol: var(--sombre-texte);
+    /* Le rouge TMB fait 3,17:1 sur la carte : assez pour un filet, pas pour
+       un texte. L'onglet choisi prend l'accent, le texte rouge le saumon. */
+    --onglet-actif: var(--sombre-accent);
+    --rouge-texte: var(--sombre-alerte);
+    --lien-discret: var(--sombre-texte-sec); /* bleu-gris : 4,08, refusé */
+    /* Une carte sombre sur le marine serait PLUS sombre que son fond. */
+    --fond-connexion: var(--sombre-page);
+
+    --carte-douce: var(--sombre-doux);
+    --entete-table: var(--sombre-doux);
+    --indic-bg: var(--sombre-doux);
+    --note-bg: var(--sombre-doux);
+    --inactif-bg: var(--sombre-page);
+    --filet: var(--sombre-filet);
+    --bord-fort: var(--bleu-gris);
+    --bord-survol: var(--bleu-gris);
+    --bouton-bg: var(--sombre-doux);
+    --champ-bg: var(--sombre-page);
+    --desactive-bg: var(--sombre-page);
+    --desactive-texte: var(--bleu-gris);
+    --hachure: var(--sombre-bord);
+    --interrupteur: var(--sombre-bord);
+    --prio-normale: var(--bleu-gris);
+    --saute: var(--bleu-gris);
+    --neutre-bg: var(--sombre-relief);
+    --neutre-texte: var(--sombre-texte-sec);
+
+    --sur-etat: var(--sombre-page);
+    --enregistree-bg: var(--sombre-ok-bg);
+    --enregistree: var(--sombre-ok);
+    --retard-fonce: var(--sombre-retard);
+    --retard-bord: var(--sombre-retard);
+    --edition-bg: var(--sombre-retard-bg);
+    --modif-bg: var(--sombre-retard-bg);
+    --alerte-bord: var(--sombre-alerte);
+    --erreur-bg: var(--sombre-alerte-bg);
+    --bleu-plein: #2e74b5;
+    --alerte-plein: #c1281e;
+    /* Pas de violet dans la palette sombre : valeurs locales, mesurées. */
+    --violet: #c9b6ff;
+    --violet-bg: #2e2552;
+    --technique: var(--violet);
+    --technique-bg: var(--violet-bg);
+    --a-vide-bg: #1f2747;
+    --anneau-rame: var(--sombre-anneau);
+
+    --ombre-barre: rgba(0, 0, 0, 0.5);
+    --ombre-toast: rgba(0, 0, 0, 0.6);
+    --ombre-modale: rgba(0, 0, 0, 0.6);
+    --voile: rgba(0, 0, 0, 0.6);
+  }
 }
 
 * {
@@ -196,7 +349,7 @@ header .spacer {
 .connexion {
   position: fixed;
   inset: 0;
-  background: var(--marine);
+  background: var(--fond-connexion);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -204,7 +357,7 @@ header .spacer {
 }
 
 .connexion-carte {
-  background: #fff;
+  background: var(--carte);
   border-radius: 14px;
   padding: 28px;
   /* 380 px sur un écran de 390 tenait à 5 px près ; à 320 elle débordait. */
@@ -218,7 +371,7 @@ header .spacer {
 }
 
 .connexion-carte h2 {
-  color: var(--marine);
+  color: var(--titre);
 }
 
 .connexion-carte input {
@@ -240,7 +393,7 @@ header .spacer {
    ferait croire à un échec. Même zone, même place, couleur neutre — le
    précédent de l'écran de gare, qui annonce en neutre une heure confirmée. */
 .connexion .erreur.dit {
-  color: var(--marine);
+  color: var(--titre);
   font-weight: 400;
 }
 
@@ -254,7 +407,7 @@ header .spacer {
   padding: 0;
   font: inherit;
   font-size: 13px;
-  color: var(--bleu-gris);
+  color: var(--lien-discret);
   text-decoration: underline;
   cursor: pointer;
   justify-self: center;
@@ -262,7 +415,7 @@ header .spacer {
 
 .connexion-carte .lien-discret:hover,
 .connexion-carte .lien-discret:focus-visible {
-  color: var(--marine);
+  color: var(--titre);
 }
 
 /* ------- Onglets ------- */
@@ -277,7 +430,7 @@ header .spacer {
 nav.tabs {
   display: flex;
   align-items: stretch;
-  background: #fff;
+  background: var(--carte);
   border-bottom: 1px solid var(--bord);
   padding: 0 22px;
 }
@@ -332,7 +485,7 @@ nav.tabs .groupe-administration button {
    signal de l'exploitation. Mesuré à l'écran : rgb(229,42,35) au lieu de
    transparent. */
 nav.tabs .groupe-administration button.on {
-  color: var(--marine);
+  color: var(--accent);
   border-bottom-color: transparent;
   /* #EAF2FA dans le canevas — le projet le possédait déjà sous `--bleu-bg`.
      J'avais lu #EAF2F6 sur une capture : deux caractères de trop. */
@@ -372,7 +525,7 @@ nav.tabs button {
 }
 
 nav.tabs button.on {
-  color: var(--rouge);
+  color: var(--onglet-actif);
   border-bottom-color: var(--rouge);
 }
 
@@ -411,9 +564,9 @@ main {
   padding: 10px 14px;
   border: 1px solid var(--bord);
   border-radius: 9px;
-  background: #fbfcfe;
+  background: var(--carte-douce);
   font-weight: 900;
-  color: var(--marine);
+  color: var(--titre);
   font-size: 13.5px;
   list-style-position: inside;
 }
@@ -441,7 +594,7 @@ main {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--marine);
+  color: var(--titre);
   padding: 14px 18px 10px;
   display: flex;
   align-items: center;
@@ -469,14 +622,14 @@ button {
   cursor: pointer;
   border-radius: 8px;
   border: 1px solid var(--bord);
-  background: #fff;
+  background: var(--bouton-bg);
   padding: 7px 13px;
   font-weight: 700;
   color: var(--texte);
 }
 
 button:hover {
-  border-color: #b4c4d4;
+  border-color: var(--bord-survol);
 }
 
 button.primaire {
@@ -499,21 +652,21 @@ button.primaire:hover {
    (aucune barre Publier derrière eux) et les modales, dont la superposition
    fait un écran à part entière. */
 button.principal {
-  background: var(--marine);
-  border-color: var(--marine);
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--sur-accent);
 }
 
 button.principal:hover {
-  background: #17293c;
-  border-color: #17293c;
+  background: var(--accent-survol);
+  border-color: var(--accent-survol);
 }
 
 button.principal:disabled,
 button.principal:disabled:hover {
-  background: #e7edf3;
+  background: var(--desactive-bg);
   border-color: var(--bord);
-  color: #9fb0c0;
+  color: var(--desactive-texte);
   cursor: not-allowed;
 }
 
@@ -532,7 +685,7 @@ button.leger.danger {
 button.leger.danger:hover {
   background: var(--alerte);
   border-color: var(--alerte);
-  color: #fff;
+  color: var(--sur-etat);
 }
 
 input[type='text'],
@@ -547,7 +700,7 @@ select {
   border: 1px solid var(--bord);
   border-radius: 8px;
   padding: 6px 9px;
-  background: #fff;
+  background: var(--champ-bg);
   color: var(--texte);
 }
 
@@ -557,7 +710,7 @@ input[type='color'] {
   border: 1px solid var(--bord);
   border-radius: 6px;
   padding: 2px;
-  background: #fff;
+  background: var(--champ-bg);
   cursor: pointer;
 }
 
@@ -572,7 +725,7 @@ input[type='color'] {
   gap: 8px;
   padding: 10px 18px 12px;
   border-bottom: 1px solid var(--bord);
-  background: #fbfcfe;
+  background: var(--carte-douce);
 }
 
 .barre-jour .rang {
@@ -615,7 +768,7 @@ input[type='color'] {
 
 .jour-lettres {
   font-weight: 900;
-  color: var(--marine);
+  color: var(--titre);
   font-size: 15.5px;
   white-space: nowrap;
 }
@@ -635,13 +788,13 @@ input[type='color'] {
 }
 
 .etat-jour.enregistree {
-  background: #e6f4ec;
-  color: #1d6b3f;
+  background: var(--enregistree-bg);
+  color: var(--enregistree);
 }
 
 .etat-jour.apercu {
-  background: #fdf3e0;
-  color: #7a6017;
+  background: var(--retard-bg);
+  color: var(--retard-fonce);
 }
 
 .etat-jour.hors-saison {
@@ -664,7 +817,7 @@ input[type='color'] {
 /* Réglage ACTIF : mis en évidence, jamais discret. */
 .barre-jour .reglage.actif {
   background: var(--alerte-bg);
-  border: 1px solid #f2c9c5;
+  border: 1px solid var(--alerte-bord);
   border-radius: 10px;
   padding: 4px 8px;
 }
@@ -718,19 +871,19 @@ input[type='color'] {
   border-radius: 99px;
   padding: 5px 13px;
   border: 1px solid var(--bord);
-  background: #fff;
+  background: var(--bouton-bg);
   cursor: pointer;
 }
 
 .chip-btn.on {
-  background: var(--marine);
-  color: #fff;
-  border-color: var(--marine);
+  background: var(--accent);
+  color: var(--sur-accent);
+  border-color: var(--accent);
 }
 
 .service-tag {
   font-weight: 700;
-  color: var(--marine);
+  color: var(--accent);
   background: var(--bleu-bg);
   border-radius: 8px;
   padding: 4px 10px;
@@ -744,7 +897,7 @@ input[type='color'] {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #fff;
+  background: var(--bouton-bg);
   border: 1px solid var(--bord);
   border-radius: 10px;
   padding: 5px 8px;
@@ -755,7 +908,7 @@ input[type='color'] {
 
 .terminus.actif {
   background: var(--alerte-bg);
-  border-color: #f2c9c5;
+  border-color: var(--alerte-bord);
   color: var(--alerte);
 }
 
@@ -783,7 +936,7 @@ input[type='color'] {
   font: inherit;
   font-size: 13px;
   font-weight: 700;
-  color: var(--rouge);
+  color: var(--rouge-texte);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -794,7 +947,7 @@ input[type='color'] {
   border: 1px solid var(--bord);
   border-left: 4px solid var(--rouge);
   border-radius: 9px;
-  background: #fbfcfe;
+  background: var(--carte-douce);
 }
 
 .carte-section .ligne {
@@ -822,7 +975,7 @@ input[type='color'] {
   padding: 8px 12px;
   border-radius: 8px;
   background: var(--alerte-bg);
-  border: 1px solid #f2c9c5;
+  border: 1px solid var(--alerte-bord);
   color: var(--alerte);
   font-size: 12.5px;
   font-weight: 600;
@@ -837,8 +990,8 @@ input[type='color'] {
 }
 
 .note.bandeau-report {
-  background: #fdf3e0;
-  color: #7a6017;
+  background: var(--retard-bg);
+  color: var(--retard-fonce);
   font-weight: 700;
 }
 
@@ -856,12 +1009,12 @@ th {
   text-align: left;
   padding: 8px 12px;
   border-bottom: 1px solid var(--bord);
-  background: #fafbfd;
+  background: var(--entete-table);
 }
 
 td {
   padding: 8px 12px;
-  border-bottom: 1px solid #eef2f6;
+  border-bottom: 1px solid var(--filet);
   vertical-align: middle;
 }
 
@@ -874,7 +1027,7 @@ tr.passe {
 }
 
 tr.inactif td {
-  background: #fafbfc;
+  background: var(--inactif-bg);
 }
 
 tr.inactif .h-dep,
@@ -912,8 +1065,8 @@ tr.inactif .sens-tag {
 }
 
 .sens-tag.down {
-  background: #eef2f6;
-  color: #4a6078;
+  background: var(--neutre-bg);
+  color: var(--neutre-texte);
 }
 
 .exp-tag {
@@ -933,7 +1086,7 @@ tr.inactif .sens-tag {
 }
 
 tr.paire-fin td {
-  border-bottom: 2px solid #c9d6e2;
+  border-bottom: 2px solid var(--bord-fort);
 }
 
 .rame-fixe {
@@ -944,12 +1097,17 @@ tr.paire-fin td {
   color: var(--sec);
 }
 
+/* Le liseré `--anneau-rame` est transparent en clair et ne se voit qu'en
+   sombre (Marie et Jeanne y tombent sous 3:1). L'anneau rouge de Marguerite
+   arrive en `box-shadow` EN LIGNE (supervision.ts) : il prend le pas sur
+   celui-ci, et c'est voulu — un seul anneau, le sien. */
 .rame-fixe .p,
 .rame .p {
   width: 13px;
   height: 13px;
   border-radius: 50%;
   flex: none;
+  box-shadow: 0 0 0 1px var(--anneau-rame);
 }
 
 .rame-fixe small {
@@ -1000,7 +1158,7 @@ tr.paire-fin td {
   border-radius: 0;
   padding: 5px 10px;
   font-size: 12.5px;
-  background: #fff;
+  background: var(--bouton-bg);
   color: var(--sec);
   font-weight: 700;
 }
@@ -1029,7 +1187,7 @@ tr.paire-fin td {
    pas — seul l'état de retard passe en plein. */
 .seg button.on-retard {
   background: var(--retard);
-  color: #fff;
+  color: var(--sur-etat);
   font-weight: 900;
 }
 
@@ -1124,9 +1282,9 @@ tr.paire-fin td {
   padding: 9px 12px;
   border-radius: 8px;
   border: 1px solid var(--bord);
-  border-left: 4px solid var(--marine);
+  border-left: 4px solid var(--accent);
   background: var(--bleu-bg);
-  color: var(--marine);
+  color: var(--accent);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1179,6 +1337,7 @@ tr.paire-fin td {
   height: 12px;
   border-radius: 50%;
   flex: none;
+  box-shadow: 0 0 0 1px var(--anneau-rame); /* voir `.rame-fixe .p` */
 }
 
 .ligne-affluence .sens-tag {
@@ -1249,7 +1408,7 @@ tr.paire-fin td {
   width: 36px;
   height: 20px;
   border-radius: 99px;
-  background: #cbd6e0;
+  background: var(--interrupteur);
   position: relative;
   cursor: pointer;
   transition: 0.2s;
@@ -1281,12 +1440,12 @@ tr.paire-fin td {
   display: flex;
   gap: 12px;
   padding: 12px 18px;
-  border-top: 1px solid #eef2f6;
+  border-top: 1px solid var(--filet);
   align-items: flex-start;
 }
 
 .msg.en-edition {
-  background: #fdf8ec;
+  background: var(--edition-bg);
 }
 
 .msg .prio {
@@ -1297,7 +1456,7 @@ tr.paire-fin td {
 }
 
 .msg .prio.norm {
-  background: #c3d0dd;
+  background: var(--prio-normale);
 }
 
 .msg .prio.imp {
@@ -1329,8 +1488,8 @@ tr.paire-fin td {
 .chip-gare {
   font-size: 11.5px;
   font-weight: 900;
-  background: #eef2f6;
-  color: #4a6078;
+  background: var(--neutre-bg);
+  color: var(--neutre-texte);
   border-radius: 5px;
   padding: 2px 8px;
 }
@@ -1341,8 +1500,8 @@ tr.paire-fin td {
 }
 
 .chip-gare.train {
-  background: #f3e8fd;
-  color: #7c3aed;
+  background: var(--violet-bg);
+  color: var(--violet);
 }
 
 .chip-gare.fixe {
@@ -1557,7 +1716,7 @@ tr.paire-fin td {
   align-items: center;
   gap: 10px;
   padding: 9px 18px;
-  border-top: 1px solid #eef2f6;
+  border-top: 1px solid var(--filet);
   flex-wrap: wrap;
 }
 
@@ -1599,7 +1758,7 @@ tr.paire-fin td {
 /* Avertissement : aucune traduction automatique disponible */
 .avert-trad {
   background: var(--retard-bg);
-  border: 1px solid #f0dcb4;
+  border: 1px solid var(--retard-bord);
   border-radius: 8px;
   padding: 7px 11px;
   font-size: 12.5px;
@@ -1614,7 +1773,7 @@ tr.paire-fin td {
   gap: 10px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--bord);
-  background: #fbfcfe;
+  background: var(--carte-douce);
   font-weight: 700;
   flex-wrap: wrap;
 }
@@ -1781,7 +1940,7 @@ tr.paire-fin td {
   align-items: center;
   gap: 10px;
   padding: 9px 18px;
-  border-top: 1px solid #eef2f6;
+  border-top: 1px solid var(--filet);
   flex-wrap: wrap;
 }
 
@@ -1801,7 +1960,7 @@ tr.paire-fin td {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: #eef2f6;
+  background: var(--neutre-bg);
   border-radius: 99px;
   padding: 6px 12px;
   font-weight: 700;
@@ -1863,8 +2022,8 @@ tr.paire-fin td {
 }
 
 .role-technique {
-  background: #e8e2f4;
-  color: #4a3b7a;
+  background: var(--technique-bg);
+  color: var(--technique);
 }
 
 .role-admin {
@@ -1885,7 +2044,7 @@ tr.paire-fin td {
 /* Compte sans aucun rôle : il ne peut rien faire, l'interface le DIT plutôt
    que de laisser une ligne muette. */
 .role-aucun {
-  background: #eef2f6;
+  background: var(--neutre-bg);
   color: var(--sec);
 }
 
@@ -1947,7 +2106,7 @@ tr.paire-fin td {
 }
 
 .pill.base-demo {
-  background: #eef2f6;
+  background: var(--neutre-bg);
   color: var(--sec);
 }
 
@@ -2001,7 +2160,7 @@ tr.paire-fin td {
 }
 
 .periodes-erreur {
-  color: var(--rouge);
+  color: var(--rouge-texte);
   font-weight: 700;
 }
 
@@ -2054,8 +2213,8 @@ tr.paire-fin td {
 }
 
 .etat-grille.inactive {
-  background: #eef2f6;
-  color: #4a6078;
+  background: var(--neutre-bg);
+  color: var(--neutre-texte);
 }
 
 .actions-grille {
@@ -2103,7 +2262,7 @@ tr.paire-fin td {
   gap: 12px;
   flex-wrap: wrap;
   font-size: 16px;
-  color: var(--marine);
+  color: var(--titre);
   margin-bottom: 10px;
 }
 
@@ -2238,7 +2397,7 @@ tr.paire-fin td {
 .grille-apercu h4 {
   font-family: 'Amaranth', sans-serif;
   font-size: 15px;
-  color: var(--marine);
+  color: var(--titre);
   margin: 12px 0 6px;
 }
 
@@ -2273,7 +2432,7 @@ tr.paire-fin td {
 .table-apercu th,
 .table-apercu td {
   padding: 4px 8px;
-  border-bottom: 1px solid #eef2f6;
+  border-bottom: 1px solid var(--filet);
   text-align: center;
   white-space: nowrap;
 }
@@ -2294,12 +2453,12 @@ tr.paire-fin td {
 }
 
 .table-apercu thead th.ajoute {
-  background: var(--bleu);
+  background: var(--bleu-plein);
 }
 
 .table-apercu tr.indic th,
 .table-apercu tr.indic td {
-  background: #f5f8fb;
+  background: var(--indic-bg);
   color: var(--sec);
   font-size: 11.5px;
   font-weight: 700;
@@ -2310,8 +2469,8 @@ tr.paire-fin td {
   text-align: left;
   font-family: 'Amaranth', sans-serif;
   font-size: 13px;
-  color: var(--marine);
-  background: #fafbfd;
+  color: var(--titre);
+  background: var(--entete-table);
   vertical-align: middle;
   border-right: 1px solid var(--bord);
   text-transform: none;
@@ -2326,11 +2485,11 @@ tr.paire-fin td {
 }
 
 .table-apercu td.saute {
-  color: #a9b8c6;
+  color: var(--saute);
 }
 
 .table-apercu td.modif {
-  background: #fff3c4;
+  background: var(--modif-bg);
   font-weight: 900;
 }
 
@@ -2365,9 +2524,9 @@ tr.paire-fin td {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #fff;
+  background: var(--carte);
   border-top: 1px solid var(--bord);
-  box-shadow: 0 -4px 18px rgba(15, 30, 50, 0.08);
+  box-shadow: 0 -4px 18px var(--ombre-barre);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -2434,7 +2593,7 @@ tr.paire-fin td {
   justify-content: center;
   font-weight: 900;
   font-size: 14px;
-  color: #fff;
+  color: var(--sur-etat);
   background: var(--bleu);
 }
 
@@ -2479,9 +2638,9 @@ tr.paire-fin td {
    ici, sinon le bouton resterait rouge tout en étant inactif. */
 .publier button.primaire:disabled,
 .publier button.primaire:disabled:hover {
-  background: #e7edf3;
+  background: var(--desactive-bg);
   border-color: var(--bord);
-  color: #9fb0c0;
+  color: var(--desactive-texte);
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
@@ -2493,15 +2652,15 @@ tr.paire-fin td {
   bottom: calc(var(--barre-publier-h, 70px) + 30px);
   left: 50%;
   transform: translateX(-50%) translateY(20px);
-  background: var(--marine);
-  color: #fff;
+  background: var(--accent);
+  color: var(--sur-accent);
   padding: 13px 22px;
   border-radius: 10px;
   font-weight: 700;
   opacity: 0;
   transition: all 0.3s;
   z-index: 50;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 30px var(--ombre-toast);
   max-width: 80vw;
 }
 
@@ -2512,7 +2671,7 @@ tr.paire-fin td {
 
 /* Courses à vide : présentes en exploitation, absentes de tous les écrans */
 tr.a-vide td {
-  background: #fbf7ff;
+  background: var(--a-vide-bg);
 }
 
 tr.a-vide .h-dep,
@@ -2551,8 +2710,8 @@ tr.a-vide .sens-tag {
 
 /* Avertissement de rotation : jamais bloquant, seulement signalé */
 .note.avert-rotation {
-  background: #fdf3e0;
-  color: #7a6017;
+  background: var(--retard-bg);
+  color: var(--retard-fonce);
   font-weight: 700;
 }
 
@@ -2560,8 +2719,8 @@ tr.a-vide .sens-tag {
    écrasent le grisage du navigateur et un bouton inerte reste engageant. */
 button:disabled,
 button:disabled:hover {
-  background: #f2f5f8;
-  color: #9fb0c0;
+  background: var(--fond);
+  color: var(--desactive-texte);
   border-color: var(--bord);
   cursor: not-allowed;
   box-shadow: none;
@@ -2592,7 +2751,7 @@ input:disabled {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--sec);
-  background: #f2f5f8;
+  background: var(--fond);
   border: 1px solid var(--bord);
   border-radius: 6px;
   padding: 5px 9px;
@@ -2604,7 +2763,7 @@ input:disabled {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  background: #fbfcfe;
+  background: var(--carte-douce);
 }
 
 /* Veille propre à un poste, sur sa carte */
@@ -2630,7 +2789,7 @@ input:disabled {
 }
 
 .veille-propre {
-  color: #7a6017;
+  color: var(--retard-fonce);
   font-weight: 900;
 }
 
@@ -2656,7 +2815,7 @@ input:disabled {
 #tab-journal thead th {
   position: sticky;
   top: 0;
-  background: #fbfcfe;
+  background: var(--carte-douce);
   z-index: 1;
 }
 
@@ -2714,7 +2873,7 @@ input:disabled {
 .recap-cycle {
   margin-top: 8px;
   padding: 7px 10px;
-  background: #f2f5f8;
+  background: var(--fond);
   border: 1px solid var(--bord);
   border-radius: 7px;
   font-size: 12.5px;
@@ -2731,8 +2890,8 @@ input:disabled {
   margin-right: 7px;
   padding: 0 5px;
   border-radius: 99px;
-  background: var(--marine);
-  color: #fff;
+  background: var(--accent);
+  color: var(--sur-accent);
   font-size: 11px;
   font-weight: 900;
 }
@@ -2754,7 +2913,7 @@ input:disabled {
   position: fixed;
   inset: 0;
   z-index: 45;
-  background: rgba(33, 59, 87, 0.45);
+  background: var(--voile);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2766,8 +2925,8 @@ input:disabled {
   width: min(720px, 100%);
   max-height: 90vh;
   overflow-y: auto;
-  background: #fff;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  background: var(--carte);
+  box-shadow: 0 12px 40px var(--ombre-modale);
 }
 
 .carte-sup {
@@ -2776,7 +2935,7 @@ input:disabled {
   border: 1px solid var(--bord);
   border-left: 4px solid var(--rouge);
   border-radius: 9px;
-  background: #fbfcfe;
+  background: var(--carte-douce);
 }
 
 /* Départ constaté d'une descente de renfort : information NEUTRE, jamais le
@@ -2799,7 +2958,7 @@ input:disabled {
   padding: 8px 12px;
   border-radius: 8px;
   background: var(--alerte-bg);
-  border: 1px solid #f2c9c5;
+  border: 1px solid var(--alerte-bord);
   color: var(--alerte);
   font-weight: 700;
   font-size: 12.5px;
@@ -2809,8 +2968,8 @@ input:disabled {
   margin: 6px 0;
   padding: 8px 12px;
   border-radius: 8px;
-  background: #fdf3e0;
-  color: #7a6017;
+  background: var(--retard-bg);
+  color: var(--retard-fonce);
   font-weight: 700;
   font-size: 12.5px;
 }
@@ -2860,7 +3019,7 @@ input:disabled {
   gap: 22px;
   flex-wrap: wrap;
   padding: 8px 10px;
-  background: #fff;
+  background: var(--carte);
   border: 1px solid var(--bord);
   border-radius: 7px;
   font-size: 12.5px;
@@ -2891,7 +3050,7 @@ input:disabled {
 }
 
 .erreur-sup {
-  color: var(--rouge);
+  color: var(--rouge-texte);
   font-weight: 700;
 }
 
@@ -2984,15 +3143,15 @@ table.onglets-roles input[type='checkbox'] {
   margin: 0;
   border: 1.5px solid var(--bleu-gris);
   border-radius: 4px;
-  background: #fff;
+  background: var(--champ-bg);
   cursor: pointer;
   display: inline-block;
   vertical-align: middle;
   position: relative;
 }
 table.onglets-roles input[type='checkbox']:checked {
-  background: var(--marine);
-  border-color: var(--marine);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 table.onglets-roles input[type='checkbox']:checked::after {
   content: '';
@@ -3001,7 +3160,7 @@ table.onglets-roles input[type='checkbox']:checked::after {
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--sur-accent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -3020,7 +3179,13 @@ table.onglets-roles input[type='checkbox']:disabled {
   cursor: not-allowed;
   border-style: dashed;
   border-color: #9fb0c0;
-  background: repeating-linear-gradient(45deg, #fff, #fff 2px, #b9c6d4 2px, #b9c6d4 5px);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--champ-bg),
+    var(--champ-bg) 2px,
+    var(--hachure) 2px,
+    var(--hachure) 5px
+  );
 }
 /* Cochée ET verrouillée : le motif hachuré effacerait la coche. Case pleine,
    éteinte, au bord pointillé. */
@@ -3046,15 +3211,15 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
   height: 15px;
   border: 1.5px solid var(--bleu-gris);
   border-radius: 4px;
-  background: #fff;
+  background: var(--champ-bg);
   display: inline-block;
   flex: none;
   position: relative;
 }
 
 .ex-case.cochee {
-  background: var(--marine);
-  border-color: var(--marine);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .ex-case.cochee::after,
@@ -3065,7 +3230,7 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--sur-accent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -3073,7 +3238,13 @@ table.onglets-roles input[type='checkbox']:checked:disabled {
 .ex-case.impossible {
   border-style: dashed;
   border-color: #9fb0c0;
-  background: repeating-linear-gradient(45deg, #fff, #fff 2px, #b9c6d4 2px, #b9c6d4 5px);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--champ-bg),
+    var(--champ-bg) 2px,
+    var(--hachure) 2px,
+    var(--hachure) 5px
+  );
 }
 
 .ex-case.verrouillee {
@@ -3159,7 +3330,7 @@ td.cell-sens > .sens-groupe {
 }
 
 .etat-vide b {
-  color: var(--marine);
+  color: var(--titre);
   font-size: 15px;
 }
 
@@ -3557,15 +3728,15 @@ td.cell-sens > .sens-groupe {
   /* Les états de ligne passent de la cellule à la carte : fond des lignes
      inactives et à vide, filet épais de fin de rotation. */
   #tab-circ tr.inactif {
-    background: #fafbfc;
+    background: var(--inactif-bg);
   }
 
   #tab-circ tr.a-vide {
-    background: #fbf7ff;
+    background: var(--a-vide-bg);
   }
 
   #tab-circ tr.paire-fin {
-    border-bottom: 2px solid #c9d6e2;
+    border-bottom: 2px solid var(--bord-fort);
   }
 
   /* Les trois statuts se partagent la largeur de leur cellule. */
@@ -3663,7 +3834,7 @@ td.cell-sens > .sens-groupe {
   margin-top: 8px;
   padding: 7px 11px;
   border-left: 3px solid var(--bord);
-  background: #f7f9fb;
+  background: var(--note-bg);
   border-radius: 0 6px 6px 0;
   font-size: 12px;
   line-height: 1.45;
@@ -3756,7 +3927,7 @@ body.en-apercu {
   font: inherit;
   font-variant-numeric: tabular-nums;
   text-align: center;
-  background: #fff;
+  background: var(--champ-bg);
   color: var(--texte);
 }
 
@@ -3767,11 +3938,11 @@ body.en-apercu {
 
 .table-apercu td.en-erreur input.cellule-heure {
   border-color: var(--alerte);
-  background: #fff1f1;
+  background: var(--erreur-bg);
 }
 
 .table-apercu thead th.en-erreur {
-  background: var(--alerte);
+  background: var(--alerte-plein);
 }
 
 .table-apercu thead th button {
@@ -3797,7 +3968,7 @@ body.en-apercu {
 
 .table-apercu tr.ligne-erreur td {
   text-align: left;
-  background: #fff1f1;
+  background: var(--erreur-bg);
   color: var(--alerte);
   font-size: 11.5px;
   font-weight: 700;
@@ -3844,7 +4015,7 @@ body.en-apercu {
 .nouveautes-jour h3 {
   font-size: 14px;
   font-weight: 700;
-  color: var(--marine);
+  color: var(--titre);
   margin: 0 0 6px;
 }
 
