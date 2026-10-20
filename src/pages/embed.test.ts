@@ -80,6 +80,7 @@ function entree(partiel: Partial<EntreeRendu>): EntreeRendu {
     affluence: [],
     gareUrl: null,
     ongletDemande: null,
+    raisonDe: null,
     vue: 'departs',
     maintenant_s: h('10:30'),
     maintenantMs: Date.UTC(2026, 6, 15, 8, 30),
@@ -609,7 +610,9 @@ describe('section exploitée — une gare hors section n’a pas d’onglet acti
     const inactifs = onglets.filter((o) => o.inactif !== null).map((o) => o.id);
     expect(inactifs).toEqual(['col-de-voza', 'bellevue', 'nid-daigle']);
     const html = rendEmbed(entree({ grille: GRAND, jour }));
-    expect(html).toMatch(/class="onglet inactif" disabled[^>]*>Bellevue</);
+    // `aria-disabled` et non `disabled` : le toucher doit pouvoir montrer la raison.
+    expect(html).toMatch(/class="onglet inactif" data-inactif="bellevue" aria-disabled="true"[^>]*>Bellevue</);
+    expect(html).not.toMatch(/\sdisabled[\s>]/);
     expect(html).not.toContain('data-gare="bellevue"');
   });
 

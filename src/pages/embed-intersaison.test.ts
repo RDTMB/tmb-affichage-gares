@@ -90,6 +90,7 @@ function rendDate(
     affluence: [],
     gareUrl: null,
     ongletDemande: null,
+    raisonDe: null,
     vue: 'departs',
     maintenant_s: heureVersSecondes('10:30'),
     maintenantMs: Date.parse(`${date}T08:30:00Z`),

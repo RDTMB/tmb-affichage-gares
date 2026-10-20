@@ -243,6 +243,22 @@ h2,
   text-decoration: line-through;
 }
 
+/* Raison d'un onglet grisé, au toucher (pas de survol sur téléphone). Vide au
+   repos, sans hauteur : la zone `role="status"` reste en place. */
+.raison-inactif {
+  margin: -6px 0 12px;
+  color: var(--texte-sec);
+  font-size: 0.9rem;
+}
+
+.raison-inactif:empty {
+  margin: 0;
+}
+
+.raison-inactif .en {
+  font-style: italic;
+}
+
 .onglet:focus-visible,
 .bascule:focus-visible,
 .infos a:focus-visible,

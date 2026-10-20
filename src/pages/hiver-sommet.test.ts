@@ -24,11 +24,14 @@ import { parseFeuille } from '../core/import-grille';
 import { lireClasseur } from '../core/lecture-xlsx';
 import type { GareId, Grille, Jour } from '../core/types';
 import {
+  etatApresClic,
+  NID_DAIGLE_HIVER,
   NON_DESSERVIE,
   ongletRetenu,
   ongletsGares,
   rendEmbed,
   type EntreeRendu,
+  type EtatClic,
 } from './embed-logique';
 import { tableHtml, titresDesSens } from './grille-tableau';
 
@@ -65,6 +68,7 @@ function entree(grille: Grille, jour: Jour, partiel: Partial<EntreeRendu> = {}):
     affluence: [],
     gareUrl: null,
     ongletDemande: null,
+    raisonDe: null,
     vue: 'departs',
     maintenant_s: h('08:20'),
     maintenantMs: Date.UTC(2026, 11, 12, 7, 20),
@@ -89,6 +93,20 @@ const nomGare =
   (g: Grille) =>
   (id: GareId): string =>
     g.gares.find((x) => x.id === id)?.nom ?? id;
+
+/**
+ * Grille d'été dont aucune montée n'atteint le Nid d'Aigle : le début de
+ * saison du document d'été, avant l'ouverture « fin juin ».
+ */
+function eteSansNidDaigle(): Grille {
+  return {
+    ...ETE,
+    montees: ETE.montees.map((t) => ({
+      ...t,
+      passages: t.passages.filter((p) => p.gare !== 'nid-daigle'),
+    })),
+  };
+}
 
 /** Été, bascule « terminus Bellevue » pour toute la journée, par la fonction de la supervision. */
 function jourEteBascule(): Jour {
@@ -120,15 +138,73 @@ describe('embed — en-tête du bloc montée', () => {
 });
 
 describe('embed — onglets', () => {
-  it('hiver : Nid d’Aigle grisé, non cliquable, « Non desservie aujourd’hui »', () => {
+  it('hiver : Nid d’Aigle grisé, non cliquable, « pas ouvert pendant la période hivernale »', () => {
     const onglets = ongletsGares(HIVER, JOUR_HIVER, h('08:20'));
     expect(onglets.filter((o) => o.inactif !== null).map((o) => o.id)).toEqual(['nid-daigle']);
-    expect(onglets.find((o) => o.id === 'nid-daigle')?.inactif).toBe(NON_DESSERVIE);
+    expect(onglets.find((o) => o.id === 'nid-daigle')?.inactif).toBe(NID_DAIGLE_HIVER);
     const html = rendEmbed(entree(HIVER, JOUR_HIVER));
     expect(html).not.toContain('data-gare="nid-daigle"');
-    expect(html).toMatch(
-      /class="onglet inactif" disabled[^>]*title="Non desservie aujourd’hui \/ Not served today">Nid d/,
+    expect(html).toContain(
+      'class="onglet inactif" data-inactif="nid-daigle" aria-disabled="true" aria-selected="false" title="Le Nid d’Aigle n’est pas ouvert pendant la période hivernale\u202f! / Nid d’Aigle is closed during the winter season!">Nid d',
     );
+  });
+
+  it('été sans Nid d’Aigle (ouverture « fin juin ») : « Non desservie aujourd’hui », jamais « hivernale »', () => {
+    const grille = eteSansNidDaigle();
+    const jour = generationJour(grille, '2026-06-13');
+    const inactif = ongletsGares(grille, jour, h('10:30')).find((o) => o.id === 'nid-daigle')?.inactif;
+    expect(inactif).toBe(NON_DESSERVIE);
+    expect(rendEmbed(entree(grille, jour, { maintenant_s: h('10:30') }))).not.toContain(
+      'hivernale',
+    );
+  });
+
+  it('hiver, une AUTRE gare non desservie (aucune aujourd’hui) : texte générique', () => {
+    const grille: Grille = {
+      ...HIVER,
+      montees: HIVER.montees.map((t) => ({
+        ...t,
+        passages: t.passages.filter((p) => p.gare !== 'bellevue' && p.gare !== 'nid-daigle'),
+      })),
+    };
+    const onglets = ongletsGares(grille, generationJour(grille, '2026-12-12'), h('08:20'));
+    expect(onglets.find((o) => o.id === 'bellevue')?.inactif).toBe(NON_DESSERVIE);
+    expect(onglets.find((o) => o.id === 'nid-daigle')?.inactif).toBe(NID_DAIGLE_HIVER);
+  });
+
+  it('toucher un onglet grisé : rien ne s’ouvre, la raison s’affiche sous les onglets', () => {
+    const avant: EtatClic = { ongletDemande: 'saint-gervais', vue: 'departs', raisonDe: null };
+    const apres = etatApresClic(avant, { inactif: 'nid-daigle' });
+    expect(apres).toEqual({ ...avant, raisonDe: 'nid-daigle' });
+
+    const html = rendEmbed(entree(HIVER, JOUR_HIVER, apres));
+    expect(html).toContain('class="onglet choisi" data-gare="saint-gervais"');
+    expect(html).toContain(
+      '</nav><p class="raison-inactif" role="status" aria-live="polite"><span class="fr">Le Nid d’Aigle n’est pas ouvert pendant la période hivernale\u202f!</span> <span class="en" lang="en">Nid d’Aigle is closed during the winter season!</span></p>',
+    );
+    // Au repos, la zone existe, vide : `aria-live` annonce ce qui y ARRIVE.
+    expect(rendEmbed(entree(HIVER, JOUR_HIVER, avant))).toContain(
+      '<p class="raison-inactif" role="status" aria-live="polite"></p>',
+    );
+    // Le toucher d'un autre onglet l'efface, et ouvre celui-là.
+    expect(etatApresClic(apres, { gare: 'motivon' })).toEqual({
+      ongletDemande: 'motivon',
+      vue: 'departs',
+      raisonDe: null,
+    });
+  });
+
+  it('même comportement pour un onglet grisé par une FERMETURE du jour', () => {
+    const jour: Jour = { ...JOUR_HIVER, gare_fin: 'motivon' };
+    const etat = etatApresClic(
+      { ongletDemande: 'le-fayet', vue: 'departs', raisonDe: null },
+      { inactif: 'col-de-voza' },
+    );
+    expect(etat.ongletDemande).toBe('le-fayet');
+    const html = rendEmbed(entree(HIVER, jour, etat));
+    const raison = fermetureGare(jour, 'col-de-voza', nomGare(HIVER));
+    expect(raison).not.toBeNull();
+    expect(html).toContain(`aria-live="polite"><span class="fr">${raison?.texte_fr}</span>`);
   });
 
   it('hiver : `?gare=nid-daigle` ouvre l’onglet par défaut', () => {
@@ -150,6 +226,7 @@ describe('embed — onglets', () => {
     )?.inactif;
     expect(inactif).toEqual(fermetureGare(jour, 'nid-daigle', nomGare(HIVER)));
     expect(inactif).not.toBe(NON_DESSERVIE);
+    expect(inactif).not.toBe(NID_DAIGLE_HIVER);
   });
 
   it('la raison de FERMETURE l’emporte sur « non desservie » — section', () => {

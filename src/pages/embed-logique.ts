@@ -32,6 +32,7 @@ import {
   type VueJournee,
 } from '../core/horaires';
 import { MESSAGE_NEUTRE, messageSansHoraires } from '../core/periodes-exploitation';
+import { saisonDepuisPeriodes } from '../core/saison';
 import { garesSautees } from '../core/train-sup';
 import { courseFermee, horsGrille, ORDRE_GARES } from '../core/types';
 import type {
@@ -194,11 +195,29 @@ export interface RaisonInactif {
   texte_en: string;
 }
 
-/** Gare que la grille du jour ne dessert jamais (Nid d'Aigle en hiver). */
+/** Gare que la grille du jour ne dessert jamais, hors le cas ci-dessous. */
 export const NON_DESSERVIE: RaisonInactif = {
   texte_fr: 'Non desservie aujourd’hui',
   texte_en: 'Not served today',
 };
+
+/**
+ * Nid d'Aigle que la grille d'HIVER ne dessert pas : le texte de l'exploitant
+ * (20/10/2026), espace fine insécable avant le « ! ». Jamais en été — une
+ * grille d'été qui n'ouvre pas encore le Nid d'Aigle (« fin juin ») garde
+ * `NON_DESSERVIE`.
+ */
+export const NID_DAIGLE_HIVER: RaisonInactif = {
+  texte_fr: 'Le Nid d’Aigle n’est pas ouvert pendant la période hivernale\u202f!',
+  texte_en: 'Nid d’Aigle is closed during the winter season!',
+};
+
+/** Raison d'une gare que la grille ne dessert pas : la saison se lit sur la grille. */
+function raisonNonDesservie(grille: Grille, id: GareId): RaisonInactif {
+  return id === 'nid-daigle' && saisonDepuisPeriodes(grille.periodes) === 'hiver'
+    ? NID_DAIGLE_HIVER
+    : NON_DESSERVIE;
+}
 
 /** Un onglet de gare : son nom officiel, et sa fermeture du moment s'il y en a une. */
 export interface OngletGare {
@@ -209,7 +228,8 @@ export interface OngletGare {
    * instant (`etatTronconFerme`) : hors de la section exploitée, ou Nid d'Aigle
    * sous le terminus Bellevue. À défaut, non nul quand aucune montée de la
    * GRILLE du jour ne l'atteint (`gareNonDesservie`). L'onglet est alors
-   * grisé, et non cliquable.
+   * grisé et n'ouvre rien : un clic ou un toucher montre cette raison sous
+   * les onglets (`etatApresClic`).
    */
   inactif: RaisonInactif | null;
 }
@@ -224,7 +244,7 @@ export function ongletsGares(grille: Grille, jour: Jour, maintenant_s: number): 
       const f = fermetureGare(jour, id, nomGare);
       if (f) return f;
     }
-    return gareNonDesservie(grille, jour.date, id) ? NON_DESSERVIE : null;
+    return gareNonDesservie(grille, jour.date, id) ? raisonNonDesservie(grille, id) : null;
   };
   return ORDRE_GARES.map((id) => ({ id, nom: nomGare(id), inactif: raison(id) }));
 }
@@ -238,6 +258,35 @@ export function ongletRetenu(
     id !== null && onglets.some((o) => o.id === id && o.inactif === null);
   if (actif(demande)) return demande;
   return onglets.find((o) => o.inactif === null)?.id ?? null;
+}
+
+/** Ce que les clics ont décidé : onglet demandé, vue, et raison montrée sous les onglets. */
+export interface EtatClic {
+  ongletDemande: GareId | null;
+  vue: VueEmbed;
+  /** Onglet grisé dont la raison s'affiche, ou `null`. */
+  raisonDe: GareId | null;
+}
+
+/** Durée d'affichage de la raison d'un onglet grisé, après un toucher. */
+export const DUREE_RAISON_MS = 5_000;
+
+/**
+ * Un clic (ou un toucher, ou Entrée / Espace au clavier) sur un élément de la
+ * page, lu par ses attributs `data-*`. Un onglet GRISÉ ne devient JAMAIS
+ * l'onglet demandé : il ne fait que montrer sa raison — sur téléphone, il
+ * n'y a pas de survol pour lire l'infobulle. Tout autre clic l'efface.
+ */
+export function etatApresClic(
+  etat: EtatClic,
+  cible: { gare?: string; inactif?: string; vue?: string },
+): EtatClic {
+  if (cible.inactif !== undefined) return { ...etat, raisonDe: gareDemandee(cible.inactif) };
+  return {
+    ongletDemande: cible.gare !== undefined ? gareDemandee(cible.gare) : etat.ongletDemande,
+    vue: cible.vue !== undefined ? vueDemandee(cible.vue) : etat.vue,
+    raisonDe: null,
+  };
 }
 
 /** Les prochains départs d'une gare, par sens — mêmes trains, même ordre que l'écran de gare. */
@@ -293,6 +342,8 @@ export interface EntreeRendu {
   gareUrl: GareId | null;
   /** Onglet demandé (clic ou `?gare=`). */
   ongletDemande: GareId | null;
+  /** Onglet grisé touché, dont la raison s'affiche sous les onglets (`etatApresClic`). */
+  raisonDe: GareId | null;
   vue: VueEmbed;
   maintenant_s: number;
   maintenantMs: number;
@@ -470,18 +521,29 @@ function ligneDepart(
 </li>`;
 }
 
-function ongletsHtml(onglets: readonly OngletGare[], retenu: GareId | null): string {
+function ongletsHtml(
+  onglets: readonly OngletGare[],
+  retenu: GareId | null,
+  raisonDe: GareId | null,
+): string {
   const boutons = onglets
     .map((o) => {
       if (o.inactif) {
+        // `aria-disabled` et NON `disabled` : un bouton `disabled` ne reçoit ni
+        // clic ni toucher, et sur téléphone l'infobulle ne se lit jamais. Pas de
+        // `data-gare` : rien ne peut en faire l'onglet choisi (`etatApresClic`).
         const raison = `${o.inactif.texte_fr} / ${o.inactif.texte_en}`;
-        return `<button type="button" role="tab" class="onglet inactif" disabled aria-disabled="true" aria-selected="false" title="${echapper(raison)}">${echapper(o.nom)}</button>`;
+        return `<button type="button" role="tab" class="onglet inactif" data-inactif="${o.id}" aria-disabled="true" aria-selected="false" title="${echapper(raison)}">${echapper(o.nom)}</button>`;
       }
       const choisi = o.id === retenu;
       return `<button type="button" role="tab" class="onglet${choisi ? ' choisi' : ''}" data-gare="${o.id}" aria-selected="${choisi}">${echapper(o.nom)}</button>`;
     })
     .join('');
-  return `<nav class="onglets" role="tablist" aria-label="Gares / Stations">${boutons}</nav>`;
+  // La ligne existe TOUJOURS, vide au repos : une zone `aria-live` doit être
+  // en place avant que son texte change pour être annoncée.
+  const touche = onglets.find((o) => o.id === raisonDe)?.inactif ?? null;
+  const ligne = touche ? bilingue(touche.texte_fr, touche.texte_en) : '';
+  return `<nav class="onglets" role="tablist" aria-label="Gares / Stations">${boutons}</nav><p class="raison-inactif" role="status" aria-live="polite">${ligne}</p>`;
 }
 
 function bandeauSectionHtml(jour: Jour, nomGare: (id: GareId) => string): string {
@@ -617,7 +679,7 @@ export function rendEmbed(e: EntreeRendu): string {
   const corps =
     e.vue === 'jour'
       ? grilleJourHtml(e, grille, jour, retenu, nomGare)
-      : `${ongletsHtml(onglets, retenu)}${retenu ? departsHtml(e, grille, jour, retenu, nomGare) : ''}`;
+      : `${ongletsHtml(onglets, retenu, e.raisonDe)}${retenu ? departsHtml(e, grille, jour, retenu, nomGare) : ''}`;
 
   return `${entete}${badge}${messages}${bandeauSectionHtml(jour, nomGare)}<div class="barre">${bascule}</div>${corps}`;
 }

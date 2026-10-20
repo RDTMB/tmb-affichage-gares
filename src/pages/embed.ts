@@ -26,7 +26,7 @@ import '../styles/embed.css';
 
 import { dateSuivante, grillePourJour, serviceActif, vueJournee } from '../core/horaires';
 import { paramsValides } from '../core/params';
-import type { Affluence, GareId, Grille, Jour, Message, Params } from '../core/types';
+import type { Affluence, Grille, Jour, Message, Params } from '../core/types';
 // Le fournisseur de démonstration voyage dans le bundle, comme sur les
 // écrans : `data/index.ts` l'importe statiquement, et un import dynamique ici
 // n'y changerait rien (vérifié au build le 15/10/2026). Il ne s'instancie que
@@ -42,6 +42,8 @@ import {
   dureeCacheMinutes,
 } from './affichage-commun';
 import {
+  DUREE_RAISON_MS,
+  etatApresClic,
   etatEmbed,
   gareDemandee,
   INTERVALLE_RELECTURE_MS,
@@ -50,7 +52,7 @@ import {
   TYPE_MESSAGE_HAUTEUR,
   urlInfosValide,
   vueDemandee,
-  type VueEmbed,
+  type EtatClic,
 } from './embed-logique';
 import { URL_INFOS_SITE } from './embed-reglages';
 import { creeSourceHeure } from './horloge-source';
@@ -98,8 +100,10 @@ let fournisseur: DataProvider | null = null;
 /** Mode « aucune source » : la page ne montre jamais d'horaire inventé. */
 let sansSource = false;
 
-let ongletDemande: GareId | null = gareUrl;
-let vue: VueEmbed = vueDemandee(url.get('vue'));
+// `?gare=` est une DEMANDE : un onglet grisé (Nid d'Aigle en hiver) n'est
+// jamais retenu, `ongletRetenu` ouvre alors l'onglet par défaut.
+let clics: EtatClic = { ongletDemande: gareUrl, vue: vueDemandee(url.get('vue')), raisonDe: null };
+let minuteurRaison: number | undefined;
 
 // ---------------------------------------------------------------------------
 // Hauteur automatique : la page parente ajuste l'iframe
@@ -155,7 +159,7 @@ function rendre(): void {
   // Le focus clavier survit au re-rendu : un onglet choisi au clavier ne doit
   // pas perdre la main toutes les dix secondes.
   const focus = document.activeElement as HTMLElement | null;
-  const cleFocus = focus?.dataset.gare ?? focus?.dataset.vue ?? null;
+  const cleFocus = focus?.dataset.gare ?? focus?.dataset.inactif ?? focus?.dataset.vue ?? null;
 
   conteneur.innerHTML = rendEmbed({
     etat,
@@ -166,8 +170,9 @@ function rendre(): void {
     messages,
     affluence,
     gareUrl,
-    ongletDemande,
-    vue,
+    ongletDemande: clics.ongletDemande,
+    raisonDe: clics.raisonDe,
+    vue: clics.vue,
     maintenant_s: heure.maintenantS(),
     maintenantMs: heure.maintenantMs(),
     dateISO: heure.dateISO(),
@@ -180,18 +185,29 @@ function rendre(): void {
 
   if (cleFocus) {
     const cible = conteneur.querySelector<HTMLElement>(
-      `[data-gare="${CSS.escape(cleFocus)}"], [data-vue="${CSS.escape(cleFocus)}"]`,
+      `[data-gare="${CSS.escape(cleFocus)}"], [data-inactif="${CSS.escape(cleFocus)}"], [data-vue="${CSS.escape(cleFocus)}"]`,
     );
     cible?.focus();
   }
   signaleHauteur();
 }
 
+// Un toucher, un clic, ou Entrée / Espace (le bouton les change en clic).
+// La raison d'un onglet grisé s'efface au bout de `DUREE_RAISON_MS`, ou au
+// clic suivant ; chaque rendu renvoie la hauteur à la page parente.
 conteneur.addEventListener('click', (ev) => {
-  const cible = (ev.target as HTMLElement).closest<HTMLElement>('[data-gare], [data-vue]');
+  const cible = (ev.target as HTMLElement).closest<HTMLElement>(
+    '[data-gare], [data-inactif], [data-vue]',
+  );
   if (!cible) return;
-  if (cible.dataset.gare) ongletDemande = gareDemandee(cible.dataset.gare);
-  if (cible.dataset.vue) vue = vueDemandee(cible.dataset.vue);
+  clics = etatApresClic(clics, cible.dataset);
+  window.clearTimeout(minuteurRaison);
+  if (clics.raisonDe !== null) {
+    minuteurRaison = window.setTimeout(() => {
+      clics = { ...clics, raisonDe: null };
+      rendre();
+    }, DUREE_RAISON_MS);
+  }
   rendre();
 });
 
