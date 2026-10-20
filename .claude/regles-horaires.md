@@ -78,13 +78,29 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
   du TRAIN N » (N = montée, impair ; pair normalisé vers N−1) et PRÉ-REMPLIT
   la colonne des rotations dont la montée porte un numéro ≥ N — la colonne
   reste prioritaire et ajustable ; journée entière = à partir du T1.
+  ÉLARGI le 20/10/2026 — TERMINUS PAR GARE : la limite peut aussi être le
+  Col de Voza, en toute saison, et la descente appariée part alors de la
+  gare choisie, à son heure de grille. La colonne propose le SOMMET DU JOUR
+  (`sommetDuJour()` = la plus basse de `sommetDeLaGrille()` et de la fin de
+  section) puis chaque gare au-dessous jusqu'au Col de Voza inclus
+  (`terminusProposes()`) : jamais le Nid d'Aigle un jour où la grille n'y
+  monte pas. En base, `'nid-daigle'` veut dire NON LIMITÉ et s'AFFICHE comme
+  le sommet du jour (« Bellevue » en hiver) ; choisir le sommet s'écrit
+  `'nid-daigle'` (`valeurTerminus()`). La bascule devient « Terminus [gare]
+  à partir du TRAIN N », gare = celles de la colonne sans le sommet ; sa
+  gare vit dans `jours.terminus_bascule_gare` (NULL = Bellevue), le champ TS
+  s'appelle encore `terminus_bellevue`. SEULE règle de pré-remplissage :
+  `deltaBascule()`, appliquée telle quelle par l'aperçu ET les deux
+  fournisseurs.
 - **Express** : passages absents à col-de-voza et bellevue (rien à afficher
   dans ces gares) ; GRAND picto motrice à droite du nom de la destination +
   ligne « EXPRESS — sans arrêt / non-stop : Col de Voza & Bellevue ». Un
   express n'est JAMAIS tronqué à Bellevue : dans une plage limitée, il
   circule normalement et est signalé « à traiter » (suppression ou
   requalification manuelle en supervision) ; sa descente appariée non
-  express part, elle, de Bellevue.
+  express part, elle, de Bellevue. Une limite au Col de Voza le traite
+  EXACTEMENT de même (jamais tronqué, « à traiter ») ; la descente appariée
+  non express part alors du Col de Voza.
 - **Facultatif** : n'apparaît sur AUCUN écran tant qu'il n'est pas activé en
   supervision ; une fois activé, il s'affiche normalement.
 - **Terminus Bellevue** (fermeture imprévue, météo : à partir du TRAIN N) :
@@ -93,7 +109,11 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
   d'Aigle → état « tronçon fermé » bilingue avec logo dès qu'il n'a plus
   aucun passage à afficher. En HIVER, Bellevue est le terminus NORMAL : la
   grille d'hiver n'a simplement aucun passage au Nid d'Aigle (ce n'est pas
-  la bascule « à partir du T1 » qui fait le régime hiver).
+  la bascule « à partir du T1 » qui fait le régime hiver). Bascule au Col
+  de Voza : destination « Col de Voza — terminus exceptionnel », et TOUTE
+  gare au-dessus de la gare de bascule (Bellevue ET Nid d'Aigle) passe en
+  « tronçon fermé » dès qu'elle n'a plus aucun passage — jamais « service
+  terminé ».
 - **Grilles** (table `grilles`) : une grille ne s'applique qu'à ses périodes
   (bornes incluses) ; seules les grilles ACTIVES comptent ; si deux grilles
   actives couvrent une date, la plus récemment chargée l'emporte

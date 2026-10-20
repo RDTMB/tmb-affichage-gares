@@ -3,7 +3,8 @@
 // circulation, lignes = gares avec altitudes officielles. Paramètres d'URL :
 // gare (cible des messages), ecran, simule=HH:MM, zoom, cache=N (tests) et
 // demo=1 (démonstration EXPLICITE : horaires fictifs, bandeau permanent) et,
-// en mode démo, terminus=N (bascule « à partir du TRAIN N »).
+// en mode démo, terminus=N (bascule « à partir du TRAIN N »),
+// &terminus-gare=col-de-voza (bascule au Col de Voza).
 import '@fontsource/amaranth/400.css';
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/400.css';
@@ -376,7 +377,13 @@ async function demarre(): Promise<void> {
   const ecartParam = Number(url.get('ecart'));
   const optionsDemo = {
     ...(terminusParam !== null && Number(terminusParam) > 0
-      ? { terminusAPartirDuTrain: Number(terminusParam) }
+      ? {
+          terminusAPartirDuTrain: Number(terminusParam),
+          // Démo : bascule au Col de Voza (`&terminus-gare=col-de-voza`), Bellevue sinon.
+          ...(url.get('terminus-gare') === 'col-de-voza'
+            ? { terminusGare: 'col-de-voza' as const }
+            : {}),
+        }
       : {}),
     ...(Number.isFinite(ecartParam) && ecartParam !== 0 ? { ecartHorlogeS: ecartParam } : {}),
   };

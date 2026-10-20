@@ -241,7 +241,7 @@ export function ongletsGares(grille: Grille, jour: Jour, maintenant_s: number): 
   // ce que la saison ne prévoit pas.
   const raison = (id: GareId): RaisonInactif | null => {
     if (etatTronconFerme(grille, jour, id, maintenant_s)) {
-      const f = fermetureGare(jour, id, nomGare);
+      const f = fermetureGare(jour, id, nomGare, sommetDeLaGrille(grille, jour.date));
       if (f) return f;
     }
     return gareNonDesservie(grille, jour.date, id) ? raisonNonDesservie(grille, id) : null;

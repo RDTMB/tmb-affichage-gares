@@ -12,7 +12,7 @@
 // l'écran de supervision doit afficher pendant que rien n'est encore publié.
 // Les écritures elles-mêmes restent dans supervision.ts (provider) : ce
 // fichier ne fait que de la fusion pure, testable sans DOM ni réseau.
-import { deltaTerminusBellevue, seuilMontee } from '../core/horaires';
+import { basculeDuFlag, deltaBascule } from '../core/horaires';
 import { horsGrille } from '../core/types';
 import type { Circulation, Jour, Message, Params, SectionJour, TerminusFlag } from '../core/types';
 
@@ -127,13 +127,13 @@ export function appliqueBrouillonJour(
   // superposait le drapeau sans toucher aux colonnes — donc il montrait un
   // train encore limité là où la publication allait le libérer, et ce que
   // l'agent relisait n'était pas ce que la base recevait.
-  const borne = (f: TerminusFlag): number | null =>
-    f === false ? null : seuilMontee(f.a_partir_du_train);
-  const ancienneBorne = borne(jour.terminus_bellevue);
-  const avantModifs = deltaTerminusBellevue(
+  // Seuil ET gare : une bascule qui passe de Bellevue au Col de Voza au même
+  // TRAIN N change la colonne, comme à la publication (`deltaBascule`).
+  const ancienne = basculeDuFlag(jour.terminus_bellevue);
+  const avantModifs = deltaBascule(
     jour.circulations,
-    ancienneBorne,
-    terminusEnAttente === undefined ? ancienneBorne : borne(terminusEnAttente),
+    ancienne,
+    terminusEnAttente === undefined ? ancienne : basculeDuFlag(terminusEnAttente),
   );
 
   const circulations = [...avantModifs.map((c) => parNumero?.get(c.numero) ?? c), ...ajouts]

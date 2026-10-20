@@ -19,53 +19,53 @@ const bascule = supabase.slice(
   supabase.indexOf('async saveMessage'),
 );
 
+// Depuis le 20/10/2026 (terminus par gare), la règle M-21 ne s'écrit plus en
+// filtres PostgREST : le fournisseur lit la colonne des montées, la passe à
+// `deltaBascule()` — la règle PURE, testée dans src/core — et écrit ce qui a
+// changé. Ces verrous gardent les quatre propriétés qui comptaient.
 describe('SupabaseProvider — la bascule travaille par DIFFÉRENCE', () => {
-  it('lit la plage PRÉCÉDENTE avant de l’écraser', () => {
+  it('lit la bascule PRÉCÉDENTE avant de l’écraser', () => {
     // Sans elle, impossible de distinguer une montée limitée par l'ancienne
     // plage d'une montée limitée à la main : c'est toute la cause de M-21.
-    expect(bascule).toContain("select('terminus_bellevue_a_partir_du_train')");
-    // La DÉRIVATION, pas seulement le nom : un `const ancien = null` passerait
-    // un contrôle qui se contenterait de la déclaration, et la bascule
-    // recalculerait de nouveau la colonne entière sans que rien ne le dise.
-    expect(bascule).toContain("const ancien = typeof brut === 'number' ? normalise(brut) : null;");
-    expect(bascule).toContain('?.terminus_bellevue_a_partir_du_train;');
-    const lecture = bascule.indexOf("select('terminus_bellevue_a_partir_du_train')");
-    const ecriture = bascule.indexOf('terminus_bellevue_a_partir_du_train: seuil');
+    // La DÉRIVATION, pas seulement le nom : un `const ancienne = null`
+    // passerait un contrôle qui se contenterait de la déclaration.
+    expect(bascule).toContain('const ancienne = basculeDuFlag(ligne ? versFlag(ligne) : false);');
+    const lecture = bascule.indexOf(".from('jours').select('*')");
+    const ecriture = bascule.indexOf('terminus_bellevue_a_partir_du_train: nouvelle?.seuil');
     expect(lecture).toBeGreaterThan(0);
     expect(ecriture).toBeGreaterThan(lecture);
   });
 
-  it('borne les deux écritures : ce qui ENTRE et ce qui SORT', () => {
-    // Une borne absente d'un côté suffit à recalculer la colonne entière.
-    expect(bascule).toContain("entrent = entrent.lt('numero', ancien)");
-    expect(bascule).toContain("sortent = sortent.gte('numero', ancien)");
-    expect(bascule).toContain("sortent = sortent.lt('numero', seuil)");
-    // Plus de borne infinie : c'était la forme qui interdisait de filtrer.
+  it('la colonne suit la règle PURE, appliquée à la colonne réelle', () => {
+    // Une seule description de la règle — aperçu, mock et base disent pareil.
+    expect(bascule).toContain('deltaBascule(actuelles, ancienne, nouvelle)');
+    // Seules les montées qui CHANGENT sont écrites : recalculer la colonne
+    // entière effacerait les réglages manuels (M-21).
+    expect(bascule).toContain('if (c.terminus === actuelles[i]?.terminus) return;');
+    expect(bascule).toContain(".in('numero', numeros)");
     expect(supabase).not.toContain('Number.POSITIVE_INFINITY');
   });
 
-  it('DÉCOCHER reste sans borne : c’est une décision explicite', () => {
-    // Laisser une montée limitée que la bascule n'indique plus serait pire
-    // que d'effacer un réglage manuel.
-    expect(bascule).toMatch(/const libere = v === false \|\|/);
-    expect(bascule).toContain('if (v !== false) {');
+  it('une base pas encore migrée se lit encore : jamais la colonne nommée en lecture', () => {
+    // Nommer `terminus_bascule_gare` dans un select ferait échouer la lecture
+    // sur une base d'avant la migration — leçon du 11/09.
+    expect(supabase).not.toMatch(/select\([^)]*terminus_bascule_gare/);
   });
 
-  it('RESTREINDRE passe avant LIBÉRER', () => {
-    // Les deux ensembles sont disjoints, donc l'ordre ne change pas l'état
-    // final — seulement l'intermédiaire si la seconde écriture échoue.
-    // Restreindre d'abord limite TROP plutôt que TROP PEU : personne n'est
-    // porté vers un tronçon fermé.
-    const restreint = bascule.indexOf("update({ terminus: 'bellevue' })");
-    const libere = bascule.indexOf("update({ terminus: 'nid-daigle' })");
-    expect(restreint).toBeGreaterThan(0);
-    expect(libere).toBeGreaterThan(restreint);
+  it('RESTREINDRE passe avant LIBÉRER : Col de Voza, puis Bellevue, puis non limité', () => {
+    // Les ensembles sont disjoints, donc l'ordre ne change pas l'état final —
+    // seulement l'intermédiaire si une écriture échoue. Restreindre d'abord
+    // limite TROP plutôt que TROP PEU : personne n'est porté vers un tronçon
+    // fermé.
+    expect(bascule).toContain(
+      "const ordre: Circulation['terminus'][] = ['col-de-voza', 'bellevue', 'nid-daigle'];",
+    );
   });
 
   it('les deltas n’exigent AUCUNE ligne : zéro est normal', () => {
     // `exigeLignes` sur un delta vide ferait échouer une publication juste.
-    expect(bascule).toContain('verifie((await entrent).error)');
-    expect(bascule).toContain('verifie((await sortent).error)');
+    expect(bascule).toContain('verifie(ecriture.error)');
+    expect(bascule).not.toContain('exigeLignes(ecriture');
   });
 });
 

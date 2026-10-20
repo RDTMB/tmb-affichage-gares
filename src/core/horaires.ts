@@ -8,6 +8,7 @@ import type {
   CompteARebours,
   FinDeService,
   GareId,
+  GareLimite,
   Grille,
   Jour,
   PassageGare,
@@ -16,6 +17,8 @@ import type {
   ProchaineArrivee,
   ResultatTerminusBellevue,
   SectionJour,
+  Terminus,
+  TerminusFlag,
   TrainGrille,
   TrainJour,
   VeilleNuit,
@@ -529,10 +532,104 @@ export function bornesAffichees(
     : { debut, fin };
 }
 
+// ---------------------------------------------------------------------------
+// Terminus par train : quelles gares proposer, et ce que vaut la colonne
+// ---------------------------------------------------------------------------
+
+/** Plus basse gare où une montée de la grille peut être limitée. */
+export const GARE_LIMITE_BASSE: GareLimite = 'col-de-voza';
+
+const rangGare = (g: GareId): number => ORDRE_GARES.indexOf(g);
+
+/**
+ * SOMMET DU JOUR — la plus basse des deux bornes : le sommet de la grille
+ * (Bellevue en hiver) et la fin de la section exploitée. C'est le terminus
+ * d'une montée NON limitée ; la colonne Terminus ne peut que descendre
+ * au-dessous, jamais monter au-dessus (la section reste la borne extérieure).
+ */
+export function sommetDuJour(
+  grille: Pick<Grille, 'montees'>,
+  jour: Pick<Jour, 'date' | 'gare_debut' | 'gare_fin'>,
+): GareId {
+  const { fin } = sectionDuJour(jour);
+  const sommet = sommetDeLaGrille(grille, jour.date);
+  return rangGare(sommet) < rangGare(fin) ? sommet : fin;
+}
+
+/**
+ * Limitation portée par une valeur de colonne Terminus : la gare, ou null
+ * pour « non limité ». Toute valeur inconnue (un futur front, une ligne
+ * forgée) vaut « non limité » : mieux vaut afficher un train jusqu'au sommet
+ * que de le faire disparaître d'une gare qu'il dessert.
+ */
+export function limiteDeRotation(terminus: unknown): GareLimite | null {
+  return terminus === 'bellevue' || terminus === 'col-de-voza' ? terminus : null;
+}
+
+/**
+ * Limitation QUI LIMITE VRAIMENT : strictement sous `sommet`. En hiver, une
+ * colonne sur « bellevue » ne limite rien — Bellevue est déjà le sommet.
+ */
+export function limiteEffective(terminus: unknown, sommet: GareId): GareLimite | null {
+  const gare = limiteDeRotation(terminus);
+  return gare !== null && rangGare(gare) < rangGare(sommet) ? gare : null;
+}
+
+/**
+ * Terminus proposés dans la colonne Terminus d'une montée de grille : le
+ * SOMMET DU JOUR d'abord, puis chaque gare au-dessous jusqu'au Col de Voza
+ * inclus. Été : Nid d'Aigle, Bellevue, Col de Voza. Hiver : Bellevue, Col de
+ * Voza. Jamais une gare que la grille ou la section du jour n'atteint.
+ */
+export function terminusProposes(
+  grille: Pick<Grille, 'montees'>,
+  jour: Pick<Jour, 'date' | 'gare_debut' | 'gare_fin'>,
+): GareId[] {
+  const sommet = sommetDuJour(grille, jour);
+  const bas = Math.max(rangGare(GARE_LIMITE_BASSE), rangGare(sectionDuJour(jour).debut) + 1);
+  const proposes: GareId[] = [sommet];
+  for (let rang = rangGare(sommet) - 1; rang >= bas; rang--) {
+    const gare = ORDRE_GARES[rang];
+    if (gare) proposes.push(gare);
+  }
+  return proposes;
+}
+
+/** Gares proposées par la bascule « à partir du TRAIN N » : celles de la colonne, sans le sommet. */
+export function garesDeBasculeProposees(
+  grille: Pick<Grille, 'montees'>,
+  jour: Pick<Jour, 'date' | 'gare_debut' | 'gare_fin'>,
+): GareLimite[] {
+  return terminusProposes(grille, jour)
+    .slice(1)
+    .filter((g): g is GareLimite => limiteDeRotation(g) !== null);
+}
+
+/** Gare AFFICHÉE dans la colonne Terminus : la limitation effective, sinon le sommet du jour. */
+export function terminusAffiche(terminus: unknown, sommet: GareId): GareId {
+  return limiteEffective(terminus, sommet) ?? sommet;
+}
+
+/**
+ * Valeur à ÉCRIRE dans la colonne pour une gare choisie : le sommet du jour
+ * (ou plus haut) s'écrit « non limité », pour que la rotation remonte d'elle-
+ * même quand la section ou la saison s'élargit.
+ */
+export function valeurTerminus(gare: GareId, sommet: GareId): Terminus {
+  if (rangGare(gare) >= rangGare(sommet)) return 'nid-daigle';
+  return limiteDeRotation(gare) ?? 'nid-daigle';
+}
+
+/** Gare de la bascule du jour, ou null si elle n'est pas active (absente = Bellevue). */
+export function gareDeBascule(flag: TerminusFlag | null | undefined): GareLimite | null {
+  if (!flag) return null;
+  return flag.gare === 'col-de-voza' ? 'col-de-voza' : 'bellevue';
+}
+
 /**
  * TRONCATURE UNIQUE — seule fonction du moteur qui coupe un train hors de la
  * partie de ligne exploitée, dans les deux sens. « Terminus Bellevue » en est
- * un cas particulier (voir `tronqueABellevue()`) : il n'existe pas de second
+ * un cas particulier (voir `tronqueALaLimite()`) : il n'existe pas de second
  * mécanisme parallèle, deux sources de vérité pour la même idée étant
  * exactement ce qui a produit le bug des médias par-dessus un train à quai.
  *
@@ -575,18 +672,18 @@ export function tronqueTrain(train: TrainJour, debut: GareId, fin: GareId): Trai
 }
 
 /**
- * Rotation limitée à Bellevue : CAS PARTICULIER de `tronqueTrain()`, où
- * l'autre borne est l'extrémité que le train a déjà (la section du jour
- * s'étant appliquée avant). Montée : elle s'arrête à Bellevue. Descente : elle
- * en part.
+ * Rotation limitée (Bellevue, Col de Voza) : CAS PARTICULIER de
+ * `tronqueTrain()`, où l'autre borne est l'extrémité que le train a déjà (la
+ * section du jour s'étant appliquée avant). Montée : elle s'arrête à `gare`.
+ * Descente : elle en part, à son heure de grille — rien n'est recalculé.
  */
-function tronqueABellevue(train: TrainJour): TrainJour {
+function tronqueALaLimite(train: TrainJour, gare: GareLimite): TrainJour {
   const premier = train.passages[0]?.gare;
   const dernier = train.passages[train.passages.length - 1]?.gare;
   if (!premier || !dernier) return train;
   return train.sens === 'montee'
-    ? tronqueTrain(train, premier, 'bellevue')
-    : tronqueTrain(train, dernier, 'bellevue');
+    ? tronqueTrain(train, premier, gare)
+    : tronqueTrain(train, dernier, gare);
 }
 
 /**
@@ -621,15 +718,59 @@ export function deltaTerminusBellevue(
   ancien: number | null,
   nouveau: number | null,
 ): Circulation[] {
-  if (ancien === nouveau) return circulations;
+  const enBascule = (n: number | null): Bascule | null =>
+    n === null ? null : { seuil: n, gare: 'bellevue' };
+  return deltaBascule(circulations, enBascule(ancien), enBascule(nouveau));
+}
+
+/** Bascule du jour réduite à ce qui décide : à partir de quelle montée, jusqu'à quelle gare. */
+export interface Bascule {
+  /** Numéro de MONTÉE (déjà normalisé par `seuilMontee`). */
+  seuil: number;
+  gare: GareLimite;
+}
+
+/** Bascule d'un drapeau du jour, seuil normalisé ; null quand elle est levée. */
+export function basculeDuFlag(flag: TerminusFlag | null | undefined): Bascule | null {
+  const gare = gareDeBascule(flag);
+  return flag && gare ? { seuil: seuilMontee(flag.a_partir_du_train), gare } : null;
+}
+
+/**
+ * Effet d'un CHANGEMENT de bascule « Terminus [gare] à partir du TRAIN N » sur
+ * la colonne Terminus — généralisation de `deltaTerminusBellevue()`, même
+ * règle (M-21) :
+ * - une montée qui ENTRE dans la plage prend la gare de la bascule, sauf si
+ *   elle est déjà limitée plus bas (la bascule ne rouvre jamais un tronçon) ;
+ * - une montée qui SORT de la plage n'est libérée que si sa colonne porte la
+ *   gare de l'ANCIENNE bascule — un réglage différent est un réglage manuel ;
+ * - une montée qui RESTE dans la plage suit le changement de gare si sa
+ *   colonne portait l'ancienne ;
+ * - DÉCOCHER (`nouveau === null`) libère TOUT.
+ *
+ * Seule description de la règle : l'aperçu (`appliqueBrouillonJour`) et les
+ * DEUX fournisseurs l'appliquent telle quelle. Fonction pure.
+ */
+export function deltaBascule<C extends Pick<Circulation, 'sens' | 'numero' | 'terminus'>>(
+  circulations: C[],
+  ancien: Bascule | null,
+  nouveau: Bascule | null,
+): C[] {
+  if (ancien?.seuil === nouveau?.seuil && ancien?.gare === nouveau?.gare) return circulations;
+  const pose = (c: C, terminus: Terminus): C => (c.terminus === terminus ? c : { ...c, terminus });
   return circulations.map((c) => {
     if (c.sens !== 'montee') return c;
-    const entre = nouveau !== null && c.numero >= nouveau && (ancien === null || c.numero < ancien);
-    if (entre) return c.terminus === 'bellevue' ? c : { ...c, terminus: 'bellevue' as const };
-    const sort =
-      c.terminus === 'bellevue' &&
-      (nouveau === null || (ancien !== null && c.numero >= ancien && c.numero < nouveau));
-    return sort ? { ...c, terminus: 'nid-daigle' as const } : c;
+    const limite = limiteDeRotation(c.terminus);
+    if (nouveau === null) return limite === null ? c : pose(c, 'nid-daigle');
+    const dansNouvelle = c.numero >= nouveau.seuil;
+    const dansAncienne = ancien !== null && c.numero >= ancien.seuil;
+    if (dansNouvelle && !dansAncienne) {
+      const dejaPlusBas = limite !== null && rangGare(limite) <= rangGare(nouveau.gare);
+      return dejaPlusBas ? c : pose(c, nouveau.gare);
+    }
+    if (dansNouvelle && limite === ancien?.gare) return pose(c, nouveau.gare);
+    if (!dansNouvelle && dansAncienne && limite === ancien?.gare) return pose(c, 'nid-daigle');
+    return c;
   });
 }
 
@@ -648,18 +789,25 @@ export function appliqueTerminusBellevue(
   grille: Grille,
   jour: Jour,
   aPartirDuTrain: number,
+  gare: GareLimite = 'bellevue',
 ): ResultatTerminusBellevue {
   // Pair → montée de la rotation (N − 1) ; borné à 1 pour garder un numéro de
   // montée valide dans le drapeau persisté (N ≤ 0 ≡ journée entière).
   const impair = aPartirDuTrain % 2 === 0 ? aPartirDuTrain - 1 : aPartirDuTrain;
   const seuil = Math.max(1, impair);
 
-  const circulations = jour.circulations.map((c) =>
-    c.sens === 'montee' && c.numero >= seuil ? { ...c, terminus: 'bellevue' as const } : c,
-  );
+  // Une montée déjà limitée PLUS BAS le reste : la bascule ne rouvre rien.
+  const circulations = jour.circulations.map((c) => {
+    if (c.sens !== 'montee' || c.numero < seuil) return c;
+    const limite = limiteDeRotation(c.terminus);
+    return limite !== null && rangGare(limite) <= rangGare(gare) ? c : { ...c, terminus: gare };
+  });
   const nouveauJour: Jour = {
     ...jour,
-    terminus_bellevue: { a_partir_du_train: seuil },
+    // La gare n'est écrite que si elle n'est pas Bellevue : le drapeau d'une
+    // bascule Bellevue garde EXACTEMENT sa forme d'avant.
+    terminus_bellevue:
+      gare === 'bellevue' ? { a_partir_du_train: seuil } : { a_partir_du_train: seuil, gare },
     circulations,
   };
   return { jour: nouveauJour, aTraiter: expressATraiter(grille, nouveauJour) };
@@ -677,9 +825,12 @@ export function appliqueTerminusBellevue(
  */
 export function expressATraiter(grille: Grille, jour: Jour): number[] {
   const numeros: number[] = [];
+  // Même borne que la cellule Terminus de la supervision : le sommet de la
+  // GRILLE. Une colonne sur « bellevue » un jour d'hiver ne limite rien.
+  const sommet = sommetDeLaGrille(grille, jour.date);
   const limitee = (numeroMontee: number): boolean => {
     const c = jour.circulations.find((x) => x.numero === numeroMontee && x.sens === 'montee');
-    return c?.terminus === 'bellevue';
+    return limiteEffective(c?.terminus, sommet) !== null;
   };
   /** Circule vraiment : non supprimé, et facultatif seulement s'il est activé. */
   const circule = (numero: number): boolean => {
@@ -824,29 +975,30 @@ export function trainsDuJour(grille: Grille, jour: Jour): TrainJour[] {
     });
   }
 
-  // Rotation limitée = colonne Terminus de la montée sur Bellevue. La descente
-  // appariée part alors de Bellevue, y compris quand la montée est un express
-  // « à traiter » (qui, lui, n'est JAMAIS tronqué : il ne dessert pas Bellevue).
-  const rotationLimitee = (numeroMontee: number): boolean => {
+  // Rotation limitée = colonne Terminus de la montée sur une gare (Bellevue,
+  // Col de Voza). La descente appariée part alors de cette gare, y compris
+  // quand la montée est un express « à traiter » (qui, lui, n'est JAMAIS
+  // tronqué : il ne dessert ni Voza ni Bellevue).
+  const limiteRotation = (numeroMontee: number): GareLimite | null => {
     const circulation = circulationParNumero.get(numeroMontee);
-    return circulation?.sens === 'montee' && circulation.terminus === 'bellevue';
+    return circulation?.sens === 'montee' ? limiteDeRotation(circulation.terminus) : null;
   };
-  const monteeTronquee = (numeroMontee: number): boolean =>
-    rotationLimitee(numeroMontee) && !monteeGrilleParNumero.get(numeroMontee)?.express;
 
   // La SECTION du jour s'applique à TOUS les trains, trains supplémentaires
   // compris, AVANT la logique de terminus par train : elle est la borne
-  // extérieure, et la colonne Terminus ne peut ensuite que réduire davantage.
+  // extérieure, et la colonne Terminus ne peut ensuite que réduire davantage
+  // (une limite au-dessus de la section n'a plus de passage où couper : le
+  // train reste tel que la section l'a laissé).
   const { debut, fin } = sectionDuJour(jour);
   return trains.map((train) => {
     const dansLaSection = tronqueTrain(train, debut, fin);
-    if (dansLaSection.sens === 'montee' && monteeTronquee(dansLaSection.numero)) {
-      return tronqueABellevue(dansLaSection);
+    const numeroMontee = dansLaSection.sens === 'montee' ? train.numero : train.numero - 1;
+    const limite = limiteRotation(numeroMontee);
+    if (limite === null) return dansLaSection;
+    if (dansLaSection.sens === 'montee' && monteeGrilleParNumero.get(numeroMontee)?.express) {
+      return dansLaSection;
     }
-    if (dansLaSection.sens === 'descente' && rotationLimitee(dansLaSection.numero - 1)) {
-      return tronqueABellevue(dansLaSection);
-    }
-    return dansLaSection;
+    return tronqueALaLimite(dansLaSection, limite);
   });
 }
 
@@ -909,7 +1061,7 @@ export function monteesSansRetour(grille: Grille, jour: Jour): number[] {
  * SUPPLÉMENTAIRE, qui porte ses propres passages.
  *
  * La colonne `circulations.terminus` ne dit RIEN du terminus d'un train sup :
- * elle vaut 'nid-daigle' ou 'bellevue' (contrainte CHECK) et ne sert qu'à la
+ * elle vaut 'nid-daigle', 'bellevue' ou 'col-de-voza' (contrainte CHECK) et ne sert qu'à la
  * bascule Terminus Bellevue. L'afficher pour un train sup annonçait « Nid
  * d'Aigle » pour un renfort créé jusqu'au Col de Voza — deux sources de vérité
  * pour la même question, exactement le défaut que ces fonctions suppriment.
@@ -1295,8 +1447,10 @@ export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number
  * partie de la ligne n'est pas desservie. Deux causes, une seule notion :
  * - la gare est HORS de la section exploitée du jour (travaux) — vrai de
  *   n'importe quel bout de la ligne, pas seulement du haut ;
- * - bascule Terminus Bellevue et gare du Nid d'Aigle (comportement d'origine,
- *   conservé à l'identique).
+ * - bascule « Terminus [gare] à partir du TRAIN N » et gare AU-DESSUS de la
+ *   gare de bascule : le Nid d'Aigle sous une bascule Bellevue (comportement
+ *   d'origine, conservé à l'identique), Bellevue ET le Nid d'Aigle sous une
+ *   bascule Col de Voza.
  *
  * Dans les deux cas, l'état n'est atteint que lorsqu'il n'y a plus AUCUN
  * passage à afficher : les rotations non limitées et les express « à traiter »
@@ -1308,10 +1462,14 @@ export function etatTronconFerme(
   gare: GareId,
   maintenant_s: number,
 ): boolean {
-  const parLaSection = gareHorsSection(jour, gare);
-  const parTerminusBellevue = gare === 'nid-daigle' && jour.terminus_bellevue !== false;
-  if (!parLaSection && !parTerminusBellevue) return false;
+  if (!gareHorsSection(jour, gare) && !gareAuDessusDeLaBascule(jour, gare)) return false;
   return passagesPourGare(grille, jour, gare, maintenant_s).length === 0;
+}
+
+/** Gare au-dessus de la gare de bascule du jour (bascule active seulement). */
+function gareAuDessusDeLaBascule(jour: Pick<Jour, 'terminus_bellevue'>, gare: GareId): boolean {
+  const limite = gareDeBascule(jour.terminus_bellevue);
+  return limite !== null && rangGare(gare) > rangGare(limite);
 }
 
 /**
@@ -1332,12 +1490,19 @@ export function messageTronconDefaut(
 
 /**
  * Gares qui peuvent servir de TERMINUS à un train supplémentaire : toutes
- * celles situées après la gare de départ du jour, dans la section exploitée.
+ * celles situées après la gare de départ du jour, jusqu'au SOMMET DU JOUR —
+ * la plus basse de la fin de section et du sommet de la grille (pas de Nid
+ * d'Aigle en hiver). Sans grille, la section seule.
  * La gare de DÉPART, elle, est imposée — c'est `jour.gare_debut`.
  */
-export function terminusPossiblesSup(jour: Pick<Jour, 'gare_debut' | 'gare_fin'>): GareId[] {
+export function terminusPossiblesSup(
+  jour: Pick<Jour, 'gare_debut' | 'gare_fin'> & Partial<Pick<Jour, 'date'>>,
+  grille?: Pick<Grille, 'montees'> | null,
+): GareId[] {
   const { debut, fin } = sectionDuJour(jour);
-  return ORDRE_GARES.slice(ORDRE_GARES.indexOf(debut) + 1, ORDRE_GARES.indexOf(fin) + 1);
+  const haut =
+    grille && jour.date !== undefined ? sommetDuJour(grille, { ...jour, date: jour.date }) : fin;
+  return ORDRE_GARES.slice(rangGare(debut) + 1, rangGare(haut) + 1);
 }
 
 /** Écran bilingue d'une gare fermée, prêt à afficher. */
@@ -1364,10 +1529,12 @@ export function fermetureGare(
   jour: Jour,
   gare: GareId,
   nomGare: (gare: GareId) => string,
+  /** Sommet de la GRILLE du jour (`sommetDeLaGrille`) : borne haute du tronçon annoncé fermé. */
+  sommet: GareId = GARE_FIN_DEFAUT,
 ): FermetureGare | null {
   const horsSection = gareHorsSection(jour, gare);
-  const terminusBellevue = gare === 'nid-daigle' && jour.terminus_bellevue !== false;
-  if (!horsSection && !terminusBellevue) return null;
+  const limite = gareDeBascule(jour.terminus_bellevue);
+  if (!horsSection && !gareAuDessusDeLaBascule(jour, gare)) return null;
 
   const saisi = (valeur: string | null | undefined): string => (valeur ?? '').trim();
   const fr = saisi(jour.message_troncon_fr);
@@ -1384,12 +1551,19 @@ export function fermetureGare(
       texte_en: en || defaut.en,
     };
   }
+  // Le tronçon fermé va de la gare de bascule au sommet de la grille (Nid
+  // d'Aigle l'été, Bellevue l'hiver) — et au moins jusqu'à la gare de l'écran.
+  const bas = limite ?? 'bellevue';
+  const haut = rangGare(gare) > rangGare(sommet) ? gare : sommet;
+  const nomHaut = nomGare(haut);
+  const nomBas = nomGare(bas);
   return {
     cause: 'terminus-bellevue',
-    titre_fr: "Tronçon Bellevue – Nid d'Aigle fermé",
-    titre_en: 'Bellevue – Nid d’Aigle section closed',
+    titre_fr: `Tronçon ${nomBas} – ${nomHaut} fermé`,
+    // Apostrophe typographique en anglais, comme le titre d'origine.
+    titre_en: `${nomBas} – ${nomHaut} section closed`.replace(/'/g, '’'),
     texte_fr:
-      fr || 'En raison des conditions météorologiques, les trains ont pour terminus Bellevue.',
-    texte_en: en || 'Due to weather conditions, trams terminate at Bellevue.',
+      fr || `En raison des conditions météorologiques, les trains ont pour terminus ${nomBas}.`,
+    texte_en: en || `Due to weather conditions, trams terminate at ${nomBas}.`,
   };
 }

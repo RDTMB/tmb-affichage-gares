@@ -182,8 +182,20 @@ export interface Affluence {
   maj_le?: string;
 }
 
-/** Terminus possible d'une montée (les descentes partent du terminus atteint). */
-export type Terminus = 'nid-daigle' | 'bellevue';
+/**
+ * Gare où une montée de la grille peut être LIMITÉE (colonne Terminus, bascule
+ * « à partir du TRAIN N »). Le Col de Voza est la plus basse : en dessous, ce
+ * n'est plus une limitation de terminus mais une section exploitée.
+ */
+export type GareLimite = 'col-de-voza' | 'bellevue';
+
+/**
+ * Valeur de la colonne `circulations.terminus`, portée par la MONTÉE.
+ * 'nid-daigle' = NON LIMITÉ — la rotation monte au sommet du jour, quel qu'il
+ * soit (Bellevue en hiver : la valeur s'AFFICHE alors « Bellevue », jamais
+ * « Nid d'Aigle »). Une gare de `GareLimite` = rotation limitée à cette gare.
+ */
+export type Terminus = 'nid-daigle' | GareLimite;
 
 // ---------------------------------------------------------------------------
 // Grille de saison (table `grilles`, chargée depuis l'Excel exploitation en
@@ -292,8 +304,14 @@ export interface MetadonneesGrille {
  * ≥ N sont limitées. Journée entière ≡ { a_partir_du_train: 1 } (régime
  * hiver permanent). La bascule ne fait que PRÉ-REMPLIR la colonne Terminus
  * des rotations concernées : la colonne reste prioritaire et ajustable.
+ *
+ * `gare` : où la bascule limite (colonne `jours.terminus_bascule_gare`).
+ * ABSENTE = Bellevue — c'est ce qu'écrit l'ancien front, et ce que porte un
+ * instantané en cache d'avant le 20/10/2026. Lire par `gareDeBascule()`.
+ * Le nom `terminus_bellevue` du champ est historique ; il est gardé pour que
+ * ces instantanés restent lisibles.
  */
-export type TerminusFlag = false | { a_partir_du_train: number };
+export type TerminusFlag = false | { a_partir_du_train: number; gare?: GareLimite };
 
 export interface Circulation {
   date: string;
@@ -307,10 +325,10 @@ export interface Circulation {
   /** Rame portée par la MONTÉE ; la descente appariée (numero + 1) hérite. */
   rame: string;
   /**
-   * Colonne Terminus (portée par la MONTÉE) : « bellevue » = rotation
-   * limitée — montée tronquée à Bellevue, descente appariée au départ de
-   * Bellevue. Une montée EXPRESS n'est JAMAIS tronquée : si sa colonne est
-   * sur « bellevue » (bascule de plage), elle circule normalement et est
+   * Colonne Terminus (portée par la MONTÉE) : « bellevue » ou « col-de-voza »
+   * = rotation limitée — montée tronquée à cette gare, descente appariée au
+   * départ de cette gare. Une montée EXPRESS n'est JAMAIS tronquée : si sa
+   * colonne est limitée (bascule de plage), elle circule normalement et est
    * signalée « à traiter » en supervision.
    */
   terminus: Terminus;
@@ -442,7 +460,7 @@ export interface TrainJour {
   statut: Statut;
   retard_min: number;
   motif: string | null;
-  /** Montée tronquée à Bellevue ou descente partant de Bellevue. */
+  /** Montée tronquée avant le bout (Bellevue, Col de Voza…) ou descente partant de là. */
   terminusExceptionnel: boolean;
   /** Grille, renfort (docs/01 §2.7) ou spécial (docs/01 §2.9). */
   nature: NatureCirculation;
