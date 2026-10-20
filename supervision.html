@@ -57,7 +57,12 @@
       <header>
         <img class="logo" id="logo" alt="Tramway du Mont-Blanc" />
         <h1>
-          Supervision affichage voyageurs<small>Tramway du Mont-Blanc — poste de commande</small>
+          Supervision affichage voyageurs<small
+            >Tramway du Mont-Blanc — poste de commande<span
+              class="version-entete"
+              id="version-entete"
+            ></span
+          ></small>
         </h1>
         <div class="spacer"></div>
         <!-- Base de données servie : PRODUCTION, TEST ou DÉMONSTRATION. Rien
@@ -127,6 +132,7 @@
           <button data-t="parametres">Paramètres</button>
           <button data-t="utilisateurs">Utilisateurs</button>
           <button data-t="journal">Journal</button>
+          <button data-t="version">Version</button>
         </div>
       </nav>
     </div>
@@ -1146,6 +1152,26 @@
             deux ans). La fonction refuse tout appelant qui n'est pas technique et retourne le
             nombre de lignes supprimées.
           </div>
+        </div>
+      </section>
+
+      <!-- ================= VERSION ================= -->
+      <!-- Le code en ligne (date de mise en ligne + n° de PR, calculés au
+           déploiement) et les nouveautés de nouveautes/, lues au build. -->
+      <section class="onglet" id="t-version">
+        <div class="carte" id="carte-version">
+          <h2>
+            Version en ligne
+            <span class="sous">le code que sert ce site, tel que le déploiement l'a construit</span>
+          </h2>
+          <div id="version-detail"></div>
+        </div>
+        <div class="carte" id="carte-nouveautes">
+          <h2>
+            Nouveautés
+            <span class="sous">ce qui a changé, mise en ligne après mise en ligne</span>
+          </h2>
+          <div class="nouveautes" id="version-nouveautes"></div>
         </div>
       </section>
     </main>
