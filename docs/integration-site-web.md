@@ -8,7 +8,9 @@ page du site, et les horaires s'affichent et se mettent à jour tout seuls.
 
 Le site du Tramway est un **WordPress** (réalisé par l'agence Novius). Dans
 l'éditeur de la page, ajoutez un bloc **« HTML personnalisé »** et collez
-**les deux parties** ci-dessous, telles quelles.
+le code ci-dessous, tel quel. C'est la version transmise le 20/10/2026 :
+**deux cadres** (les prochains départs, puis la journée complète) et **un
+seul script** pour la page.
 
 Si, à l'enregistrement, le bloc retire l'`<iframe>` (ou le `<script>`), ce
 n'est pas une erreur de collage : votre compte n'a pas le droit d'insérer ce
@@ -17,33 +19,45 @@ type de code. C'est un droit à demander à l'administrateur du site WordPress
 
 ```html
 <iframe
-  id="tmb-horaires"
+  class="tmb-horaires"
   src="https://rdtmb.github.io/tmb-affichage-gares/embed.html"
-  title="Horaires du Tramway du Mont-Blanc"
+  title="Horaires du Tramway du Mont-Blanc — prochains départs"
+  style="width: 100%; border: 0; height: 900px; display: block"
+  loading="lazy"
+></iframe>
+<iframe
+  class="tmb-horaires"
+  src="https://rdtmb.github.io/tmb-affichage-gares/embed.html?vue=jour"
+  title="Horaires du Tramway du Mont-Blanc — toute la journée"
   style="width: 100%; border: 0; height: 900px; display: block"
   loading="lazy"
 ></iframe>
 <script>
-  // Ajuste la hauteur du cadre à son contenu (sinon, barre de défilement).
   window.addEventListener('message', function (e) {
     if (e.origin !== 'https://rdtmb.github.io') return;
     var d = e.data;
     if (!d || d.type !== 'tmb-embed-hauteur' || typeof d.hauteur !== 'number') return;
-    var cadre = document.getElementById('tmb-horaires');
-    if (!cadre || e.source !== cadre.contentWindow) return;
-    cadre.style.height = Math.max(200, Math.min(d.hauteur, 6000)) + 'px';
+    var cadres = document.querySelectorAll('iframe.tmb-horaires');
+    for (var i = 0; i < cadres.length; i++) {
+      if (cadres[i].contentWindow === e.source) {
+        cadres[i].style.height = Math.max(200, Math.min(d.hauteur, 6000)) + 'px';
+      }
+    }
   });
 </script>
 ```
 
-- **La première partie** (`<iframe>`) affiche les horaires.
-- **La seconde** (`<script>`) ajuste la hauteur du cadre quand on change de
-  gare ou qu'on ouvre la journée complète. Si le CMS refuse les scripts, ne
-  collez que l'`<iframe>` : tout fonctionne, avec une hauteur fixe de 900 px
-  et une barre de défilement dans le cadre.
-- Une seule iframe `tmb-horaires` par page. Pour en mettre deux (deux gares
-  sur une même page), donnez-leur des `id` différents et dupliquez le script
-  en changeant l'`id`.
+- **Les `<iframe>`** affichent les horaires. Chacune porte la classe
+  `tmb-horaires` : c'est ce qui la fait reconnaître par le script.
+- **Le `<script>`** ajuste la hauteur de CHAQUE cadre `tmb-horaires` de la
+  page quand on change de gare, qu'on ouvre la journée complète ou qu'on
+  touche un onglet grisé (la raison s'affiche dessous). Si le CMS refuse les
+  scripts, ne collez que les `<iframe>` : tout fonctionne, avec une hauteur
+  fixe de 900 px et une barre de défilement dans le cadre.
+- **Un seul script par page**, quel que soit le nombre de cadres : pour en
+  ajouter un, copiez une `<iframe>` en gardant `class="tmb-horaires"`. Ne
+  dupliquez pas le script — chaque copie ferait le même travail une fois de
+  plus.
 
 ### Ouvrir directement une gare, ou la journée complète
 
@@ -86,6 +100,10 @@ pointé sur la préversion.
 - **Messages** de l'exploitation, en haut de la page.
 - **Travaux** : une gare non desservie a son onglet grisé, et le tronçon fermé
   est annoncé en tête.
+- **En hiver**, l'onglet Nid d'Aigle est grisé : « Le Nid d'Aigle n'est pas
+  ouvert pendant la période hivernale ! ». La raison d'un onglet grisé
+  s'affiche au survol de la souris et, sur téléphone, au toucher, dans une
+  ligne sous les onglets qui disparaît au bout de 5 secondes.
 - **En français et en anglais**, lisible sur téléphone.
 
 ## Ce qu'elle ne fait pas
