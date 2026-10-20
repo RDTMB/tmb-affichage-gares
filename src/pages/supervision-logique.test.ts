@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { GareId, Message } from '../core/types';
 import { ORDRE_GARES } from '../core/types';
-import { ONGLETS, ROLES, ROLES_QUI_ROUVRENT, plafondOnglets } from '../core/roles';
+import {
+  ONGLETS,
+  ONGLETS_REGLABLES,
+  ROLES,
+  ROLES_QUI_ROUVRENT,
+  plafondOnglets,
+} from '../core/roles';
 import {
   rotationsDeGrille,
   datetimeLocalVersIso,
@@ -633,7 +639,7 @@ describe('barrePublication : les trois états et leur vocabulaire', () => {
 // ---------------------------------------------------------------------------
 
 describe('groupesNavigation : la barre tient pour n’importe quel sous-ensemble', () => {
-  it('neuf onglets : six d’exploitation à gauche, trois d’administration à droite', () => {
+  it('dix onglets : six d’exploitation à gauche, quatre d’administration à droite', () => {
     // « Places » (10/09/2026) est de l'exploitation du jour : il rejoint le
     // groupe de gauche, juste après Circulations.
     const g = groupesNavigation([...ONGLETS]);
@@ -645,7 +651,7 @@ describe('groupesNavigation : la barre tient pour n’importe quel sous-ensemble
       'medias',
       'ecrans',
     ]);
-    expect(g.administration).toEqual(['parametres', 'utilisateurs', 'journal']);
+    expect(g.administration).toEqual(['parametres', 'utilisateurs', 'journal', 'version']);
   });
 
   it('la configuration par défaut de la CAISSE : quatre onglets, deux groupes', () => {
@@ -740,7 +746,7 @@ describe('grilleOngletsHtml', () => {
   it('rend une case par rôle et par onglet — la grille est complète', () => {
     const html = grilleOngletsHtml(null);
     for (const role of ROLES) {
-      for (const onglet of ONGLETS) {
+      for (const onglet of ONGLETS_REGLABLES) {
         expect(boite(html, role, onglet), `${role} × ${onglet} manquante`).not.toBeNull();
       }
     }
@@ -749,7 +755,7 @@ describe('grilleOngletsHtml', () => {
   it('une case HORS PLAFOND est grisée, jamais cochée', () => {
     const html = grilleOngletsHtml(null);
     for (const role of ROLES) {
-      for (const onglet of ONGLETS) {
+      for (const onglet of ONGLETS_REGLABLES) {
         if (plafondOnglets(role).includes(onglet)) continue;
         expect(grisee(html, role, onglet), `${role} × ${onglet} devrait être grisée`).toBe(true);
         expect(cochee(html, role, onglet)).toBe(false);
@@ -784,7 +790,10 @@ describe('grilleOngletsHtml', () => {
     // La grille doit montrer l'état EFFECTIF, pas les lignes stockées : sinon
     // le technique croirait avoir tout masqué pour un rôle non réglé.
     const html = grilleOngletsHtml({ caisse: ['bandeau'] });
-    for (const onglet of plafondOnglets('supervision')) {
+    // Les onglets NON RÉGLABLES n'ont pas de case : la carte ne les propose pas.
+    for (const onglet of plafondOnglets('supervision').filter((o) =>
+      ONGLETS_REGLABLES.includes(o),
+    )) {
       expect(cochee(html, 'supervision', onglet)).toBe(true);
     }
   });
@@ -795,7 +804,7 @@ describe('grilleOngletsHtml', () => {
     // fait. Le rendu ne doit contenir aucune balise non voulue.
     const html = grilleOngletsHtml(null);
     expect(html).not.toMatch(/<script/i);
-    expect(html.match(/<input/g)?.length).toBe(ROLES.length * ONGLETS.length);
+    expect(html.match(/<input/g)?.length).toBe(ROLES.length * ONGLETS_REGLABLES.length);
   });
 });
 

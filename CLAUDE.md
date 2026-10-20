@@ -23,6 +23,7 @@ n'aiguille rien.
 | changer ce qu'un écran de gare ou la grille du jour MONTRE : colonnes, pastilles de remplissage, compte à rebours, train barré, mode dégradé, messages | `.claude/regles-affichage.md` |
 | créer ou modifier une course qui ne vient pas de la grille : spécial affrété, libellé libre, accès public / privé / mixte | `.claude/regles-courses-libres.md` |
 | toucher une couleur, une police, un logo, un espacement — ou reproduire une maquette | `.claude/charte-graphique.md` |
+| ouvrir une PR qui touche `src/`, `public/` ou une page `*.html` (la CI réclame une entrée dans `nouveautes/`) | `docs/nouveautes.md` |
 
 Les documents longs se lisent de la même façon : à la QUESTION, jamais « avant
 de coder ». `docs/01` et `docs/02` pèsent à eux deux ~33 000 tokens — les

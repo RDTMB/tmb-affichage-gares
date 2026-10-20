@@ -16,6 +16,8 @@ import {
   motifOngletVerrouille,
   ONGLETS,
   ONGLET_DE_SECOURS,
+  ONGLETS_NON_REGLABLES,
+  ONGLETS_REGLABLES,
   ROLES_QUI_ROUVRENT,
   ongletsVisibles,
   peutAttribuer,
@@ -135,6 +137,7 @@ describe('Onglets visibles', () => {
       'ecrans',
       'utilisateurs',
       'journal',
+      'version',
     ]);
   });
 
@@ -159,6 +162,7 @@ describe('Onglets visibles', () => {
       'parametres',
       'utilisateurs',
       'journal',
+      'version',
     ]);
   });
 
@@ -171,6 +175,7 @@ describe('Onglets visibles', () => {
       'medias',
       'ecrans',
       'journal',
+      'version',
     ]);
   });
 
@@ -189,6 +194,7 @@ describe('Onglets visibles', () => {
       'medias',
       'ecrans',
       'journal',
+      'version',
     ]);
   });
 
@@ -243,6 +249,7 @@ describe('Onglets visibles', () => {
       'parametres',
       'utilisateurs',
       'journal',
+      'version',
     ]);
     expect(ongletsVisibles(['admin', 'supervision'])).toEqual([
       'circulations',
@@ -254,6 +261,7 @@ describe('Onglets visibles', () => {
       'parametres',
       'utilisateurs',
       'journal',
+      'version',
     ]);
   });
 
@@ -484,6 +492,7 @@ describe('Onglets par rôle : le réglage ne peut que RETRANCHER', () => {
       'circulations',
       'bandeau',
       'journal',
+      'version',
     ]);
   });
 
@@ -522,6 +531,24 @@ describe('Onglets par rôle : les deux replis vont vers la matrice, jamais vers 
       plafondOnglets('supervision'),
     );
     expect(ongletsVisibles(['caisse'], seulementLaCaisse)).toEqual(['bandeau']);
+  });
+
+  it('« Version » SUIT le Journal : même plafond, même réglage', () => {
+    // La base ne connaît pas « version » (contrainte CHECK) : aucune ligne ne
+    // peut le nommer. Il est adossé au Journal — affiché avec lui, masqué avec lui.
+    for (const role of ROLES) {
+      const avecJournal: VisibiliteOnglets = { [role]: ['journal'] };
+      const sansJournal: VisibiliteOnglets = { [role]: ['bandeau'] };
+      expect(ongletsVisibles([role], avecJournal).includes('version')).toBe(
+        plafondOnglets(role).includes('journal'),
+      );
+      expect(ongletsVisibles([role], sansJournal)).not.toContain('version');
+      expect(plafondOnglets(role).includes('version')).toBe(
+        plafondOnglets(role).includes('journal'),
+      );
+    }
+    expect(ONGLETS_REGLABLES).not.toContain('version');
+    expect([...ONGLETS_REGLABLES, ...ONGLETS_NON_REGLABLES].sort()).toEqual([...ONGLETS].sort());
   });
 
   it('une liste VIDE pour un rôle est traitée comme une absence de réglage', () => {
@@ -624,6 +651,7 @@ describe('Lot 2 : Horaires masqué pour la caisse', () => {
       'medias',
       'ecrans',
       'journal',
+      'version',
     ]);
   });
 

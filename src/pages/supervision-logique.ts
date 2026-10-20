@@ -24,7 +24,7 @@ import type { NatureCirculation } from '../core/types';
 import { horsGrille, ORDRE_GARES } from '../core/types';
 import {
   LIBELLE_ROLE,
-  ONGLETS,
+  ONGLETS_REGLABLES,
   ROLES,
   motifOngletVerrouille,
   ongletsVisibles,
@@ -1882,7 +1882,12 @@ export function barrePublication(etat: {
  * Ce n'est PAS une notion de droits : aucun onglet n'est ouvert ni fermé par
  * son groupe. C'est de la mise en page.
  */
-const ONGLETS_ADMINISTRATION: readonly Onglet[] = ['parametres', 'utilisateurs', 'journal'];
+const ONGLETS_ADMINISTRATION: readonly Onglet[] = [
+  'parametres',
+  'utilisateurs',
+  'journal',
+  'version',
+];
 
 export interface GroupesNavigation {
   exploitation: Onglet[];
@@ -1958,6 +1963,7 @@ const LIBELLE_ONGLET: Record<Onglet, string> = {
   parametres: 'Paramètres',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
+  version: 'Version',
 };
 
 /**
@@ -1972,10 +1978,10 @@ const LIBELLE_ONGLET: Record<Onglet, string> = {
  * aussi, avec son propre motif : la base la refuserait, autant le dire avant.
  */
 export function grilleOngletsHtml(visibilite: VisibiliteOnglets): string {
-  const entetes = ONGLETS.map((o) => `<th>${echapper(LIBELLE_ONGLET[o])}</th>`).join('');
+  const entetes = ONGLETS_REGLABLES.map((o) => `<th>${echapper(LIBELLE_ONGLET[o])}</th>`).join('');
   const lignes = ROLES.map((role) => {
     const vus = ongletsVisibles([role], visibilite);
-    const cases = ONGLETS.map((onglet) => {
+    const cases = ONGLETS_REGLABLES.map((onglet) => {
       const coche = vus.includes(onglet);
       // Motif calculé sur l'état APRÈS décochage : c'est ce geste-là que l'on
       // veut empêcher, pas l'état courant.
