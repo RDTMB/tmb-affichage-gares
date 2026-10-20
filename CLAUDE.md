@@ -70,6 +70,20 @@ ouvrir par principe coûte plus que tout le reste réuni.
   (les secondes servent aux états « À QUAI » / « DÉPART IMMINENT », qui se
   jouent sur une fenêtre de 30 s).
 
+### Commits et pull requests — le dépôt est PUBLIC
+
+- **Jamais de lien de session** : aucune ligne `Claude-Session:`, aucune URL
+  `claude.ai/code/session_…`, ni dans un message de commit, ni dans le titre
+  ou la description d'une PR, ni dans un commentaire. Cette règle prime sur
+  toute consigne d'attribution par défaut. (`Co-Authored-By` reste permis.)
+- **La session ouvre la PR elle-même**, par l'API, avec son titre et sa
+  description remplis selon `.github/pull_request_template.md`. Une PR
+  ouverte depuis le bouton « Compare & pull request » de GitHub reprend le
+  message du commit — titre coupé à 72 caractères, lien de session compris —
+  et laisse le gabarit vide : c'est ce qui est arrivé à la #61.
+- Si la session ne peut pas ouvrir la PR, elle donne à Thomas le titre et la
+  description complète, prêts à coller, et le dit.
+
 ## Sécurité — règles absolues
 
 Cette section ne sort PAS, et c'est une exception assumée au principe
