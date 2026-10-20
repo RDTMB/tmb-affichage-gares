@@ -101,6 +101,22 @@ export function mentionCourse(t: {
   return t.affluence ?? null;
 }
 
+/**
+ * Les mots de la ligne d'ARRIVÉE d'une montée limitée avant son terminus de
+ * grille, dans l'embed et sur l'écran de gare — une seule copie. La règle est
+ * `arriveeAuTerminusExceptionnel` (src/core/horaires.ts) ; ici, seulement ce
+ * que la ligne dit. « vers le Nid d'Aigle » : le nom propre prend l'article,
+ * comme dans le titre « Vers le Nid d'Aigle » de l'embed.
+ */
+export const MOT_ARRIVEE = { fr: 'Arrivée', en: 'Arrival' } as const;
+
+export function neContinuePas(vers: GareId, nomVers: string): { fr: string; en: string } {
+  return {
+    fr: `Terminus — ne continue pas vers ${vers === 'nid-daigle' ? 'le ' : ''}${nomVers}`,
+    en: `Terminus — does not continue to ${nomVers}`,
+  };
+}
+
 export function echapper(texte: string): string {
   return texte
     .replace(/&/g, '&amp;')

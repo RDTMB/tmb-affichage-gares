@@ -384,6 +384,18 @@ h2,
   color: var(--texte-sec);
 }
 
+/* TERMINUS EXCEPTIONNEL (décision de l'exploitant du 20/10/2026) : la
+   destination et la mention prennent l'orange du retard, la mention en gras.
+   Le rouge reste à « Supprimé » et « Complet ». */
+.depart .nom-dest.alerte,
+.depart .note .alerte {
+  color: var(--retard);
+}
+
+.depart .note .alerte {
+  font-weight: 700;
+}
+
 .depart .rame {
   font-size: 0.8rem;
   color: var(--texte-sec);
@@ -437,6 +449,12 @@ h2,
 
 .rebours.parti {
   color: var(--texte-sec);
+}
+
+/* Arrivée au terminus exceptionnel : pas un compte à rebours, une étiquette. */
+.rebours.arrivee {
+  color: var(--retard);
+  border-color: var(--retard);
 }
 
 .statut {

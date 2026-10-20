@@ -19,6 +19,7 @@ import { garesSautees } from '../core/train-sup';
 import { etatInitial, prochainEtat } from '../core/cycle-medias';
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
+  arriveeAuTerminusExceptionnel,
   compteARebours,
   enVeille,
   dateSuivante,
@@ -28,10 +29,12 @@ import {
   formatHeure,
   grillePourJour,
   libelleTrainCourt,
+  lignesDuTableau,
   passagesPourGare,
   prochaineArrivee,
   serviceActif,
   sommetDeLaGrille,
+  terminusDeGrille,
   veilleEffective,
   quaiOccupe,
   trainsDuJour,
@@ -77,6 +80,8 @@ import {
   INTERVALLE_HEARTBEAT_MS,
   messagesVisibles,
   meteoHtml,
+  MOT_ARRIVEE,
+  neContinuePas,
 } from './affichage-commun';
 import { poseFavicon } from './favicon';
 import { poseMarquePreversion, titrePage } from './preversion';
@@ -229,6 +234,12 @@ function dureeCacheMs(): number {
 // ---------------------------------------------------------------------------
 
 function chipHtml(p: PassageGare, maintenant_s: number): string {
+  // Arrivée au terminus exceptionnel : une case NEUTRE, de la même taille que
+  // les autres (charte) — ni compte à rebours, ni « PARTI » : ce train ne
+  // repart pas d'ici.
+  if (arriveeAuTerminusExceptionnel(p)) {
+    return `<span class="chip arrivee"><b>${MOT_ARRIVEE.fr.toUpperCase()}</b><small>${MOT_ARRIVEE.en.toUpperCase()}</small></span>`;
+  }
   if (p.depart_s === null) return '';
   const c = compteARebours(
     p.depart_s,
@@ -322,8 +333,19 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
       : p.sens === 'montee'
         ? 'Montée / Ascent'
         : 'Descente / Descent';
-  if (p.terminusExceptionnel && p.sens === 'montee') {
-    note += ' · <b>Terminus exceptionnel / Exceptional terminus</b>';
+  // Montée LIMITÉE avant son terminus de grille (décision de l'exploitant du
+  // 20/10/2026) : destination et mention dans l'orange du retard, la mention
+  // en gras. Le rouge reste réservé à « Supprimé » et « Complet ».
+  const limitee = !supprime && p.terminusExceptionnel && p.sens === 'montee';
+  // À la gare où elle s'arrête, la ligne est une ARRIVÉE : son heure est celle
+  // d'arrivée, et la note dit qu'elle ne va pas plus haut.
+  const arrivee = arriveeAuTerminusExceptionnel(p);
+  if (arrivee) {
+    const vers = grille && jour ? terminusDeGrille(grille, p.numero, jour.date) : p.destination;
+    const mots = neContinuePas(vers, nomGare(vers));
+    note = `<b class="alerte">${echapper(`${mots.fr} / ${mots.en}`)}</b>`;
+  } else if (limitee) {
+    note += ' · <b class="alerte">Terminus exceptionnel / Exceptional terminus</b>';
   }
   // Départ CONSTATÉ depuis le terminus (descente de renfort) : mention NEUTRE.
   // Surtout pas le traitement d'un retard — ce train n'est pas en retard, son
@@ -340,16 +362,20 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
   // l'information sur la ligne au-dessus. La mention express, elle, n'a pas
   // d'autre endroit où aller, et c'est elle qui dit aux voyageurs du Col de
   // Voza et de Bellevue que ce train ne s'arrête pas chez eux.
-  const noteLibre = !p.express && sansArret === '';
+  // La ligne d'ARRIVÉE n'est pas libre non plus : « Terminus — ne continue
+  // pas vers … » occupe déjà la note, dans les deux langues.
+  const noteLibre = !p.express && sansArret === '' && !arrivee;
   if (prive !== '' && !supprime && noteLibre) note = `${prive} · ${note}`;
   if (supprime) {
     note = `<span class="motif-supprime">${echapper(motifBilingue(p.motif ?? 'Supprimé'))}</span>`;
   }
 
+  const reelle = arrivee ? p.arrivee_s : p.depart_s;
+  const theorique = arrivee ? p.arrivee_theorique_s : p.depart_theorique_s;
   const depart =
-    retard && p.depart_s !== null
-      ? `${formatHeure(p.depart_s)}<span class="retard-old">théorique ${formatHeure(p.depart_theorique_s)}</span>`
-      : formatHeure(p.depart_theorique_s);
+    retard && reelle !== null
+      ? `${formatHeure(reelle)}<span class="retard-old">théorique ${formatHeure(theorique)}</span>`
+      : formatHeure(theorique);
 
   const statut = supprime
     ? '<span class="st-supp">Supprimé<small>Cancelled</small></span>'
@@ -418,11 +444,11 @@ function ligneHtml(p: PassageGare, maintenant_s: number, trains: Map<number, Tra
     ]),
   )}</span></span>`;
 
-  return `<div class="gridrow rangee${supprime ? ' supprime' : ''}">
+  return `<div class="gridrow rangee${supprime ? ' supprime' : ''}${arrivee ? ' arrivee' : ''}">
     <div class="r-dep">${depart}</div>
     <div class="r-dest">
       <div class="fleche ${p.sens === 'montee' ? 'up' : 'down'}">${p.sens === 'montee' ? FLECHE_UP : FLECHE_DOWN}</div>
-      <div class="txt"><div class="dest">${badge}<span class="nom-dest">${echapper(nomGare(p.destination))}</span>${priveHtml}${affluenceHtml}${motrice}</div><div class="note${
+      <div class="txt"><div class="dest">${badge}<span class="nom-dest${limitee ? ' alerte' : ''}">${echapper(nomGare(p.destination))}</span>${priveHtml}${affluenceHtml}${motrice}</div><div class="note${
         p.express || sansArret !== '' || prive !== '' ? ' note-exp' : ''
       }">${note}</div></div>
     </div>
@@ -771,7 +797,9 @@ function rendre(gare: GareId): void {
   // Le moteur horaires ignore le remplissage : la jointure (date, numéro) se
   // fait ici, sur ce qu'il vient de calculer.
   const passages = appliqueAffluence(passagesPourGare(grille, jour, gare, maintenant), affluence);
-  const departs = passages.filter((p) => p.depart_s !== null).slice(0, 5);
+  // Les départs, et l'arrivée d'une montée qui finit EXCEPTIONNELLEMENT ici
+  // (`lignesDuTableau`) — la même liste que l'embed.
+  const departs = lignesDuTableau(passages).slice(0, 5);
 
   // Gare fermée AVANT fin de service : une gare fermée pour travaux ne doit
   // jamais annoncer « service terminé », qui laisserait croire à une reprise

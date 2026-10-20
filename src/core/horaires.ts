@@ -1229,6 +1229,58 @@ export function passagesPourGare(
   });
 }
 
+/**
+ * ARRIVÉE AU TERMINUS EXCEPTIONNEL (décision de l'exploitant du 20/10/2026).
+ * Le tableau d'une gare ne liste que des départs : une montée limitée au Col
+ * de Voza n'en repart pas, et le voyageur qui l'attend sur ce quai ne voyait
+ * rien venir. Ce passage-là devient une ligne d'ARRIVÉE.
+ *
+ * Quatre conditions, toutes nécessaires :
+ *  - une MONTÉE (la descente « partant de là » porte aussi le drapeau, mais
+ *    elle a un départ, donc sa ligne ordinaire) ;
+ *  - un terminus qui a BOUGÉ : un train qui arrive à son terminus normal
+ *    (Bellevue en hiver, le Nid d'Aigle en été) ne change rien ;
+ *  - le BOUT du train ici : pas de départ, une arrivée ;
+ *  - pas supprimé : un train qui ne vient pas n'arrive nulle part.
+ */
+export function arriveeAuTerminusExceptionnel(p: PassageGare): boolean {
+  return (
+    p.sens === 'montee' &&
+    p.terminusExceptionnel &&
+    p.statut !== 'supprime' &&
+    p.depart_s === null &&
+    p.arrivee_s !== null
+  );
+}
+
+/**
+ * Les lignes du tableau d'une gare : ses départs, et l'arrivée d'une montée
+ * qui finit EXCEPTIONNELLEMENT ici. Ordre et retrait sont ceux de
+ * `passagesPourGare` (à l'heure d'arrivée, 2 min après elle) : l'arrivée se
+ * range parmi les départs et s'en va comme eux.
+ */
+export function lignesDuTableau(passages: readonly PassageGare[]): PassageGare[] {
+  return passages.filter((p) => p.depart_s !== null || arriveeAuTerminusExceptionnel(p));
+}
+
+/**
+ * Gare vers laquelle une montée limitée « ne continue pas » : le terminus que
+ * la GRILLE lui donne — sa plus haute gare à heure réelle ce jour-là, AVANT
+ * section, bascule et colonne Terminus. Bellevue en hiver, le Nid d'Aigle en
+ * été. Un train hors grille (renfort, spécial) n'a pas de terminus de
+ * grille : le sommet de la grille en tient lieu.
+ */
+export function terminusDeGrille(grille: Grille, numero: number, date: string): GareId {
+  const train = grille.montees.find((t) => t.numero === numero && circuleLe(t, date));
+  let rangMax = -1;
+  for (const p of train?.passages ?? []) {
+    if (heureReelle(p.a) || heureReelle(p.d)) {
+      rangMax = Math.max(rangMax, ORDRE_GARES.indexOf(p.gare));
+    }
+  }
+  return ORDRE_GARES[rangMax] ?? sommetDeLaGrille(grille, date);
+}
+
 // ---------------------------------------------------------------------------
 // Prochaine arrivée, compte à rebours, fin de service, positions
 // ---------------------------------------------------------------------------
