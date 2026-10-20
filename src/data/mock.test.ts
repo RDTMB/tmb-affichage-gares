@@ -116,6 +116,22 @@ describe('MockProvider — écritures sur une date non générée', () => {
     expect(jour.circulations.find((c) => c.numero === 19)?.terminus).toBe('bellevue');
     expect(jour.circulations.find((c) => c.numero === 15)?.terminus).toBe('nid-daigle');
   });
+
+  it('une bascule au Col de Voza garde sa GARE à la relecture', async () => {
+    // Sans la gare persistée, la relecture redevient « Bellevue » : l'écran
+    // annoncerait Bellevue ouverte alors que la colonne limite au Col de Voza.
+    const provider = new MockProvider();
+    const date = '2026-07-21';
+    await provider.setTerminusBellevue(date, { a_partir_du_train: 19, gare: 'col-de-voza' });
+    const jour = await provider.getJour(date);
+    expect(jour.terminus_bellevue).toEqual({ a_partir_du_train: 19, gare: 'col-de-voza' });
+    expect(jour.circulations.find((c) => c.numero === 19)?.terminus).toBe('col-de-voza');
+    // Passer la même plage à Bellevue : la colonne suit, la gare disparaît du drapeau.
+    await provider.setTerminusBellevue(date, { a_partir_du_train: 19 });
+    const apres = await provider.getJour(date);
+    expect(apres.terminus_bellevue).toEqual({ a_partir_du_train: 19 });
+    expect(apres.circulations.find((c) => c.numero === 19)?.terminus).toBe('bellevue');
+  });
 });
 
 describe('Ouverture d’une date en supervision (amélioration exploitant du 25/08/2026)', () => {

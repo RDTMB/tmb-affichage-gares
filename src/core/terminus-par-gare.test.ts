@@ -223,6 +223,20 @@ describe('rotation limitée au Col de Voza : on TRONQUE, on ne recalcule rien', 
     expect(gares(train(HIVER, jour, 6))[0]).toBe('col-de-voza');
   });
 
+  it('hiver : un express (fictif) sous une colonne « bellevue » n’est PAS « à traiter »', () => {
+    // Bellevue est le sommet : la colonne ne limite rien, il n'y a rien à
+    // arbitrer. Même borne que la cellule Terminus (sommet de la GRILLE).
+    const grille: Grille = {
+      ...HIVER,
+      montees: HIVER.montees.map((t) => (t.numero === 5 ? { ...t, express: true } : t)),
+    };
+    const jour = generationJour(grille, DATE_HIVER);
+    circ(jour, 5).terminus = 'bellevue';
+    expect(expressATraiter(grille, jour)).toEqual([]);
+    circ(jour, 5).terminus = 'col-de-voza';
+    expect(expressATraiter(grille, jour)).toEqual([5]);
+  });
+
   it('hiver : « bellevue » dans la colonne ne change rien (c’est déjà le sommet)', () => {
     const jour = hiver();
     circ(jour, 5).terminus = 'bellevue';
