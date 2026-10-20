@@ -4,14 +4,18 @@
 // une modification en supervision mock apparaît sur les écrans mock < 2 s.
 // Démo par défaut (maquette validée) : facultatifs 3/4/9/10/17/18 activés,
 // retard +10 min (Météo) sur le TRAIN 11, descente 16 supprimée (Météo).
-// Paramètre d'URL écran : ?terminus=N (bascule « à partir du TRAIN N »).
+// Paramètre d'URL écran : ?terminus=N (bascule « à partir du TRAIN N »),
+// &terminus-gare=col-de-voza pour une bascule au Col de Voza (Bellevue sinon).
 // Connexion mock : le préfixe de l'e-mail fixe les RÔLES, « + » permettant le
 // cumul (« technique+admin@demo » ouvre une session portant les deux ; un
 // préfixe inconnu retombe sur « supervision ») ; mot de passe libre.
 import {
   A_QUAI_ORIGINE_DEFAUT_S,
   appliqueTerminusBellevue,
+  basculeDuFlag,
   datePrecedente,
+  deltaBascule,
+  gareDeBascule,
   generationJour,
   sectionReportee,
   serviceActif,
@@ -60,6 +64,7 @@ import type {
   Session,
   SectionJour,
   TerminusFlag,
+  GareLimite,
   User,
   EntreeJournal,
   FiltreJournal,
@@ -302,6 +307,8 @@ interface EtatMock {
     string,
     {
       terminus: number | null;
+      /** Gare de la bascule ; absente ou null = Bellevue (état écrit avant le 20/10/2026). */
+      terminusGare?: GareLimite | null;
       /** Section exploitée ; absente = ligne complète (état écrit avant la fonctionnalité). */
       section?: SectionJour;
       circulations: Record<string, Partial<Circulation>>;
@@ -491,6 +498,8 @@ function ecritEcrans(ecrans: EcransMock): void {
 export interface OptionsMock {
   /** Bascule Terminus Bellevue « à partir du TRAIN N » appliquée à l'affichage (démo écrans). */
   terminusAPartirDuTrain?: number;
+  /** Gare de cette bascule de démonstration (Bellevue par défaut). */
+  terminusGare?: GareLimite;
   /**
    * ÉCART D'HORLOGE SIMULÉ, en secondes (`?demo=1&ecart=45`). Comme
    * `echecSimule`, ce drapeau n'est lu que par le fournisseur de
@@ -781,13 +790,22 @@ export class MockProvider implements DataProvider {
       }
       jour.circulations.sort((x, y) => x.numero - y.numero);
       jour.terminus_bellevue =
-        etatJour.terminus === null ? false : { a_partir_du_train: etatJour.terminus };
+        etatJour.terminus === null
+          ? false
+          : etatJour.terminusGare === 'col-de-voza'
+            ? { a_partir_du_train: etatJour.terminus, gare: 'col-de-voza' }
+            : { a_partir_du_train: etatJour.terminus };
       if (etatJour.section) Object.assign(jour, etatJour.section);
     }
 
     if (this.options.terminusAPartirDuTrain !== undefined) {
       return this.filtreCommanditaire(
-        appliqueTerminusBellevue(grille, jour, this.options.terminusAPartirDuTrain).jour,
+        appliqueTerminusBellevue(
+          grille,
+          jour,
+          this.options.terminusAPartirDuTrain,
+          this.options.terminusGare,
+        ).jour,
         avecCommanditaire,
       );
     }
@@ -1274,42 +1292,46 @@ export class MockProvider implements DataProvider {
     etat.jours[date] ??= { terminus: null, circulations: {} };
     const etatJour = etat.jours[date];
     if (!etatJour || !grille) return;
-    /** Numéro de MONTÉE : un pair vise la montée de sa rotation (N − 1). */
-    const normalise = (n: number): number => Math.max(1, n % 2 === 0 ? n - 1 : n);
-    // `null` = pas de plage.
-    const seuil = v === false ? null : normalise(v.a_partir_du_train);
-    // Plage PRÉCÉDENTE : c'est elle qui dit ce qui entre et ce qui sort.
-    const ancien = typeof etatJour.terminus === 'number' ? normalise(etatJour.terminus) : null;
+    // `null` = pas de bascule. Seuil normalisé (un pair vise sa montée N − 1).
+    const nouvelle = basculeDuFlag(v);
+    // Bascule PRÉCÉDENTE : c'est elle qui dit ce qui entre et ce qui sort.
+    const ancienne = basculeDuFlag(
+      etatJour.terminus === null
+        ? false
+        : { a_partir_du_train: etatJour.terminus, gare: etatJour.terminusGare ?? undefined },
+    );
+    const gareNouvelle = gareDeBascule(v) === 'col-de-voza' ? 'col-de-voza' : null;
     trace(
       etat,
       'jours',
       date,
-      { terminus_bellevue_a_partir_du_train: etatJour.terminus },
-      { terminus_bellevue_a_partir_du_train: v === false ? null : seuil },
-      ['terminus_bellevue_a_partir_du_train'],
+      {
+        terminus_bellevue_a_partir_du_train: etatJour.terminus,
+        terminus_bascule_gare: etatJour.terminusGare ?? null,
+      },
+      {
+        terminus_bellevue_a_partir_du_train: nouvelle?.seuil ?? null,
+        terminus_bascule_gare: gareNouvelle,
+      },
+      ['terminus_bellevue_a_partir_du_train', 'terminus_bascule_gare'],
       date,
     );
-    etatJour.terminus = seuil;
+    etatJour.terminus = nouvelle?.seuil ?? null;
+    etatJour.terminusGare = gareNouvelle;
     // Pré-remplissage de la colonne Terminus (docs/01 §2.3), ajustable
-    // ensuite. Seules les montées qui ENTRENT ou SORTENT de la plage sont
-    // touchées — voir SupabaseProvider.setTerminusBellevue() pour le
-    // raisonnement complet (M-21). Même défaut ici : la boucle recalculait la
-    // colonne de TOUTES les montées, effaçant les limitations posées à la main.
-    const libereTout = v === false;
-    for (const montee of grille.montees) {
-      const cle = String(montee.numero);
-      const n = montee.numero;
-      const limitee = etatJour.circulations[cle]?.terminus === 'bellevue';
-      const entre = seuil !== null && n >= seuil && (ancien === null || n < ancien);
-      const sort = libereTout
-        ? limitee
-        : limitee && ancien !== null && seuil !== null && n >= ancien && n < seuil;
-      if (!entre && !sort) continue;
-      etatJour.circulations[cle] = {
-        ...etatJour.circulations[cle],
-        terminus: entre ? 'bellevue' : 'nid-daigle',
-      };
-    }
+    // ensuite, par la règle pure `deltaBascule()` — la même que l'aperçu et
+    // que SupabaseProvider.setTerminusBellevue() (M-21 : seules les montées
+    // qui entrent, sortent ou changent de gare sont touchées).
+    const montees = grille.montees.map((m) => ({
+      numero: m.numero,
+      sens: 'montee' as const,
+      terminus: etatJour.circulations[String(m.numero)]?.terminus ?? 'nid-daigle',
+    }));
+    deltaBascule(montees, ancienne, nouvelle).forEach((c, i) => {
+      if (c.terminus === montees[i]?.terminus) return;
+      const cle = String(c.numero);
+      etatJour.circulations[cle] = { ...etatJour.circulations[cle], terminus: c.terminus };
+    });
     ecritEtat(etat);
   }
 

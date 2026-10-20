@@ -15,6 +15,12 @@ create table if not exists jours (
   -- 1 = journée entière (régime hiver). La colonne `terminus` de chaque
   -- circulation reste l'unique source de vérité pour l'affichage.
   terminus_bellevue_a_partir_du_train int,
+  -- GARE de cette bascule (« Terminus [gare] à partir du TRAIN N »,
+  -- 20/10/2026). NULL = Bellevue : toute ligne d'avant, et tout ce qu'écrit
+  -- un front qui ignore la colonne. Le nom de la colonne N est historique.
+  terminus_bascule_gare text
+    constraint jours_terminus_bascule_gare
+    check (terminus_bascule_gare is null or terminus_bascule_gare in ('bellevue','col-de-voza')),
   -- SECTION DE LIGNE EXPLOITÉE ce jour, bornes INCLUSES (travaux, fermeture
   -- d'un tronçon). « Terminus Bellevue » n'en est qu'un cas particulier : la
   -- section est la borne EXTÉRIEURE, la colonne `terminus` d'une circulation
@@ -48,8 +54,12 @@ create table if not exists circulations (
   facultatif_actif boolean not null default false,
   velos boolean not null default false,
   rame text not null,             -- portée par la MONTÉE ; la descente appariée (numero+1) hérite
-  terminus text not null default 'nid-daigle' check (terminus in ('nid-daigle','bellevue')),
-                                  -- porté par la MONTÉE : « bellevue » = rotation limitée
+  terminus text not null default 'nid-daigle'
+    constraint circulations_terminus_check
+    check (terminus in ('nid-daigle','bellevue','col-de-voza')),
+                                  -- porté par la MONTÉE : « bellevue » / « col-de-voza »
+                                  -- = rotation limitée ; « nid-daigle » = non limitée
+                                  -- (sommet du jour : Bellevue en hiver)
                                   -- (montée express : jamais tronquée, signalée « à traiter »)
   statut text not null default 'ok' check (statut in ('ok','retard','supprime')),
   retard_min int not null default 0 check (retard_min >= 0),
@@ -1652,7 +1662,7 @@ drop trigger if exists trg_journal_jours on jours;
 create trigger trg_journal_jours
   after insert or update or delete on jours
   for each row execute function private.tracer_ecriture(
-    'date', 'date', 'terminus_bellevue_a_partir_du_train'
+    'date', 'date', 'terminus_bellevue_a_partir_du_train', 'terminus_bascule_gare'
   );
 
 drop trigger if exists trg_journal_messages on messages;

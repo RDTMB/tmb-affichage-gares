@@ -4,7 +4,15 @@
 // complet, repli polling 30 s.
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 
-import { datePrecedente, generationJour, sectionReportee, serviceActif } from '../core/horaires';
+import {
+  basculeDuFlag,
+  datePrecedente,
+  deltaBascule,
+  gareDeBascule,
+  generationJour,
+  sectionReportee,
+  serviceActif,
+} from '../core/horaires';
 import { ecartDepuisEntete } from '../core/horloge';
 import type {
   AccesCourse,
@@ -81,6 +89,12 @@ interface LigneJour {
   date: string;
   grille_version: string;
   terminus_bellevue_a_partir_du_train: number | null;
+  /**
+   * Gare de la bascule (migration 2026-10-terminus-par-gare). ABSENTE d'une
+   * base pas encore migrée, NULL sur une ligne écrite par l'ancien front :
+   * dans les deux cas, Bellevue.
+   */
+  terminus_bascule_gare?: string | null;
   gare_debut: GareId | null;
   gare_fin: GareId | null;
   message_troncon_fr: string | null;
@@ -978,69 +992,69 @@ export class SupabaseProvider implements DataProvider {
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     await this.assureJour(date);
 
-    /** Numéro de MONTÉE : un pair vise la montée de sa rotation (N − 1). */
-    const normalise = (n: number): number => Math.max(1, n % 2 === 0 ? n - 1 : n);
-    // `null` = pas de plage.
-    const seuil = v === false ? null : normalise(v.a_partir_du_train);
+    // `null` = pas de bascule. Seuil normalisé (un pair vise sa montée N − 1).
+    const nouvelle = basculeDuFlag(v);
 
-    // Plage PRÉCÉDENTE, lue avant de l'écraser : c'est elle qui dit ce qui
+    // Bascule PRÉCÉDENTE, lue avant de l'écraser : c'est elle qui dit ce qui
     // entre et ce qui sort. Sans elle, on ne sait pas distinguer une montée
-    // limitée par l'ancienne plage d'une montée limitée à la main.
-    const avant = await this.client
-      .from('jours')
-      .select('terminus_bellevue_a_partir_du_train')
-      .eq('date', date)
-      .maybeSingle();
+    // limitée par l'ancienne bascule d'une montée limitée à la main.
+    // `*` et non une liste : une base pas encore migrée n'a pas
+    // `terminus_bascule_gare`, et la nommer ferait échouer la lecture.
+    const avant = await this.client.from('jours').select('*').eq('date', date).maybeSingle();
     verifie(avant.error);
-    const brut = (avant.data as { terminus_bellevue_a_partir_du_train: number | null } | null)
-      ?.terminus_bellevue_a_partir_du_train;
-    const ancien = typeof brut === 'number' ? normalise(brut) : null;
+    const ligne = avant.data as LigneJour | null;
+    const ancienne = basculeDuFlag(ligne ? versFlag(ligne) : false);
 
     const resultat = await this.client
       .from('jours')
-      .update({ terminus_bellevue_a_partir_du_train: seuil })
+      .update({
+        terminus_bellevue_a_partir_du_train: nouvelle?.seuil ?? null,
+        // NULL pour Bellevue : c'est la valeur qu'écrit (implicitement)
+        // l'ancien front, et la seule que les deux fronts lisent de même.
+        terminus_bascule_gare: gareDeBascule(v) === 'col-de-voza' ? 'col-de-voza' : null,
+      })
       .eq('date', date)
       .select();
     exigeLignes(resultat, 'journée absente en base');
 
-    // RESTREINDRE d'abord, LIBÉRER ensuite. Les deux ensembles sont disjoints,
-    // donc l'ordre ne change pas l'état final — seulement l'état INTERMÉDIAIRE
-    // si la seconde écriture échoue. Restreindre en premier fait que cet
-    // intermédiaire limite TROP (un train annoncé Bellevue qui monte en réalité
-    // au Nid d'Aigle) au lieu de limiter TROP PEU (un train annoncé Nid d'Aigle
-    // qui s'arrête à Bellevue, avec des voyageurs qui restent à bord pour un
-    // tronçon fermé). Même principe que la section écrite avant la bascule.
+    // La colonne Terminus des MONTÉES, telle qu'elle est en base, passée à la
+    // règle pure `deltaBascule()` — la même que l'aperçu et le mock. Écrire
+    // ensuite ce qui a changé, groupé par valeur.
+    const montees = await this.client
+      .from('circulations')
+      .select('numero, sens, terminus')
+      .eq('date', date)
+      .eq('sens', 'montee');
+    verifie(montees.error);
+    const actuelles = (montees.data ?? []) as Pick<Circulation, 'numero' | 'sens' | 'terminus'>[];
+    const apres = deltaBascule(actuelles, ancienne, nouvelle);
+    const parValeur = new Map<Circulation['terminus'], number[]>();
+    apres.forEach((c, i) => {
+      if (c.terminus === actuelles[i]?.terminus) return;
+      parValeur.set(c.terminus, [...(parValeur.get(c.terminus) ?? []), c.numero]);
+    });
 
-    // ENTRENT dans la plage : [seuil, ancien) — élargissement.
-    if (seuil !== null && (ancien === null || seuil < ancien)) {
-      let entrent = this.client
+    // RESTREINDRE d'abord, LIBÉRER ensuite. Les ensembles sont disjoints, donc
+    // l'ordre ne change pas l'état final — seulement l'état INTERMÉDIAIRE si
+    // une écriture échoue. Restreindre en premier fait que cet intermédiaire
+    // limite TROP (un train annoncé au Col de Voza qui monte en réalité plus
+    // haut) au lieu de limiter TROP PEU (un train annoncé au sommet qui
+    // s'arrête plus bas, avec des voyageurs qui restent à bord pour un tronçon
+    // fermé). Col de Voza, puis Bellevue, puis « non limité ».
+    const ordre: Circulation['terminus'][] = ['col-de-voza', 'bellevue', 'nid-daigle'];
+    for (const terminus of ordre) {
+      const numeros = parValeur.get(terminus);
+      if (!numeros?.length) continue;
+      const ecriture = await this.client
         .from('circulations')
-        .update({ terminus: 'bellevue' })
+        .update({ terminus })
         .eq('date', date)
         .eq('sens', 'montee')
-        .gte('numero', seuil);
-      if (ancien !== null) entrent = entrent.lt('numero', ancien);
-      // 0 ligne est normal : la plage peut ne couvrir aucun train de la grille.
-      verifie((await entrent).error);
-    }
-
-    // SORTENT de la plage : [ancien, seuil) — rétrécissement. Décocher, lui,
-    // libère TOUT : c'est une décision explicite (« plus aucune limitation
-    // aujourd'hui »), et laisser une montée limitée que la bascule n'indique
-    // plus serait pire que d'effacer un réglage manuel.
-    const libere = v === false || (ancien !== null && seuil !== null && seuil > ancien);
-    if (libere) {
-      let sortent = this.client
-        .from('circulations')
-        .update({ terminus: 'nid-daigle' })
-        .eq('date', date)
-        .eq('sens', 'montee')
-        .eq('terminus', 'bellevue');
-      if (v !== false) {
-        if (ancien !== null) sortent = sortent.gte('numero', ancien);
-        if (seuil !== null) sortent = sortent.lt('numero', seuil);
-      }
-      verifie((await sortent).error); // 0 ligne est normal : rien n'était limité
+        .in('numero', numeros);
+      // Les numéros viennent de la lecture ci-dessus : 0 ligne ici voudrait
+      // dire qu'elles ont disparu entre-temps, ce que `verifie` ne voit pas —
+      // mais l'état final reste celui qu'on vient de lire, rien n'est inventé.
+      verifie(ecriture.error);
     }
   }
 
@@ -1425,8 +1439,11 @@ function dateAujourdhuiParis(): string {
 }
 
 function versFlag(ligne: LigneJour): TerminusFlag {
-  return ligne.terminus_bellevue_a_partir_du_train === null
-    ? false
+  if (ligne.terminus_bellevue_a_partir_du_train === null) return false;
+  // La gare n'est posée que si elle n'est pas Bellevue : un drapeau Bellevue
+  // garde exactement sa forme d'avant (comparaisons, instantanés en cache).
+  return ligne.terminus_bascule_gare === 'col-de-voza'
+    ? { a_partir_du_train: ligne.terminus_bellevue_a_partir_du_train, gare: 'col-de-voza' }
     : { a_partir_du_train: ligne.terminus_bellevue_a_partir_du_train };
 }
 
