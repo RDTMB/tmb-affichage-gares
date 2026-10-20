@@ -492,15 +492,20 @@ function heureReelle(valeur: unknown): boolean {
  * mieux vaut afficher trop que retirer une gare desservie.
  */
 export function sommetDeLaGrille(grille: Pick<Grille, 'montees'>, date: string): GareId {
+  return plusHauteGareDesservie(grille.montees, date) ?? GARE_FIN_DEFAUT;
+}
+
+/** Plus haute gare desservie ce jour-là par ces montées, ou `null` s'il n'y en a aucune. */
+function plusHauteGareDesservie(montees: readonly TrainGrille[], date: string): GareId | null {
   let rangMax = -1;
-  for (const train of grille.montees) {
+  for (const train of montees) {
     if (!circuleLe(train, date)) continue;
     for (const p of train.passages) {
       if (!heureReelle(p.a) && !heureReelle(p.d)) continue;
       rangMax = Math.max(rangMax, ORDRE_GARES.indexOf(p.gare));
     }
   }
-  return ORDRE_GARES[rangMax] ?? GARE_FIN_DEFAUT;
+  return ORDRE_GARES[rangMax] ?? null;
 }
 
 /** Gare qu'AUCUNE montée de la grille du jour n'atteint (Nid d'Aigle en hiver). */
@@ -1271,14 +1276,10 @@ export function lignesDuTableau(passages: readonly PassageGare[]): PassageGare[]
  * grille : le sommet de la grille en tient lieu.
  */
 export function terminusDeGrille(grille: Grille, numero: number, date: string): GareId {
-  const train = grille.montees.find((t) => t.numero === numero && circuleLe(t, date));
-  let rangMax = -1;
-  for (const p of train?.passages ?? []) {
-    if (heureReelle(p.a) || heureReelle(p.d)) {
-      rangMax = Math.max(rangMax, ORDRE_GARES.indexOf(p.gare));
-    }
-  }
-  return ORDRE_GARES[rangMax] ?? sommetDeLaGrille(grille, date);
+  // La MÊME lecture que le sommet de la grille, restreinte à ce seul train :
+  // une seule définition de « desservir » (jours de circulation, heure réelle).
+  const train = grille.montees.filter((t) => t.numero === numero);
+  return plusHauteGareDesservie(train, date) ?? sommetDeLaGrille(grille, date);
 }
 
 // ---------------------------------------------------------------------------

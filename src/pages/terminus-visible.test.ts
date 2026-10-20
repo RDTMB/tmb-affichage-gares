@@ -91,6 +91,17 @@ describe('§1 — en amont, la perturbation se voit', () => {
     expect(t7).not.toContain(MENTION);
   });
 
+  it('la DESCENTE qui part du Col de Voza porte le drapeau, mais pas l’orange', () => {
+    // `terminusExceptionnel` vaut aussi pour la descente « partant de là » :
+    // elle part à son heure, d'une gare desservie — rien d'anormal à
+    // signaler au voyageur de Motivon qui descend.
+    const jour = hiverT5AuColDeVoza();
+    const t6 = ligneDuTrain(rend(HIVER, jour, 'motivon', '10:00'), 6);
+    expect(t6).not.toBe('');
+    expect(t6).not.toContain('alerte');
+    expect(t6).not.toContain(MENTION);
+  });
+
   it('un train limité SUPPRIMÉ reste barré, sans orange', () => {
     const jour = hiverT5AuColDeVoza();
     Object.assign(circ(jour, 5), { statut: 'supprime', motif: 'Météo' });
@@ -190,6 +201,35 @@ describe('l’écran de gare suit les mêmes règles', () => {
       /if \(arriveeAuTerminusExceptionnel\(p\)\) \{\s*return `<span class="chip arrivee">/,
     );
     expect(ecran).toContain('neContinuePas(vers, nomGare(vers))');
+  });
+
+  it('les quatre lignes de décision sont MOT POUR MOT celles de l’embed, testé au rendu', () => {
+    // Le gabarit de l'écran vit au DOM, avec l'état du module : il n'est pas
+    // rendu ici. Ce qui le rend sûr, c'est qu'il décide EXACTEMENT comme
+    // l'embed — dont chaque décision est éprouvée ci-dessus. Une ligne qui
+    // diverge dans l'un des deux fait tomber ce test (campagne du 20/10/2026 :
+    // ces mutations survivaient sur l'écran seul).
+    const embed = source('src/pages/embed-logique.ts');
+    for (const ligne of [
+      "const limitee = !supprime && p.terminusExceptionnel && p.sens === 'montee';",
+      'const arrivee = arriveeAuTerminusExceptionnel(p);',
+      'const reelle = arrivee ? p.arrivee_s : p.depart_s;',
+      'const theorique = arrivee ? p.arrivee_theorique_s : p.depart_theorique_s;',
+    ]) {
+      expect(embed, ligne).toContain(ligne);
+      expect(ecran, ligne).toContain(ligne);
+    }
+    // …et l'heure affichée est bien tirée de ces deux-là.
+    expect(ecran).toContain(
+      '`${formatHeure(reelle)}<span class="retard-old">théorique ${formatHeure(theorique)}</span>`',
+    );
+    expect(ecran).toMatch(/: formatHeure\(theorique\);/);
+  });
+
+  it('la note d’arrivée porte la classe d’alerte', () => {
+    expect(ecran).toContain(
+      'note = `<b class="alerte">${echapper(`${mots.fr} / ${mots.en}`)}</b>`;',
+    );
   });
 
   it('destination et mention portent la classe d’alerte', () => {
