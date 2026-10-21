@@ -610,3 +610,34 @@ describe('supervision.css — un seul jeu de valeurs sombres, deux déclencheurs
     expect(Object.keys(VALEURS_73)).toHaveLength(60);
   });
 });
+
+describe('supervision.css — le bouton rond, là où il a été mesuré', () => {
+  it('rond, 32 px', () => {
+    const corps = declarations(regle('nav.tabs .choix-theme button') ?? '');
+    expect(corps.get('border-radius')).toBe('50%');
+    expect(corps.get('width')).toBe('32px');
+    expect(corps.get('height')).toBe('32px');
+  });
+
+  it('ancré à DROITE de la barre, même sans groupe d’exploitation', () => {
+    expect(declarations(regle('nav.tabs .choix-theme') ?? '').get('margin-left')).toBe('auto');
+  });
+
+  it('au téléphone : 44 px, et collé au bord droit de la barre qui défile', () => {
+    const debut = CSS.indexOf('@media (max-width: 768px)');
+    expect(debut).toBeGreaterThan(0);
+    const telephone = CSS.slice(debut);
+    const regleTel = (sel: string): Map<string, string> => {
+      const i = telephone.indexOf(`\n  ${sel} {`);
+      const o = telephone.indexOf('{', i);
+      return declarations(i < 0 ? '' : telephone.slice(o + 1, telephone.indexOf('}', o)));
+    };
+    const barre = regleTel('nav.tabs .choix-theme');
+    expect(barre.get('position')).toBe('sticky');
+    expect(barre.get('right')).toBe('0');
+    expect(barre.get('background')).toBe('var(--carte)');
+    const bouton = regleTel('nav.tabs .choix-theme button');
+    expect(bouton.get('width')).toBe('44px');
+    expect(bouton.get('height')).toBe('44px');
+  });
+});
