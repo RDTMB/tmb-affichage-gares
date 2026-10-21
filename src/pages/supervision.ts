@@ -1151,7 +1151,7 @@ function appliqueRoles(): void {
   const ouvert = document.querySelector<HTMLElement>('nav.tabs button.on')?.dataset.t as
     Onglet | undefined;
   const cible = ongletAOuvrir(ouvert, visibles);
-  document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
+  document.querySelectorAll<HTMLButtonElement>('nav.tabs button[data-t]').forEach((b) => {
     const nom = b.dataset.t ?? '';
     b.style.display = visibles.includes(nom as Onglet) ? '' : 'none';
     b.classList.toggle('on', nom === cible);
@@ -1485,9 +1485,11 @@ function badgesRoles(liste: readonly Role[]): string {
 }
 
 function initOnglets(): void {
-  document.querySelectorAll<HTMLButtonElement>('nav.tabs button').forEach((b) => {
+  // `[data-t]` : le bouton rond du thème vit AUSSI dans la barre, et n'est
+  // pas un onglet — ni ce clic ni la visibilité par rôle ne le concernent.
+  document.querySelectorAll<HTMLButtonElement>('nav.tabs button[data-t]').forEach((b) => {
     b.addEventListener('click', () => {
-      document.querySelectorAll('nav.tabs button').forEach((x) => x.classList.remove('on'));
+      document.querySelectorAll('nav.tabs button[data-t]').forEach((x) => x.classList.remove('on'));
       document.querySelectorAll('.onglet').forEach((x) => x.classList.remove('on'));
       b.classList.add('on');
       $(`t-${b.dataset.t}`).classList.add('on');
