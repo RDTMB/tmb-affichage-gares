@@ -110,6 +110,11 @@ describe('la palette sombre tient ses contrastes (WCAG, recalculés)', () => {
     });
   }
 
+  it('bouton du thème : icône blanche sur la pastille, et au survol, ≥ 4,5:1', () => {
+    expect(contraste('#ffffff', '#2c4a70')).toBeGreaterThanOrEqual(4.5);
+    expect(contraste('#ffffff', '#3e608a')).toBeGreaterThanOrEqual(4.5); // survol
+  });
+
   it('le texte posé sur l’accent ≥ 4,5:1', () => {
     expect(
       contraste(jeton('--sombre-sur-accent'), jeton('--sombre-accent')),
@@ -127,7 +132,10 @@ describe('la palette sombre tient ses contrastes (WCAG, recalculés)', () => {
   });
 });
 
-for (const feuille of ['embed', 'supervision']) {
+// La Supervision n'a plus de bloc média depuis le choix du thème (même jour) :
+// ses alias portent `light-dark(clair, sombre)` et `color-scheme` bascule —
+// voir theme-supervision.test.ts. L'embed, lui, suit toujours l'appareil.
+for (const feuille of ['embed']) {
   describe(`${feuille} : un bloc sombre qui REMAPPE, sans dupliquer de règle`, () => {
     const embed = sansCommentaires(source(`src/styles/${feuille}.css`));
     const bloc = blocSombre(embed);
@@ -170,10 +178,12 @@ for (const feuille of ['embed', 'supervision']) {
 
 describe('supervision : le logo des cartes de connexion suit le thème', () => {
   it('logo rond BLANC en sombre (le logo couleur a des traits noirs), suivi en direct', () => {
+    // Le thème EFFECTIF (choix du poste, sinon appareil) arrive par
+    // `surChangement`, appelé au montage, à chaque choix et à chaque bascule
+    // de l'appareil — tenu par theme-supervision.test.ts.
     const ts = source('src/pages/supervision.ts');
-    expect(ts).toContain("window.matchMedia('(prefers-color-scheme: dark)')");
-    expect(ts).toContain('sombre.matches ? __LOGO_ROND_BLANC__ : __LOGO_ROND__');
-    expect(ts).toContain("sombre.addEventListener('change', poseLogosConnexion);");
+    expect(ts).toContain("appareilSombre: window.matchMedia('(prefers-color-scheme: dark)')");
+    expect(ts).toContain("theme === 'sombre' ? __LOGO_ROND_BLANC__ : __LOGO_ROND__");
     // Le logo couleur a bien des traits noirs : sans eux, la précaution
     // serait inutile.
     expect(source('public/logos/logo-rond.svg').toLowerCase()).toContain('#0a0b09');

@@ -45,6 +45,12 @@
                form-action 'none'"
     />
     <title>TMB — Supervision affichage</title>
+    <!-- CHOIX DU THÈME (Auto / Clair / Sombre, retenu sur le poste). Script
+         CLASSIQUE et non module : il bloque l'analyse, donc data-theme est
+         posé sur <html> AVANT le premier rendu — pas d'éclair clair sur un
+         poste réglé en Sombre. Servi depuis la même origine : la CSP
+         (script-src 'self', sans 'unsafe-inline') n'a pas à bouger. -->
+    <script src="./theme-supervision.js"></script>
   </head>
   <body>
     <!-- En-tête et onglets forment UN SEUL bloc collant. La hauteur de
@@ -134,6 +140,11 @@
           <button data-t="journal">Journal</button>
           <button data-t="version">Version</button>
         </div>
+        <!-- CHOIX DU THÈME, au bout de la barre d'onglets et non dans l'en-tête :
+             l'en-tête n'a que 30 px de libre à 1440 (mesuré le 20/10/2026), la
+             barre en a 300. Visible pour TOUS les rôles : ce n'est pas un
+             onglet (pas de data-t), la visibilité par rôle ne le touche pas. -->
+        <div id="choix-theme-barre" data-choix-theme></div>
       </nav>
     </div>
 
@@ -206,6 +217,10 @@
         <button class="lien-discret" type="button" id="oubli-retour">Revenir à la connexion</button>
         <div class="erreur" id="oubli-erreur"></div>
       </form>
+
+      <!-- Le thème se choisit AVANT de se connecter : un seul sélecteur sous
+           la carte, quelle que soit celle qui est affichée. -->
+      <div id="choix-theme-connexion" data-choix-theme></div>
     </div>
 
     <main id="contenu" style="display: none">

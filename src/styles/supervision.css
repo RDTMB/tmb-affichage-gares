@@ -8,90 +8,106 @@
   --bleu-gris: var(--tmb-bleu-gris);
   --creme: var(--tmb-creme);
   --marine: var(--tmb-marine);
-  --fond: #f2f5f8;
-  --carte: #ffffff;
-  --bord: #dce4ec;
-  --texte: #1e2e3e;
-  --sec: #64788c;
-  --ok: #1f8a4c;
-  --ok-bg: #e7f5ec;
-  --retard: #b97909;
-  --retard-bg: #fdf3e0;
-  --alerte: #c1281e;
-  --alerte-bg: #fcebea;
-  --bleu: #2e74b5;
-  --bleu-bg: #eaf2fa;
+  --fond: light-dark(#f2f5f8, var(--sombre-page));
+  --carte: light-dark(#ffffff, var(--sombre-carte));
+  --bord: light-dark(#dce4ec, var(--sombre-bord));
+  --texte: light-dark(#1e2e3e, var(--sombre-texte));
+  --sec: light-dark(#64788c, var(--sombre-texte-sec));
+  --ok: light-dark(#1f8a4c, var(--sombre-ok));
+  --ok-bg: light-dark(#e7f5ec, var(--sombre-ok-bg));
+  --retard: light-dark(#b97909, var(--sombre-retard));
+  --retard-bg: light-dark(#fdf3e0, var(--sombre-retard-bg));
+  --alerte: light-dark(#c1281e, var(--sombre-alerte));
+  --alerte-bg: light-dark(#fcebea, var(--sombre-alerte-bg));
+  --bleu: light-dark(#2e74b5, var(--sombre-bleu));
+  --bleu-bg: light-dark(#eaf2fa, var(--sombre-bleu-bg));
 
-  /* THÈME SOMBRE (20/10/2026). Les contrôles natifs — champs, listes,
-     barres de défilement, sélecteur de couleur — suivent le thème du poste. */
+  /* THÈME SOMBRE (20/10/2026). `color-scheme` est l'INTERRUPTEUR : il choisit
+     l'argument de chaque `light-dark(clair, sombre)` de ce bloc, et les
+     contrôles natifs — champs, listes, barres de défilement, sélecteur de
+     couleur — le suivent. Auto par défaut ; Clair / Sombre forcés plus bas. */
   color-scheme: light dark;
 
   /* Alias SÉMANTIQUES. Leur valeur claire est EXACTEMENT l'ancienne valeur
      écrite en dur (ou l'alias de charte qu'elle employait) : en clair, rien
-     ne bouge au pixel. Le bloc `prefers-color-scheme: dark` plus bas les
-     remappe sur les `--sombre-*` de tokens.css — jamais `--marine`, `--rouge`
-     ni `--creme` eux-mêmes : là où le marine sert de FOND (en-tête, tête du
+     ne bouge au pixel. Le second argument de `light-dark()` les remappe sur
+     les `--sombre-*` de tokens.css — jamais `--marine`, `--rouge` ni
+     `--creme` eux-mêmes : là où le marine sert de FOND (en-tête, tête du
      tableau d'aperçu, vignette média), il reste marine.
      Marine employé comme TEXTE ou BORDURE sur une carte : */
-  --titre: var(--marine); /* titres, noms de journée — crème en sombre */
-  --accent: var(--marine); /* onglet, puce, case cochée, bouton principal */
-  --sur-accent: #fff; /* texte posé SUR l'accent */
-  --accent-survol: #17293c;
-  --onglet-actif: var(--rouge); /* texte de l'onglet choisi (le filet reste rouge) */
-  --rouge-texte: var(--rouge); /* rouge en TEXTE : lien de section, erreur */
-  --lien-discret: var(--bleu-gris);
-  --fond-connexion: var(--marine);
+  /* titres, noms de journée — crème en sombre */
+  --titre: light-dark(var(--marine), var(--sombre-titre));
+  /* onglet, puce, case cochée, bouton principal */
+  --accent: light-dark(var(--marine), var(--sombre-accent));
+  --sur-accent: light-dark(#fff, var(--sombre-sur-accent)); /* texte posé SUR l'accent */
+  --accent-survol: light-dark(#17293c, var(--sombre-texte));
+  /* texte de l'onglet choisi (le filet reste rouge) */
+  --onglet-actif: light-dark(var(--rouge), var(--sombre-accent));
+  /* rouge en TEXTE : lien de section, erreur */
+  --rouge-texte: light-dark(var(--rouge), var(--sombre-alerte));
+  --lien-discret: light-dark(var(--bleu-gris), var(--sombre-texte-sec));
+  --fond-connexion: light-dark(var(--marine), var(--sombre-page));
   /* Surfaces et filets */
-  --carte-douce: #fbfcfe;
-  --entete-table: #fafbfd;
-  --indic-bg: #f5f8fb;
-  --note-bg: #f7f9fb;
-  --inactif-bg: #fafbfc;
-  --filet: #eef2f6;
-  --bord-fort: #c9d6e2; /* fin de rotation */
-  --bord-survol: #b4c4d4;
-  --bouton-bg: #fff;
-  --champ-bg: #fff;
-  --desactive-bg: #e7edf3;
-  --desactive-texte: #9fb0c0;
-  --hachure: #b9c6d4;
-  --interrupteur: #cbd6e0;
-  --prio-normale: #c3d0dd;
-  --saute: #a9b8c6;
+  --carte-douce: light-dark(#fbfcfe, var(--sombre-doux));
+  --entete-table: light-dark(#fafbfd, var(--sombre-doux));
+  --indic-bg: light-dark(#f5f8fb, var(--sombre-doux));
+  --note-bg: light-dark(#f7f9fb, var(--sombre-doux));
+  --inactif-bg: light-dark(#fafbfc, var(--sombre-page));
+  --filet: light-dark(#eef2f6, var(--sombre-filet));
+  --bord-fort: light-dark(#c9d6e2, var(--bleu-gris)); /* fin de rotation */
+  --bord-survol: light-dark(#b4c4d4, var(--bleu-gris));
+  --bouton-bg: light-dark(#fff, var(--sombre-doux));
+  --champ-bg: light-dark(#fff, var(--sombre-page));
+  --desactive-bg: light-dark(#e7edf3, var(--sombre-page));
+  --desactive-texte: light-dark(#9fb0c0, var(--bleu-gris));
+  --hachure: light-dark(#b9c6d4, var(--sombre-bord));
+  --interrupteur: light-dark(#cbd6e0, var(--sombre-bord));
+  --prio-normale: light-dark(#c3d0dd, var(--bleu-gris));
+  --saute: light-dark(#a9b8c6, var(--bleu-gris));
   /* Étiquettes neutres (sens descendant, gares, motifs, grille inactive) */
-  --neutre-bg: #eef2f6;
-  --neutre-texte: #4a6078;
+  --neutre-bg: light-dark(#eef2f6, var(--sombre-relief));
+  --neutre-texte: light-dark(#4a6078, var(--sombre-texte-sec));
   /* Variantes d'état qui n'avaient pas leur alias */
-  --sur-etat: #fff; /* texte posé sur un aplat --bleu / --alerte / --retard */
-  --enregistree-bg: #e6f4ec;
-  --enregistree: #1d6b3f;
-  --retard-fonce: #7a6017;
-  --retard-bord: #f0dcb4;
-  --edition-bg: #fdf8ec;
-  --modif-bg: #fff3c4;
-  --alerte-bord: #f2c9c5;
-  --erreur-bg: #fff1f1;
+  /* texte posé sur un aplat --bleu / --alerte / --retard */
+  --sur-etat: light-dark(#fff, var(--sombre-page));
+  --enregistree-bg: light-dark(#e6f4ec, var(--sombre-ok-bg));
+  --enregistree: light-dark(#1d6b3f, var(--sombre-ok));
+  --retard-fonce: light-dark(#7a6017, var(--sombre-retard));
+  --retard-bord: light-dark(#f0dcb4, var(--sombre-retard));
+  --edition-bg: light-dark(#fdf8ec, var(--sombre-retard-bg));
+  --modif-bg: light-dark(#fff3c4, var(--sombre-retard-bg));
+  --alerte-bord: light-dark(#f2c9c5, var(--sombre-alerte));
+  --erreur-bg: light-dark(#fff1f1, var(--sombre-alerte-bg));
   /* Aplats sous un texte BLANC qui le reste en sombre (tête marine du
      tableau d'aperçu, où l'ajout et l'erreur colorent la colonne). */
-  --bleu-plein: var(--bleu);
-  --alerte-plein: var(--alerte);
+  --bleu-plein: light-dark(var(--bleu), #2e74b5);
+  --alerte-plein: light-dark(var(--alerte), #c1281e);
   /* Violets : train spécial, rôle technique, course à vide */
-  --violet: #7c3aed;
-  --violet-bg: #f3e8fd;
-  --technique: #4a3b7a;
-  --technique-bg: #e8e2f4;
-  --a-vide-bg: #fbf7ff;
+  --violet: light-dark(#7c3aed, #c9b6ff);
+  --violet-bg: light-dark(#f3e8fd, #2e2552);
+  --technique: light-dark(#4a3b7a, var(--violet));
+  --technique-bg: light-dark(#e8e2f4, var(--violet-bg));
+  --a-vide-bg: light-dark(#fbf7ff, #1f2747);
   /* Liseré des pastilles de rame : invisible en clair. */
-  --anneau-rame: transparent;
+  --anneau-rame: light-dark(transparent, var(--sombre-anneau));
   /* Ombres et voile */
-  --ombre-barre: rgba(15, 30, 50, 0.08);
-  --ombre-toast: rgba(0, 0, 0, 0.25);
-  --ombre-modale: rgba(0, 0, 0, 0.3);
-  --voile: rgba(33, 59, 87, 0.45);
+  --ombre-barre: light-dark(rgba(15, 30, 50, 0.08), rgba(0, 0, 0, 0.5));
+  --ombre-toast: light-dark(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.6));
+  --ombre-modale: light-dark(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.6));
+  --voile: light-dark(rgba(33, 59, 87, 0.45), rgba(0, 0, 0, 0.6));
 }
 
-/* THÈME SOMBRE — suit le réglage du poste, sans bouton ni mémoire. UN SEUL
-   bloc, qui ne fait que REMAPPER des alias : aucune règle n'est réécrite ici.
+/* CHOIX DU THÈME — Auto / Clair / Sombre (20/10/2026). Les valeurs sombres
+   n'existent qu'à UN endroit : le second argument des `light-dark()` du
+   `:root` ci-dessus. Ce qui les déclenche, c'est `color-scheme`, et lui seul :
+     - Auto (pas de `data-theme`) : `light dark` — le navigateur prend le
+       réglage de l'appareil, en direct ;
+     - Clair / Sombre : `data-theme` sur <html>, posé AVANT le premier rendu
+       par public/theme-supervision.js, impose l'un ou l'autre.
+   Les deux déclencheurs du sombre (appareil sombre en Auto, Sombre forcé)
+   lisent donc les MÊMES valeurs, sans copie à tenir alignée ; et les
+   contrôles natifs (listes, cases, barres de défilement) suivent le même
+   `color-scheme`, donc le thème effectif.
    Contrastes mesurés (WCAG) dans tokens.css pour la palette, et pour les
    couples propres à cette feuille :
      sur-etat (page) sur bleu / alerte / retard  7,92 / 7,52 / 8,25
@@ -103,77 +119,12 @@
      bleu-gris (désactivé) sur page              4,94
    Les aplats « pleins » gardent leur valeur claire : le blanc y fait
    4,90 (bleu) et 5,85 (alerte), comme en clair. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fond: var(--sombre-page);
-    --carte: var(--sombre-carte);
-    --bord: var(--sombre-bord);
-    --texte: var(--sombre-texte);
-    --sec: var(--sombre-texte-sec);
-    --ok: var(--sombre-ok);
-    --ok-bg: var(--sombre-ok-bg);
-    --retard: var(--sombre-retard);
-    --retard-bg: var(--sombre-retard-bg);
-    --alerte: var(--sombre-alerte);
-    --alerte-bg: var(--sombre-alerte-bg);
-    --bleu: var(--sombre-bleu);
-    --bleu-bg: var(--sombre-bleu-bg);
+:root[data-theme='clair'] {
+  color-scheme: light;
+}
 
-    --titre: var(--sombre-titre);
-    --accent: var(--sombre-accent);
-    --sur-accent: var(--sombre-sur-accent);
-    --accent-survol: var(--sombre-texte);
-    /* Le rouge TMB fait 3,17:1 sur la carte : assez pour un filet, pas pour
-       un texte. L'onglet choisi prend l'accent, le texte rouge le saumon. */
-    --onglet-actif: var(--sombre-accent);
-    --rouge-texte: var(--sombre-alerte);
-    --lien-discret: var(--sombre-texte-sec); /* bleu-gris : 4,08, refusé */
-    /* Une carte sombre sur le marine serait PLUS sombre que son fond. */
-    --fond-connexion: var(--sombre-page);
-
-    --carte-douce: var(--sombre-doux);
-    --entete-table: var(--sombre-doux);
-    --indic-bg: var(--sombre-doux);
-    --note-bg: var(--sombre-doux);
-    --inactif-bg: var(--sombre-page);
-    --filet: var(--sombre-filet);
-    --bord-fort: var(--bleu-gris);
-    --bord-survol: var(--bleu-gris);
-    --bouton-bg: var(--sombre-doux);
-    --champ-bg: var(--sombre-page);
-    --desactive-bg: var(--sombre-page);
-    --desactive-texte: var(--bleu-gris);
-    --hachure: var(--sombre-bord);
-    --interrupteur: var(--sombre-bord);
-    --prio-normale: var(--bleu-gris);
-    --saute: var(--bleu-gris);
-    --neutre-bg: var(--sombre-relief);
-    --neutre-texte: var(--sombre-texte-sec);
-
-    --sur-etat: var(--sombre-page);
-    --enregistree-bg: var(--sombre-ok-bg);
-    --enregistree: var(--sombre-ok);
-    --retard-fonce: var(--sombre-retard);
-    --retard-bord: var(--sombre-retard);
-    --edition-bg: var(--sombre-retard-bg);
-    --modif-bg: var(--sombre-retard-bg);
-    --alerte-bord: var(--sombre-alerte);
-    --erreur-bg: var(--sombre-alerte-bg);
-    --bleu-plein: #2e74b5;
-    --alerte-plein: #c1281e;
-    /* Pas de violet dans la palette sombre : valeurs locales, mesurées. */
-    --violet: #c9b6ff;
-    --violet-bg: #2e2552;
-    --technique: var(--violet);
-    --technique-bg: var(--violet-bg);
-    --a-vide-bg: #1f2747;
-    --anneau-rame: var(--sombre-anneau);
-
-    --ombre-barre: rgba(0, 0, 0, 0.5);
-    --ombre-toast: rgba(0, 0, 0, 0.6);
-    --ombre-modale: rgba(0, 0, 0, 0.6);
-    --voile: rgba(0, 0, 0, 0.6);
-  }
+:root[data-theme='sombre'] {
+  color-scheme: dark;
 }
 
 * {
@@ -345,12 +296,79 @@ header .spacer {
   font-weight: 900;
 }
 
+/* CHOIX DU THÈME — UN bouton ROND : au bout de la barre d'onglets une fois
+   connecté, sous la carte de connexion avant. Chaque clic passe au choix
+   suivant (Auto → Clair → Sombre).
+   Pourquoi pas dans l'en-tête (Thomas, 20/10/2026 : « sur 2 lignes, ça fait
+   pas beau ») : mesuré à 1440 px, l'en-tête de `dev` n'a que 30 px de libre,
+   et même un bouton de 32 px (+16 d'écart) le faisait passer sur deux rangs.
+   La barre d'onglets en a 300 à la même largeur.
+   Dans la barre, il prend les couleurs d'un bouton de la page (fond de la
+   barre = carte) ; sous la connexion, posé sur un fond FONCÉ quel que soit le
+   thème, celles des pastilles de l'en-tête (blanc sur #2c4a70 : 9,05:1). */
+.choix-theme {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+/* `nav.tabs` devant : sans lui, `nav.tabs button` (0,1,2) imposerait le
+   rembourrage et le soulignement des onglets. */
+nav.tabs .choix-theme {
+  margin-left: auto; /* reste à droite même sans groupe d'exploitation */
+  padding-left: 14px;
+}
+
+.choix-theme button,
+nav.tabs .choix-theme button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bouton-bg);
+  border: 1px solid var(--bord);
+  color: var(--sec);
+}
+
+.choix-theme button:hover,
+nav.tabs .choix-theme button:hover {
+  border-color: var(--bord-survol);
+  color: var(--texte);
+}
+
+.choix-theme button:focus-visible {
+  outline: 2px solid var(--bleu);
+  outline-offset: 2px;
+}
+
+.connexion .choix-theme button {
+  background: #2c4a70;
+  border-color: #3e608a;
+  color: #fff;
+}
+
+.connexion .choix-theme button:hover {
+  background: #3e608a;
+  border-color: var(--bleu-clair);
+  color: #fff;
+}
+
+.connexion .choix-theme button:focus-visible {
+  outline-color: var(--bleu-clair);
+}
+
 /* ------- Connexion ------- */
 .connexion {
   position: fixed;
   inset: 0;
   background: var(--fond-connexion);
   display: flex;
+  /* La carte, et le choix du thème dessous. */
+  flex-direction: column;
+  gap: 14px;
   align-items: center;
   justify-content: center;
   z-index: 100;
@@ -3546,6 +3564,24 @@ td.cell-sens > .sens-groupe {
   .seg-affluence button,
   select[data-action='motif'] {
     min-height: 44px;
+  }
+
+  /* Le bouton rond du thème reste ROND au doigt, et VISIBLE : la barre
+     défile horizontalement, il reste collé à son bord droit. */
+  .choix-theme button,
+  nav.tabs .choix-theme button {
+    width: 44px;
+    height: 44px;
+  }
+
+  nav.tabs .choix-theme {
+    position: sticky;
+    right: 0;
+    padding: 0 0 0 10px;
+    background: var(--carte);
+    /* La barre a 12 px de marge intérieure à droite : sans cette ombre
+       pleine, l'onglet qui défile dessous y dépassait (mesuré à 390). */
+    box-shadow: 12px 0 0 var(--carte);
   }
 
   /* ---- Barre Publier sur DEUX rangs. ------------------------------------
