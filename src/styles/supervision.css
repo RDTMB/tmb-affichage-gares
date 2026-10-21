@@ -296,42 +296,68 @@ header .spacer {
   font-weight: 900;
 }
 
-/* CHOIX DU THÈME (Auto / Clair / Sombre) — en-tête et dessous des cartes de
-   connexion. Les deux sont posés sur un fond FONCÉ quel que soit le thème
-   (en-tête marine, fond de connexion marine ou page sombre) : un seul dessin,
-   celui des pastilles de l'en-tête. Le choix retenu prend le crème de la
-   charte sous un texte marine (9,6:1). */
+/* CHOIX DU THÈME — UN bouton ROND : au bout de la barre d'onglets une fois
+   connecté, sous la carte de connexion avant. Chaque clic passe au choix
+   suivant (Auto → Clair → Sombre).
+   Pourquoi pas dans l'en-tête (Thomas, 20/10/2026 : « sur 2 lignes, ça fait
+   pas beau ») : mesuré à 1440 px, l'en-tête de `dev` n'a que 30 px de libre,
+   et même un bouton de 32 px (+16 d'écart) le faisait passer sur deux rangs.
+   La barre d'onglets en a 300 à la même largeur.
+   Dans la barre, il prend les couleurs d'un bouton de la page (fond de la
+   barre = carte) ; sous la connexion, posé sur un fond FONCÉ quel que soit le
+   thème, celles des pastilles de l'en-tête (blanc sur #2c4a70 : 9,05:1). */
 .choix-theme {
   flex: none;
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: #2c4a70;
-  border: 1px solid #3e608a;
-  border-radius: 99px;
+  display: flex;
+  align-items: center;
 }
 
-.choix-theme button {
-  background: transparent;
-  border: 0;
-  border-radius: 99px;
-  padding: 4px 11px;
-  font-size: 12.5px;
-  color: #fff;
+/* `nav.tabs` devant : sans lui, `nav.tabs button` (0,1,2) imposerait le
+   rembourrage et le soulignement des onglets. */
+nav.tabs .choix-theme {
+  margin-left: auto; /* reste à droite même sans groupe d'exploitation */
+  padding-left: 14px;
 }
 
-.choix-theme button:hover {
-  background: #3e608a;
+.choix-theme button,
+nav.tabs .choix-theme button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bouton-bg);
+  border: 1px solid var(--bord);
+  color: var(--sec);
 }
 
-.choix-theme button[aria-pressed='true'] {
-  background: var(--creme);
-  color: var(--marine);
+.choix-theme button:hover,
+nav.tabs .choix-theme button:hover {
+  border-color: var(--bord-survol);
+  color: var(--texte);
 }
 
 .choix-theme button:focus-visible {
-  outline: 2px solid var(--bleu-clair);
-  outline-offset: 1px;
+  outline: 2px solid var(--bleu);
+  outline-offset: 2px;
+}
+
+.connexion .choix-theme button {
+  background: #2c4a70;
+  border-color: #3e608a;
+  color: #fff;
+}
+
+.connexion .choix-theme button:hover {
+  background: #3e608a;
+  border-color: var(--bleu-clair);
+  color: #fff;
+}
+
+.connexion .choix-theme button:focus-visible {
+  outline-color: var(--bleu-clair);
 }
 
 /* ------- Connexion ------- */
@@ -3535,10 +3561,27 @@ td.cell-sens > .sens-groupe {
   .ligne-declaration input,
   .connexion-carte input,
   .connexion-carte button,
-  .choix-theme button,
   .seg-affluence button,
   select[data-action='motif'] {
     min-height: 44px;
+  }
+
+  /* Le bouton rond du thème reste ROND au doigt, et VISIBLE : la barre
+     défile horizontalement, il reste collé à son bord droit. */
+  .choix-theme button,
+  nav.tabs .choix-theme button {
+    width: 44px;
+    height: 44px;
+  }
+
+  nav.tabs .choix-theme {
+    position: sticky;
+    right: 0;
+    padding: 0 0 0 10px;
+    background: var(--carte);
+    /* La barre a 12 px de marge intérieure à droite : sans cette ombre
+       pleine, l'onglet qui défile dessous y dépassait (mesuré à 390). */
+    box-shadow: 12px 0 0 var(--carte);
   }
 
   /* ---- Barre Publier sur DEUX rangs. ------------------------------------

@@ -61,17 +61,34 @@ export function appliqueChoixTheme(racine: HTMLElement, choix: ChoixTheme): void
   else racine.setAttribute('data-theme', choix);
 }
 
-const LIBELLES: Record<ChoixTheme, { texte: string; titre: string }> = {
-  auto: { texte: 'Auto', titre: 'Suivre le réglage de l’appareil' },
-  clair: { texte: 'Clair', titre: 'Toujours en clair' },
-  sombre: { texte: 'Sombre', titre: 'Toujours en sombre' },
+/** Le clic fait tourner les trois choix : Auto → Clair → Sombre → Auto. */
+export function choixSuivant(choix: ChoixTheme): ChoixTheme {
+  return CHOIX_THEME[(CHOIX_THEME.indexOf(choix) + 1) % CHOIX_THEME.length] ?? 'auto';
+}
+
+const NOMS: Record<ChoixTheme, string> = { auto: 'Auto', clair: 'Clair', sombre: 'Sombre' };
+
+/** Nom accessible ET info-bulle : l'état choisi, puis ce que fait le clic. */
+export function libelleChoixTheme(choix: ChoixTheme): string {
+  const etat = choix === 'auto' ? 'Auto (suit le réglage de l’appareil)' : NOMS[choix];
+  return `Thème : ${etat} — cliquer pour passer en ${NOMS[choixSuivant(choix)]}`;
+}
+
+// Icônes tracées en `currentColor` (aucune ressource chargée, rien pour la
+// CSP) : demi-disque = suit l'appareil, soleil = clair, croissant = sombre.
+const ICONES: Record<ChoixTheme, string> = {
+  auto: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>',
+  clair:
+    '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
+  sombre: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"/>',
 };
 
 /**
- * Sélecteur à trois boutons, monté dans chaque conteneur `[data-choix-theme]`
- * (en-tête et cartes de connexion). Un groupe nommé de boutons à bascule :
- * le lecteur d'écran annonce « Thème d'affichage », puis chaque bouton et
- * son état « enfoncé ».
+ * Bouton ROND, un par conteneur `[data-choix-theme]` (en-tête et sous la
+ * carte de connexion). Trois boutons côte à côte faisaient passer l'en-tête
+ * sur deux rangs (décision de Thomas, 20/10/2026) : un seul, à la taille de
+ * l'avatar, qui affiche le choix en cours et passe au suivant à chaque clic.
+ * Le lecteur d'écran annonce l'état ET l'effet du clic (`aria-label`).
  */
 export function monteChoixTheme(options: {
   conteneurs: Iterable<HTMLElement>;
@@ -84,28 +101,24 @@ export function monteChoixTheme(options: {
 }): void {
   const { racine, stockage, appareilSombre, surChangement } = options;
   let choix = lireChoixTheme(stockage);
-  const boutons: { choix: ChoixTheme; bouton: HTMLButtonElement }[] = [];
+  const boutons: HTMLButtonElement[] = [];
 
   for (const conteneur of options.conteneurs) {
     conteneur.classList.add('choix-theme');
-    conteneur.setAttribute('role', 'group');
-    conteneur.setAttribute('aria-label', 'Thème d’affichage');
     conteneur.replaceChildren();
-    for (const c of CHOIX_THEME) {
-      const bouton = document.createElement('button');
-      bouton.type = 'button'; // dans un <form>, un bouton sans type ENVOIE
-      bouton.textContent = LIBELLES[c].texte;
-      bouton.title = LIBELLES[c].titre;
-      bouton.dataset.choix = c;
-      bouton.addEventListener('click', () => choisir(c));
-      conteneur.append(bouton);
-      boutons.push({ choix: c, bouton });
-    }
+    const bouton = document.createElement('button');
+    bouton.type = 'button'; // dans un <form>, un bouton sans type ENVOIE
+    bouton.addEventListener('click', () => choisir(choixSuivant(choix)));
+    conteneur.append(bouton);
+    boutons.push(bouton);
   }
 
   function rendre(): void {
-    for (const { choix: c, bouton } of boutons) {
-      bouton.setAttribute('aria-pressed', String(c === choix));
+    for (const bouton of boutons) {
+      bouton.dataset.choix = choix;
+      bouton.setAttribute('aria-label', libelleChoixTheme(choix));
+      bouton.title = libelleChoixTheme(choix);
+      bouton.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONES[choix]}</svg>`;
     }
     appliqueChoixTheme(racine, choix);
     surChangement(themeEffectif(choix, appareilSombre.matches));

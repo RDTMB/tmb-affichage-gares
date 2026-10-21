@@ -18,7 +18,9 @@ import {
   CHOIX_THEME,
   CLE_THEME,
   appliqueChoixTheme,
+  choixSuivant,
   ecrireChoixTheme,
+  libelleChoixTheme,
   lireChoixTheme,
   monteChoixTheme,
   themeEffectif,
@@ -137,6 +139,26 @@ describe('themeEffectif — les six combinaisons', () => {
   });
 });
 
+describe('choixSuivant — le clic fait tourner Auto → Clair → Sombre → Auto', () => {
+  it.each([
+    ['auto', 'clair'],
+    ['clair', 'sombre'],
+    ['sombre', 'auto'],
+  ] as const)('%s → %s', (choix, attendu) => {
+    expect(choixSuivant(choix)).toBe(attendu);
+  });
+});
+
+describe('libelleChoixTheme — l’état choisi, puis l’effet du clic', () => {
+  it.each([
+    ['auto', 'Thème : Auto (suit le réglage de l’appareil) — cliquer pour passer en Clair'],
+    ['clair', 'Thème : Clair — cliquer pour passer en Sombre'],
+    ['sombre', 'Thème : Sombre — cliquer pour passer en Auto'],
+  ] as const)('%s', (choix, attendu) => {
+    expect(libelleChoixTheme(choix)).toBe(attendu);
+  });
+});
+
 /** Élément minimal : attributs, classes, enfants, écouteurs. */
 class FauxElement {
   attributs = new Map<string, string>();
@@ -144,7 +166,7 @@ class FauxElement {
   enfants: FauxElement[] = [];
   ecouteurs = new Map<string, (() => void)[]>();
   dataset: Record<string, string> = {};
-  textContent = '';
+  innerHTML = '';
   title = '';
   type = '';
   src = '';
@@ -184,7 +206,7 @@ describe('appliqueChoixTheme — `data-theme` sur <html>', () => {
   });
 });
 
-describe('monteChoixTheme — le sélecteur', () => {
+describe('monteChoixTheme — le bouton rond', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function monte(initial: Record<string, string>, appareilSombre: boolean) {
@@ -201,31 +223,40 @@ describe('monteChoixTheme — le sélecteur', () => {
       appareilSombre: media as unknown as MediaQueryList,
       surChangement: (t) => vus.push(t),
     });
-    const presse = (c: FauxElement): ChoixTheme[] =>
-      c.enfants
-        .filter((b) => b.getAttribute('aria-pressed') === 'true')
-        .map((b) => b.dataset.choix as ChoixTheme);
-    return { conteneurs, racine, s, media, vus, presse };
+    const bouton = (i: number): FauxElement => conteneurs[i]!.enfants[0]!;
+    /** Le choix que CHAQUE bouton affiche et annonce. */
+    const affiches = (): ChoixTheme[] =>
+      conteneurs.map((c) => {
+        const b = c.enfants[0]!;
+        const choix = b.dataset.choix as ChoixTheme;
+        expect(b.getAttribute('aria-label')).toBe(libelleChoixTheme(choix));
+        expect(b.title).toBe(libelleChoixTheme(choix));
+        expect(b.innerHTML).toMatch(/^<svg [^>]*aria-hidden="true"[^>]*>.+<\/svg>$/);
+        return choix;
+      });
+    return { conteneurs, racine, s, media, vus, bouton, affiches };
   }
 
-  it('trois boutons par conteneur, nommés, groupés, de type button', () => {
+  it('UN bouton par conteneur, de type button, dans un conteneur `.choix-theme`', () => {
     const { conteneurs } = monte({}, false);
     for (const c of conteneurs) {
-      expect(c.getAttribute('role')).toBe('group');
-      expect(c.getAttribute('aria-label')).toBe('Thème d’affichage');
       expect(c.classes.has('choix-theme')).toBe(true);
-      expect(c.enfants.map((b) => b.textContent)).toEqual(['Auto', 'Clair', 'Sombre']);
-      expect(c.enfants.map((b) => b.dataset.choix)).toEqual(['auto', 'clair', 'sombre']);
-      expect(c.enfants.map((b) => b.title)).toEqual([
-        'Suivre le réglage de l’appareil',
-        'Toujours en clair',
-        'Toujours en sombre',
-      ]);
-      for (const b of c.enfants) expect(b.type).toBe('button');
+      expect(c.enfants).toHaveLength(1);
+      expect(c.enfants[0]!.type).toBe('button');
     }
   });
 
-  it('un conteneur déjà garni est VIDÉ : trois boutons, pas un de plus', () => {
+  it('une icône différente par choix', () => {
+    const { bouton } = monte({}, false);
+    const icones = new Set<string>();
+    for (let i = 0; i < 3; i++) {
+      icones.add(bouton(0).innerHTML);
+      bouton(0).click();
+    }
+    expect(icones.size).toBe(3);
+  });
+
+  it('un conteneur déjà garni est VIDÉ : un seul bouton', () => {
     vi.stubGlobal('document', { createElement: () => new FauxElement() });
     const conteneur = new FauxElement();
     conteneur.append(new FauxElement());
@@ -238,35 +269,38 @@ describe('monteChoixTheme — le sélecteur', () => {
       }) as unknown as MediaQueryList,
       surChangement: () => {},
     });
-    expect(conteneur.enfants).toHaveLength(3);
+    expect(conteneur.enfants).toHaveLength(1);
   });
 
-  it('au montage : le choix retenu est annoncé, posé, et le thème effectif transmis', () => {
-    const { conteneurs, racine, vus, presse } = monte({ [CLE_THEME]: 'sombre' }, false);
-    for (const c of conteneurs) expect(presse(c)).toEqual(['sombre']);
+  it('au montage : le choix retenu est affiché, annoncé, posé, et le thème effectif transmis', () => {
+    const { racine, vus, affiches } = monte({ [CLE_THEME]: 'sombre' }, false);
+    expect(affiches()).toEqual(['sombre', 'sombre']);
     expect(racine.getAttribute('data-theme')).toBe('sombre');
     expect(vus).toEqual(['sombre']);
   });
 
-  it('poste neuf : Auto enfoncé, pas d’attribut, le thème suit l’appareil', () => {
-    const { conteneurs, racine, vus, presse } = monte({}, true);
-    for (const c of conteneurs) expect(presse(c)).toEqual(['auto']);
+  it('poste neuf : Auto, pas d’attribut, le thème suit l’appareil', () => {
+    const { racine, vus, affiches } = monte({}, true);
+    expect(affiches()).toEqual(['auto', 'auto']);
     expect(racine.getAttribute('data-theme')).toBeNull();
     expect(vus).toEqual(['sombre']);
   });
 
-  it('un clic choisit, retient, pose, et met TOUS les sélecteurs à jour', () => {
-    const { conteneurs, racine, s, vus, presse } = monte({}, true);
-    conteneurs[1]!.enfants[1]!.click(); // Clair, sous la carte de connexion
-    for (const c of conteneurs) expect(presse(c)).toEqual(['clair']);
+  it('chaque clic passe au choix suivant, le retient, le pose, et met LES DEUX boutons à jour', () => {
+    const { racine, s, vus, bouton, affiches } = monte({}, true);
+    bouton(1).click(); // sous la carte de connexion : Auto → Clair
+    expect(affiches()).toEqual(['clair', 'clair']);
     expect(racine.getAttribute('data-theme')).toBe('clair');
     expect(s.valeurs.get(CLE_THEME)).toBe('clair');
-    expect(vus).toEqual(['sombre', 'clair']);
-    conteneurs[0]!.enfants[0]!.click(); // retour en Auto, dans l'en-tête
-    for (const c of conteneurs) expect(presse(c)).toEqual(['auto']);
+    bouton(0).click(); // dans l'en-tête : Clair → Sombre
+    expect(affiches()).toEqual(['sombre', 'sombre']);
+    expect(racine.getAttribute('data-theme')).toBe('sombre');
+    expect(s.valeurs.get(CLE_THEME)).toBe('sombre');
+    bouton(0).click(); // Sombre → Auto : la clé est effacée
+    expect(affiches()).toEqual(['auto', 'auto']);
     expect(racine.getAttribute('data-theme')).toBeNull();
     expect(s.valeurs.has(CLE_THEME)).toBe(false);
-    expect(vus).toEqual(['sombre', 'clair', 'sombre']);
+    expect(vus).toEqual(['sombre', 'clair', 'sombre', 'sombre']);
   });
 
   it('en Auto, l’appareil qui bascule met le thème effectif à jour en direct', () => {
@@ -355,10 +389,24 @@ describe('supervision.html — le script de démarrage précède le premier rend
     }
   });
 
-  it('un sélecteur dans l’en-tête HORS du bloc utilisateur (tous rôles), un dans la connexion', () => {
+  it('le clic et la visibilité des onglets ne visent QUE les onglets (`[data-t]`), pas le bouton du thème', () => {
+    const ts = source('src/pages/supervision.ts');
+    expect(ts).not.toMatch(/'nav\.tabs button'\)/);
+    expect(ts.split("'nav.tabs button[data-t]')").length - 1).toBe(3);
+  });
+
+  it('un bouton au bout de la barre d’onglets HORS de tout groupe (tous rôles), un dans la connexion', () => {
+    // Pas dans l'en-tête : il le faisait passer sur deux rangs à 1440 px.
     const entete = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
-    expect(entete).toContain('<div id="choix-theme-entete" data-choix-theme></div>');
-    expect(entete.indexOf('choix-theme-entete')).toBeLessThan(entete.indexOf('id="bloc-user"'));
+    expect(entete).not.toContain('data-choix-theme');
+    const barre = html.slice(html.indexOf('<nav class="tabs"'), html.indexOf('</nav>'));
+    const finAdministration = barre.indexOf(
+      '<button data-t="version">Version</button>\n        </div>',
+    );
+    expect(finAdministration).toBeGreaterThan(0);
+    expect(barre.indexOf('<div id="choix-theme-barre" data-choix-theme></div>')).toBeGreaterThan(
+      finAdministration,
+    );
     const connexion = html.slice(html.indexOf('id="connexion"'), html.indexOf('<main'));
     expect(connexion).toContain('<div id="choix-theme-connexion" data-choix-theme></div>');
     expect(html.split('data-choix-theme').length - 1).toBe(2);
@@ -560,5 +608,36 @@ describe('supervision.css — un seul jeu de valeurs sombres, deux déclencheurs
       expect(argumentsLightDark(valeur) !== null, nom).toBe(nom in VALEURS_73);
     }
     expect(Object.keys(VALEURS_73)).toHaveLength(60);
+  });
+});
+
+describe('supervision.css — le bouton rond, là où il a été mesuré', () => {
+  it('rond, 32 px', () => {
+    const corps = declarations(regle('nav.tabs .choix-theme button') ?? '');
+    expect(corps.get('border-radius')).toBe('50%');
+    expect(corps.get('width')).toBe('32px');
+    expect(corps.get('height')).toBe('32px');
+  });
+
+  it('ancré à DROITE de la barre, même sans groupe d’exploitation', () => {
+    expect(declarations(regle('nav.tabs .choix-theme') ?? '').get('margin-left')).toBe('auto');
+  });
+
+  it('au téléphone : 44 px, et collé au bord droit de la barre qui défile', () => {
+    const debut = CSS.indexOf('@media (max-width: 768px)');
+    expect(debut).toBeGreaterThan(0);
+    const telephone = CSS.slice(debut);
+    const regleTel = (sel: string): Map<string, string> => {
+      const i = telephone.indexOf(`\n  ${sel} {`);
+      const o = telephone.indexOf('{', i);
+      return declarations(i < 0 ? '' : telephone.slice(o + 1, telephone.indexOf('}', o)));
+    };
+    const barre = regleTel('nav.tabs .choix-theme');
+    expect(barre.get('position')).toBe('sticky');
+    expect(barre.get('right')).toBe('0');
+    expect(barre.get('background')).toBe('var(--carte)');
+    const bouton = regleTel('nav.tabs .choix-theme button');
+    expect(bouton.get('width')).toBe('44px');
+    expect(bouton.get('height')).toBe('44px');
   });
 });

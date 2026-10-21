@@ -110,8 +110,7 @@ describe('la palette sombre tient ses contrastes (WCAG, recalculés)', () => {
     });
   }
 
-  it('choix du thème : marine sur crème (choix retenu), blanc sur la pastille ≥ 4,5:1', () => {
-    expect(contraste(jeton('--tmb-marine'), jeton('--tmb-creme'))).toBeGreaterThanOrEqual(4.5);
+  it('bouton du thème : icône blanche sur la pastille, et au survol, ≥ 4,5:1', () => {
     expect(contraste('#ffffff', '#2c4a70')).toBeGreaterThanOrEqual(4.5);
     expect(contraste('#ffffff', '#3e608a')).toBeGreaterThanOrEqual(4.5); // survol
   });
