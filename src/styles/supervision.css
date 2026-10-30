@@ -2506,6 +2506,15 @@ tr.paire-fin td {
   color: var(--saute);
 }
 
+.table-apercu thead th.colonne-vide,
+.table-apercu td.colonne-vide {
+  background: var(--entete-table);
+}
+
+.table-apercu thead th.colonne-vide {
+  border-bottom: 1px solid var(--bord);
+}
+
 .table-apercu td.modif {
   background: var(--modif-bg);
   font-weight: 900;
