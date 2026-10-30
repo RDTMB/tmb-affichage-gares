@@ -118,6 +118,17 @@ const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
 /** Au-delà, la liste des écarts est tronquée (les heures d'une grille entière peuvent toutes bouger). */
 const MAX_ECARTS_AFFICHES = 150;
 
+/**
+ * Largeurs du tableau de grille, IDENTIQUES pour les montées et les descentes :
+ * chaque tableau calculant ses colonnes d'après son contenu, la colonne vide du
+ * TRAIN 20 s'écrasait et les trains ne tombaient plus l'un sous l'autre.
+ * Les deux premières colonnes (gare, A/D) sont fixes, les colonnes de trains se
+ * partagent le reste à parts égales ; le mini reste lisible avec 8 ou 9 trains
+ * (défilement horizontal en dessous).
+ */
+const LARGEUR_GARE_PX = 164;
+const LARGEUR_TRAIN_PX = 76;
+
 export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   const { provider, $, toast, erreurVersToast } = deps;
   let grilles: Grille[] = [];
@@ -849,7 +860,10 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       }
     }
     return `<h4>${titre} <small>${trains.length} trains</small></h4>
-      <div class="tabwrap-apercu"><table class="table-apercu">
+      <div class="tabwrap-apercu"><table class="table-apercu aligne" style="min-width:${
+        LARGEUR_GARE_PX + colonnes.length * LARGEUR_TRAIN_PX
+      }px">
+        <colgroup><col class="col-gare"><col class="col-ad">${colonnes.map(() => '<col>').join('')}</colgroup>
         <thead><tr><th>Gare</th><th></th>${entete}</tr>${
           o.correction ? ligneIndicateur('express', 'Express') : ''
         }${ligneIndicateur('facultatif', 'Facultatif')}${ligneIndicateur('velos', 'Vélos')}</thead>
