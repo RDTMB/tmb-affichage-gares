@@ -2447,6 +2447,20 @@ tr.paire-fin td {
   font-variant-numeric: tabular-nums;
 }
 
+/* Montées et descentes partagent les mêmes largeurs : un train sous l'autre. */
+.table-apercu.aligne {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table-apercu.aligne col.col-gare {
+  width: 130px;
+}
+
+.table-apercu.aligne col.col-ad {
+  width: 34px;
+}
+
 .table-apercu th,
 .table-apercu td {
   padding: 4px 8px;
