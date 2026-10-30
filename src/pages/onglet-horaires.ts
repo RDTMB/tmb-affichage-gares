@@ -54,7 +54,7 @@ import {
   type FeuilleImport,
 } from './horaires-onglet';
 import { avertissementsGrillePrecedente } from '../core/import-grille';
-import { grillePrecedentePour } from './horaires-onglet';
+import { colonnesGrille, grillePrecedentePour } from './horaires-onglet';
 import {
   cleCellule,
   ecartsCorrection,
@@ -117,6 +117,17 @@ interface OptionsTableau {
 const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
 /** Au-delà, la liste des écarts est tronquée (les heures d'une grille entière peuvent toutes bouger). */
 const MAX_ECARTS_AFFICHES = 150;
+
+/**
+ * Largeurs du tableau de grille, IDENTIQUES pour les montées et les descentes :
+ * chaque tableau calculant ses colonnes d'après son contenu, la colonne vide du
+ * TRAIN 20 s'écrasait et les trains ne tombaient plus l'un sous l'autre.
+ * Les deux premières colonnes (gare, A/D) sont fixes, les colonnes de trains se
+ * partagent le reste à parts égales ; le mini reste lisible avec 8 ou 9 trains
+ * (défilement horizontal en dessous).
+ */
+const LARGEUR_GARE_PX = 164;
+const LARGEUR_TRAIN_PX = 76;
 
 export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   const { provider, $, toast, erreurVersToast } = deps;
@@ -723,21 +734,34 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
   }
 
   function tableauxGrilleHtml(g: Grille, o: OptionsTableau): string {
-    return `<div class="grille-apercu">${tableauSensHtml('montee', g.montees, o)}${tableauSensHtml(
+    // Mêmes colonnes pour les deux tableaux : la descente d'une rotation se lit
+    // sous sa montée (TRAIN 2 sous TRAIN 1…), un trou reste une colonne vide.
+    const colonnes = colonnesGrille(g);
+    return `<div class="grille-apercu">${tableauSensHtml(
+      'montee',
+      colonnes.map((c) => c.montee),
+      o,
+    )}${tableauSensHtml(
       'descente',
-      g.descentes,
+      colonnes.map((c) => c.descente),
       o,
     )}</div>`;
   }
 
-  function tableauSensHtml(sens: Sens, trains: TrainGrille[], o: OptionsTableau): string {
+  function tableauSensHtml(
+    sens: Sens,
+    colonnes: (TrainGrille | undefined)[],
+    o: OptionsTableau,
+  ): string {
     const titre = sens === 'montee' ? 'Montées' : 'Descentes';
+    const trains = colonnes.filter((t): t is TrainGrille => t !== undefined);
     if (trains.length === 0) return `<h4>${titre}</h4><p class="vide">Aucun train.</p>`;
     const gares = sens === 'montee' ? [...ORDRE_GARES] : [...ORDRE_GARES].reverse();
     const feuille = o.feuille ?? 0;
 
-    const entete = trains
+    const entete = colonnes
       .map((t) => {
+        if (!t) return '<th class="colonne-vide"></th>';
         const messages = o.erreursTrain?.get(t.numero) ?? [];
         const retirer =
           o.correction && sens === 'montee'
@@ -759,13 +783,15 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
       })
       .join('');
     const ligneIndicateur = (champ: Indicateur, libelle: string): string =>
-      `<tr class="indic"><th>${libelle}</th><td></td>${trains
+      `<tr class="indic"><th>${libelle}</th><td></td>${colonnes
         .map((t) =>
-          o.editable || o.correction
-            ? `<td><input type="checkbox" data-champ="${champ}" data-sens="${sens}" data-train="${t.numero}" data-feuille="${feuille}" ${
-                t[champ] ? 'checked' : ''
-              } title="${libelle} — TRAIN ${t.numero}"></td>`
-            : `<td>${t[champ] ? 'oui' : '—'}</td>`,
+          !t
+            ? '<td class="colonne-vide"></td>'
+            : o.editable || o.correction
+              ? `<td><input type="checkbox" data-champ="${champ}" data-sens="${sens}" data-train="${t.numero}" data-feuille="${feuille}" ${
+                  t[champ] ? 'checked' : ''
+                } title="${libelle} — TRAIN ${t.numero}"></td>`
+              : `<td>${t[champ] ? 'oui' : '—'}</td>`,
         )
         .join('')}</tr>`;
 
@@ -791,7 +817,11 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         corps += `<tr>${i === 0 ? `<th rowspan="${champs.length}">${echapper(nomGare(gare))}</th>` : ''}<td class="ad">${
           champ === 'a' ? 'A' : 'D'
         }</td>`;
-        for (const t of trains) {
+        for (const t of colonnes) {
+          if (!t) {
+            corps += '<td class="colonne-vide"></td>';
+            continue;
+          }
           const p = t.passages.find((x) => x.gare === gare);
           const h = p?.[champ];
           const cle = `${sens}|${t.numero}|${gare}|${champ}`;
@@ -824,13 +854,16 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         corps += '</tr>';
       });
       if (messagesGare.size > 0) {
-        corps += `<tr class="ligne-erreur"><td colspan="${trains.length + 2}">${[...messagesGare]
+        corps += `<tr class="ligne-erreur"><td colspan="${colonnes.length + 2}">${[...messagesGare]
           .map((m) => `<span>${echapper(m)}</span>`)
           .join('')}</td></tr>`;
       }
     }
     return `<h4>${titre} <small>${trains.length} trains</small></h4>
-      <div class="tabwrap-apercu"><table class="table-apercu">
+      <div class="tabwrap-apercu"><table class="table-apercu aligne" style="min-width:${
+        LARGEUR_GARE_PX + colonnes.length * LARGEUR_TRAIN_PX
+      }px">
+        <colgroup><col class="col-gare"><col class="col-ad">${colonnes.map(() => '<col>').join('')}</colgroup>
         <thead><tr><th>Gare</th><th></th>${entete}</tr>${
           o.correction ? ligneIndicateur('express', 'Express') : ''
         }${ligneIndicateur('facultatif', 'Facultatif')}${ligneIndicateur('velos', 'Vélos')}</thead>

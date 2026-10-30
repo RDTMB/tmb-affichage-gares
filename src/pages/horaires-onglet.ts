@@ -21,7 +21,8 @@ import {
   type Probleme,
   type ResultatFeuille,
 } from '../core/import-grille';
-import type { Grille, Periode } from '../core/types';
+import type { Grille, Periode, TrainGrille } from '../core/types';
+import { departOrigine, ordreRotations, rotationsDeGrille } from './supervision-logique';
 
 /** Une feuille du classeur dans la boîte de dialogue : ce que l'agent complète. */
 export interface FeuilleImport {
@@ -444,4 +445,35 @@ export function resumeEdition(avant: Grille, e: EditionGrille): string {
     );
   }
   return morceaux.join(' — ');
+}
+
+/**
+ * Colonnes du tableau d'une grille : UNE PAR ROTATION, partagées par le tableau
+ * des montées et celui des descentes. Le TRAIN 2 tombe sous le TRAIN 1, le
+ * TRAIN 4 sous le TRAIN 3, etc. ; la rotation qui n'a pas l'un de ses deux
+ * trains (TRAIN 20 d'hiver, descente sans montée) laisse une colonne VIDE de
+ * son côté, plutôt que de décaler toutes celles qui suivent.
+ *
+ * L'appariement et l'ordre sont ceux de l'onglet Circulations
+ * (`rotationsDeGrille()` et `ordreRotations()`) : deux façons d'apparier
+ * auraient fini par ne plus dire la même chose. Le rang est l'heure de départ
+ * de la rotation, d'où le TRAIN 20 (08:30) en première colonne.
+ */
+export interface ColonneGrille {
+  montee?: TrainGrille;
+  descente?: TrainGrille;
+}
+
+export function colonnesGrille(grille: Pick<Grille, 'montees' | 'descentes'>): ColonneGrille[] {
+  const rotations = rotationsDeGrille(grille);
+  const ordre = ordreRotations(
+    rotations.map((r) => ({
+      numero: r.numero,
+      depart_s: departOrigine((r.montee ?? r.descente)?.passages),
+    })),
+  );
+  return ordre.flatMap((numero) => {
+    const r = rotations.find((x) => x.numero === numero);
+    return r ? [{ montee: r.montee, descente: r.descente }] : [];
+  });
 }
