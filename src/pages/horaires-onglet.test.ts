@@ -10,6 +10,7 @@ import { effetChangementPeriodes } from '../core/grilles-periodes';
 import { parseClasseur, type FeuilleCellules } from '../core/import-grille';
 import type { Grille } from '../core/types';
 import {
+  colonnesGrille,
   dateCourte,
   dateLongue,
   datesGagnees,
@@ -337,5 +338,46 @@ describe('modification d’une grille : nom, dates de validité, commentaire', (
     expect(resumeEdition(PETIT, e)).toBe(
       'Grille « Petit service — été 2026 » modifiée (référence 2026-ete-petit-service) — nom « Petit service — été 2026 » → « Petit service — été 2026 (prolongé) » — commentaire : demande du chef d’exploitation — journées réinitialisées : 24/08/2026, 25/08/2026',
     );
+  });
+});
+
+describe('colonnesGrille : la descente se lit sous sa montée', () => {
+  const train = (numero: number, depart: string) => ({
+    numero,
+    express: false,
+    facultatif: false,
+    velos: false,
+    passages: [{ gare: 'le-fayet' as const, d: depart }],
+  });
+
+  // Grille d'hiver 2026-2027 en miniature : deux rotations et le TRAIN 20.
+  const grille = {
+    montees: [train(1, '09:00:00'), train(3, '10:00:00')],
+    descentes: [train(2, '10:00:00'), train(4, '11:00:00'), train(20, '08:30:00')],
+  };
+
+  it('TRAIN 2 sous TRAIN 1, TRAIN 4 sous TRAIN 3', () => {
+    const c = colonnesGrille(grille);
+    expect(c.map((x) => [x.montee?.numero, x.descente?.numero])).toEqual([
+      [undefined, 20],
+      [1, 2],
+      [3, 4],
+    ]);
+  });
+
+  it('le TRAIN 20 laisse une colonne vide au-dessus de lui, sans décaler les autres', () => {
+    const c = colonnesGrille(grille);
+    expect(c[0].montee).toBeUndefined();
+    expect(c.slice(1).every((x) => x.montee && x.descente)).toBe(true);
+  });
+
+  it('une grille sans descente sans montée donne des colonnes complètes', () => {
+    const c = colonnesGrille({
+      montees: [train(1, '09:00:00')],
+      descentes: [train(2, '10:00:00')],
+    });
+    expect(c).toHaveLength(1);
+    expect(c[0].montee?.numero).toBe(1);
+    expect(c[0].descente?.numero).toBe(2);
   });
 });
