@@ -135,6 +135,7 @@ describe('Onglets visibles', () => {
     expect(ongletsVisibles(['technique'])).toEqual([
       'horaires',
       'ecrans',
+      'simulation',
       'utilisateurs',
       'journal',
       'version',
@@ -174,12 +175,13 @@ describe('Onglets visibles', () => {
       'bandeau',
       'medias',
       'ecrans',
+      'simulation',
       'journal',
       'version',
     ]);
   });
 
-  it('caisse : six onglets sur neuf depuis l’ouverture de « Places »', () => {
+  it('caisse : sept onglets sur onze depuis l’ouverture de « Places »', () => {
     // Correctif antérieur : l'onglet « Paramètres » exigeait `comptes.lire` ou
     // `journal.purger`, que la caisse n'a pas — son droit `journal` ne menait
     // donc à AUCUN écran. Un onglet dédié le rend accessible.
@@ -193,6 +195,7 @@ describe('Onglets visibles', () => {
       'bandeau',
       'medias',
       'ecrans',
+      'simulation',
       'journal',
       'version',
     ]);
@@ -246,6 +249,7 @@ describe('Onglets visibles', () => {
       'bandeau',
       'medias',
       'ecrans',
+      'simulation',
       'parametres',
       'utilisateurs',
       'journal',
@@ -258,6 +262,7 @@ describe('Onglets visibles', () => {
       'bandeau',
       'medias',
       'ecrans',
+      'simulation',
       'parametres',
       'utilisateurs',
       'journal',
@@ -650,6 +655,7 @@ describe('Lot 2 : Horaires masqué pour la caisse', () => {
       'bandeau',
       'medias',
       'ecrans',
+      'simulation',
       'journal',
       'version',
     ]);
@@ -674,5 +680,40 @@ describe('Lot 2 : Horaires masqué pour la caisse', () => {
   it('l’exploitant peut revenir en arrière sans livraison', () => {
     const rendu: VisibiliteOnglets = { ...SEED, caisse: [...(SEED?.caisse ?? []), 'horaires'] };
     expect(ongletsVisibles(['caisse'], rendu)).toContain('horaires');
+  });
+});
+
+describe('Onglet « Simulation » : adossé à « Écrans »', () => {
+  it('est visible exactement quand « Écrans » l’est, pour chaque rôle', () => {
+    for (const role of ROLES) {
+      expect(plafondOnglets(role).includes('simulation'), role).toBe(
+        plafondOnglets(role).includes('ecrans'),
+      );
+    }
+  });
+
+  it('technique, supervision et caisse le voient ; admin non (il n’a pas Écrans)', () => {
+    expect(ongletsVisibles(['technique'])).toContain('simulation');
+    expect(ongletsVisibles(['supervision'])).toContain('simulation');
+    expect(ongletsVisibles(['caisse'])).toContain('simulation');
+    expect(ongletsVisibles(['admin'])).not.toContain('simulation');
+  });
+
+  it('suit le réglage d’« Écrans » et n’a aucun réglage propre', () => {
+    for (const role of ROLES) {
+      const avec: VisibiliteOnglets = { [role]: ['ecrans'] };
+      const sans: VisibiliteOnglets = { [role]: ['bandeau'] };
+      expect(ongletsVisibles([role], avec).includes('simulation')).toBe(
+        plafondOnglets(role).includes('ecrans'),
+      );
+      expect(ongletsVisibles([role], sans)).not.toContain('simulation');
+    }
+    expect(ONGLETS_REGLABLES).not.toContain('simulation');
+    expect(ONGLETS_NON_REGLABLES).toContain('simulation');
+  });
+
+  it('suit Écrans dans la barre, et le cumul le garde', () => {
+    expect(ONGLETS.indexOf('simulation')).toBe(ONGLETS.indexOf('ecrans') + 1);
+    expect(ongletsVisibles(['admin', 'technique'])).toContain('simulation');
   });
 });
