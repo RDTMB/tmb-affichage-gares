@@ -81,10 +81,15 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   change. La voie (`--voie-rond`) est définie une fois par feuille de style ;
   `.train-pos.en-route` ne pose que `top`, jamais un axe horizontal (garde-fou
   `grille-vivante.test.ts`). Elle se compte sur la demi-largeur de l'heure
-  (1,3 corps, mesurée 1,19 à 1,29), pas sur le `em` d'une cellule `td.saute`.
+  (1,3 corps ; mesurée 1,29 AVEC Lato chargée, 1,19 avec la police de repli :
+  une mesure sans Lato est fausse), pas sur le `em` d'une cellule `td.saute`.
   En PORTRAIT une cellule de 75 px ne laisse que 9 px de chaque côté de l'heure :
-  le rond y passe à 1,3 u (au lieu de 1,7) et déborde sa cellule de ~7 px, sans
-  toucher ni l'heure ni la voisine. **La flèche** accompagne le rond ENTRE DEUX
+  le rond y passe à 1,3 u (au lieu de 1,7) et déborde sa cellule de 6,8 px ; il
+  ne touche pas son heure (3,4 px) mais n'est qu'à ~0,5 px de l'heure voisine
+  (mesuré à 12 colonnes ; à 13 colonnes, 69 px, NON mesuré). Décision à faire
+  confirmer par l'exploitation : un rond collé au bord de la colonne éclairée
+  peut se lire comme celui de la colonne voisine. **La flèche** accompagne le
+  rond ENTRE DEUX
   GARES seulement (jamais à quai) et pointe TOUJOURS vers le bas, en montée
   comme en descente : les lignes se lisent de haut en bas et la gare suivante
   est la ligne du dessous. Élément à part (`<svg class="train-fleche">`, posé

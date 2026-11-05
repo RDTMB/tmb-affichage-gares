@@ -427,7 +427,8 @@ td.supp {
    flux (`position: absolute`), à DROITE de l'heure, à la même abscisse que le
    train soit à quai ou en route ; seule sa hauteur change (`top`, plus bas).
    - 1,3 corps : DEMI-LARGEUR de l'heure (chiffres tabulaires), majorée. Mesuré
-     le 05/11/2026 : 62,5 px pour 24,3 px de corps (1080 p), soit 1,29 corps.
+     le 05/11/2026 AVEC Lato chargée : 62,8 px pour 24,3 px de corps (1080 p),
+     soit 1,29 corps — la marge de la majoration n'est que de 0,17 px.
    - 0,15 corps : le rond ne touche pas l'heure.
    - la moitié du diamètre : on vise le CENTRE du rond (`translate(-50%, …)`).
    Le corps est celui de L'HEURE (`--corps-heure`), pas le `em` de la cellule :

@@ -698,13 +698,14 @@ table.grille td.retard {
    flux (`position: absolute`), à DROITE de l'heure, à la même abscisse que le
    train soit à quai ou en route. Seule sa hauteur change (`top`, plus bas).
    - 1,3em : DEMI-LARGEUR de l'heure (chiffres tabulaires), majorée. Mesuré le
-     05/11/2026 : 32,3 px pour 13,6 px de corps, soit 1,19em ; la marge couvre
-     une police de repli plus large.
+     05/11/2026 AVEC Lato chargée : 35,0 px pour 13,6 px de corps, soit 1,29em
+     (1,19em avec la police de repli, plus étroite : mesurer sans Lato donne un
+     chiffre faux).
    - 0,37em : le rond ne touche pas l'heure (son liseré déborde de 3 px).
    - la moitié du diamètre : on vise le CENTRE du rond (`translate(-50%, …)`).
    Le pourcentage se compte sur la largeur de la cellule. Les colonnes les plus
-   étroites mesurent 70 px (leur en-tête « TRAIN 1 » les y oblige) : le rond et
-   son liseré y tiennent (34,6 px sur 35,1). */
+   étroites mesurent 68,4 px (leur en-tête « TRAIN 1 » les y oblige) : le rond
+   y tient, son liseré dépasse de 0,3 px (34,5 px pour une demi-cellule de 34,2). */
 table.grille td {
   --rond-d: 0.65em;
   --voie-rond: calc(50% + 1.3em + 0.37em + var(--rond-d) / 2);
