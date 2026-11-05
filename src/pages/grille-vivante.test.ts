@@ -473,3 +473,68 @@ describe('vocabulaire des sens', () => {
     expect(html).not.toMatch(/Montée —|Descente —/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 6. Les règles CSS dont dépend le rond, et la pleine largeur
+// ---------------------------------------------------------------------------
+// Vitest n'a pas de navigateur : ces règles ne se mesurent qu'à la main (voir la
+// PR). Ce garde-fou verrouille ce que la mesure a établi, pour qu'un « nettoyage »
+// du CSS ne le défasse pas en silence — sans `z-index`, la cellule de la ligne
+// suivante COUVRE le rond (constaté au navigateur le 05/11/2026).
+
+describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne collante', () => {
+  const css = (f: string): string =>
+    readFileSync(join(RACINE, f), 'utf-8')
+      .replace(/\r\n/g, '\n')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+  /** Corps de la PREMIÈRE règle dont le sélecteur est exactement celui-ci. */
+  const regle = (source: string, selecteur: string): string => {
+    // En début de ligne, suivi de « { » : « .train-pos » ne se confond pas avec
+    // « .train-pos.en-route », ni avec une règle imbriquée dans un @media.
+    const debut = source.indexOf(`\n${selecteur} {`);
+    if (debut < 0) throw new Error(`règle « ${selecteur} » introuvable`);
+    const ouvre = source.indexOf('{', debut);
+    return source.slice(ouvre + 1, source.indexOf('}', ouvre));
+  };
+  const embed = css('src/styles/embed.css');
+  const grille = css('src/styles/grille.css');
+
+  it('le tableau de l’embed prend toute la largeur du cadre, et le cadre défile', () => {
+    expect(regle(embed, 'table.grille')).toMatch(/width:\s*100%/);
+    expect(regle(embed, '.defile')).toMatch(/overflow-x:\s*auto/);
+    // jamais de largeur fixe : le tableau doit pouvoir dépasser le cadre (téléphone)
+    expect(regle(embed, 'table.grille')).not.toMatch(/table-layout:\s*fixed/);
+  });
+
+  it('le rond en route : centré, au-dessus des cellules, calé sur --saut (embed)', () => {
+    const r = regle(embed, '.train-pos.en-route');
+    expect(r).toMatch(/position:\s*absolute/);
+    expect(r).toMatch(/left:\s*50%/);
+    expect(r).toMatch(/top:\s*calc\(50% \+ var\(--saut, 1\) \* 50%/);
+    expect(r).toMatch(/transform:\s*translate\(-50%, -50%\)/);
+    expect(r).toMatch(/z-index:\s*2/);
+  });
+
+  it('la colonne collante des gares passe AU-DESSUS du rond (embed)', () => {
+    const r = regle(embed, 'table.grille thead th.col-gare,\ntable.grille tbody th');
+    const z = Number(/z-index:\s*(\d+)/.exec(r)?.[1]);
+    const zRond = Number(/z-index:\s*(\d+)/.exec(regle(embed, '.train-pos.en-route'))?.[1]);
+    expect(z).toBeGreaterThan(zRond);
+  });
+
+  it('grille.html : même calage en pourcentage de la cellule, sans unité ajoutée', () => {
+    const r = regle(grille, '.train-pos.en-route');
+    expect(r).toMatch(/left:\s*50%/);
+    expect(r).toMatch(/top:\s*calc\(50% \+ var\(--saut, 1\) \* 50%\)/);
+    expect(r).toMatch(/z-index:\s*2/);
+    // aucune unité d'écran : l'échelle vh / --u reste celle du rond à quai
+    expect(r).not.toMatch(/\d(vh|vw|px)\b/);
+    // et son rond à quai garde ses unités
+    expect(regle(grille, '.train-pos')).toMatch(/1\.7vh/);
+  });
+
+  it('il n’existe plus de style de bouton de bascule', () => {
+    expect(embed).not.toContain('.bascule');
+    expect(embed).not.toContain('.barre {');
+  });
+});
