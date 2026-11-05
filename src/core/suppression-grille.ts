@@ -61,7 +61,8 @@ export function refusRemplacementGrille(
   if (successeur.libelle !== ancienne.libelle) {
     return `${pasLe} : ce n'est pas la même grille (autre nom). Rien n'a été supprimé.`;
   }
-  if (Date.parse(successeur.cree_le ?? '') <= Date.parse(ancienne.cree_le ?? '')) {
+  // Écrit « à l'envers » : une date absente ou illisible (NaN) REFUSE au lieu de laisser passer.
+  if (!(Date.parse(successeur.cree_le ?? '') > Date.parse(ancienne.cree_le ?? ''))) {
     return `${pasLe} : elle n'est pas plus récente. Rien n'a été supprimé.`;
   }
   return null;

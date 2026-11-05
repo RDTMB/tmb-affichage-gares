@@ -1104,6 +1104,9 @@ rechargement d'un écran, réinitialisation d'une journée : un matin de service
 l'exploitation ne doit jamais attendre l'informatique. Ne restent exclusifs au
 rôle technique que les réglages d'infrastructure, qui n'ont pas d'urgence
 d'exploitation.
+Le droit « grilles » couvre le chargement, la correction, l'activation et la
+**suppression** d'une grille désactivée (même porte que « Désactiver » ; la base
+l'autorise par la politique « roles: grilles », éprouvée par la recette RLS).
 
 **Le guichet suit le même principe** _(06/09/2026)_. La caisse a gagné les
 médias et la commande d'écran : l'agent est souvent seul en gare le matin, et

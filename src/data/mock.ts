@@ -845,6 +845,8 @@ export class MockProvider implements DataProvider {
       date >= aujourdhui &&
       this.peutOuvrirUneJournee()
     ) {
+      // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+      const repere = await this.grilleDuJour(date);
       const etat = litEtat();
       // REPORT DE LA VEILLE : un chantier dure des semaines, et une journée
       // créée sur la ligne complète afficherait des trains qui ne circulent
@@ -854,7 +856,7 @@ export class MockProvider implements DataProvider {
       etat.jours[date] = {
         terminus: null,
         circulations: {},
-        ...(await this.grilleDuJour(date)),
+        ...repere,
         ...(reportee ? { section: reportee } : {}),
       };
       localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // simple lecture : pas de notification
@@ -1160,17 +1162,21 @@ export class MockProvider implements DataProvider {
   }
 
   async genererJour(date: string): Promise<void> {
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
     // Idempotent : n'écrase jamais les modifications déjà enregistrées
-    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...repere };
     ecritEtat(etat);
   }
 
   async reinitialiseJour(date: string): Promise<void> {
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
     // Retour à l'horaire théorique : toutes les modifications du jour sont perdues,
     // et la journée renvoie à la grille en vigueur MAINTENANT.
-    etat.jours[date] = { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] = { terminus: null, circulations: {}, ...repere };
     ecritEtat(etat);
   }
 
@@ -1192,11 +1198,13 @@ export class MockProvider implements DataProvider {
 
   async saveCirculation(c: Circulation): Promise<void> {
     const avant = await this.circulationAvant(c.date, c.numero);
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(c.date);
     const etat = litEtat();
     etat.jours[c.date] ??= {
       terminus: null,
       circulations: {},
-      ...(await this.grilleDuJour(c.date)),
+      ...repere,
     };
     const jour = etat.jours[c.date];
     if (jour) {
@@ -1228,12 +1236,17 @@ export class MockProvider implements DataProvider {
     for (const c of cs) {
       avants.set(`${c.date}|${c.numero}`, await this.circulationAvant(c.date, c.numero));
     }
+    // Calculés AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const reperes = new Map<string, { grilleVersion?: string }>();
+    for (const c of cs) {
+      if (!reperes.has(c.date)) reperes.set(c.date, await this.grilleDuJour(c.date));
+    }
     const etat = litEtat();
     for (const c of cs) {
       etat.jours[c.date] ??= {
         terminus: null,
         circulations: {},
-        ...(await this.grilleDuJour(c.date)),
+        ...reperes.get(c.date),
       };
       const jour = etat.jours[c.date];
       if (jour) {
@@ -1261,8 +1274,10 @@ export class MockProvider implements DataProvider {
   }
 
   async creerTrainSup(date: string, montee: Circulation, descente: Circulation): Promise<void> {
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...repere };
     const jour = etat.jours[date];
     if (!jour) return;
     for (const c of [montee, descente]) {
@@ -1327,8 +1342,10 @@ export class MockProvider implements DataProvider {
   }
 
   async setSectionJour(date: string, section: SectionJour): Promise<void> {
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...repere };
     const etatJour = etat.jours[date];
     if (!etatJour) return;
     const propre: SectionJour = {
@@ -1371,8 +1388,10 @@ export class MockProvider implements DataProvider {
     }
     const avant = await this.circulationAvant(date, numero);
     if (!avant) throw new Error(`Accès non enregistré pour le train ${numero} du ${date}`);
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...repere };
     const jour = etat.jours[date];
     if (!jour) return;
     const apres: Circulation = { ...avant, acces, commanditaire };
@@ -1392,8 +1411,10 @@ export class MockProvider implements DataProvider {
   async setTerminusBellevue(date: string, v: TerminusFlag): Promise<void> {
     const grilles = await this.getGrilles();
     const grille = serviceActif(grilles, date) ?? grilles[0];
+    // Calculé AVANT la lecture de l'état : aucun await entre litEtat() et ecritEtat().
+    const repere = await this.grilleDuJour(date);
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...repere };
     const etatJour = etat.jours[date];
     if (!etatJour || !grille) return;
     // `null` = pas de bascule. Seuil normalisé (un pair vise sa montée N − 1).

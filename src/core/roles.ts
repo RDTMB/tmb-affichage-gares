@@ -122,7 +122,7 @@ export const DROITS = [
   'medias',
   /** Machines, motifs, états du ciel, délai « à quai ». */
   'parametres.exploitation',
-  /** Grilles horaires : import, versions, activation, métadonnées. */
+  /** Grilles horaires : import, versions, activation, métadonnées, correction (qui remplace) et suppression. */
   'grilles',
   /** Déclarer ou oublier un poste (identité des écrans). */
   'ecrans.declarer',

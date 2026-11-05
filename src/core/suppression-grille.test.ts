@@ -115,6 +115,17 @@ describe('refusRemplacementGrille — le chemin de la correction n’est pas un 
     const avant = { ...successeur, cree_le: '2026-01-01T00:00:00Z' };
     expect(refusRemplacementGrille(ancienne, avant, 'g', 'g-v2')).toMatch(/plus récente/);
   });
+  it('une date de création absente ou illisible REFUSE (jamais « plus récente » par défaut)', () => {
+    const sansDate = { version: 'g-v2', libelle: 'Grand service', actif: true };
+    expect(refusRemplacementGrille(ancienne, sansDate, 'g', 'g-v2')).toMatch(/plus récente/);
+    expect(
+      refusRemplacementGrille({ ...ancienne, cree_le: undefined }, successeur, 'g', 'g-v2'),
+    ).toMatch(/plus récente/);
+    expect(
+      refusRemplacementGrille(ancienne, { ...successeur, cree_le: 'pas une date' }, 'g', 'g-v2'),
+    ).toMatch(/plus récente/);
+  });
+
   it('des dates écrites différemment (+00:00 / Z) se comparent comme des instants', () => {
     const s = { ...successeur, cree_le: '2026-06-05T08:00:01+00:00' };
     expect(refusRemplacementGrille(ancienne, s, 'g', 'g-v2')).toBeNull();

@@ -135,7 +135,7 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
     est actif, de même nom et plus récent : ce n'est PAS un contournement des
     garde-fous de `supprimerGrille`.
   - **Recharger par Excel** crée toujours « …-v2 » et désactive la
-    précédente (réactivable) : inchangé, voir « Reste ouvert » de la PR.
+    précédente (réactivable) : inchangé : Thomas n'a demandé le remplacement que pour la correction (à lui de dire s'il le veut aussi ici).
   - **Supprimer** (bouton sur une grille DÉSACTIVÉE seulement) est refusé par
     le fournisseur de données, jamais par l'interface seule : (1) une grille
     ACTIVE ne se supprime pas ; (2) aucune journée générée d'aujourd'hui
