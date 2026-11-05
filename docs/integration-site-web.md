@@ -102,14 +102,15 @@ pointé sur la préversion.
 - **La grille complète du jour** (`?vue=jour`) : toutes les gares, montée et
   descente, sur **toute la largeur du cadre**. Sur téléphone, elle défile de
   gauche à droite dans son cadre, la colonne des gares restant en place. Elle
-  se lit comme un horaire : **aucune colonne n'est mise en avant**. Un rond
-  de la couleur de la rame marque **chaque train en ligne** : sur la ligne de
-  la gare quand le train y est à quai, **à mi-chemin entre deux gares**
-  quand il roule (par exemple entre « Col de Voza » et « Bellevue » pour un
-  train parti du Col de Voza) ; il est alors posé sur une **flèche vers le
-  bas**, la gare suivante étant sous lui. Le rond reste dans la même colonne
-  à droite de l'heure, que le train soit à quai ou en route, et l'heure ne
-  bouge pas. Un train arrivé à son terminus disparaît.
+  se lit comme un horaire : **aucune colonne n'est mise en avant**. Une
+  marque de la couleur de la rame repère **chaque train en ligne** : un **rond**
+  sur la ligne de la gare quand le train y est à quai, une **flèche vers le
+  bas**, seule, **à mi-chemin entre deux gares** quand il roule (par exemple
+  entre « Col de Voza » et « Bellevue » pour un train parti du Col de Voza),
+  la gare suivante étant sous elle. Le passage de l'un à l'autre est animé
+  (le rond devient la flèche en descendant, et inversement). La marque reste
+  dans la même colonne, à droite de l'heure, que le train soit à quai ou en
+  route, et l'heure ne bouge pas. Un train arrivé à son terminus disparaît.
   Chaque tableau est titré par son trajet — « Le Fayet → Bellevue » — suivi,
   en plus petit, du sens : « Montée / Ascent » ou « Descente / Descent ».
 - **Même vocabulaire partout** : « Montée / Ascent » et « Descente / Descent »

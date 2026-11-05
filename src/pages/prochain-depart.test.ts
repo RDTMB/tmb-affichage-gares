@@ -267,10 +267,10 @@ describe('3.5 — la pastille de position et la légende dessinent le MÊME anne
     // C'était le défaut : chacune écrivait son propre `box-shadow`, et l'une
     // des deux l'avait oublié. Une seule source, donc plus d'écart possible.
     const src = source('src/pages/grille.ts') + source('src/pages/grille-tableau.ts');
-    // Le rond À QUAI et le rond EN ROUTE prennent le MÊME style, venu de `styleRame`.
+    // Le rond À QUAI et la flèche EN ROUTE prennent le MÊME style, venu de `styleRame`.
     expect(src).toContain('const style = styleRame(machineDe(c.train.rame));');
     expect(src).toContain('class="train-pos" style="${style}"');
-    expect(src).toContain('class="train-pos en-route" style="${style}--saut:');
+    expect(src).toContain('? fleche(style, ancre.saut, cle)');
     expect(src).toContain('class="rame-dot" style="${styleRame(m)}"');
     // Et plus aucun `box-shadow` écrit à la main dans la page.
     expect(src).not.toContain('box-shadow');
