@@ -43,6 +43,9 @@ réglable en supervision).
 ## 4. Divers
 
 - Veille nuit : `?simule=21:30` → écran noir + horloge discrète.
+- `?simule=` et `?jour=` n'ont plus à être tapés : l'onglet **Simulation** de la
+  supervision génère les liens (écran, grille, embed) pour un jour et une heure
+  choisis. Chaque page ouverte doit montrer le bandeau de simulation.
 - Anti-burn-in : le rendu se décale d'1 px toutes les heures (vérifiable en
   inspectant `body.style.transform`).
 - Curseur : masqué sur ecran.html et grille.html (pages kiosque).

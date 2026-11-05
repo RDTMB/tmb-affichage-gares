@@ -131,6 +131,7 @@
           <button data-t="bandeau">Bandeau <span class="badge" id="badge-msgs">0</span></button>
           <button data-t="medias">Médias</button>
           <button data-t="ecrans">Écrans</button>
+          <button data-t="simulation">Simulation</button>
         </div>
         <div class="ecart-onglets"></div>
         <div class="groupe-onglets groupe-administration" id="groupe-administration">
@@ -1169,6 +1170,36 @@
             deux ans). La fonction refuse tout appelant qui n'est pas technique et retourne le
             nombre de lignes supprimées.
           </div>
+        </div>
+      </section>
+
+      <!-- ================= SIMULATION ================= -->
+      <!-- Liens d'aperçu à un jour et une heure simulés. Les href sont
+           recalculés par supervision.ts à chaque changement de champ. -->
+      <section class="onglet" id="t-simulation">
+        <div class="carte" id="carte-simulation">
+          <h2>
+            Simulation
+            <span class="sous"
+              >ouvrir un écran, une grille ou un embed à un jour et une heure choisis</span
+            >
+          </h2>
+          <p class="note">
+            Ces liens ouvrent des aperçus simulés. N'enregistrez jamais l'URL d'un lien simulé comme
+            adresse d'un poste en gare.
+          </p>
+          <div class="sim-reglage">
+            <label>Jour <input type="date" id="sim-jour" /></label>
+            <label class="sim-sans"
+              ><input type="checkbox" id="sim-sans-jour" /> Ne pas simuler le jour</label
+            >
+            <label>Heure <input type="time" step="1" id="sim-heure" /></label>
+            <label class="sim-sans"
+              ><input type="checkbox" id="sim-sans-heure" /> Ne pas simuler l'heure</label
+            >
+            <button type="button" id="sim-maintenant">Maintenant</button>
+          </div>
+          <div id="sim-liens"></div>
         </div>
       </section>
 

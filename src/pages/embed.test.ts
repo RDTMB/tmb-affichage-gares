@@ -566,28 +566,34 @@ describe('la grille complète est CELLE de grille.html', () => {
     const html = rendEmbed(
       entree({ grille: GRAND, jour, vue: 'jour', ongletDemande: 'saint-gervais' }),
     );
+    // Les MÊMES réglages que l'embed pose : la grille complète n'éclaire aucune colonne.
     const ctx = {
       grille: GRAND,
       jour,
-      gare: 'saint-gervais' as const,
+      gare: null,
       machines: [],
       affluence: [],
+      sansProchain: true,
     };
-    const positions = new Map(
-      positionsTrains(GRAND, jour, maintenant).map((p) => [p.numero, p.gare]),
-    );
+    const positions = new Map(positionsTrains(GRAND, jour, maintenant).map((p) => [p.numero, p]));
     expect(html).toContain(tableHtml(ctx, 'montee', maintenant, positions));
     expect(html).toContain(tableHtml(ctx, 'descente', maintenant, positions));
     expect(html).not.toContain('class="onglets"');
   });
 
-  it('le lien bascule dans les deux sens', () => {
-    const departs = rendEmbed(entree({ grille: GRAND, jour }));
-    expect(departs).toContain('data-vue="jour"');
-    expect(departs).toContain('Toute la journée');
-    expect(departs).toContain('Full day');
-    const tout = rendEmbed(entree({ grille: GRAND, jour, vue: 'jour' }));
-    expect(tout).toContain('data-vue="departs"');
+  it('aucun bouton de bascule : la vue se décide par l’URL, dans les deux vues', () => {
+    for (const vue of ['departs', 'jour'] as const) {
+      const html = rendEmbed(entree({ grille: GRAND, jour, vue }));
+      expect(html, vue).not.toContain('data-vue');
+      expect(html, vue).not.toContain('class="bascule"');
+      expect(html, vue).not.toContain('class="barre"');
+      expect(html, vue).not.toContain('Toute la journée');
+      expect(html, vue).not.toContain('Full day');
+      expect(html, vue).not.toContain('Prochains départs');
+      expect(html, vue).not.toContain('Next departures');
+    }
+    expect(vueDemandee('jour')).toBe('jour');
+    expect(vueDemandee(null)).toBe('departs');
   });
 });
 

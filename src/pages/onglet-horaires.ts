@@ -32,6 +32,7 @@ import { nomGare, parseClasseur, type Probleme } from '../core/import-grille';
 import { ORDRE_GARES } from '../core/types';
 import type { GareId, Grille, Role, Sens, TrainGrille } from '../core/types';
 import { aLeDroit } from '../core/roles';
+import { refusSuppressionGrille } from '../core/suppression-grille';
 import type { DataProvider } from '../data/provider';
 import { echapper } from './affichage-commun';
 import {
@@ -46,7 +47,9 @@ import {
   planValidation,
   raisonsBlocage,
   raisonsBlocageEdition,
+  actionsGrille,
   resumeEdition,
+  texteSuppression,
   resumePlan,
   texteActivation,
   texteDesactivation,
@@ -56,6 +59,7 @@ import {
 import { avertissementsGrillePrecedente } from '../core/import-grille';
 import { colonnesGrille, grillePrecedentePour } from './horaires-onglet';
 import {
+  appliqueCorrection,
   cleCellule,
   ecartsCorrection,
   effetNouvelleGrille,
@@ -168,27 +172,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
           ? '<span class="etat-grille en-service">En service aujourd’hui</span>'
           : '<span class="etat-grille active">Active</span>';
     const v = echapper(g.version);
-    // Télécharger n'est pas une écriture : la caisse aussi imprime le document.
-    const actions = [
-      `<button class="leger" data-action="voir" data-version="${v}">Voir</button>`,
-      `<button class="leger" data-action="telecharger" data-version="${v}" title="Télécharger le document d’exploitation (.xlsx) de cette grille">Télécharger</button>`,
-    ];
-    if (peutEcrire()) {
-      actions.push(
-        `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
-      );
-      actions.push(
-        `<button class="leger" data-action="corriger" data-version="${v}" title="Corriger les heures, les trains, les indicateurs — crée une nouvelle version">Corriger</button>`,
-      );
-      actions.push(
-        `<button class="leger" data-action="dupliquer" data-version="${v}" title="Créer une nouvelle grille à partir de celle-ci">Dupliquer</button>`,
-      );
-      actions.push(
-        g.actif === false
-          ? `<button class="leger" data-action="activer" data-version="${v}">Réactiver</button>`
-          : `<button class="leger danger" data-action="desactiver" data-version="${v}">Désactiver</button>`,
-      );
-    }
+    const actions = actionsGrille(g, peutEcrire());
     const chargee = g.cree_le ? dateCourte(g.cree_le.slice(0, 10)) : '—';
     return `<tr class="${g.actif === false ? 'inactif' : ''}">
       <td title="référence ${v}"><b>${echapper(g.libelle)}</b>${g.commentaire ? `<br><small>${echapper(g.commentaire)}</small>` : ''}</td>
@@ -606,7 +590,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         <span class="sous">${
           duplication
             ? 'le contenu est copié ; donnez un nom et des dates, puis ajustez les trains'
-            : `${echapper(libellePeriodes(c.origine.periodes))} · enregistrer crée une nouvelle version qui remplace celle-ci, réactivable à tout moment`
+            : `${echapper(libellePeriodes(c.origine.periodes))} · enregistrer remplace cette grille par la version corrigée (l’ancienne est supprimée, sans retour arrière)`
         }</span>
         <div class="actions"><button class="leger" id="correction-fermer">Fermer sans enregistrer</button></div>
       </h2>
@@ -668,7 +652,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
         ).map((l) => `• ${l.texte}`)
       : [
           `• Les écrans appliqueront la version corrigée sur ${libellePeriodes(aEnregistrer.periodes)}.`,
-          `• La version précédente est désactivée : la réactiver suffit à revenir en arrière.`,
+          `• La version précédente est supprimée : il n'y aura plus de retour arrière.`,
         ];
     const question = [
       duplication ? 'Enregistrer la nouvelle grille ?' : 'Enregistrer la correction ?',
@@ -683,25 +667,29 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
 
     ($('correction-enregistrer') as HTMLButtonElement).disabled = true;
     try {
-      await provider.saveGrille(aEnregistrer, {
-        actif: true,
-        commentaire: c.commentaire.trim() || null,
-      });
-      // La version d'origine n'est jamais réécrite : elle est désactivée, donc
-      // réactivable — c'est tout le retour arrière.
-      if (!duplication) await provider.setGrilleActive(c.origine.version, false);
-      for (const date of [...c.joursAReinitialiser].sort()) await provider.reinitialiseJour(date);
-      await provider.logPublication(resume).catch(erreurVersToast);
+      // Enregistrer, réinitialiser les journées cochées, journaliser, puis —
+      // en dernier — SUPPRIMER l'ancienne (la version d'origine n'est jamais
+      // réécrite : elle est remplacée). L'ordre et l'échec de la dernière
+      // étape sont tenus et testés dans appliqueCorrection().
+      const issue = await appliqueCorrection(provider, c, aEnregistrer, resume);
+      if (issue.erreurJournal) erreurVersToast(issue.erreurJournal);
       correctionEnCours = null;
       rendreCorrection();
       const recap = $('horaires-recap');
       recap.style.display = '';
       recap.innerHTML = `✓ ${echapper(resume)}`;
-      toast(
-        duplication
-          ? '✓ Nouvelle grille enregistrée · consigné dans l’historique'
-          : '✓ Grille corrigée · consigné dans l’historique',
-      );
+      if (issue.erreurSuppression !== null) {
+        // La correction est enregistrée et appliquée : on le dit, et on dit ce
+        // qui reste à faire. Rien n'est annulé.
+        recap.innerHTML += `<br>⚠ La correction est enregistrée et appliquée ; l’ancienne version n’a pas pu être supprimée : supprime-la à la main (désactive-la d’abord). ${echapper(issue.erreurSuppression)}`;
+        toast('⚠ Correction enregistrée ; l’ancienne version reste à supprimer à la main');
+      } else {
+        toast(
+          duplication
+            ? '✓ Nouvelle grille enregistrée · consigné dans l’historique'
+            : '✓ Grille corrigée · l’ancienne version est supprimée · consigné dans l’historique',
+        );
+      }
       await deps.apresChangement();
     } catch (erreur) {
       erreurVersToast(erreur);
@@ -1138,6 +1126,37 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     await deps.apresChangement().catch(erreurVersToast);
   }
 
+  /** Supprime une grille DÉSACTIVÉE. Le fournisseur tient les garde-fous ; on les explique avant de demander. */
+  async function supprime(version: string): Promise<void> {
+    const g = grilles.find((x) => x.version === version);
+    if (!g || !peutEcrire()) return;
+    try {
+      const jours = await provider.listJoursUtilisantGrille(version, '0000-01-01');
+      const du = aujourdhui();
+      const aVenir = jours.filter((d) => d >= du);
+      const refus = refusSuppressionGrille(
+        { version, libelle: g.libelle, actif: g.actif !== false },
+        version,
+        aVenir,
+      );
+      if (refus !== null) {
+        window.alert(refus);
+        return;
+      }
+      if (!window.confirm(texteSuppression(g, jours.length - aVenir.length))) return;
+      await provider.supprimerGrille(version);
+      await provider
+        .logPublication(
+          `Grille « ${g.libelle} » supprimée (référence ${version}) : ${libellePeriodes(g.periodes)}`,
+        )
+        .catch(erreurVersToast);
+      toast(`✓ Grille « ${g.libelle} » supprimée`);
+      await deps.apresChangement();
+    } catch (erreur) {
+      erreurVersToast(erreur);
+    }
+  }
+
   async function bascule(version: string, actif: boolean): Promise<void> {
     const g = grilles.find((x) => x.version === version);
     if (!g) return;
@@ -1189,6 +1208,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
     }
     if (bouton.dataset.action === 'activer') void bascule(version, true);
     if (bouton.dataset.action === 'desactiver') void bascule(version, false);
+    if (bouton.dataset.action === 'supprimer') void supprime(version);
   });
 
   const carteEditer = $('carte-editer');

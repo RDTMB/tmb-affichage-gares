@@ -58,6 +58,75 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   jamais « fermé » — une fermeture fausse est pire qu'un écran vide. Jamais
   de fermeture annoncée sur des données périmées ou une horloge de poste
   fantaisiste (la date elle-même n'est plus sûre).
+- **Où est un train sur la grille du jour** (`positionsTrains`, rond ou flèche
+  couleur rame, 05/11/2026) : à QUAI (arrivée ≤ maintenant < départ de la gare,
+  retard compris) → le ROND, seul, SUR la ligne de la gare ; EN ROUTE (parti de
+  g1, pas arrivé à la gare SUIVANTE DE SES PASSAGES g2) → la FLÈCHE, seule, À
+  MI-CHEMIN entre les lignes de g1 et g2, dans la colonne du train — jamais
+  interpolé à l'heure. Jamais les deux ensemble (lot E, 05/11/2026 : rond ET
+  flèche superposés, Thomas n'en veut pas). Le calcul se
+  fait sur les lignes AFFICHÉES (`ancrePosition`, `grille-logique.ts`) : en
+  descente le tableau est inversé ; un express traverse les lignes sautées ;
+  une gare sans ligne (hors section, non desservie) ne fait RIEN inventer — le
+  train retombe à quai (rond) sur la ligne affichée la plus proche. Inchangé : en
+  ligne dès le départ THÉORIQUE de l'origine (un train retardé y est à quai),
+  disparu après l'arrivée au terminus, supprimé = pas de rond. CSS : `--saut`
+  lignes sous la cellule de g1 (la flèche seule ; le rond n'a plus d'état « en
+  route »), `top` en % de la cellule (aucune unité de
+  plus : l'échelle vh / --u de `grille.html` reste la sienne), `z-index` 2
+  (les cellules voisines sont `position: relative` et le couvriraient), sous
+  la colonne collante de l'embed (3). Exact tant que les lignes ont la même
+  hauteur — mesuré égales le 05/11/2026 ; à re-mesurer si une ligne peut
+  grandir.
+  **UNE voie pour le rond** (lot C, 05/11/2026) : l'HEURE ne bouge JAMAIS (le
+  rond est hors flux, jamais dans le flux d'une cellule) et le rond a UNE
+  abscisse, à DROITE de l'heure, la même à quai et en route — seule sa hauteur
+  change. La voie (`--voie-rond`) est définie une fois par feuille de style ;
+  `.train-pos.en-route` ne pose que `top`, jamais un axe horizontal (garde-fou
+  `grille-vivante.test.ts`). Elle se compte sur la demi-largeur de l'heure
+  (1,3 corps ; mesurée 1,29 AVEC Lato chargée, 1,19 avec la police de repli :
+  une mesure sans Lato est fausse), pas sur le `em` d'une cellule `td.saute`.
+  En PORTRAIT une cellule de 75 px ne laisse que 9 px de chaque côté de l'heure :
+  le rond y passe à 1,3 u (au lieu de 1,7) et déborde sa cellule de 6,8 px ; il
+  ne touche pas son heure (3,4 px) mais n'est qu'à ~0,5 px de l'heure voisine
+  (mesuré à 12 colonnes ; à 13 colonnes, 69 px, NON mesuré). Décision à faire
+  confirmer par l'exploitation : un rond collé au bord de la colonne éclairée
+  peut se lire comme celui de la colonne voisine. **La flèche** est le train ENTRE
+  DEUX GARES (seule : jamais à quai, jamais avec le rond) et pointe TOUJOURS
+  vers le bas, en montée comme en descente : les lignes se lisent de haut en
+  bas et la gare suivante est la ligne du dessous. Élément à part
+  (`<svg class="train-fleche">`), pas un pseudo-élément : sur `grille.html` le
+  rond pulse et un enfant hériterait de son opacité. Même voie que le rond,
+  hauteur par `--saut` ; calée à 0,5 px par ligne comptée près de la bordure
+  de la cellule (grille.html : mesuré -0,5 px pour un saut, -1,5 px pour
+  l'express de trois lignes avant correction).
+  **La TRANSFORMATION** (lot E) : le passage de l'un à l'autre est ANIMÉ, dans
+  les deux sens — le rond devient la flèche en descendant de la ligne de la
+  gare jusqu'à mi-chemin (départ), la flèche devient le rond en rejoignant la
+  ligne de la gare suivante (arrivée). Les deux pages reconstruisent leur
+  tableau par `innerHTML` : une transition CSS ne se jouerait jamais ; le
+  passage est joué APRÈS chaque rendu par-dessus le tableau neuf
+  (`grille-transition.ts`, FLIP) : fondu croisé avec échelle de l'ancienne forme
+  (un clone, le « fantôme ») et de la nouvelle, `transform` et `opacity`
+  seulement, 0,6 s, sans rebond, sans `will-change`. Jouée UNIQUEMENT quand un
+  train change d'UN état entre deux rendus consécutifs à moins de 2,5 fois
+  l'intervalle de rendu (`mouvement`) : jamais au premier affichage, jamais
+  quand la position est inchangée, jamais quand l'heure saute (`?simule=`,
+  rechargement, retour d'onglet : `oublie()`), jamais sur plusieurs états d'un
+  coup (position finale posée directement), jamais avec
+  `prefers-reduced-motion: reduce`. Pendant le passage le pulse du rond est
+  coupé (`[data-transition]`) et repart de l'opacité 1 à la fin. `grille.html`
+  ne RÉÉCRIT plus un tableau inchangé (`poseTableau`) : avant, le rond était
+  recréé chaque seconde et son pulse repartait de zéro à chaque tick (mesuré).
+  Légende « en ligne / running » : un rond ; voir la PR pour la question de la
+  flèche.
+- **Colonne éclairée (« prochain départ »)** : `grille.html` seulement. L'embed
+  ne l'éclaire JAMAIS (`sansProchain`, même sans `?gare=`) ; le prochain
+  départ y est l'affaire de la vue des départs d'une gare.
+- **Sens** : « Montée / Ascent », « Descente / Descent » partout où un voyageur
+  lit — jamais « Uphill / Downhill ». Titre de grille : le trajet en grand,
+  le sens à côté en plus petit (`titresDesSens`, une seule source pour
+  `grille.html` et l'embed). Embed par gare : « Vers X / To X » puis le sens.
 - **Compte à rebours** : cases (« chips ») toutes de la même taille.
 - **Messages** : modifiables après création ; traduction anglaise générée
   automatiquement (service de traduction) puis éditable.

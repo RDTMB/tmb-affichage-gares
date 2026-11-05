@@ -171,6 +171,7 @@ import {
   barrePublication,
   grilleOngletsHtml,
   groupesNavigation,
+  liensSimulation,
   ongletAOuvrir,
   etatVisibiliteOnglets,
   initiales,
@@ -1119,6 +1120,93 @@ function rendreVersion(): void {
     baseServie(window.TMB_CONFIG?.supabaseUrl),
   );
   $('version-nouveautes').innerHTML = nouveautesHtml(nouveautes);
+}
+
+/**
+ * Onglet Simulation : de VRAIS liens, dont le href est recalculé à chaque
+ * changement de champ (clic-molette et « copier l'adresse » fonctionnent).
+ * Tout le calcul est dans `liensSimulation()` (pur, testé).
+ */
+const TITRE_GROUPE_SIMULATION = {
+  ecran: 'Écrans de gare',
+  grille: 'Grilles de gare',
+  'embed-gare': 'Embed, par gare',
+  'embed-general': 'Embeds généraux',
+} as const;
+
+function heureHMS(secondes: number): string {
+  const h = Math.floor(secondes / 3600);
+  const m = Math.floor((secondes % 3600) / 60);
+  return [h, m, secondes % 60].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+function rendreSimulation(): void {
+  const jourEl = $('sim-jour') as HTMLInputElement;
+  const heureEl = $('sim-heure') as HTMLInputElement;
+  const sansJourEl = $('sim-sans-jour') as HTMLInputElement;
+  const sansHeureEl = $('sim-sans-heure') as HTMLInputElement;
+  const conteneur = $('sim-liens');
+  const maintenant = (): void => {
+    // Jour d'exploitation en Europe/Paris (pas toISOString, en UTC) ; heure du
+    // poste, qui suit ?simule= quand la Supervision elle-même est simulée.
+    jourEl.value = dateISO(0);
+    heureEl.value = heureHMS(Math.floor(heurePoste.maintenantS()));
+  };
+  const redessine = (): void => {
+    jourEl.disabled = sansJourEl.checked;
+    heureEl.disabled = sansHeureEl.checked;
+    const liens = liensSimulation(
+      {
+        jour: jourEl.value,
+        heure: heureEl.value,
+        sansJour: sansJourEl.checked,
+        sansHeure: sansHeureEl.checked,
+      },
+      !configSupabasePresente(),
+    );
+    if (liens === null) {
+      conteneur.innerHTML =
+        '<p class="note" style="padding: 0">Jour ou heure invalide : aucun lien n’est proposé.</p>';
+      return;
+    }
+    const groupes = Object.keys(
+      TITRE_GROUPE_SIMULATION,
+    ) as (keyof typeof TITRE_GROUPE_SIMULATION)[];
+    conteneur.innerHTML = groupes
+      .map((groupe) => {
+        const items = liens
+          .filter((l) => l.groupe === groupe)
+          .map((l) => {
+            const nom = l.gare
+              ? nomDeGare(l.gare)
+              : l.vue === 'jour'
+                ? 'Grille complète'
+                : 'Prochains départs';
+            return `<a href="${echapper(l.href)}" target="_blank" rel="noopener">${echapper(nom)}</a>`;
+          })
+          .join('');
+        return `<h3>${TITRE_GROUPE_SIMULATION[groupe]}</h3><div class="sim-liens-groupe">${items}</div>`;
+      })
+      .join('');
+  };
+  maintenant();
+  $('sim-maintenant').addEventListener('click', () => {
+    sansJourEl.checked = false;
+    sansHeureEl.checked = false;
+    maintenant();
+    redessine();
+  });
+  // Les noms de gares viennent des grilles, chargées APRÈS ce premier dessin :
+  // sans ce redessin à l'ouverture, les liens porteraient l'identifiant brut
+  // (« col-de-voza ») au premier affichage.
+  document
+    .querySelector('nav.tabs button[data-t="simulation"]')
+    ?.addEventListener('click', redessine);
+  [jourEl, heureEl, sansJourEl, sansHeureEl].forEach((el) => {
+    el.addEventListener('input', redessine);
+    el.addEventListener('change', redessine);
+  });
+  redessine();
 }
 
 /** Le libellé de version n'est un lien que si l'onglet Version est visible. */
@@ -5682,6 +5770,7 @@ async function demarre(): Promise<void> {
   });
   rendreBaseServie();
   rendreVersion();
+  rendreSimulation();
   initOnglets();
   initCirculations();
   initMessages();

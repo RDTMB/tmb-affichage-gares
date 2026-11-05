@@ -50,8 +50,8 @@ type de code. C'est un droit à demander à l'administrateur du site WordPress
 - **Les `<iframe>`** affichent les horaires. Chacune porte la classe
   `tmb-horaires` : c'est ce qui la fait reconnaître par le script.
 - **Le `<script>`** ajuste la hauteur de CHAQUE cadre `tmb-horaires` de la
-  page quand on change de gare, qu'on ouvre la journée complète ou qu'on
-  touche un onglet grisé (la raison s'affiche dessous). Si le CMS refuse les
+  page quand on change de gare ou qu'on touche un onglet grisé (la raison
+  s'affiche dessous). Si le CMS refuse les
   scripts, ne collez que les `<iframe>` : tout fonctionne, avec une hauteur
   fixe de 900 px et une barre de défilement dans le cadre.
 - **Un seul script par page**, quel que soit le nombre de cadres : pour en
@@ -60,6 +60,13 @@ type de code. C'est un droit à demander à l'administrateur du site WordPress
   plus.
 
 ### Ouvrir directement une gare, ou la journée complète
+
+**La vue se décide par l'adresse, et par elle seule.** Il n'y a plus aucun
+bouton de bascule dans la page : ni « Toute la journée / Full day » dans les
+prochains départs, ni « Prochains départs / Next departures » dans la grille
+complète. Pour proposer les deux vues sur une même page du site, on pose deux
+cadres (c'est le code ci-dessus : le premier sans `?vue=`, le second avec
+`?vue=jour`).
 
 Ajoutez à l'adresse, après `embed.html` :
 
@@ -92,9 +99,24 @@ pointé sur la préversion.
   départs dans chaque sens : heure, destination, retard, train supprimé
   (barré, avec son motif), « Complet » / « Dernières places », train privé,
   compte à rebours. Ce sont **les mêmes informations que l'écran de la gare**.
-- **« Toute la journée / Full day »** : la grille complète du jour, toutes
-  gares, montée et descente. Sur téléphone, elle défile de gauche à droite
-  dans son cadre.
+- **La grille complète du jour** (`?vue=jour`) : toutes les gares, montée et
+  descente, sur **toute la largeur du cadre**. Sur téléphone, elle défile de
+  gauche à droite dans son cadre, la colonne des gares restant en place. Elle
+  se lit comme un horaire : **aucune colonne n'est mise en avant**. Une
+  marque de la couleur de la rame repère **chaque train en ligne** : un **rond**
+  sur la ligne de la gare quand le train y est à quai, une **flèche vers le
+  bas**, seule, **à mi-chemin entre deux gares** quand il roule (par exemple
+  entre « Col de Voza » et « Bellevue » pour un train parti du Col de Voza),
+  la gare suivante étant sous elle. Le passage de l'un à l'autre est animé
+  (le rond devient la flèche en descendant, et inversement). La marque reste
+  dans la même colonne, à droite de l'heure, que le train soit à quai ou en
+  route, et l'heure ne bouge pas. Un train arrivé à son terminus disparaît.
+  Chaque tableau est titré par son trajet — « Le Fayet → Bellevue » — suivi,
+  en plus petit, du sens : « Montée / Ascent » ou « Descente / Descent ».
+- **Même vocabulaire partout** : « Montée / Ascent » et « Descente / Descent »
+  sur l'écran de gare, la grille et le site. Dans les prochains départs, le
+  titre de chaque sens dit la destination — « Vers Bellevue / To Bellevue »,
+  « Vers Le Fayet / To Le Fayet » — puis le sens en plus petit.
 - **Mise à jour chaque minute**, et aussitôt qu'on revient sur l'onglet du
   navigateur. Rien n'est relu tant que la page n'est pas regardée.
 - **Messages** de l'exploitation, en haut de la page.

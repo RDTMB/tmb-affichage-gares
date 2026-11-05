@@ -117,17 +117,39 @@ Voisins : `.claude/regles-affichage.md` (ce que l'écran en fait),
 - **Grilles** (table `grilles`) : une grille ne s'applique qu'à ses périodes
   (bornes incluses) ; seules les grilles ACTIVES comptent ; si deux grilles
   actives couvrent une date, la plus récemment chargée l'emporte
-  (`serviceActif()`) ; désactiver une grille redonne la main à la précédente
-  (retour arrière) ; hors de toute période = AUCUN service, jamais de repli ;
-  une version n'est jamais réécrite (recharger crée « …-v2 » et désactive
-  la précédente, réactivable). Les écrans affichent une journée avec la
-  grille qui l'a générée, sinon celle en vigueur à sa date
-  (`grillePourJour()`), jamais « la première de la liste ».
-- **Corriger une grille suit la MÊME règle qu'un rechargement** : une
-  correction à l'écran crée elle aussi « …-v2 » et désactive la précédente.
-  SEULES les métadonnées (nom, dates de validité, commentaire) se modifient
-  EN PLACE, par « Modifier » — prolonger une saison d'une semaine ne change
-  aucune heure, et créer une version pour ça brouillerait l'historique
+  (`serviceActif()`) ; désactiver une grille redonne la main à la précédente ;
+  hors de toute période = AUCUN service, jamais de repli. Les écrans
+  affichent une journée avec la grille qui l'a générée, sinon celle en
+  vigueur à sa date (`grillePourJour()`), jamais « la première de la liste ».
+- **Une version n'est jamais RÉÉCRITE : on la REMPLACE.**
+  - **Corriger** (à l'écran) enregistre la grille corrigée (« …-vN »,
+    `grilleAEnregistrerCorrection()`), puis SUPPRIME la précédente : il ne
+    reste qu'une grille, et il n'y a plus de retour arrière (l'export de la
+    grille avant correction en tient lieu). Ordre des écritures, tenu par
+    `appliqueCorrection()` : (1) enregistrer, (2) réinitialiser les journées
+    cochées, (3) journaliser, (4) supprimer l'ancienne EN DERNIER — entre 1 et
+    4 les deux sont actives et la plus récente l'emporte, jamais de trou de
+    service. Si 4 échoue, 1 n'est pas annulée : l'agent est prévenu de
+    supprimer l'ancienne à la main. Le chemin de suppression est
+    `supprimerGrilleRemplacee(version, par)`, qui n'ouvre que si le successeur
+    est actif, de même nom et plus récent : ce n'est PAS un contournement des
+    garde-fous de `supprimerGrille`.
+  - **Recharger par Excel** crée toujours « …-v2 » et désactive la
+    précédente (réactivable) : inchangé : Thomas n'a demandé le remplacement que pour la correction (à lui de dire s'il le veut aussi ici).
+  - **Supprimer** (bouton sur une grille DÉSACTIVÉE seulement) est refusé par
+    le fournisseur de données, jamais par l'interface seule : (1) une grille
+    ACTIVE ne se supprime pas ; (2) aucune journée générée d'aujourd'hui
+    (Europe/Paris, pas la date UTC) ou à venir ne doit la référencer
+    (`jours.grille_version`) — les journées passées ne bloquent pas. Règle et
+    messages : `src/core/suppression-grille.ts` ; mêmes droits que désactiver
+    (technique, admin, supervision), RLS « roles: grilles » comprise.
+  - **Le cache de contenu** (`SupabaseProvider.contenus`) est clé par version
+    ET `cree_le` : une référence supprimée puis recréée avec un autre contenu
+    ne doit jamais servir l'ancien. `cree_le` est déjà lu avec les
+    métadonnées : aucune requête de plus en régime normal.
+  - SEULES les métadonnées (nom, dates de validité, commentaire) se modifient
+    EN PLACE, par « Modifier » — prolonger une saison d'une semaine ne change
+    aucune heure, et remplacer la grille pour ça serait disproportionné
 - **Rotation** : la rame d'une montée assure la descente suivante (ex.
   T1 07:00 → arrivée 08:05:30 → repart T2 08:13:30).
 - **Jours de circulation** (`TrainGrille.jours`, jours ISO 1 = lundi … 7 =

@@ -114,26 +114,26 @@ function jourEteBascule(): Jour {
 }
 
 describe('embed — en-tête du bloc montée', () => {
-  it('hiver : « Vers Bellevue / Uphill », plus un mot du Nid d’Aigle', () => {
+  it('hiver : « Vers Bellevue / To Bellevue », sens « Montée / Ascent », plus un mot du Nid d’Aigle', () => {
     const html = rendEmbed(entree(HIVER, JOUR_HIVER, { ongletDemande: 'saint-gervais' }));
     const titres = titresH2(html);
-    expect(titres).toContain('Vers Bellevue Uphill');
-    expect(titres).toContain('Vers Le Fayet Downhill');
+    expect(titres).toContain('Vers Bellevue To Bellevue Montée / Ascent');
+    expect(titres).toContain('Vers Le Fayet To Le Fayet Descente / Descent');
     expect(titres.join(' ')).not.toContain('Nid d');
   });
 
-  it('été : « Vers le Nid d’Aigle / Uphill », comme avant', () => {
+  it('été : « Vers le Nid d’Aigle / To Nid d’Aigle », comme avant pour le français', () => {
     const html = rendEmbed(
       entree(ETE, JOUR_ETE, { ongletDemande: 'saint-gervais', maintenant_s: h('10:30') }),
     );
-    expect(titresH2(html)).toContain('Vers le Nid d’Aigle Uphill');
+    expect(titresH2(html)).toContain('Vers le Nid d’Aigle To Nid d’Aigle Montée / Ascent');
   });
 
   it('été sous la bascule : toujours « Vers le Nid d’Aigle » — la fermeture a son bandeau', () => {
     const html = rendEmbed(
       entree(ETE, jourEteBascule(), { ongletDemande: 'saint-gervais', maintenant_s: h('10:30') }),
     );
-    expect(titresH2(html)).toContain('Vers le Nid d’Aigle Uphill');
+    expect(titresH2(html)).toContain('Vers le Nid d’Aigle To Nid d’Aigle Montée / Ascent');
   });
 });
 
@@ -175,7 +175,7 @@ describe('embed — onglets', () => {
   });
 
   it('toucher un onglet grisé : rien ne s’ouvre, la raison s’affiche sous les onglets', () => {
-    const avant: EtatClic = { ongletDemande: 'saint-gervais', vue: 'departs', raisonDe: null };
+    const avant: EtatClic = { ongletDemande: 'saint-gervais', raisonDe: null };
     const apres = etatApresClic(avant, { inactif: 'nid-daigle' });
     expect(apres).toEqual({ ...avant, raisonDe: 'nid-daigle' });
 
@@ -191,7 +191,6 @@ describe('embed — onglets', () => {
     // Le toucher d'un autre onglet l'efface, et ouvre celui-là.
     expect(etatApresClic(apres, { gare: 'motivon' })).toEqual({
       ongletDemande: 'motivon',
-      vue: 'departs',
       raisonDe: null,
     });
   });
@@ -199,7 +198,7 @@ describe('embed — onglets', () => {
   it('même comportement pour un onglet grisé par une FERMETURE du jour', () => {
     const jour: Jour = { ...JOUR_HIVER, gare_fin: 'motivon' };
     const etat = etatApresClic(
-      { ongletDemande: 'le-fayet', vue: 'departs', raisonDe: null },
+      { ongletDemande: 'le-fayet', raisonDe: null },
       { inactif: 'col-de-voza' },
     );
     expect(etat.ongletDemande).toBe('le-fayet');
@@ -248,16 +247,21 @@ describe('embed — onglets', () => {
 
 describe('grille du jour — titres et lignes (grille.html et vue « Toute la journée »)', () => {
   it('titresDesSens : hiver Le Fayet ↔ Bellevue, été Le Fayet ↔ Nid d’Aigle', () => {
+    // Le trajet en grand, le sens (bilingue) à côté en plus petit — du HTML ÉCHAPPÉ.
     expect(titresDesSens(HIVER, JOUR_HIVER, nomGare(HIVER))).toEqual({
-      montee: 'Montée — Le Fayet → Bellevue',
-      descente: 'Descente — Bellevue → Le Fayet',
+      montee:
+        '<span class="trajet">Le Fayet → Bellevue</span> <span class="en sens-mot">Montée / Ascent</span>',
+      descente:
+        '<span class="trajet">Bellevue → Le Fayet</span> <span class="en sens-mot">Descente / Descent</span>',
     });
     expect(titresDesSens(ETE, JOUR_ETE, nomGare(ETE))).toEqual({
-      montee: "Montée — Le Fayet → Nid d'Aigle",
-      descente: "Descente — Nid d'Aigle → Le Fayet",
+      montee:
+        '<span class="trajet">Le Fayet → Nid d&#39;Aigle</span> <span class="en sens-mot">Montée / Ascent</span>',
+      descente:
+        '<span class="trajet">Nid d&#39;Aigle → Le Fayet</span> <span class="en sens-mot">Descente / Descent</span>',
     });
-    expect(titresDesSens(ETE, jourEteBascule(), nomGare(ETE)).montee).toBe(
-      "Montée — Le Fayet → Nid d'Aigle",
+    expect(titresDesSens(ETE, jourEteBascule(), nomGare(ETE)).montee).toContain(
+      'Le Fayet → Nid d&#39;Aigle',
     );
   });
 
@@ -282,8 +286,8 @@ describe('grille du jour — titres et lignes (grille.html et vue « Toute la jo
     const html = rendEmbed(entree(HIVER, JOUR_HIVER, { vue: 'jour' }));
     const titres = titresH2(html);
     expect(titres).toEqual([
-      'Montée — Le Fayet → Bellevue Ascent',
-      'Descente — Bellevue → Le Fayet Descent',
+      'Le Fayet → Bellevue Montée / Ascent',
+      'Bellevue → Le Fayet Descente / Descent',
     ]);
     expect(html).not.toMatch(/<tr><th>Nid d/);
   });
@@ -294,8 +298,8 @@ describe('grille du jour — titres et lignes (grille.html et vue « Toute la jo
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
     expect(code).toContain('const titres = titresDesSens(grille, jour, nomGare);');
-    expect(code).toContain("$('titre-montee').textContent = titres.montee;");
-    expect(code).toContain("$('titre-descente').textContent = titres.descente;");
+    expect(code).toContain("$('titre-montee').innerHTML = titres.montee;");
+    expect(code).toContain("$('titre-descente').innerHTML = titres.descente;");
     expect(code).not.toContain('Montée —');
     expect(code).not.toContain('Descente —');
   });

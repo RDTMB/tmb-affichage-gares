@@ -10,6 +10,8 @@ import { effetChangementPeriodes } from '../core/grilles-periodes';
 import { parseClasseur, type FeuilleCellules } from '../core/import-grille';
 import type { Grille } from '../core/types';
 import {
+  actionsGrille,
+  texteSuppression,
   colonnesGrille,
   dateCourte,
   dateLongue,
@@ -379,5 +381,79 @@ describe('colonnesGrille : la descente se lit sous sa montée', () => {
     expect(c).toHaveLength(1);
     expect(c[0].montee?.numero).toBe(1);
     expect(c[0].descente?.numero).toBe(2);
+  });
+});
+
+describe('actionsGrille — le bouton « Supprimer » : seulement sur une grille désactivée, selon le droit', () => {
+  const GRILLE = grandServiceJson as unknown as Grille;
+  const noms = (g: Grille, droit: boolean): string[] =>
+    actionsGrille(g, droit).map((h) => /data-action="([a-z]+)"/.exec(h)?.[1] ?? '?');
+
+  it('grille ACTIVE avec le droit : « Désactiver », jamais « Supprimer »', () => {
+    expect(noms({ ...GRILLE, actif: true }, true)).toEqual([
+      'voir',
+      'telecharger',
+      'modifier',
+      'corriger',
+      'dupliquer',
+      'desactiver',
+    ]);
+  });
+
+  it('grille sans état explicite (null / absent) : traitée comme active', () => {
+    expect(noms(GRILLE, true)).toContain('desactiver');
+    expect(noms(GRILLE, true)).not.toContain('supprimer');
+  });
+
+  it('grille DÉSACTIVÉE avec le droit : « Réactiver » puis « Supprimer », plus de « Désactiver »', () => {
+    const n = noms({ ...GRILLE, actif: false }, true);
+    expect(n).toEqual([
+      'voir',
+      'telecharger',
+      'modifier',
+      'corriger',
+      'dupliquer',
+      'activer',
+      'supprimer',
+    ]);
+  });
+
+  it('SANS le droit (caisse) : lecture seule, sur une grille active comme désactivée', () => {
+    expect(noms({ ...GRILLE, actif: true }, false)).toEqual(['voir', 'telecharger']);
+    expect(noms({ ...GRILLE, actif: false }, false)).toEqual(['voir', 'telecharger']);
+  });
+
+  it('« Supprimer » a le style de « Désactiver » (leger danger)', () => {
+    const html = actionsGrille({ ...GRILLE, actif: false }, true).find((h) =>
+      h.includes('data-action="supprimer"'),
+    );
+    expect(html).toContain('class="leger danger"');
+  });
+
+  it('la référence est échappée dans l’attribut', () => {
+    const html = actionsGrille({ ...GRILLE, version: 'a"><b>', actif: false }, true).join('');
+    expect(html).not.toContain('"><b>');
+    expect(html).toContain('data-version="a&quot;&gt;&lt;b&gt;"');
+  });
+});
+
+describe('texteSuppression', () => {
+  const g = { ...(grandServiceJson as unknown as Grille), actif: false };
+
+  it('dit le nom, la référence, les périodes et que c’est définitif', () => {
+    const t = texteSuppression(g, 0);
+    expect(t).toContain(`Supprimer la grille « ${g.libelle} » ?`);
+    expect(t).toContain(`Référence : ${g.version}`);
+    expect(t).toContain('Dates de validité :');
+    expect(t).toContain(
+      'Cette suppression est définitive : la grille ne pourra pas être réactivée.',
+    );
+    expect(t).not.toContain('journée');
+  });
+
+  it('annonce les journées PASSÉES comme une information qui ne bloque pas', () => {
+    const t = texteSuppression(g, 3);
+    expect(t).toContain('3 journée(s) passée(s) référence(nt) encore cette grille');
+    expect(t).toContain('cela ne bloque pas');
   });
 });

@@ -122,7 +122,7 @@ export const DROITS = [
   'medias',
   /** Machines, motifs, états du ciel, délai « à quai ». */
   'parametres.exploitation',
-  /** Grilles horaires : import, versions, activation, métadonnées. */
+  /** Grilles horaires : import, versions, activation, métadonnées, correction (qui remplace) et suppression. */
   'grilles',
   /** Déclarer ou oublier un poste (identité des écrans). */
   'ecrans.declarer',
@@ -252,6 +252,9 @@ export const ONGLETS = [
   'bandeau',
   'medias',
   'ecrans',
+  // « Simulation » : les liens d'aperçu à un jour et une heure choisis. Il SUIT
+  // Écrans — même plafond, même rangement. Voir ONGLETS_ADOSSES.
+  'simulation',
   'parametres',
   'utilisateurs',
   'journal',
@@ -290,6 +293,7 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
   utilisateurs: ['comptes.lire'],
   journal: ['journal'],
   version: ['journal'],
+  simulation: ['ecrans.declarer', 'ecrans.commander', 'parametres.technique'],
 };
 
 /**
@@ -305,7 +309,10 @@ const DROITS_DE_L_ONGLET: Record<Onglet, readonly Droit[]> = {
  * Ce n'est pas une porte : le plafond s'applique toujours, et masquer l'hôte
  * masque l'onglet adossé. La carte de réglage ne les propose pas.
  */
-export const ONGLETS_ADOSSES: Readonly<Partial<Record<Onglet, Onglet>>> = { version: 'journal' };
+export const ONGLETS_ADOSSES: Readonly<Partial<Record<Onglet, Onglet>>> = {
+  version: 'journal',
+  simulation: 'ecrans',
+};
 
 /** Onglets sans réglage propre (voir ONGLETS_ADOSSES). */
 export const ONGLETS_NON_REGLABLES: readonly Onglet[] = ONGLETS.filter(

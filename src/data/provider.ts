@@ -58,8 +58,34 @@ export interface DataProvider {
    * n'est jamais écrasée : l'appel échoue, l'import crée alors « …-v2 ».
    */
   saveGrille(g: Grille, options?: OptionsEnregistrementGrille): Promise<void>;
-  /** Active ou désactive une grille ; la désactivation est le retour arrière. */
+  /** Active ou désactive une grille (une grille désactivée peut être réactivée ou supprimée). */
   setGrilleActive(version: string, actif: boolean): Promise<void>;
+  /**
+   * SUPPRIME définitivement une grille (aucun retour arrière). DEUX garde-fous,
+   * tenus ICI et non dans l'interface — règle : src/core/suppression-grille.ts :
+   *  1. REFUS si la grille est ACTIVE (désactiver d'abord) ;
+   *  2. REFUS si une journée générée d'AUJOURD'HUI (Europe/Paris) ou à venir la
+   *     référence : le message liste les dates (10 premières, puis « et N
+   *     autres ») et dit de les réinitialiser d'abord. Les journées passées ne
+   *     bloquent pas.
+   * Échoue bruyamment si rien n'a été supprimé (droits insuffisants : RLS
+   * filtre, elle ne lève pas). « Corriger » ne passe PAS par ici : la
+   * correction est le geste qui remplace la grille d'origine.
+   */
+  supprimerGrille(version: string): Promise<void>;
+  /**
+   * Supprime la grille que remplace une CORRECTION (« …-v2 » → « …-v3 »). Les
+   * deux garde-fous de supprimerGrille ne s'appliquent PAS : la grille
+   * d'origine est active et des journées à venir peuvent la référencer — c'est
+   * le geste même du remplacement. Le seul filet : `par`, la grille qui la
+   * remplace, doit exister et être ACTIVE (règle : refusRemplacementGrille).
+   */
+  supprimerGrilleRemplacee(version: string, par: string): Promise<void>;
+  /**
+   * Dates (« AAAA-MM-JJ », triées) des journées générées, à partir de `depuis`
+   * (incluse), qui référencent cette grille — celles qui bloquent sa suppression.
+   */
+  listJoursUtilisantGrille(version: string, depuis: string): Promise<string[]>;
   /**
    * Modifie EN PLACE les seules métadonnées d'une grille (nom, dates de
    * validité, commentaire), avec trace au journal d'exploitation. Le contenu
