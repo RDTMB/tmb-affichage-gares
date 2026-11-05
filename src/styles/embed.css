@@ -701,7 +701,10 @@ table.grille td.retard {
 .train-pos.en-route {
   position: absolute;
   left: 50%;
-  top: calc(50% + var(--saut, 1) * 50%);
+  /* Le pourcentage se compte sur le cadre de contenu de la cellule, qui a 1 px de
+     moins que la ligne (sa bordure basse) : +0,5 px par ligne comptée rend le
+     milieu exact (mesuré : -1 px sans, 0 avec). */
+  top: calc(50% + var(--saut, 1) * 50% + (var(--saut, 1) + 1) * 0.5px);
   margin: 0;
   transform: translate(-50%, -50%);
   z-index: 2;
