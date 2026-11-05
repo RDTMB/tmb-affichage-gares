@@ -65,6 +65,7 @@ export const LECTURES = [
   'getGrilles',
   'listGrilles',
   'listJoursGeneres',
+  'listJoursUtilisantGrille',
   'getJour',
   'getMessages',
   'getAffluence',
@@ -113,6 +114,8 @@ export const SORTIE = ['signOut'] as const;
 export const ECRITURES = [
   'saveGrille',
   'setGrilleActive',
+  'supprimerGrille',
+  'supprimerGrilleRemplacee',
   'updateGrilleMetadonnees',
   'setAffluence',
   'heartbeat',

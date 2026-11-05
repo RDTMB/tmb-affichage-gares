@@ -12,8 +12,9 @@
 //  - « correction » : le contenu d'une grille enregistrée change. Les dates
 //    de validité et le nom sont ceux de l'originale et ne se touchent pas ici
 //    (c'est « Modifier », en place) ; l'enregistrement crée une NOUVELLE
-//    version qui devient active, l'ancienne étant désactivée — donc
-//    réactivable. Une version n'est jamais réécrite.
+//    version qui devient active, puis SUPPRIME l'ancienne : il ne reste
+//    qu'une grille, et il n'y a plus de retour arrière. Une version n'est
+//    jamais réécrite — on la remplace.
 //  - « duplication » : le contenu part d'une grille existante mais devient
 //    une grille NEUVE, dont le nom et les dates sont à saisir. Rien n'est
 //    désactivé : c'est une grille de plus.
@@ -27,6 +28,7 @@ import {
   type Probleme,
 } from '../core/import-grille';
 import type { Grille, Periode } from '../core/types';
+import type { DataProvider } from '../data/provider';
 import { dateCourte } from './horaires-onglet';
 
 export type ModeCorrection = 'correction' | 'duplication';
@@ -201,7 +203,7 @@ export function resumeCorrection(c: CorrectionEnCours, enregistree: Grille): str
   const morceaux: string[] = [];
   if (c.mode === 'correction') {
     morceaux.push(
-      `Grille « ${enregistree.libelle} » corrigée : nouvelle version ${enregistree.version} (depuis ${c.origine.version}, désactivée et réactivable)`,
+      `Grille « ${enregistree.libelle} » corrigée : nouvelle version ${enregistree.version}, qui remplace ${c.origine.version} (supprimée)`,
     );
   } else {
     morceaux.push(
@@ -230,4 +232,53 @@ export function resumeCorrection(c: CorrectionEnCours, enregistree: Grille): str
     );
   }
   return morceaux.join(' — ');
+}
+
+/** Les seules écritures que l'enchaînement d'une correction touche (testable sans base). */
+export type EcrituresCorrection = Pick<
+  DataProvider,
+  'saveGrille' | 'reinitialiseJour' | 'logPublication' | 'supprimerGrilleRemplacee'
+>;
+
+/** Ce qui s'est passé APRÈS l'enregistrement : la correction, elle, est déjà acquise. */
+export interface IssueCorrection {
+  /** Le journal n'a pas pu être écrit (la grille, elle, est enregistrée). */
+  erreurJournal: unknown;
+  /** Correction seulement : l'ancienne n'a pas pu être supprimée (message pour l'agent), sinon null. */
+  erreurSuppression: string | null;
+}
+
+/**
+ * Enchaînement d'un enregistrement, dans l'ORDRE qui ne laisse jamais de trou
+ * de service :
+ *  1. enregistrer la grille corrigée (ou la copie) — son échec arrête tout ;
+ *  2. réinitialiser les journées cochées ;
+ *  3. journaliser ;
+ *  4. correction seulement : SUPPRIMER l'ancienne, en dernier.
+ * Entre 1 et 4 les deux grilles sont actives et la plus récemment créée
+ * l'emporte (serviceActif) : on ne perd jamais le service. Si 4 échoue, 1 n'est
+ * PAS annulée : la correction est appliquée, et l'agent est prévenu que
+ * l'ancienne reste à supprimer à la main. L'échec de 1 ou de 2 se propage.
+ */
+export async function appliqueCorrection(
+  p: EcrituresCorrection,
+  c: CorrectionEnCours,
+  aEnregistrer: Grille,
+  resume: string,
+): Promise<IssueCorrection> {
+  await p.saveGrille(aEnregistrer, { actif: true, commentaire: c.commentaire.trim() || null });
+  for (const date of [...c.joursAReinitialiser].sort()) await p.reinitialiseJour(date);
+  let erreurJournal: unknown = null;
+  await p.logPublication(resume).catch((e: unknown) => {
+    erreurJournal = e;
+  });
+  let erreurSuppression: string | null = null;
+  if (c.mode === 'correction') {
+    try {
+      await p.supprimerGrilleRemplacee(c.origine.version, aEnregistrer.version);
+    } catch (e) {
+      erreurSuppression = e instanceof Error ? e.message : String(e);
+    }
+  }
+  return { erreurJournal, erreurSuppression };
 }

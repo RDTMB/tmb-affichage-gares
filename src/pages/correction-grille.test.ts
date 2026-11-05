@@ -283,7 +283,7 @@ describe('resumeCorrection', () => {
     c.joursAReinitialiser.add('2026-07-15');
     const g = grilleAEnregistrerCorrection(c, [GRAND.version]);
     expect(resumeCorrection(c, g)).toBe(
-      `Grille « ${GRAND.libelle} » corrigée : nouvelle version ${GRAND.version}-v2 (depuis ${GRAND.version}, désactivée et réactivable) — ` +
+      `Grille « ${GRAND.libelle} » corrigée : nouvelle version ${GRAND.version}-v2, qui remplace ${GRAND.version} (supprimée) — ` +
         '1 écart(s) avec « ' +
         GRAND.libelle +
         ' » : 0 train(s) ajouté(s), 0 retiré(s), 1 heure(s) et 0 indicateur(s) modifié(s) — ' +

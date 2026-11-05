@@ -14,6 +14,11 @@ import {
   serviceActif,
 } from '../core/horaires';
 import { ecartDepuisEntete } from '../core/horloge';
+import {
+  aujourdhuiParis,
+  refusRemplacementGrille,
+  refusSuppressionGrille,
+} from '../core/suppression-grille';
 import type {
   AccesCourse,
   Affluence,
@@ -215,11 +220,17 @@ export class SupabaseProvider implements DataProvider {
   // ------------------------------------------------------------------ lecture
 
   /**
-   * Contenu (jsonb) de chaque grille, par version. Une version n'est JAMAIS
-   * réécrite en base (l'import crée « -v2 ») : ce cache est définitif pour
-   * la durée de vie de la page.
+   * Contenu (jsonb) de chaque grille, par version ET par date de création.
+   * Une version n'est JAMAIS réécrite en base (corriger ou recharger crée
+   * « -vN »), mais depuis qu'une grille peut être SUPPRIMÉE, une référence peut
+   * être RECRÉE avec un autre contenu : la version seule ne suffit plus à dire
+   * « c'est le même contenu ». Le `cree_le` lu avec les métadonnées (aucune
+   * requête de plus) tranche : un contenu n'est réutilisé que si les deux
+   * sont identiques, sinon il est relu.
    */
-  private readonly contenus = new Map<string, unknown>();
+  private readonly contenus = new Map<string, { creeLe: string; contenu: unknown }>();
+  /** Horloge du fournisseur (surchargée par les tests, jamais ailleurs). */
+  private maintenant: () => Date = () => new Date();
 
   getGrilles(): Promise<Grille[]> {
     // Grilles ACTIVES, lues en base. La promesse est mémorisée jusqu'au
@@ -253,7 +264,14 @@ export class SupabaseProvider implements DataProvider {
     verifie(meta.error);
     const lignes = (meta.data ?? []) as Omit<EnregistrementGrille, 'contenu'>[];
 
-    const manquantes = lignes.map((l) => l.version).filter((v) => !this.contenus.has(v));
+    // Le cache ne sert qu'un contenu dont la version ET la date de création
+    // sont celles que la base annonce à l'instant : sinon une référence
+    // supprimée puis recréée garderait, sur un écran resté ouvert, l'ANCIEN
+    // contenu sous la nouvelle référence.
+    const creeLeAttendu = new Map(lignes.map((l) => [l.version, l.cree_le] as const));
+    const manquantes = lignes
+      .filter((l) => this.contenus.get(l.version)?.creeLe !== l.cree_le)
+      .map((l) => l.version);
     if (manquantes.length > 0) {
       const contenus = await this.client
         .from('grilles')
@@ -261,13 +279,29 @@ export class SupabaseProvider implements DataProvider {
         .in('version', manquantes);
       verifie(contenus.error);
       for (const l of (contenus.data ?? []) as { version: string; contenu: unknown }[]) {
-        this.contenus.set(l.version, l.contenu);
+        // La date est celle lue AVANT le contenu : si la grille a été recréée
+        // entre les deux requêtes, le contenu est plus récent que la date
+        // retenue, la prochaine lecture trouvera une date différente et relira.
+        this.contenus.set(l.version, {
+          creeLe: creeLeAttendu.get(l.version) ?? '',
+          contenu: l.contenu,
+        });
+      }
+    }
+    // Lecture COMPLÈTE seulement : une lecture des grilles actives ne cite pas
+    // les désactivées, et les purger ici ferait relire leur contenu (~25 Ko) à
+    // chaque va-et-vient de la supervision entre ses deux lectures. La
+    // fraîcheur ne dépend pas de cette purge (elle tient à `cree_le`) : elle
+    // ne sert qu'à ne pas garder en mémoire une grille qui n'existe plus.
+    if (!activesSeulement) {
+      for (const version of [...this.contenus.keys()]) {
+        if (!creeLeAttendu.has(version)) this.contenus.delete(version);
       }
     }
     // grilleDepuisEnregistrement vérifie la forme du contenu (C-01) et lève
     // une erreur explicite plutôt que de servir une grille à moitié lue.
     return lignes.map((l) =>
-      grilleDepuisEnregistrement({ ...l, contenu: this.contenus.get(l.version) }),
+      grilleDepuisEnregistrement({ ...l, contenu: this.contenus.get(l.version)?.contenu }),
     );
   }
 
@@ -300,6 +334,73 @@ export class SupabaseProvider implements DataProvider {
       await this.client.from('grilles').update({ actif }).eq('version', version).select('version'),
       `grille « ${version} » introuvable ou droits insuffisants`,
     );
+    this.grilles = null;
+  }
+
+  async listJoursUtilisantGrille(version: string, depuis: string): Promise<string[]> {
+    const { data, error } = await this.client
+      .from('jours')
+      .select('date')
+      .eq('grille_version', version)
+      .gte('date', depuis)
+      .order('date');
+    verifie(error);
+    return ((data ?? []) as { date: string }[]).map((l) => l.date);
+  }
+
+  async supprimerGrille(version: string): Promise<void> {
+    // Les DEUX garde-fous vivent ici (règle : src/core/suppression-grille.ts) :
+    // aucune page ne peut les contourner. La date du jour est celle de Paris,
+    // pas la date UTC.
+    const lue = await this.client
+      .from('grilles')
+      .select('version, libelle, actif')
+      .eq('version', version)
+      .maybeSingle();
+    verifie(lue.error);
+    const ligne = lue.data as { version: string; libelle: string; actif: boolean } | null;
+    const bloquantes = ligne?.actif
+      ? []
+      : await this.listJoursUtilisantGrille(version, aujourdhuiParis(this.maintenant()));
+    const refus = refusSuppressionGrille(ligne, version, bloquantes);
+    if (refus !== null) throw new Error(refus);
+    // `.eq('actif', false)` ferme aussi la course : une grille réactivée par un
+    // autre poste entre la lecture et l'écriture n'est pas supprimée.
+    // `.select()` + exigeLignes : une politique RLS ne lève pas, elle FILTRE —
+    // sans ce contrôle, un agent sans droit verrait « supprimée » alors que
+    // rien n'aurait bougé (même piège que reinitialiseJour).
+    exigeLignes(
+      await this.client
+        .from('grilles')
+        .delete()
+        .eq('version', version)
+        .eq('actif', false)
+        .select('version'),
+      `grille « ${version} » introuvable, réactivée entre-temps, ou suppression non autorisée pour vos rôles`,
+    );
+    this.contenus.delete(version);
+    this.grilles = null;
+  }
+
+  async supprimerGrilleRemplacee(version: string, par: string): Promise<void> {
+    const lues = await this.client
+      .from('grilles')
+      .select('version, libelle, actif')
+      .in('version', [version, par]);
+    verifie(lues.error);
+    const lignes = (lues.data ?? []) as { version: string; libelle: string; actif: boolean }[];
+    const refus = refusRemplacementGrille(
+      lignes.find((l) => l.version === version) ?? null,
+      lignes.find((l) => l.version === par) ?? null,
+      version,
+      par,
+    );
+    if (refus !== null) throw new Error(refus);
+    exigeLignes(
+      await this.client.from('grilles').delete().eq('version', version).select('version'),
+      `grille « ${version} » introuvable, ou suppression non autorisée pour vos rôles`,
+    );
+    this.contenus.delete(version);
     this.grilles = null;
   }
 

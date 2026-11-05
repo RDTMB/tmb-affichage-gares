@@ -477,3 +477,29 @@ export function colonnesGrille(grille: Pick<Grille, 'montees' | 'descentes'>): C
     return r ? [{ montee: r.montee, descente: r.descente }] : [];
   });
 }
+
+/**
+ * Question posée avant de SUPPRIMER une grille désactivée : ce qui disparaît, ce
+ * qui reste (les journées passées ne bloquent pas), et que c'est définitif.
+ * Les refus (grille active, journées à venir) ne passent pas par ici : ils sont
+ * tenus par le fournisseur, et l'onglet les affiche avant de demander.
+ */
+export function texteSuppression(g: Grille, nbJoursPasses: number): string {
+  const lignes = [
+    `Supprimer la grille « ${g.libelle} » ?`,
+    '',
+    `• Référence : ${g.version}`,
+    `• Dates de validité : ${libellePeriodes(g.periodes)}`,
+  ];
+  if (nbJoursPasses > 0) {
+    lignes.push(
+      `• ${nbJoursPasses} journée(s) passée(s) référence(nt) encore cette grille : elles restent telles quelles, cela ne bloque pas.`,
+    );
+  }
+  lignes.push(
+    '',
+    'Cette suppression est définitive : la grille ne pourra pas être réactivée.',
+    'Pour en garder une trace, téléchargez-la d’abord.',
+  );
+  return lignes.join('\n');
+}

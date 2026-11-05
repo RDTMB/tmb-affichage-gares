@@ -20,6 +20,7 @@ import {
   sectionReportee,
   serviceActif,
 } from '../core/horaires';
+import { refusRemplacementGrille, refusSuppressionGrille } from '../core/suppression-grille';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
 import { bilanSurveillance } from '../core/surveillance-ecrans';
 import {
@@ -309,6 +310,13 @@ interface EtatMock {
       terminus: number | null;
       /** Gare de la bascule ; absente ou null = Bellevue (état écrit avant le 20/10/2026). */
       terminusGare?: GareLimite | null;
+      /**
+       * Grille qui a généré la journée (`jours.grille_version` en base). ABSENT
+       * sur un état d'avant la suppression de grille, ou sur une journée créée
+       * par une écriture directe : on retombe alors sur la grille en vigueur à
+       * la date (voir listJoursUtilisantGrille).
+       */
+      grilleVersion?: string;
       /** Section exploitée ; absente = ligne complète (état écrit avant la fonctionnalité). */
       section?: SectionJour;
       circulations: Record<string, Partial<Circulation>>;
@@ -339,6 +347,8 @@ interface EtatMock {
   grillesImportees?: Grille[];
   /** Versions désactivées (grilles de référence ou importées) : retour arrière. */
   grillesDesactivees?: string[];
+  /** Grilles de RÉFÉRENCE (JSON) supprimées : elles ne vivent pas dans `grillesImportees`. */
+  grillesSupprimees?: string[];
   /** Métadonnées modifiées en place (nom, dates, commentaire), par version. */
   grillesMetadonnees?: Record<string, Partial<MetadonneesGrille>>;
   /**
@@ -578,12 +588,15 @@ export class MockProvider implements DataProvider {
   async listGrilles(): Promise<Grille[]> {
     const etat = litEtat();
     const desactivees = new Set(etat.grillesDesactivees ?? []);
-    const reference = (await this.grillesDeReference()).map((g) => ({
-      ...g,
-      cree_le: CREE_LE_REFERENCE,
-      cree_par: 'grilles de référence (démo)',
-      commentaire: null,
-    }));
+    const supprimees = new Set(etat.grillesSupprimees ?? []);
+    const reference = (await this.grillesDeReference())
+      .filter((g) => !supprimees.has(g.version))
+      .map((g) => ({
+        ...g,
+        cree_le: CREE_LE_REFERENCE,
+        cree_par: 'grilles de référence (démo)',
+        commentaire: null,
+      }));
     return [...reference, ...(etat.grillesImportees ?? [])].map((g) => ({
       ...g,
       // Comme en base : la LIGNE (métadonnées modifiées) fait foi sur le contenu.
@@ -666,6 +679,79 @@ export class MockProvider implements DataProvider {
     else desactivees.add(version);
     etat.grillesDesactivees = [...desactivees];
     ecritEtat(etat);
+  }
+
+  async listJoursUtilisantGrille(version: string, depuis: string): Promise<string[]> {
+    const etat = litEtat();
+    const actives = (await this.listGrilles()).filter((g) => g.actif !== false);
+    return Object.keys(etat.jours)
+      .filter((d) => d >= depuis)
+      .filter((d) => {
+        const jour = etat.jours[d];
+        // Journée sans repère : la grille en vigueur à sa date (c'est celle que
+        // la base aurait retenue à sa génération).
+        return (jour?.grilleVersion ?? serviceActif(actives, d)?.version) === version;
+      })
+      .sort();
+  }
+
+  async supprimerGrille(version: string): Promise<void> {
+    // MÊMES garde-fous que SupabaseProvider (src/core/suppression-grille.ts) :
+    // le mock se comporte comme la table `grilles`.
+    const cible = (await this.listGrilles()).find((g) => g.version === version) ?? null;
+    const aujourdhui = this.options.aujourdhui ?? dateAujourdhuiParis();
+    const bloquantes =
+      cible?.actif === false ? await this.listJoursUtilisantGrille(version, aujourdhui) : [];
+    const refus = refusSuppressionGrille(
+      cible ? { version, libelle: cible.libelle, actif: cible.actif !== false } : null,
+      version,
+      bloquantes,
+    );
+    if (refus !== null) throw new Error(refus);
+    await this.retireGrille(version);
+  }
+
+  /** Retire la ligne et ses réglages (commun à la suppression et au remplacement). */
+  private async retireGrille(version: string): Promise<void> {
+    const cible = (await this.listGrilles()).find((g) => g.version === version);
+    const etat = litEtat();
+    // Même trace que le déclencheur trg_journal_grilles sur un delete.
+    trace(
+      etat,
+      'grilles',
+      version,
+      {
+        actif: false,
+        libelle: cible?.libelle ?? null,
+        periodes: cible?.periodes ?? null,
+        commentaire: cible?.commentaire ?? null,
+      },
+      null,
+      ['actif', 'libelle', 'periodes', 'commentaire'],
+    );
+    const importee = (etat.grillesImportees ?? []).some((g) => g.version === version);
+    etat.grillesImportees = (etat.grillesImportees ?? []).filter((g) => g.version !== version);
+    // Une grille de référence (JSON) ne se retire pas du fichier : on la note.
+    if (!importee) etat.grillesSupprimees = [...(etat.grillesSupprimees ?? []), version];
+    // La LIGNE disparaît avec ses réglages : une grille recréée sous la même
+    // référence ne doit hériter ni du « désactivée » ni des métadonnées d'avant.
+    etat.grillesDesactivees = (etat.grillesDesactivees ?? []).filter((v) => v !== version);
+    if (etat.grillesMetadonnees) delete etat.grillesMetadonnees[version];
+    ecritEtat(etat);
+  }
+
+  async supprimerGrilleRemplacee(version: string, par: string): Promise<void> {
+    const toutes = await this.listGrilles();
+    const ancienne = toutes.find((g) => g.version === version) ?? null;
+    const successeur = toutes.find((g) => g.version === par) ?? null;
+    const refus = refusRemplacementGrille(
+      ancienne,
+      successeur ? { version: par, actif: successeur.actif !== false } : null,
+      version,
+      par,
+    );
+    if (refus !== null) throw new Error(refus);
+    await this.retireGrille(version);
   }
 
   async listJoursGeneres(du: string, au: string): Promise<string[]> {
@@ -1064,17 +1150,26 @@ export class MockProvider implements DataProvider {
     return this.getProfil();
   }
 
+  /** Version de la grille en vigueur à cette date (celle que la génération retient). */
+  private async grilleDuJour(
+    date: string,
+  ): Promise<{ grilleVersion: string } | Record<string, never>> {
+    const grille = serviceActif(await this.getGrilles(), date);
+    return grille ? { grilleVersion: grille.version } : {};
+  }
+
   async genererJour(date: string): Promise<void> {
     const etat = litEtat();
     // Idempotent : n'écrase jamais les modifications déjà enregistrées
-    etat.jours[date] ??= { terminus: null, circulations: {} };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     ecritEtat(etat);
   }
 
   async reinitialiseJour(date: string): Promise<void> {
     const etat = litEtat();
-    // Retour à l'horaire théorique : toutes les modifications du jour sont perdues
-    etat.jours[date] = { terminus: null, circulations: {} };
+    // Retour à l'horaire théorique : toutes les modifications du jour sont perdues,
+    // et la journée renvoie à la grille en vigueur MAINTENANT.
+    etat.jours[date] = { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     ecritEtat(etat);
   }
 
