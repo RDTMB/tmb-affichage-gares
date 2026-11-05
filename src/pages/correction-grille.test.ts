@@ -396,6 +396,19 @@ describe('appliqueCorrection — la correction REMPLACE, dans cet ordre', () => 
     expect(appels[appels.length - 1]).toBe(`supprimer:${GRAND.version}<-${GRAND.version}-v2`);
   });
 
+  it('si la suppression ET le journal d’alerte échouent, la correction reste acquise : aucune exception', async () => {
+    const { c, g } = correctionPrete();
+    const { p } = faux({ supprimer: 'refusée', journal: 'journal indisponible' });
+    const issue = await appliqueCorrection(p, c, g, 'résumé');
+    expect(issue.erreurSuppression).toBe('refusée');
+    expect((issue.erreurJournal as Error).message).toBe('journal indisponible');
+  });
+
+  it('le résumé liste les journées réinitialisées dans l’ordre des dates', () => {
+    const { c, g } = correctionPrete(); // ajoutées 16 puis 15
+    expect(resumeCorrection(c, g)).toContain('journées réinitialisées : 15/07/2026, 16/07/2026');
+  });
+
   it('une DUPLICATION ne supprime rien : c’est une grille de plus', async () => {
     const c = nouvelleDuplication(PETIT);
     c.libelle = 'Hiver';

@@ -332,6 +332,18 @@ describe('supprimerGrille — les deux garde-fous, tenus par le fournisseur', ()
     expect(etat.grilles).toHaveLength(1);
   });
 
+  it('après une suppression, la liste des grilles ACTIVES mémorisée est invalidée (grille désactivée par un autre poste entre-temps)', async () => {
+    const { provider, etat } = montage([
+      ligne('a', '2026-06-05T08:00:00Z', 3, true),
+      ligne('b', '2026-06-06T08:00:00Z', 2, true),
+    ]);
+    expect((await provider.getGrilles()).map((g) => g.version)).toEqual(['a', 'b']);
+    // Un autre poste désactive « b » ; ce poste, lui, a encore la liste en mémoire.
+    etat.grilles[1] = ligne('b', '2026-06-06T08:00:00Z', 2, false);
+    await provider.supprimerGrille('b');
+    expect((await provider.getGrilles()).map((g) => g.version)).toEqual(['a']);
+  });
+
   it('après une suppression, la liste mémorisée est invalidée', async () => {
     const { provider } = montage([
       ligne('a', '2026-06-05T08:00:00Z', 3, true),

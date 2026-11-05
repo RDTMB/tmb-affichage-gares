@@ -1578,6 +1578,31 @@ describe('MockProvider — supprimer une grille : deux garde-fous, comme la base
     ]);
   });
 
+  it('la journée garde la grille qui l’a GÉNÉRÉE, même si une plus récente est enregistrée ensuite', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.genererJour('2026-07-15');
+    await provider.saveGrille(V2);
+    expect(await provider.listJoursUtilisantGrille(GRAND.version, '2026-07-15')).toEqual([
+      '2026-07-15',
+    ]);
+    expect(await provider.listJoursUtilisantGrille(V2.version, '2026-07-15')).toEqual([]);
+  });
+
+  it('une journée RÉINITIALISÉE renvoie à la grille en vigueur à ce moment-là, puis la garde', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.saveGrille(V2);
+    await provider.reinitialiseJour('2026-07-15');
+    await provider.saveGrille({ ...GRAND, version: '2026-ete-grand-service-v3' });
+    expect(await provider.listJoursUtilisantGrille(V2.version, '2026-07-15')).toEqual([
+      '2026-07-15',
+    ]);
+    expect(
+      await provider.listJoursUtilisantGrille('2026-ete-grand-service-v3', '2026-07-15'),
+    ).toEqual([]);
+  });
+
   it('recréer la MÊME référence après suppression : grille neuve, active, sans réglages hérités', async () => {
     const provider = new MockProvider();
     await provider.signIn('admin@demo', 'x');
