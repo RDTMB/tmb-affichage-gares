@@ -108,11 +108,12 @@ les écrans.
 **Priorité entre grilles** (règle unique, `serviceActif()`) : une grille ne
 s'applique qu'à ses périodes ; seules les grilles ACTIVES comptent ; si deux
 grilles actives couvrent la même date, la plus récemment chargée l'emporte ;
-désactiver une grille redonne la main à la précédente (c'est le retour
-arrière) ; hors de toute période, AUCUN service n'est affiché, jamais de
-repli sur une autre grille. Une version n'est jamais réécrite : recharger
-une grille existante crée « …-v2 » et désactive automatiquement la
-précédente, qui reste réactivable. Rien ne change sur les écrans avant la
+désactiver une grille redonne la main à la précédente ; hors de toute
+période, AUCUN service n'est affiché, jamais de repli sur une autre grille.
+Une version n'est jamais réécrite : recharger une grille existante crée
+« …-v2 » et désactive automatiquement la précédente, qui reste réactivable ;
+corriger à l'écran la REMPLACE (voir ci-dessous). Une grille désactivée peut
+être supprimée, définitivement (règles dans « Supprimer une grille »). Rien ne change sur les écrans avant la
 première date de validité ; les journées déjà préparées ne sont réécrites
 que si l'agent le demande, journée par journée, à l'import.
 
@@ -130,12 +131,19 @@ bloquent l'enregistrement et s'affichent sous la cellule ou sous la colonne du
 train concerné, les avertissements s'acquittent. L'aperçu des écarts avec la
 version d'origine est le **même composant** que celui de l'import.
 
-Enregistrer crée une **NOUVELLE version** (`…-v2`, `-v3`) qui devient active,
-la précédente étant désactivée et réactivable — une version n'est jamais
-réécrite, ici pas plus qu'à l'import. Les **métadonnées** (nom, dates de
+Enregistrer crée une **NOUVELLE version** (`…-v2`, `-v3`) qui devient active
+puis **supprime la précédente** : il ne reste qu'une grille et il n'y a plus
+de retour arrière (exporter la grille avant, si besoin). Une version n'est
+jamais réécrite : on la remplace. Les **métadonnées** (nom, dates de
 validité, commentaire) font exception : elles se modifient EN PLACE, par le
 bouton « Modifier », avec trace au journal, parce que prolonger une saison
 d'une semaine ne change aucune heure.
+
+**Supprimer une grille** (bouton « Supprimer », visible sur une grille
+DÉSACTIVÉE seulement) : refusé si une journée d'aujourd'hui ou à venir la
+référence (le message liste les dates ; les réinitialiser d'abord dans
+Circulations / Places). Les journées passées ne bloquent pas. La confirmation
+dit que la suppression est définitive. Mêmes droits que « Désactiver ».
 
 **Dupliquer une grille** (bouton « Dupliquer ») ouvre le même éditeur
 pré-rempli depuis une grille existante, nom et dates vides à saisir : rien

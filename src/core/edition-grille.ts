@@ -6,7 +6,8 @@
 // l'import (valideTrains), que validationEdition() réutilise tel quel — une
 // grille corrigée à la main obéit exactement aux mêmes contrôles qu'un
 // fichier Excel chargé. Une correction crée toujours une NOUVELLE version
-// (versionCorrigee) : une version n'est jamais réécrite.
+// (versionCorrigee) : une version n'est jamais réécrite, elle est remplacée
+// (la précédente est supprimée, voir correction-grille.ts).
 import type { Indicateur } from './ecarts-grille';
 import { heureVersSecondes } from './horaires';
 import {

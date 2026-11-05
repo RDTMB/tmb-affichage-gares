@@ -285,7 +285,7 @@ export interface OptionsEnregistrementGrille {
  * Métadonnées d'une grille modifiables EN PLACE (DataProvider.updateGrilleMetadonnees) :
  * nom, dates de validité, commentaire. Le CONTENU (heures, trains,
  * indicateurs) ne se modifie jamais en place : toute correction crée une
- * nouvelle version (« -v2 ») qui remplace la précédente, réactivable.
+ * nouvelle version (« -vN ») qui REMPLACE la précédente (supprimée : plus de retour arrière).
  */
 export interface MetadonneesGrille {
   libelle: string;

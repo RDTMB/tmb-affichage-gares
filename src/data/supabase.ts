@@ -411,7 +411,7 @@ export class SupabaseProvider implements DataProvider {
 
   async updateGrilleMetadonnees(version: string, meta: MetadonneesGrille): Promise<void> {
     // Colonnes de la LIGNE seulement : le contenu jsonb reste intact (le cache
-    // par version reste donc valable) et la ligne fait foi sur le contenu
+    // par version + cree_le reste donc valable) et la ligne fait foi sur le contenu
     // pour le nom et les périodes (src/core/grilles.ts). Le déclencheur
     // trg_journal_grilles consigne chaque champ modifié.
     exigeLignes(

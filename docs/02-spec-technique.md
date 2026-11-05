@@ -14,7 +14,10 @@ export interface DataProvider {
   getGrilles(): Promise<Grille[]>;                       // grilles ACTIVES, lues en base (table grilles)
   listGrilles(): Promise<Grille[]>;                      // toutes, avec métadonnées (onglet Horaires)
   saveGrille(g: Grille, options?): Promise<void>;        // NOUVELLE version : jamais d'écrasement
-  setGrilleActive(version, actif): Promise<void>;        // désactiver = retour arrière
+  setGrilleActive(version, actif): Promise<void>;        // désactiver ; réactivable tant qu'elle n'est pas supprimée
+  supprimerGrille(version): Promise<void>;               // définitif ; refus si active ou si une journée ≥ aujourd'hui la référence
+  supprimerGrilleRemplacee(version, par): Promise<void>; // chemin de la correction (successeur actif, même nom, plus récent)
+  listJoursUtilisantGrille(version, depuis): Promise<string[]>; // journées qui bloquent la suppression
   listJoursGeneres(du, au): Promise<string[]>;           // journées déjà préparées dans une plage
   getJour(date: string): Promise<Jour>;                  // circulations + drapeaux (terminus…)
   getMessages(gare: string): Promise<Message[]>;
@@ -68,7 +71,9 @@ create table grilles (                          -- grilles horaires : des DONNÉ
 );
 -- Chargement depuis l'Excel exploitation en supervision (docs/import-grilles.md).
 -- Lecture : `select` des métadonnées à chaque synchro (quelques centaines
--- d'octets), `contenu` chargé UNE fois par version (jamais réécrite).
+-- d'octets), `contenu` chargé UNE fois par version ET date de création
+-- (`cree_le`) : une grille supprimée puis recréée sous la même référence
+-- est relue. Une version n'est jamais réécrite, elle est remplacée.
 -- Ajout sur base existante : supabase/ajout-grilles.sql (insère les grilles été 2026).
 
 create table jours (
