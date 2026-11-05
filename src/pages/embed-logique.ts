@@ -144,7 +144,12 @@ export function gareDemandee(valeur: string | null): GareId | null {
 
 export type VueEmbed = 'departs' | 'jour';
 
-/** `?vue=jour` ouvre la grille complète ; toute autre valeur, les départs. */
+/**
+ * `?vue=jour` ouvre la grille complète ; toute autre valeur, les départs. La vue
+ * se décide UNIQUEMENT par l'URL : la page n'a plus de bouton de bascule (le
+ * site WordPress porte un cadre par vue, décision de l'exploitant du
+ * 05/11/2026).
+ */
 export function vueDemandee(valeur: string | null): VueEmbed {
   return valeur === 'jour' ? 'jour' : 'departs';
 }
@@ -265,10 +270,9 @@ export function ongletRetenu(
   return onglets.find((o) => o.inactif === null)?.id ?? null;
 }
 
-/** Ce que les clics ont décidé : onglet demandé, vue, et raison montrée sous les onglets. */
+/** Ce que les clics ont décidé : onglet demandé, et raison montrée sous les onglets. */
 export interface EtatClic {
   ongletDemande: GareId | null;
-  vue: VueEmbed;
   /** Onglet grisé dont la raison s'affiche, ou `null`. */
   raisonDe: GareId | null;
 }
@@ -284,12 +288,11 @@ export const DUREE_RAISON_MS = 5_000;
  */
 export function etatApresClic(
   etat: EtatClic,
-  cible: { gare?: string; inactif?: string; vue?: string },
+  cible: { gare?: string; inactif?: string },
 ): EtatClic {
   if (cible.inactif !== undefined) return { ...etat, raisonDe: gareDemandee(cible.inactif) };
   return {
     ongletDemande: cible.gare !== undefined ? gareDemandee(cible.gare) : etat.ongletDemande,
-    vue: cible.vue !== undefined ? vueDemandee(cible.vue) : etat.vue,
     raisonDe: null,
   };
 }
@@ -345,10 +348,11 @@ export interface EntreeRendu {
   affluence: readonly Affluence[];
   /** Gare de `?gare=` : cible des messages. `null` = seuls les messages « toutes gares ». */
   gareUrl: GareId | null;
-  /** Onglet demandé (clic ou `?gare=`). */
+  /** Onglet demandé (clic ou `?gare=`) : ne sert qu'à la vue des départs. */
   ongletDemande: GareId | null;
   /** Onglet grisé touché, dont la raison s'affiche sous les onglets (`etatApresClic`). */
   raisonDe: GareId | null;
+  /** Vue décidée par l'URL (`vueDemandee`) : aucun clic ne la change. */
   vue: VueEmbed;
   maintenant_s: number;
   maintenantMs: number;
@@ -616,11 +620,19 @@ function departsHtml(
   // Une bascule ou une section ne le change pas — ce sont des fermetures du
   // moment, annoncées par leur propre bandeau.
   const sommet = sommetDeLaGrille(grille, jour.date);
-  const versLeHaut = sommet === 'nid-daigle' ? 'Vers le Nid d’Aigle' : `Vers ${nomGare(sommet)}`;
+  const versLeHaut =
+    sommet === 'nid-daigle'
+      ? { fr: 'Vers le Nid d’Aigle', en: 'To Nid d’Aigle' }
+      : { fr: `Vers ${nomGare(sommet)}`, en: `To ${nomGare(sommet)}` };
+  const versLeBas = { fr: 'Vers Le Fayet', en: 'To Le Fayet' };
   const bloc = (sens: Sens, liste: PassageGare[]): string => {
     if (!d.sensDuJour[sens]) return '';
-    const titre =
-      sens === 'montee' ? bilingue(versLeHaut, 'Uphill') : bilingue('Vers Le Fayet', 'Downhill');
+    // Même schéma que l'écran de gare : la DESTINATION en grand (français puis
+    // anglais), le sens en plus petit — « Montée / Ascent », « Descente /
+    // Descent », les mots de l'écran de gare (`MOTS_EMBED`).
+    const vers = sens === 'montee' ? versLeHaut : versLeBas;
+    const mot = sens === 'montee' ? MOTS_EMBED.montee : MOTS_EMBED.descente;
+    const titre = `${bilingue(vers.fr, vers.en)} <span class="en sens-mot">${echapper(mot)}</span>`;
     const corps =
       liste.length > 0
         ? `<ol class="liste-departs">${liste.map((p) => ligneDepart(p, e, grille, trains, nomGare)).join('')}</ol>`
@@ -634,28 +646,28 @@ function grilleJourHtml(
   e: EntreeRendu,
   grille: Grille,
   jour: Jour,
-  gare: GareId | null,
   nomGare: (id: GareId) => string,
 ): string {
   // LE MÊME CODE que `grille.html` (`grille-tableau.ts`) : colonnes triées à
   // l'heure, trains barrés, retards, mentions, gares hors section retirées,
-  // colonne du prochain départ de la gare choisie.
+  // position des trains (à quai, ou à mi-chemin entre deux gares).
+  // UNE différence, voulue : AUCUNE colonne éclairée (`sansProchain`). Le
+  // « prochain départ » est affaire de la vue des départs d'une gare ; la
+  // grille complète se lit comme un horaire, sans colonne rouge.
   const ctx = {
     grille,
     jour,
-    gare,
+    gare: null,
     machines: e.params?.machines ?? [],
     affluence: e.affluence,
+    sansProchain: true,
   };
-  const positions = new Map(
-    positionsTrains(grille, jour, e.maintenant_s).map((p) => [p.numero, p.gare]),
-  );
+  const positions = new Map(positionsTrains(grille, jour, e.maintenant_s).map((p) => [p.numero, p]));
   // Mêmes titres que `grille.html`, par la même fonction : la section du
   // jour, coupée au sommet de la grille (Bellevue en hiver).
   const titres = titresDesSens(grille, jour, nomGare);
   const tableau = (sens: Sens): string => {
-    const titre =
-      sens === 'montee' ? bilingue(titres.montee, 'Ascent') : bilingue(titres.descente, 'Descent');
+    const titre = titres[sens];
     return `<section class="sens-jour"><h2>${titre}</h2><div class="defile" tabindex="0"><table class="grille">${tableHtml(ctx, sens, e.maintenant_s, positions)}</table></div></section>`;
   };
   const rames = (e.params?.machines ?? [])
@@ -701,15 +713,11 @@ export function rendEmbed(e: EntreeRendu): string {
   const nomGare = (id: GareId): string => grille.gares.find((g) => g.id === id)?.nom ?? id;
   const onglets = ongletsGares(grille, jour, e.maintenant_s);
   const retenu = ongletRetenu(onglets, e.ongletDemande);
-  const bascule =
-    e.vue === 'jour'
-      ? `<button type="button" class="bascule" data-vue="departs">${bilingue('Prochains départs', 'Next departures')}</button>`
-      : `<button type="button" class="bascule" data-vue="jour">${bilingue('Toute la journée', 'Full day')}</button>`;
 
   const corps =
     e.vue === 'jour'
-      ? grilleJourHtml(e, grille, jour, retenu, nomGare)
+      ? grilleJourHtml(e, grille, jour, nomGare)
       : `${ongletsHtml(onglets, retenu, e.raisonDe)}${retenu ? departsHtml(e, grille, jour, retenu, nomGare) : ''}`;
 
-  return `${entete}${badge}${messages}${bandeauSectionHtml(jour, nomGare)}<div class="barre">${bascule}</div>${corps}`;
+  return `${entete}${badge}${messages}${bandeauSectionHtml(jour, nomGare)}${corps}`;
 }

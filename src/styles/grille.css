@@ -440,6 +440,21 @@ td.supp {
     0 0 0.9vh rgba(255, 255, 255, 0.9);
 }
 
+/* Train EN ROUTE : le rond est à mi-chemin entre la ligne de sa gare de départ
+   (la cellule qui le porte) et celle de la gare suivante de ses passages,
+   `--saut` lignes plus bas. `top` se compte en hauteurs de la cellule (50 % =
+   son milieu, +50 % par ligne franchie) : aucune unité de plus, donc la mise à
+   l'échelle en vh / --u et le mode portrait restent ceux du rond à quai.
+   Centré dans la colonne ; `z-index` pour passer au-dessus des cellules de
+   la ligne suivante, qui sont `position: relative` et peintes après la sienne. */
+.train-pos.en-route {
+  right: auto;
+  left: 50%;
+  top: calc(50% + var(--saut, 1) * 50%);
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
 @keyframes pulse {
   0%,
   100% {

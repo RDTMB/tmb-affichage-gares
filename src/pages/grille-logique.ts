@@ -3,6 +3,7 @@
 // `grille.ts` construit son affichage dès le chargement : Vitest ne peut pas
 // l'importer (le dépôt n'a pas de jsdom). Ce qui se décide plutôt que se
 // dessine vit donc ici, comme `supervision-logique.ts` pour la supervision.
+import { ORDRE_GARES } from '../core/types';
 import type { GareId, PassageTrain } from '../core/types';
 
 /**
@@ -99,4 +100,56 @@ export function indexProchainDepart(
     }
   });
   return choisi;
+}
+
+/**
+ * Où poser le rond d'un train en ligne sur les lignes AFFICHÉES d'un tableau.
+ *
+ * - `ligne` : index (dans `lignes`) de la cellule qui PORTE le rond ;
+ * - `saut` : 0 = le rond est sur la ligne (train à quai) ; `n > 0` = il est à
+ *   mi-chemin entre cette ligne et celle `n` lignes plus bas — `n` vaut 1 pour
+ *   deux gares voisines, davantage quand les passages d'un express traversent
+ *   des lignes sautées.
+ *
+ * LE CALCUL SE FAIT SUR LES LIGNES AFFICHÉES, jamais sur l'ordre de la ligne :
+ * en descente le tableau est inversé, et le train y descend toujours — vers les
+ * index croissants — comme en montée.
+ *
+ * AUCUNE POSITION INVENTÉE. Une gare sans ligne (hors section du jour, ou que
+ * la grille ne dessert pas) ne reçoit pas de rond entre deux lignes :
+ *   • `gare` sans ligne → la ligne affichée la PLUS PROCHE sur la ligne de
+ *     tramway, à égalité celle vers laquelle le train roule (la plus basse du
+ *     tableau), et le rond y est posé à quai ;
+ *   • `vers` sans ligne (ou pas plus bas que `gare`) → rond à quai sur la
+ *     ligne de `gare`.
+ * Aucune ligne du tout → `null` : pas de rond.
+ */
+export interface AncrePosition {
+  ligne: number;
+  saut: number;
+}
+
+export function ancrePosition(
+  lignes: readonly GareId[],
+  position: { gare: GareId; vers: GareId | null },
+): AncrePosition | null {
+  if (lignes.length === 0) return null;
+  let ici = lignes.indexOf(position.gare);
+  if (ici < 0) {
+    const rang = ORDRE_GARES.indexOf(position.gare);
+    let ecartMin = Number.POSITIVE_INFINITY;
+    lignes.forEach((g, i) => {
+      const ecart = Math.abs(ORDRE_GARES.indexOf(g) - rang);
+      // `<=` : à égalité, la ligne la plus BASSE gagne (celle d'où le train
+      // n'est pas encore passé).
+      if (ecart <= ecartMin) {
+        ecartMin = ecart;
+        ici = i;
+      }
+    });
+    return { ligne: ici, saut: 0 };
+  }
+  if (position.vers === null) return { ligne: ici, saut: 0 };
+  const la = lignes.indexOf(position.vers);
+  return la > ici ? { ligne: ici, saut: la - ici } : { ligne: ici, saut: 0 };
 }

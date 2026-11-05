@@ -591,12 +591,22 @@ export interface FinDeService {
   premierDepart_s: number | null;
 }
 
-/** Dernier point de passage d'un train en ligne (point pulsant couleur rame). */
+/**
+ * Où est un train en ligne (point pulsant couleur rame de la grille du jour).
+ *
+ * - `vers === null` : le train est À QUAI de `gare` ;
+ * - `vers` renseigné : le train est PARTI de `gare` et n'est pas encore arrivé
+ *   à `vers`, la gare SUIVANTE DE SES PASSAGES (pas forcément la voisine sur la
+ *   ligne : un express saute des gares).
+ */
 export interface PositionTrain {
   numero: number;
   sens: Sens;
   rame: string;
+  /** Dernière gare atteinte. */
   gare: GareId;
+  /** Gare vers laquelle le train roule, ou `null` s'il est à quai de `gare`. */
+  vers: GareId | null;
 }
 
 // ---------------------------------------------------------------------------
