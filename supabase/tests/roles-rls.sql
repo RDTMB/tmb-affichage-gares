@@ -1134,6 +1134,99 @@ begin
   raise notice 'OK — dépannage SQL revendiqué : attribution acceptée';
 
   -------------------------------------------------------------------------
+  -- 6 bis. Supprimer une grille DÉSACTIVÉE (lot « la correction remplace »)
+  -------------------------------------------------------------------------
+  -- Aucune migration : la politique « roles: grilles » est `for all`, la
+  -- suppression y est donc déjà comprise. Ce bloc le PROUVE, avec l'instruction
+  -- EXACTE du front (`supprimerGrille`, src/data/supabase.ts) :
+  --   delete from grilles where version = … and actif = false  → returning version
+  -- Une politique RLS ne LÈVE pas, elle FILTRE : « refusé » veut dire zéro ligne
+  -- (ou, si le droit de table manquait, insufficient_privilege) — le front
+  -- passe par exigeLignes() et en fait une erreur lisible par l'agent.
+  execute 'reset role';
+
+  -- Quatre grilles de test, DÉSACTIVÉES, posées par le propriétaire de la base.
+  insert into public.grilles (version, libelle, contenu, actif, cree_par)
+  select v, 'Recette suppression ' || v,
+         '{"montees":[],"descentes":[],"gares":[],"periodes":[]}'::jsonb,
+         false, 'recette-roles'
+    from unnest(array[
+      'recette-roles-suppr-technique', 'recette-roles-suppr-admin',
+      'recette-roles-suppr-sup', 'recette-roles-suppr-caisse',
+      'recette-roles-suppr-anon']) as v;
+  -- … et une ACTIVE, pour le garde-fou de la course (le front ajoute `actif = false`).
+  insert into public.grilles (version, libelle, contenu, actif, cree_par)
+  values ('recette-roles-suppr-active', 'Recette suppression active',
+          '{"montees":[],"descentes":[],"gares":[],"periodes":[]}'::jsonb, true, 'recette-roles');
+
+  -- Les trois rôles autorisés : le delete PASSE.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_technique, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  delete from public.grilles where version = 'recette-roles-suppr-technique' and actif = false;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — technique : supprime une grille désactivée';
+  else raise exception 'ÉCHEC — technique : n''a pas pu supprimer une grille désactivée'; end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_admin, 'role', 'authenticated')::text, true);
+  delete from public.grilles where version = 'recette-roles-suppr-admin' and actif = false;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — admin : supprime une grille désactivée';
+  else raise exception 'ÉCHEC — admin : n''a pas pu supprimer une grille désactivée'; end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_sup, 'role', 'authenticated')::text, true);
+  delete from public.grilles where version = 'recette-roles-suppr-sup' and actif = false;
+  get diagnostics touchees = row_count;
+  if touchees = 1 then raise notice 'OK — supervision : supprime une grille désactivée';
+  else raise exception 'ÉCHEC — supervision : n''a pas pu supprimer une grille désactivée'; end if;
+
+  -- La condition `actif = false` protège une grille réactivée entre-temps.
+  delete from public.grilles where version = 'recette-roles-suppr-active' and actif = false;
+  get diagnostics touchees = row_count;
+  if touchees = 0 then raise notice 'OK — supervision : une grille ACTIVE n''est pas supprimée (actif = false)';
+  else raise exception 'ÉCHEC — supervision : a supprimé une grille active'; end if;
+
+  -- Sans droit (caisse) : le delete est REFUSÉ — zéro ligne, la grille subsiste.
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', u_caisse, 'role', 'authenticated')::text, true);
+  begin
+    delete from public.grilles where version = 'recette-roles-suppr-caisse' and actif = false;
+    get diagnostics touchees = row_count;
+    if touchees = 0 then raise notice 'OK — caisse : supprimer une grille lui est refusé (0 ligne, RLS filtre)';
+    else raise exception 'ÉCHEC — caisse : a pu supprimer une grille'; end if;
+  exception when insufficient_privilege then
+    raise notice 'OK — caisse : supprimer une grille lui est refusé';
+  end;
+
+  -- Le public (écrans, rôle anon) : même refus.
+  execute 'set local role anon';
+  begin
+    delete from public.grilles where version = 'recette-roles-suppr-anon' and actif = false;
+    get diagnostics touchees = row_count;
+    if touchees = 0 then raise notice 'OK — anonyme : supprimer une grille lui est refusé (0 ligne)';
+    else raise exception 'ÉCHEC — anonyme : a pu supprimer une grille'; end if;
+  exception when insufficient_privilege then
+    raise notice 'OK — anonyme : supprimer une grille lui est refusé';
+  end;
+  execute 'reset role';
+
+  -- Les deux grilles refusées sont toujours là ; le déclencheur a tracé les trois suppressions.
+  if (select count(*) from public.grilles
+       where version in ('recette-roles-suppr-caisse', 'recette-roles-suppr-anon',
+                         'recette-roles-suppr-active')) = 3
+     and (select count(*) from public.grilles where version like 'recette-roles-suppr-%') = 3 then
+    raise notice 'OK — les grilles refusées subsistent, les trois autorisées ont disparu';
+  else raise exception 'ÉCHEC — l''état des grilles de test après suppression est inattendu'; end if;
+  if (select count(distinct cle) from public.journal_exploitation
+       where table_cible = 'grilles' and cle like 'recette-roles-suppr-%'
+         and cle in ('recette-roles-suppr-technique', 'recette-roles-suppr-admin',
+                     'recette-roles-suppr-sup')) = 3 then
+    raise notice 'OK — trg_journal_grilles a tracé les trois suppressions';
+  else raise exception 'ÉCHEC — une suppression de grille n''a pas été tracée au journal'; end if;
+
+  -------------------------------------------------------------------------
   -- 7. Nettoyage — la recette ne laisse RIEN derrière elle
   -------------------------------------------------------------------------
   -- La revendication reste posée : supprimer un compte fait tomber ses lignes
@@ -1144,6 +1237,9 @@ begin
   perform set_config('tmb.attribution_systeme', 'secours', true);
 
   delete from public.jours where date = '2099-12-31';
+  -- Grilles de test du §6 bis : les trois autorisées sont déjà supprimées (c'est
+  -- le cas testé) ; il reste celles que la recette a refusé de supprimer.
+  delete from public.grilles where version like 'recette-roles-suppr-%';
   delete from public.ecrans where id like 'recette-roles-%';
   -- La caisse supprime elle-même son média au §4 (c'est le cas testé), et un
   -- échec annule tout le bloc : cette ligne ne rattrape donc rien aujourd'hui.
@@ -1153,7 +1249,8 @@ begin
   -- quorum reste satisfait, les comptes RÉELS de la base gardant leurs rôles.
   delete from auth.users where id = any (tous);
   delete from public.journal_exploitation
-   where cle like 'test-%@exemple.invalid' or qui like 'test-%@exemple.invalid';
+   where cle like 'test-%@exemple.invalid' or qui like 'test-%@exemple.invalid'
+      or (table_cible = 'grilles' and cle like 'recette-roles-suppr-%');
 
   if exists (select 1 from public.profils where user_id = any (tous)) then
     raise exception 'ÉCHEC — des comptes de test subsistent après nettoyage';
@@ -1174,7 +1271,9 @@ end $$;
 --   select count(*) from profils      where email like 'test-%@exemple.invalid';
 --   select count(*) from jours        where date = '2099-12-31';
 --   select count(*) from ecrans       where id like 'recette-roles-%';
+--   select count(*) from grilles      where version like 'recette-roles-suppr-%';
+--   select count(*) from journal_exploitation where cle like 'recette-roles-suppr-%';
 --
 -- Si la recette s'est ARRÊTÉE sur une erreur « ÉCHEC — … », tout a été annulé
--- d'un bloc : ces quatre requêtes renvoient 0 elles aussi. Le message dit quel
+-- d'un bloc : ces requêtes renvoient 0 elles aussi. Le message dit quel
 -- cas a échoué ; corriger, puis relancer la recette entière.

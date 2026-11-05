@@ -48,6 +48,16 @@ const REFORMULEES = [
   'docs/03-plan-de-developpement.md',
 ];
 
+// Règles volontairement RÉÉCRITES depuis le déménagement : leur texte d'origine
+// (figé dans l'ancien fichier) n'est plus la règle en vigueur. On ne compare
+// plus le texte : on vérifie qu'elles ont toujours leur puce, sous le même
+// titre, dans le fichier d'arrivée (voir le test dédié plus bas).
+//  - « Grilles » : la correction REMPLACE l'ancienne grille et une grille
+//    désactivée peut être supprimée (lot D, 05/11/2026).
+const REECRITES = [
+  { debut: '- **Grilles** (table `grilles`)', fichier: '.claude/regles-horaires.md' },
+];
+
 /**
  * Découpe un Markdown en puces de premier niveau. Une puce commence par « - »
  * en colonne 0 et se poursuit sur les lignes indentées de deux espaces.
@@ -88,7 +98,8 @@ function titre(puce: string): string {
 
 const ancien = lit(ANCIEN);
 const toutes = puces(ancien);
-const regles = toutes.filter((p) => p.startsWith('- **'));
+const reecrites = toutes.filter((p) => REECRITES.some((r) => p.startsWith(r.debut)));
+const regles = toutes.filter((p) => p.startsWith('- **') && !reecrites.includes(p));
 const autres = toutes.filter(
   (p) => !p.startsWith('- **') && !REFORMULEES.some((doc) => p.includes(doc)),
 );
@@ -103,7 +114,8 @@ describe('le déménagement de CLAUDE.md n’a perdu aucune règle', () => {
   it('l’ancien fichier est bien là, et il porte les règles attendues', () => {
     // Un garde-fou contre le test qui se vide : si l'extraction cassait, la
     // boucle ci-dessous passerait sur zéro règle, en vert.
-    expect(regles).toHaveLength(24);
+    expect(regles).toHaveLength(23);
+    expect(reecrites).toHaveLength(REECRITES.length);
     expect(autres).toHaveLength(20);
   });
 
@@ -118,6 +130,15 @@ describe('le déménagement de CLAUDE.md n’a perdu aucune règle', () => {
     'la puce « %s » se retrouve dans un et un seul fichier',
     (_titre, puce) => {
       expect(ouEstElle(puce)).toHaveLength(1);
+    },
+  );
+
+  it.each(REECRITES.map((r) => [r.debut, r] as const))(
+    'la règle réécrite « %s » garde sa puce dans son fichier',
+    (_debut, r) => {
+      expect(lit(r.fichier)).toContain(`
+${r.debut}`);
+      expect(ouEstElle(r.debut)).toEqual([r.fichier]);
     },
   );
 
