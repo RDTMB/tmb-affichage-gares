@@ -129,6 +129,35 @@ export function tempsEcoule(debutMs: number, maintenantMs: number): number | nul
   return ecoule >= 0 && ecoule < DUREE_TRANSITION_MS ? ecoule : null;
 }
 
+/**
+ * Le trajet mesuré est-il celui d'un train qui roule ? Une abscisse qui change
+ * de plus d'un pixel n'en est pas un : la mise en page a bougé (fenêtre
+ * redimensionnée entre deux rendus). Une forme sans taille non plus : elle
+ * ferait diviser par zéro l'échelle. Dans les deux cas, position finale directe.
+ */
+export function trajetPossible(
+  dx: number,
+  largeurFantome: number,
+  hauteurFantome: number,
+): boolean {
+  return Math.abs(dx) <= 1 && largeurFantome > 0 && hauteurFantome > 0;
+}
+
+/**
+ * Réglages des deux animations. `delay` NÉGATIF : un rendu qui tombe pendant le
+ * passage rejoue l'animation déjà avancée de `ecoule` ms. `fill: both` : la
+ * première image est tenue avant le démarrage (le nouvel élément est invisible,
+ * sinon il clignoterait à pleine opacité), la dernière jusqu'à `cancel()`.
+ */
+export function optionsAnimation(ecoule: number): KeyframeAnimationOptions {
+  return {
+    duration: DUREE_TRANSITION_MS,
+    easing: COURBE_TRANSITION,
+    delay: -ecoule,
+    fill: 'both',
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Partie DOM : lit les états après chaque rendu, joue les passages.
 // ---------------------------------------------------------------------------
@@ -220,18 +249,13 @@ function joue(el: HTMLElement, passage: Passage, ecoule: number): void {
   const dy = rn.top + rn.height / 2 - (rf.top + rf.height / 2);
   // Une abscisse qui change n'est pas un train qui roule : la mise en page a
   // bougé (fenêtre redimensionnée). Position finale directe.
-  if (Math.abs(dx) > 1 || rf.width === 0 || rf.height === 0) {
+  if (!trajetPossible(dx, rf.width, rf.height)) {
     fantome.remove();
     return;
   }
   const images = imagesCles({ dy, sx: rn.width / rf.width, sy: rn.height / rf.height });
   el.setAttribute('data-transition', '');
-  const options: KeyframeAnimationOptions = {
-    duration: DUREE_TRANSITION_MS,
-    easing: COURBE_TRANSITION,
-    delay: -ecoule,
-    fill: 'both',
-  };
+  const options = optionsAnimation(ecoule);
   const aFantome = fantome.animate(images.fantome, options);
   const aNouveau = el.animate(images.nouveau, options);
   const termine = (): void => {

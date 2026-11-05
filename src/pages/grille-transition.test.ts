@@ -13,7 +13,9 @@ import {
   ecartMaxS,
   imagesCles,
   mouvement,
+  optionsAnimation,
   tempsEcoule,
+  trajetPossible,
   type EtatTrain,
 } from './grille-transition';
 
@@ -179,6 +181,42 @@ describe('tempsEcoule — un rendu qui tombe PENDANT le passage', () => {
 
   it('null si l’horloge recule : on ne rejoue pas un passage « du futur »', () => {
     expect(tempsEcoule(1000, 999)).toBeNull();
+  });
+});
+
+describe('trajetPossible — le trajet mesuré est celui d’un train qui roule', () => {
+  it('même abscisse (au pixel près), formes mesurables : on joue', () => {
+    expect(trajetPossible(0, 18, 18)).toBe(true);
+    expect(trajetPossible(1, 18, 18)).toBe(true);
+    expect(trajetPossible(-1, 18, 18)).toBe(true);
+  });
+
+  it('abscisse qui a changé de plus d’un pixel (mise en page déplacée) : position finale directe', () => {
+    expect(trajetPossible(1.01, 18, 18)).toBe(false);
+    expect(trajetPossible(-1.01, 18, 18)).toBe(false);
+    expect(trajetPossible(40, 18, 18)).toBe(false);
+  });
+
+  it('une forme sans largeur ou sans hauteur : jamais de division par zéro', () => {
+    expect(trajetPossible(0, 0, 18)).toBe(false);
+    expect(trajetPossible(0, 18, 0)).toBe(false);
+    expect(trajetPossible(0, 0.1, 0.1)).toBe(true);
+  });
+});
+
+describe('optionsAnimation — réglages communs aux deux formes', () => {
+  it('durée, courbe, remplissage dans les deux sens', () => {
+    expect(optionsAnimation(0)).toEqual({
+      duration: DUREE_TRANSITION_MS,
+      easing: COURBE_TRANSITION,
+      delay: -0,
+      fill: 'both',
+    });
+  });
+
+  it('un rendu pendant le passage : le départ est reculé du temps déjà écoulé', () => {
+    expect(optionsAnimation(250).delay).toBe(-250);
+    expect(optionsAnimation(599).delay).toBe(-599);
   });
 });
 
