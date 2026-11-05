@@ -27,6 +27,11 @@ describe('jourSimulationValide', () => {
     expect(jourSimulationValide('0050-01-01')).toBe(false);
     expect(jourSimulationValide('2026-12-12x')).toBe(false);
     expect(jourSimulationValide('x2026-12-12')).toBe(false);
+    // Sans ancres, ces trois-là passeraient : année à cinq chiffres (réelle),
+    // suffixe ignoré par le découpage.
+    expect(jourSimulationValide('12026-12-12')).toBe(false);
+    expect(jourSimulationValide('2026-12-12-5')).toBe(false);
+    expect(jourSimulationValide('2026-12-12 ')).toBe(false);
     expect(jourSimulationValide('')).toBe(false);
   });
 });

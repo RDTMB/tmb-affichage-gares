@@ -1196,6 +1196,12 @@ function rendreSimulation(): void {
     maintenant();
     redessine();
   });
+  // Les noms de gares viennent des grilles, chargées APRÈS ce premier dessin :
+  // sans ce redessin à l'ouverture, les liens porteraient l'identifiant brut
+  // (« col-de-voza ») au premier affichage.
+  document
+    .querySelector('nav.tabs button[data-t="simulation"]')
+    ?.addEventListener('click', redessine);
   [jourEl, heureEl, sansJourEl, sansHeureEl].forEach((el) => {
     el.addEventListener('input', redessine);
     el.addEventListener('change', redessine);
