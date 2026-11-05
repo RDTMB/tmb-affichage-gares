@@ -1591,9 +1591,14 @@ describe('MockProvider — supprimer une grille : deux garde-fous, comme la base
 
   it('une journée RÉINITIALISÉE renvoie à la grille en vigueur à ce moment-là, puis la garde', async () => {
     const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    // Horloge figée, avancée entre deux enregistrements : à la même milliseconde, la
+    // grille la plus récente ne se distinguerait pas de l'autre (serviceActif).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-01T08:00:00Z'));
     await provider.signIn('admin@demo', 'x');
     await provider.saveGrille(V2);
     await provider.reinitialiseJour('2026-07-15');
+    vi.setSystemTime(new Date('2026-07-01T09:00:00Z'));
     await provider.saveGrille({ ...GRAND, version: '2026-ete-grand-service-v3' });
     expect(await provider.listJoursUtilisantGrille(V2.version, '2026-07-15')).toEqual([
       '2026-07-15',
