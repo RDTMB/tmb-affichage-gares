@@ -460,30 +460,32 @@ tbody td {
     0 0 0.9vh rgba(255, 255, 255, 0.9);
 }
 
-/* Train EN ROUTE : le rond est à mi-chemin entre la ligne de sa gare de départ
-   (la cellule qui le porte) et celle de la gare suivante de ses passages,
-   `--saut` lignes plus bas. `top` se compte en hauteurs de la cellule (50 % =
-   son milieu, +50 % par ligne franchie) : aucune unité de plus, donc la mise à
-   l'échelle en vh / --u et le mode portrait restent ceux du rond à quai.
-   Centré dans la colonne ; `z-index` pour passer au-dessus des cellules de
-   la ligne suivante, qui sont `position: relative` et peintes après la sienne. */
-.train-pos.en-route,
-.train-fleche {
-  top: calc(50% + var(--saut, 1) * 50%);
-  z-index: 2;
+/* Pendant la TRANSFORMATION d'un train (départ ou arrivée, `grille-transition.ts`)
+   le rond ne pulse pas : le script anime son opacité, et le pulse, qui court
+   toujours dessous, réapparaîtrait au milieu de son cycle à la fin. L'attribut
+   est retiré à la fin : le pulse repart alors de l'opacité 1, sans à-coup. */
+.train-pos[data-transition] {
+  animation: none;
 }
 
-/* La FLÈCHE : posée sur le rond entre deux gares, pointe TOUJOURS vers le bas
-   (les lignes se lisent de haut en bas, la gare suivante est sous le train, en
-   montée comme en descente). Même voie, même hauteur que le rond (elle s'y
-   accroche), plus haute que lui : sa pointe dépasse dessous. Un élément À PART,
+/* La FLÈCHE : le train EN ROUTE, SEULE (le rond est pour le train à quai). Elle
+   est à mi-chemin entre la ligne de sa gare de départ (la cellule qui la porte)
+   et celle de la gare suivante de ses passages, `--saut` lignes plus bas.
+   `top` se compte en hauteurs de la cellule (50 % = son milieu, +50 % par ligne
+   franchie) : aucune unité de plus, donc la mise à l'échelle en vh / --u et le
+   mode portrait restent ceux du rond à quai. Même voie (`--voie-rond`) que lui :
+   seule la hauteur change. `z-index` pour passer au-dessus des cellules de la
+   ligne suivante, qui sont `position: relative` et peintes après la sienne.
+   Pointe TOUJOURS vers le bas (les lignes se lisent de haut en bas, la gare
+   suivante est sous le train, en montée comme en descente). Un élément À PART,
    jamais un pseudo-élément du rond : le rond pulse, la flèche hériterait de
    son opacité. Couleur : `--rame` ; contour : `--anneau` quand la rame en a un,
-   le liseré sombre du rond sinon. Elle est posée AVANT le rond dans le code :
-   à `z-index` égal, le rond se peint par-dessus. */
+   le liseré sombre du rond sinon. */
 .train-fleche {
   position: absolute;
   left: var(--voie-rond);
+  top: calc(50% + var(--saut, 1) * 50%);
+  z-index: 2;
   transform: translate(-50%, -50%);
   /* 1,2 diamètre de large : entre l'heure et le bord de la voie il ne reste que
      0,5 em (mesuré, 1080 p : 13 px de l'heure au centre du rond) ; plus large,

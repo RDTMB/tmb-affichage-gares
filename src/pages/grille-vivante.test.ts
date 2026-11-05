@@ -2,8 +2,9 @@
 // son rond, quelle colonne est éclairée, et le vocabulaire des sens.
 //
 //  - un train À QUAI a son rond sur la ligne de sa gare ; un train EN ROUTE a
-//    son rond à MI-CHEMIN entre la ligne de la gare qu'il vient de quitter et
-//    celle de la gare suivante DE SES PASSAGES (décision de l'exploitant) ;
+//    sa FLÈCHE, seule, à MI-CHEMIN entre la ligne de la gare qu'il vient de
+//    quitter et celle de la gare suivante DE SES PASSAGES (décision de
+//    l'exploitant) — jamais les deux ensemble (lot E du 05/11/2026) ;
 //  - l'embed n'éclaire AUCUNE colonne, `grille.html` garde la sienne ;
 //  - « Uphill / Downhill » n'existe plus nulle part où un voyageur lit.
 import { readFileSync } from 'node:fs';
@@ -22,7 +23,7 @@ import type { GareId, Grille, Jour } from '../core/types';
 import { rendEmbed, type EntreeRendu } from './embed-logique';
 import { styleRame } from './affichage-commun';
 import { ancrePosition } from './grille-logique';
-import { fleche, tableHtml, titresDesSens } from './grille-tableau';
+import { fleche, RAME_INCONNUE, tableHtml, titresDesSens } from './grille-tableau';
 
 const RACINE = fileURLToPath(new URL('../../', import.meta.url));
 const GRAND = grandServiceJson as unknown as Grille;
@@ -64,15 +65,19 @@ function table(
 }
 
 interface Rond {
-  /** Nom de la gare dont la LIGNE porte le rond. */
+  /** Nom de la gare dont la LIGNE porte la marque du train. */
   ligne: string;
   /** Numéro du train de la colonne, d'après l'en-tête. */
   train: number;
+  /** `true` : c'est la FLÈCHE (train en route) ; `false` : le rond (train à quai). */
   enRoute: boolean;
   saut: number | null;
 }
 
-/** Tous les ronds d'un tableau : sur quelle ligne, dans quelle colonne, à quai ou non. */
+/**
+ * La marque de chaque train d'un tableau — le rond à quai, la flèche en route :
+ * sur quelle ligne, dans quelle colonne, et à quel saut. Un train n'en a QU'UNE.
+ */
 function ronds(html: string): Rond[] {
   const [entete = '', corps = ''] = html.split('<tbody>');
   const numeros = [...entete.matchAll(/<span class="num">TRAIN (\d+)/g)].map((m) => Number(m[1]));
@@ -81,17 +86,16 @@ function ronds(html: string): Rond[] {
     const nom = /^<th>([^<]*)</.exec(ligne)?.[1] ?? '?';
     const cellules = ligne.split(/<td[ >]/).slice(1);
     cellules.forEach((cellule, i) => {
-      const m =
-        /<span class="train-pos( en-route)?" style="[^"]*?(?:--saut:(\d+);)?"><\/span>/.exec(
-          cellule,
-        );
-      if (m)
+      const m = /<(span class="train-pos"|svg class="train-fleche")[^>]*>/.exec(cellule);
+      if (m) {
+        const saut = /--saut:(\d+);/.exec(m[0])?.[1];
         sortie.push({
           ligne: nom.replace('&#39;', "'"),
           train: numeros[i] ?? -1,
-          enRoute: m[1] !== undefined,
-          saut: m[2] !== undefined ? Number(m[2]) : null,
+          enRoute: m[1]?.startsWith('svg') ?? false,
+          saut: saut !== undefined ? Number(saut) : null,
         });
+      }
     });
   }
   return sortie;
@@ -331,9 +335,10 @@ describe('tableHtml — le rond à quai, en route, express, gare retirée', () =
     expect(ronds(html)).toEqual([{ ligne: 'Bellevue', train: 2, enRoute: false, saut: null }]);
   });
 
-  it('le style de la rame est conservé sur le rond en route', () => {
+  it('le style de la rame est conservé sur la flèche en route, sans rond', () => {
     const html = table('montee', '08:45:00', jourAvec(3));
-    expect(html).toMatch(/class="train-pos en-route" style="background:[^"]+--saut:1;"/);
+    expect(html).toMatch(/class="train-fleche" viewBox="0 0 10 14" style="--rame:[^"]+--saut:1;"/);
+    expect(html).not.toContain('class="train-pos');
   });
 });
 
@@ -508,7 +513,7 @@ describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne c
   });
 
   const SEL_EMBED_BASE = 'table.grille td .train-pos,\ntable.grille td .train-fleche';
-  const SEL_EMBED_ROUTE = 'table.grille td .train-pos.en-route,\ntable.grille td .train-fleche';
+  const SEL_EMBED_ROUTE = 'table.grille td .train-fleche';
 
   it('embed : le rond est posé hors flux sur la voie, au-dessus des cellules voisines', () => {
     const r = regle(embed, SEL_EMBED_BASE);
@@ -519,11 +524,13 @@ describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne c
     expect(r).toMatch(/z-index:\s*2/);
   });
 
-  it('embed : en route, la hauteur est calée sur --saut, pour le rond comme pour la flèche', () => {
-    const r = regle(embed, SEL_EMBED_ROUTE);
-    expect(r).toMatch(
-      /top:\s*calc\(50% \+ var\(--saut, 1\) \* 50% \+ \(var\(--saut, 1\) \+ 1\) \* 0\.5px\)/,
+  it('embed : en route, la hauteur de la flèche est calée sur --saut ; le rond reste à mi-hauteur de sa ligne', () => {
+    // `valeur` compare le sélecteur EXACT : « table.grille td .train-fleche » est
+    // aussi la seconde ligne du sélecteur commun, que `regle` prendrait pour lui.
+    expect(valeur(embed, SEL_EMBED_ROUTE, 'top')).toBe(
+      'calc(50% + var(--saut, 1) * 50% + (var(--saut, 1) + 1) * 0.5px)',
     );
+    expect(valeur(embed, SEL_EMBED_BASE.replace(/\n/g, ' '), 'top')).toBe('50%');
   });
 
   it('la colonne collante des gares passe AU-DESSUS du rond (embed)', () => {
@@ -533,12 +540,12 @@ describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne c
     expect(z).toBeGreaterThan(zRond);
   });
 
-  it('grille.html : même hauteur en pourcentage de la cellule, sans unité ajoutée', () => {
-    const r = regle(grille, '.train-pos.en-route,\n.train-fleche');
+  it('grille.html : la flèche en route est à une hauteur en pourcentage de la cellule, sans unité ajoutée', () => {
+    const r = regle(grille, '.train-fleche');
     expect(r).toMatch(/top:\s*calc\(50% \+ var\(--saut, 1\) \* 50%\)/);
     expect(r).toMatch(/z-index:\s*2/);
-    // aucune unité d'écran : l'échelle vh / --u reste celle du rond à quai
-    expect(r).not.toMatch(/\d(vh|vw|px)\b/);
+    // aucune unité d'écran sur la hauteur : l'échelle vh / --u reste celle du rond à quai
+    expect(valeur(grille, '.train-fleche', 'top')).not.toMatch(/\d(vh|vw|px)\b/);
     // et le diamètre du rond vit à UN endroit, avec ses unités
     expect(regle(grille, '.train-pos')).toMatch(/width:\s*var\(--rond-d\)/);
     expect(grille).toMatch(/--rond-d:\s*1\.7vh/);
@@ -643,16 +650,31 @@ describe('la voie du rond — une abscisse, jamais deux', () => {
         }
       });
 
-      it('l’état « en route » ne touche à AUCUN axe horizontal', () => {
-        const route = regles.filter(dansCellule).filter((r) => r.selecteur.includes('.en-route'));
-        expect(route.length).toBeGreaterThan(0);
-        for (const r of route) {
-          for (const p of [...HORIZONTALES, 'margin', 'margin-left', 'margin-right', 'transform']) {
-            expect(r.decl, `${r.selecteur} ne doit pas poser « ${p} »`).not.toHaveProperty(p);
+      it('le rond n’a plus d’état « en route » : il n’existe qu’à quai, à mi-hauteur de sa ligne', () => {
+        // Entre deux gares c'est la flèche, seule (lot E) : plus aucune règle ne
+        // déplace le rond, et celle de la flèche ne pose que sa hauteur.
+        expect(css).not.toContain('.en-route');
+        for (const r of regles.filter(dansCellule)) {
+          if (/\.train-pos\b/.test(r.selecteur) && 'top' in r.decl) {
+            expect(r.decl['top'], r.selecteur).toBe('50%');
           }
-          // ce qu'il pose : la hauteur (et au plus le calque), rien d'autre
-          expect(Object.keys(r.decl)).toContain('top');
-          for (const p of Object.keys(r.decl)) expect(['top', 'z-index']).toContain(p);
+        }
+      });
+
+      it('la flèche en route ne bouge que sur l’axe vertical : sa hauteur suit --saut, jamais son abscisse', () => {
+        const hauteurs = regles
+          .filter(dansCellule)
+          .filter((r) =>
+            r.selecteur
+              .split(',')
+              .map((s) => s.trim())
+              .includes(nom === 'grille' ? '.train-fleche' : 'table.grille td .train-fleche'),
+          )
+          .filter((r) => (r.decl['top'] ?? '').includes('--saut'));
+        expect(hauteurs).toHaveLength(1);
+        const r = hauteurs[0]!;
+        for (const p of [...HORIZONTALES.filter((x) => x !== 'left'), 'margin', 'margin-left']) {
+          expect(r.decl, `${r.selecteur} ne doit pas poser « ${p} »`).not.toHaveProperty(p);
         }
       });
 
@@ -792,7 +814,7 @@ describe('le rond et la flèche — les valeurs que la mesure a établies', () =
 // 6 ter. La flèche entre deux gares (lot C du 05/11/2026)
 // ---------------------------------------------------------------------------
 
-describe('la flèche — seulement entre deux gares, toujours vers le bas', () => {
+describe('la flèche — SEULE entre deux gares, toujours vers le bas', () => {
   /** Les flèches d'un tableau : cellule portante et saut, comme `ronds`. */
   function fleches(html: string): Array<{ ligne: string; train: number; saut: number }> {
     const [entete = '', corps = ''] = html.split('<tbody>');
@@ -823,22 +845,21 @@ describe('la flèche — seulement entre deux gares, toujours vers le bas', () =
     expect(html).not.toContain('train-fleche');
   });
 
-  it('en route : une flèche dans la cellule du rond, au même saut', () => {
+  it('en route : la flèche seule, dans la cellule de la gare quittée — pas de rond', () => {
     const html = table('montee', '08:45:00', jourAvec(3));
     expect(fleches(html)).toEqual([{ ligne: 'Col de Voza', train: 3, saut: 1 }]);
-    // la flèche est posée AVANT le rond : à calque égal, le rond se peint dessus
-    expect(html.indexOf('class="train-fleche"')).toBeLessThan(
-      html.indexOf('class="train-pos en-route"'),
-    );
+    expect(html).not.toContain('class="train-pos');
+    expect(ronds(html)).toEqual([{ ligne: 'Col de Voza', train: 3, enRoute: true, saut: 1 }]);
   });
 
-  it('express : la flèche suit le saut de trois lignes du rond', () => {
+  it('express : la flèche seule, avec son saut de trois lignes', () => {
     const html = table('montee', '11:00:00', jourAvec(9));
     expect(fleches(html).find((f) => f.train === 9)).toEqual({
       ligne: 'Motivon',
       train: 9,
       saut: 3,
     });
+    expect(ronds(html).filter((r) => r.train === 9)).toHaveLength(1); // la flèche, et rien d'autre
   });
 
   it('descente : présente aussi, et identique — elle pointe vers le bas, jamais retournée', () => {
@@ -853,13 +874,24 @@ describe('la flèche — seulement entre deux gares, toujours vers le bas', () =
     expect(descente).not.toMatch(/train-fleche[^>]*(rotate|scaleY|transform)/);
   });
 
-  it('autant de flèches que de ronds en route, aucune de plus', () => {
+  it('jamais ensemble : une seule marque par train, rond à quai OU flèche en route', () => {
     for (const quand of ['07:12:00', '08:45:00', '10:35:00', '11:00:00', '12:00:00']) {
       for (const sens of ['montee', 'descente'] as const) {
-        const html = table(sens, quand, jourAvec(3, 9, 10));
-        const enRoute = ronds(html).filter((r) => r.enRoute);
-        expect(fleches(html), `${sens} ${quand}`).toEqual(
-          enRoute.map((r) => ({ ligne: r.ligne, train: r.train, saut: r.saut })),
+        const jour = jourAvec(3, 9, 10);
+        const html = table(sens, quand, jour);
+        const marques = ronds(html);
+        // une marque par train : aucun numéro en double dans le tableau
+        expect(new Set(marques.map((r) => r.train)).size, `${sens} ${quand}`).toBe(marques.length);
+        // l'identité posée dans le DOM est elle aussi unique (clé du suivi des trains)
+        const cles = [...html.matchAll(/data-train="([^"]+)"/g)].map((m) => m[1]);
+        expect(new Set(cles).size).toBe(cles.length);
+        expect(cles).toHaveLength(marques.length);
+        for (const cle of cles) expect(cle).toMatch(new RegExp(`^${sens}-\\d+$`));
+        // la flèche est SEULE : tout élément « rond » est à quai (pas de saut), toute flèche saute
+        for (const r of marques) expect(r.enRoute).toBe((r.saut ?? 0) > 0);
+        expect(fleches(html).length).toBe(marques.filter((r) => r.enRoute).length);
+        expect([...html.matchAll(/class="train-pos"/g)]).toHaveLength(
+          marques.filter((r) => !r.enRoute).length,
         );
       }
     }
@@ -872,14 +904,34 @@ describe('la flèche — seulement entre deux gares, toujours vers le bas', () =
     );
     expect(fleche('background:#123456;', 1)).toContain('style="--rame:#123456;--saut:1;"');
     expect(fleche('background:#123456;', 1)).not.toContain('background');
+    // l'identité du train, pour que le rendu suivant retrouve LE MÊME train
+    expect(fleche('background:#123456;', 1, 'montee-3')).toContain(
+      'style="--rame:#123456;--saut:1;" data-train="montee-3" aria-hidden="true"',
+    );
   });
 
-  it('dans le tableau : la couleur de la flèche EST celle du rond', () => {
+  it('dans le tableau : la couleur de la flèche EST celle que le rond de la même rame aurait', () => {
     const html = table('montee', '08:45:00', jourAvec(3));
-    const rond = /class="train-pos en-route" style="background:([^;]+);/.exec(html)?.[1];
+    // rame inconnue des paramètres (`machines: []`) : le repli de la charte, par `styleRame`
+    const rond = /^background:([^;]+);/.exec(styleRame(RAME_INCONNUE))?.[1];
     const flecheCouleur = /class="train-fleche"[^>]*style="--rame:([^;]+);/.exec(html)?.[1];
     expect(rond).toBeDefined();
     expect(flecheCouleur).toBe(rond);
+    // et le rond à quai de la même rame porte exactement cette couleur
+    const quai = table('montee', '07:12:00');
+    expect(/class="train-pos" style="background:([^;]+);/.exec(quai)?.[1]).toBe(rond);
+  });
+
+  it('le train sur sa cellule : l’identité (sens et numéro) est posée sur le rond comme sur la flèche', () => {
+    expect(table('montee', '07:12:00')).toMatch(
+      /class="train-pos" style="[^"]*" data-train="montee-1"/,
+    );
+    expect(table('montee', '08:45:00', jourAvec(3))).toMatch(
+      /class="train-fleche"[^>]*data-train="montee-3"/,
+    );
+    expect(table('descente', '10:35:00')).toMatch(
+      /class="train-fleche"[^>]*data-train="descente-6"/,
+    );
   });
 
   it('`styleRame` commence toujours par « background: » — c’est ce dont `fleche` dépend', () => {

@@ -57,6 +57,7 @@ import {
 } from './embed-logique';
 import { URL_INFOS_SITE } from './embed-reglages';
 import { creeSourceHeure } from './horloge-source';
+import { creeAnimateur } from './grille-transition';
 import { poseMarquePreversion } from './preversion';
 import { creeSynchronisation, SEUIL_BADGE_MS, type Synchronisation } from './resilience';
 
@@ -107,6 +108,11 @@ let clics: EtatClic = { ongletDemande: gareUrl, raisonDe: null };
 /** Lue UNE fois : aucun clic ne change de vue. */
 const vue = vueDemandee(url.get('vue'));
 let minuteurRaison: number | undefined;
+/**
+ * Passage d'un train de « à quai » à « en route » (et inversement) dans la
+ * grille du jour : joué par-dessus chaque rendu (`grille-transition.ts`).
+ */
+const animateur = creeAnimateur(INTERVALLE_RENDU_MS);
 
 // ---------------------------------------------------------------------------
 // Hauteur automatique : la page parente ajuste l'iframe
@@ -185,6 +191,8 @@ function rendre(): void {
     simulation,
     urlInfos,
   });
+
+  animateur.apres(conteneur, heure.maintenantS());
 
   if (cleFocus) {
     const cible = conteneur.querySelector<HTMLElement>(
@@ -278,6 +286,7 @@ async function demarre(): Promise<void> {
   }, INTERVALLE_RENDU_MS);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      animateur.oublie(); // retour d'onglet : la position finale, sans rien jouer
       relis();
       rendre();
     }

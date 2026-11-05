@@ -723,15 +723,14 @@ table.grille td .train-fleche {
   z-index: 2;
 }
 
-/* Train EN ROUTE : le rond est posé à mi-chemin entre la ligne de sa gare de
-   départ (la cellule qui le porte) et celle de la gare suivante de ses
+/* Train EN ROUTE : la FLÈCHE, seule, est posée à mi-chemin entre la ligne de sa
+   gare de départ (la cellule qui la porte) et celle de la gare suivante de ses
    passages, `--saut` lignes plus bas (1 = voisine ; plus pour un express qui
    traverse des lignes sautées). `top` se compte en hauteurs de CETTE cellule :
    50 % = son milieu, +50 % par ligne franchie, soit le milieu de l'intervalle
    entre les deux milieux de ligne — exact quand les lignes ont la même hauteur
-   (mesuré, voir la PR). Même hauteur pour le rond ET sa flèche : elle s'y
-   accroche, elle ne la recalcule pas. */
-table.grille td .train-pos.en-route,
+   (mesuré, voir la PR). Le rond, lui, reste sur la ligne de la gare (`top: 50 %`,
+   ci-dessus) : il n'existe que pour le train à quai. */
 table.grille td .train-fleche {
   /* Le pourcentage se compte sur le cadre de contenu de la cellule, qui a 1 px de
      moins que la ligne (sa bordure basse) : +0,5 px par ligne comptée rend le

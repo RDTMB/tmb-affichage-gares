@@ -50,6 +50,7 @@ import { identifiantEcran } from './supervision-logique';
 // Les tableaux montée / descente : construits par un module PUR, partagé
 // avec la page du site web (embed.ts) — une seule source pour leurs règles.
 import { tableHtml, titresDesSens } from './grille-tableau';
+import { creeAnimateur } from './grille-transition';
 import {
   creeSynchronisation,
   demarreAntiBurnIn,
@@ -265,6 +266,28 @@ function afficheNeutrePermanent(): void {
 // Boucle principale — re-rendu 1×/s maximum (contrainte CLAUDE.md)
 // ---------------------------------------------------------------------------
 
+/** Rendu de la grille : un tick par seconde (`window.setInterval` de `demarre`). */
+const INTERVALLE_RENDU_MS = 1000;
+const animateur = creeAnimateur(INTERVALLE_RENDU_MS);
+// Retour d'un onglet en veille : le tableau a pu changer de plusieurs états, la
+// position finale se pose directement, sans rien jouer.
+document.addEventListener('visibilitychange', () => animateur.oublie());
+
+/**
+ * Dernier balisage posé dans chaque tableau. Le tableau n'est RÉÉCRIT que s'il a
+ * changé : avant, `innerHTML` était réaffecté chaque seconde, ce qui recréait
+ * le rond et relançait son pulse à zéro à chaque tick (mesuré le 05/11/2026 :
+ * l'opacité retombait de 0,5 à 1 toutes les secondes), et aurait tué toute
+ * transformation en cours. Le contenu affiché est strictement le même.
+ */
+const derniersTableaux = new Map<HTMLElement, string>();
+function poseTableau(id: string, html: string): void {
+  const el = $(id);
+  if (derniersTableaux.get(el) === html) return;
+  el.innerHTML = html;
+  derniersTableaux.set(el, html);
+}
+
 function rendre(): void {
   const maintenant = heure.maintenantS();
   majHorloge(maintenant);
@@ -328,8 +351,11 @@ function rendre(): void {
 
   const positions = new Map(positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p]));
   const ctx = { grille, jour, gare, machines: params?.machines ?? [], affluence };
-  $('tab-montee').innerHTML = tableHtml(ctx, 'montee', maintenant, positions);
-  $('tab-descente').innerHTML = tableHtml(ctx, 'descente', maintenant, positions);
+  poseTableau('tab-montee', tableHtml(ctx, 'montee', maintenant, positions));
+  poseTableau('tab-descente', tableHtml(ctx, 'descente', maintenant, positions));
+  // Le passage d'un train de « à quai » à « en route » (et inversement) se joue
+  // par-dessus le tableau qui vient d'être posé : voir `grille-transition.ts`.
+  animateur.apres(document, maintenant);
 
   const passagesGare = gare ? passagesPourGare(grille, jour, gare, maintenant) : [];
   majTicker(
@@ -473,7 +499,7 @@ async function demarre(): Promise<void> {
   window.setInterval(() => {
     if (jour && jour.date !== heure.dateISO()) sync?.resynchronise(); // passage de minuit
     rendre();
-  }, 1000);
+  }, INTERVALLE_RENDU_MS);
 }
 
 // Un démarrage qui échoue ne doit JAMAIS laisser le tableau vide : sans ce

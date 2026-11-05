@@ -135,21 +135,25 @@ export function titresDesSens(
 }
 
 /**
- * La FLÈCHE posée sur le rond d'un train EN ROUTE : une pointe qui regarde
- * toujours vers le bas, parce que les lignes des deux tableaux se lisent de haut
- * en bas et que la gare suivante du train est la ligne du dessous, en montée
- * comme en descente (jamais retournée).
+ * La FLÈCHE d'un train EN ROUTE : une pointe qui regarde toujours vers le bas,
+ * parce que les lignes des deux tableaux se lisent de haut en bas et que la gare
+ * suivante du train est la ligne du dessous, en montée comme en descente
+ * (jamais retournée). Entre deux gares elle est SEULE : le rond n'est que pour
+ * le train à quai (décision de l'exploitant du 05/11/2026).
  *
- * Un élément À PART, posé avant le rond, et pas un pseudo-élément de celui-ci :
- * sur `grille.html` le rond pulse (opacité animée), et un enfant en hériterait.
- * La couleur passe par `--rame` — le MÊME fond que `styleRame` pose sur le rond,
- * lu depuis sa chaîne plutôt que recalculé : une seule décision de couleur. Le
- * CSS (`embed.css`, `grille.css`) donne la voie et la hauteur, partagées avec le
- * rond (`--voie-rond`, `--saut`).
+ * Un élément à part et non un pseudo-élément : sur `grille.html` le rond pulse
+ * (opacité animée), et un enfant en hériterait. La couleur passe par `--rame` —
+ * le MÊME fond que `styleRame` pose sur le rond, lu depuis sa chaîne plutôt que
+ * recalculé : une seule décision de couleur. Le CSS (`embed.css`, `grille.css`)
+ * donne la voie et la hauteur, partagées avec le rond (`--voie-rond`, `--saut`).
+ *
+ * `cle` : l'identité du train (`montee-12`), posée en `data-train` pour que
+ * `grille-transition.ts` retrouve le MÊME train d'un rendu à l'autre.
  */
-export function fleche(styleDuRond: string, saut: number): string {
+export function fleche(styleDuRond: string, saut: number, cle?: string): string {
   const style = styleDuRond.replace(/^background:/, '--rame:');
-  return `<svg class="train-fleche" viewBox="0 0 10 14" style="${style}--saut:${saut};" aria-hidden="true"><path d="M0 0H10L5 14Z"/></svg>`;
+  const identite = cle ? ` data-train="${cle}"` : '';
+  return `<svg class="train-fleche" viewBox="0 0 10 14" style="${style}--saut:${saut};"${identite} aria-hidden="true"><path d="M0 0H10L5 14Z"/></svg>`;
 }
 
 function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {
@@ -278,11 +282,13 @@ export function tableHtml(
       let point = '';
       if (ancre && ancre.ligne === rang) {
         const style = styleRame(machineDe(c.train.rame));
+        const cle = `${sens}-${c.train.numero}`;
+        // DEUX ÉTATS, JAMAIS ENSEMBLE : à quai le rond seul, en route la flèche
+        // seule. Le passage de l'un à l'autre est joué par `grille-transition.ts`.
         point =
           ancre.saut > 0
-            ? fleche(style, ancre.saut) +
-              `<span class="train-pos en-route" style="${style}--saut:${ancre.saut};"></span>`
-            : `<span class="train-pos" style="${style}"></span>`;
+            ? fleche(style, ancre.saut, cle)
+            : `<span class="train-pos" style="${style}" data-train="${cle}"></span>`;
       }
       if (!passage) {
         // « | » : passage express sans arrêt — « — » : gare non desservie (terminus Bellevue)
