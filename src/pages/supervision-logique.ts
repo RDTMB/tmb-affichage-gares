@@ -2006,6 +2006,7 @@ const LIBELLE_ONGLET: Record<Onglet, string> = {
   bandeau: 'Bandeau',
   medias: 'Médias',
   ecrans: 'Écrans',
+  simulation: 'Simulation',
   parametres: 'Paramètres',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
@@ -2068,4 +2069,114 @@ export function etatVisibiliteOnglets(visibilite: VisibiliteOnglets): string {
     `Aucun réglage pour : ${sansReglage.map((r) => LIBELLE_ROLE[r]).join(', ')} — ` +
     'ces rôles voient tout ce que leurs droits ouvrent.'
   );
+}
+
+// ---------------------------------------------------------------------------
+// Onglet « Simulation » : les liens d'aperçu à un jour et une heure choisis
+// ---------------------------------------------------------------------------
+
+/** Ce que l'agent a saisi : un jour, une heure, et pour chacun « ne pas simuler ». */
+export interface ReglageSimulation {
+  jour: string;
+  heure: string;
+  sansJour: boolean;
+  sansHeure: boolean;
+}
+
+export type GroupeLiensSimulation = 'ecran' | 'grille' | 'embed-gare' | 'embed-general';
+
+export interface LienSimulation {
+  groupe: GroupeLiensSimulation;
+  /** Gare visée, `null` pour les embeds généraux. */
+  gare: GareId | null;
+  /** Variante des embeds généraux : prochains départs ou grille complète. */
+  vue: 'departs' | 'jour' | null;
+  /** URL RELATIVE : en préversion `/preview/`, le lien reste dans la préversion. */
+  href: string;
+}
+
+/**
+ * Jour valide : format strict ET date RÉELLE (même règle que `jourRetenu`, de
+ * horloge-source.ts — le 31 juin passe le test de forme et glisse au 1er juillet).
+ */
+export function jourSimulationValide(jour: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return false;
+  const [a = 0, m = 0, j = 0] = jour.split('-').map(Number);
+  const d = new Date(Date.UTC(a, m - 1, j));
+  return d.getUTCFullYear() === a && d.getUTCMonth() === m - 1 && d.getUTCDate() === j;
+}
+
+/**
+ * Heure normalisée en HH:MM:SS, ou `null`. `<input type="time" step="1">` rend
+ * « 08:29 » quand les secondes sont nulles : on les complète, car ce sont elles
+ * qui jouent « À QUAI » / « DÉPART IMMINENT » (fenêtre de 30 s).
+ */
+export function heureSimulationNormalisee(heure: string): string | null {
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(heure);
+  if (!m) return null;
+  const [h, mi, s] = [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+  if (h > 23 || mi > 59 || s > 59) return null;
+  return `${m[1]}:${m[2]}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Suffixe `&jour=…&simule=…`, ou `null` quand un champ SIMULÉ est invalide :
+ * un lien qui ouvrirait le jour réel à la place de celui demandé tromperait.
+ * « Ne pas simuler » retire simplement le paramètre.
+ */
+export function suffixeSimulation(r: ReglageSimulation): string | null {
+  let suffixe = '';
+  if (!r.sansJour) {
+    if (!jourSimulationValide(r.jour)) return null;
+    suffixe += `&jour=${r.jour}`;
+  }
+  if (!r.sansHeure) {
+    const heure = heureSimulationNormalisee(r.heure);
+    if (heure === null) return null;
+    suffixe += `&simule=${heure}`;
+  }
+  return suffixe;
+}
+
+/**
+ * Tous les liens de l'onglet, dans l'ordre de la ligne, ou `null` si le réglage
+ * est invalide. PURE : `demo` (configuration Supabase absente) vient de l'appelant.
+ *
+ * `apercu=1` sur écran et grille UNIQUEMENT : sans lui l'onglet ouvert battrait
+ * le signal de vie du Raspberry de la gare. L'embed n'a ni signal de vie ni
+ * `apercu`.
+ */
+export function liensSimulation(r: ReglageSimulation, demo: boolean): LienSimulation[] | null {
+  const simu = suffixeSimulation(r);
+  if (simu === null) return null;
+  const fin = `${simu}${demo ? '&demo=1' : ''}`;
+  const liens: LienSimulation[] = [];
+  const parGare = (groupe: GroupeLiensSimulation, page: string, apercu: boolean): void => {
+    for (const gare of ORDRE_GARES) {
+      liens.push({
+        groupe,
+        gare,
+        vue: null,
+        href: `${page}?gare=${gare}${apercu ? '&apercu=1' : ''}${fin}`,
+      });
+    }
+  };
+  parGare('ecran', 'ecran.html', true);
+  parGare('grille', 'grille.html', true);
+  parGare('embed-gare', 'embed.html', false);
+  // Les embeds généraux n'ont pas de `gare=` : le premier paramètre porte « ? ».
+  const sansPremier = fin.replace(/^&/, '?');
+  liens.push({
+    groupe: 'embed-general',
+    gare: null,
+    vue: 'departs',
+    href: `embed.html${sansPremier}`,
+  });
+  liens.push({
+    groupe: 'embed-general',
+    gare: null,
+    vue: 'jour',
+    href: `embed.html?vue=jour${fin}`,
+  });
+  return liens;
 }

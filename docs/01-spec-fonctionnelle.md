@@ -56,6 +56,13 @@ parfaitement normale. Sur une journée à venir non encore ouverte en
 supervision, le badge « Horaires théoriques — journée non confirmée »
 apparaît de lui-même, et c'est juste.
 
+**Ne plus les taper à la main.** L'onglet **Simulation** de la supervision
+génère ces liens : un jour et une heure (secondes comprises), chacun avec sa
+case « Ne pas simuler », puis un clic par écran de gare, grille de gare, embed
+par gare et embed général. Les liens d'écran et de grille portent `apercu=1`,
+sans quoi l'onglet ouvert battrait le signal de vie du poste de la gare ;
+l'embed n'en a pas besoin. Une date ou une heure invalide ne produit aucun lien.
+
 **Paramètres de la supervision.** `demo=1` sert la démonstration (aucune
 écriture réelle) ; il est reconnu **strictement** — `?demo`, `?demo=true` et
 `?demo=0` ne l'activent pas, une faute de frappe ne doit jamais substituer
@@ -1125,6 +1132,11 @@ _(10/09/2026)_ Un NEUVIÈME onglet, **Places**, s'insère après Circulations :
 il porte le droit `affluence` et lui seul, et s'ouvre donc à `admin`,
 `supervision` et `caisse` — pas au technique. Il remplace la colonne
 Remplissage de Circulations et la carte du guichet dans Bandeau : voir §2.8.
+
+_(05/11/2026)_ Un onglet **Simulation**, ADOSSÉ à Écrans (comme Version l'est à
+Journal) : il est visible exactement quand Écrans l'est — aujourd'hui technique,
+supervision et caisse, pas l'admin —, n'a pas de réglage propre dans
+`onglets_par_role` et n'ajoute aucun droit ni aucune écriture.
 
 Première valeur livrée : **la caisse ne voit plus l'onglet Horaires**. Le
 choix est passé par la table plutôt que par le code, précisément pour qu'il
