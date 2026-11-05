@@ -26,12 +26,13 @@ import type {
   Jour,
   Machine,
   NiveauAffluence,
+  PositionTrain,
   Sens,
   TrainJour,
 } from '../core/types';
 import { GARE_DEBUT_DEFAUT, GARE_FIN_DEFAUT } from '../core/types';
 import { echapper, LIBELLE_MENTION, mentionCourse, styleRame } from './affichage-commun';
-import { indexProchainDepart } from './grille-logique';
+import { ancrePosition, indexProchainDepart } from './grille-logique';
 
 /** Rame absente des paramètres : le bleu-gris de la charte, comme sur l'écran de gare. */
 export const RAME_INCONNUE: Machine = { nom: '?', couleur: '#708DA4', en_service: true };
@@ -49,6 +50,13 @@ export interface ContexteGrille {
   machines: readonly Machine[];
   /** Remplissage déclaré du jour. */
   affluence: readonly Affluence[];
+  /**
+   * `true` : AUCUNE colonne n'est éclairée (ni `th.next` ni `td.next`), même
+   * sans `?gare=`. Posé par l'embed du site web seulement — « le prochain
+   * départ » y est la vue des départs d'une gare, la grille complète n'en
+   * désigne pas. `grille.html` ne le pose pas et garde son éclairage.
+   */
+  sansProchain?: boolean;
 }
 
 export interface ColonneTrain {
@@ -101,8 +109,12 @@ export function colonnesDuSens(
 }
 
 /**
- * Titres français des deux tableaux, « Montée — Le Fayet → Bellevue ». Les
- * bornes sont celles de `bornesAffichees` : la section du jour, coupée au
+ * Titres des deux tableaux, en HTML ÉCHAPPÉ : le trajet en grand, « Le Fayet →
+ * Bellevue », et à côté en plus petit le sens, « Montée / Ascent » (descente :
+ * « Bellevue → Le Fayet » puis « Descente / Descent »). UNE SEULE source pour
+ * `grille.html` et l'embed : les deux posent cette chaîne dans leur `<h2>`.
+ *
+ * Les bornes sont celles de `bornesAffichees` : la section du jour, coupée au
  * sommet de la grille — en hiver, le Nid d'Aigle n'est le terminus de rien.
  * Sans journée, la ligne complète, comme avant.
  */
@@ -114,9 +126,11 @@ export function titresDesSens(
   const { debut, fin } = jour
     ? bornesAffichees(grille, jour)
     : { debut: GARE_DEBUT_DEFAUT, fin: GARE_FIN_DEFAUT };
+  const titre = (de: GareId, a: GareId, sens: string): string =>
+    `<span class="trajet">${echapper(nomGare(de))} → ${echapper(nomGare(a))}</span> <span class="en sens-mot">${echapper(sens)}</span>`;
   return {
-    montee: `Montée — ${nomGare(debut)} → ${nomGare(fin)}`,
-    descente: `Descente — ${nomGare(fin)} → ${nomGare(debut)}`,
+    montee: titre(debut, fin, 'Montée / Ascent'),
+    descente: titre(fin, debut, 'Descente / Descent'),
   };
 }
 
@@ -139,7 +153,7 @@ export function tableHtml(
   ctx: ContexteGrille,
   sens: Sens,
   maintenant_s: number,
-  positions: Map<number, GareId>,
+  positions: ReadonlyMap<number, PositionTrain>,
 ): string {
   const { grille, jour, gare } = ctx;
 
@@ -173,7 +187,16 @@ export function tableHtml(
   // non plus de l'origine de la ligne — décision de l'exploitant du
   // 13/09/2026. La règle, ses deux cas limites et leur raison vivent dans
   // `grille-logique.ts`, PUR et testé : elle se décide, elle ne se dessine pas.
-  const prochainIdx = indexProchainDepart(colonnes, gare, maintenant_s);
+  const prochainIdx = ctx.sansProchain ? -1 : indexProchainDepart(colonnes, gare, maintenant_s);
+  // OÙ POSER LE ROND de chaque train en ligne, sur les lignes AFFICHÉES de ce
+  // sens (`gares`, déjà inversé en descente) : sur la ligne d'une gare quand le
+  // train y est à quai, à mi-chemin de deux lignes quand il roule. La règle vit
+  // dans `ancrePosition` (PURE, testée) ; ici on ne fait que la lire.
+  const lignes = gares.map((g) => g.id);
+  const ancres = colonnes.map((c) => {
+    const position = positions.get(c.train.numero);
+    return position ? ancrePosition(lignes, position) : null;
+  });
 
   let html = '<thead><tr><th class="col-gare">GARE / STATION</th>';
   colonnes.forEach((c, i) => {
@@ -226,24 +249,31 @@ export function tableHtml(
   });
   html += '</tr></thead><tbody>';
 
-  for (const g of gares) {
+  gares.forEach((g, rang) => {
     html += `<tr><th>${echapper(g.nom)}<small>${g.altitude_m.toLocaleString('fr-FR')} m</small></th>`;
     colonnes.forEach((c, i) => {
       const cls = classesColonne(c, i === prochainIdx);
       const passage = c.train.passages.find((p) => p.gare === g.id);
+      // Le rond est porté par la cellule de SA ligne, même « sautée » : une gare
+      // que le train ne dessert pas peut être la plus proche de sa position.
+      const ancre = ancres[i];
+      let point = '';
+      if (ancre && ancre.ligne === rang) {
+        const style = styleRame(machineDe(c.train.rame));
+        point =
+          ancre.saut > 0
+            ? `<span class="train-pos en-route" style="${style}--saut:${ancre.saut};"></span>`
+            : `<span class="train-pos" style="${style}"></span>`;
+      }
       if (!passage) {
         // « | » : passage express sans arrêt — « — » : gare non desservie (terminus Bellevue)
-        html += `<td class="saute${cls ? ` ${cls}` : ''}">${c.train.express ? '|' : '—'}</td>`;
+        html += `<td class="saute${cls ? ` ${cls}` : ''}">${c.train.express ? '|' : '—'}${point}</td>`;
         return;
       }
       const heureCellule = (passage.depart_s ?? passage.arrivee_s ?? 0) + c.decalage;
-      const point =
-        positions.get(c.train.numero) === g.id
-          ? `<span class="train-pos" style="${styleRame(machineDe(c.train.rame))}"></span>`
-          : '';
       html += `<td class="${cls}">${formatHeure(heureCellule)}${point}</td>`;
     });
     html += '</tr>';
-  }
+  });
   return `${html}</tbody>`;
 }

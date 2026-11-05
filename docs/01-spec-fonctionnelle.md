@@ -866,8 +866,10 @@ descente) ; colonnes = trains du jour effectivement en circulation
 motrice EXPRESS / 🚲 vélos / badges +n min / SUPPRIMÉ ; lignes = gares avec
 altitudes officielles ; « | » pour passage express sans arrêt ; colonnes
 passées atténuées ; prochain départ surligné ; heures retardées en orange,
-supprimées barrées ; point pulsant couleur rame sur le dernier point de
-passage des trains en ligne ; légende complète ; pied identique à l'écran
+supprimées barrées ; point pulsant couleur rame pour chaque train en ligne —
+sur la ligne de la gare quand il y est à quai, à mi-chemin entre la gare qu'il
+vient de quitter et la suivante de ses passages quand il roule (règle :
+.claude/regles-affichage.md) ; légende complète ; pied identique à l'écran
 gare (messages + météo).
 
 ## 5. Supervision (`supervision.html`) — onglets

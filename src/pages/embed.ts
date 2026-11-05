@@ -16,7 +16,8 @@
 // le chargement, les minuteurs, les clics et la hauteur de l'iframe.
 //
 // Paramètres d'URL : gare (onglet présélectionné ET cible des messages),
-// vue=jour (grille complète), et pour les essais simule=HH:MM, jour=, demo=1.
+// vue=jour (grille complète — la vue se décide par l'URL, la page n'a aucun
+// bouton de bascule), et pour les essais simule=HH:MM, jour=, demo=1.
 import '@fontsource/amaranth/700.css';
 import '@fontsource/lato/400.css';
 import '@fontsource/lato/700.css';
@@ -102,7 +103,9 @@ let sansSource = false;
 
 // `?gare=` est une DEMANDE : un onglet grisé (Nid d'Aigle en hiver) n'est
 // jamais retenu, `ongletRetenu` ouvre alors l'onglet par défaut.
-let clics: EtatClic = { ongletDemande: gareUrl, vue: vueDemandee(url.get('vue')), raisonDe: null };
+let clics: EtatClic = { ongletDemande: gareUrl, raisonDe: null };
+/** Lue UNE fois : aucun clic ne change de vue. */
+const vue = vueDemandee(url.get('vue'));
 let minuteurRaison: number | undefined;
 
 // ---------------------------------------------------------------------------
@@ -159,7 +162,7 @@ function rendre(): void {
   // Le focus clavier survit au re-rendu : un onglet choisi au clavier ne doit
   // pas perdre la main toutes les dix secondes.
   const focus = document.activeElement as HTMLElement | null;
-  const cleFocus = focus?.dataset.gare ?? focus?.dataset.inactif ?? focus?.dataset.vue ?? null;
+  const cleFocus = focus?.dataset.gare ?? focus?.dataset.inactif ?? null;
 
   conteneur.innerHTML = rendEmbed({
     etat,
@@ -172,7 +175,7 @@ function rendre(): void {
     gareUrl,
     ongletDemande: clics.ongletDemande,
     raisonDe: clics.raisonDe,
-    vue: clics.vue,
+    vue,
     maintenant_s: heure.maintenantS(),
     maintenantMs: heure.maintenantMs(),
     dateISO: heure.dateISO(),
@@ -185,7 +188,7 @@ function rendre(): void {
 
   if (cleFocus) {
     const cible = conteneur.querySelector<HTMLElement>(
-      `[data-gare="${CSS.escape(cleFocus)}"], [data-inactif="${CSS.escape(cleFocus)}"], [data-vue="${CSS.escape(cleFocus)}"]`,
+      `[data-gare="${CSS.escape(cleFocus)}"], [data-inactif="${CSS.escape(cleFocus)}"]`,
     );
     cible?.focus();
   }
@@ -196,9 +199,7 @@ function rendre(): void {
 // La raison d'un onglet grisé s'efface au bout de `DUREE_RAISON_MS`, ou au
 // clic suivant ; chaque rendu renvoie la hauteur à la page parente.
 conteneur.addEventListener('click', (ev) => {
-  const cible = (ev.target as HTMLElement).closest<HTMLElement>(
-    '[data-gare], [data-inactif], [data-vue]',
-  );
+  const cible = (ev.target as HTMLElement).closest<HTMLElement>('[data-gare], [data-inactif]');
   if (!cible) return;
   clics = etatApresClic(clics, cible.dataset);
   window.clearTimeout(minuteurRaison);

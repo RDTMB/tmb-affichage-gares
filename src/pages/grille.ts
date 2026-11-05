@@ -208,8 +208,9 @@ function rendsEntetesEtPied(): void {
     ? sectionDuJour(jour)
     : { debut: 'le-fayet' as GareId, fin: 'nid-daigle' as GareId };
   const titres = titresDesSens(grille, jour, nomGare);
-  $('titre-montee').textContent = titres.montee;
-  $('titre-descente').textContent = titres.descente;
+  // HTML échappé par `titresDesSens` : trajet en grand, sens en plus petit.
+  $('titre-montee').innerHTML = titres.montee;
+  $('titre-descente').innerHTML = titres.descente;
   const restreinte = jour !== null && !sectionComplete(jour);
   const bandeau = $('bandeau-section');
   bandeau.style.display = restreinte ? '' : 'none';
@@ -325,9 +326,7 @@ function rendre(): void {
   // Garde de TYPAGE seulement : `vue === 'horaires'` garantit les deux.
   if (!grille || !jour) return;
 
-  const positions = new Map(
-    positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p.gare]),
-  );
+  const positions = new Map(positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p]));
   const ctx = { grille, jour, gare, machines: params?.machines ?? [], affluence };
   $('tab-montee').innerHTML = tableHtml(ctx, 'montee', maintenant, positions);
   $('tab-descente').innerHTML = tableHtml(ctx, 'descente', maintenant, positions);

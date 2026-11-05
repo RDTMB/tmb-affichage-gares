@@ -1459,8 +1459,14 @@ export function finDeService(
 }
 
 /**
- * Trains en ligne à l'instant donné, avec leur dernier point de passage
- * (point pulsant couleur rame sur la grille du jour).
+ * Trains en ligne à l'instant donné, avec leur position (point pulsant couleur
+ * rame sur la grille du jour) :
+ * - À QUAI (arrivée ≤ maintenant < départ de la gare, retard compris) :
+ *   `gare` = cette gare, `vers` = `null` ;
+ * - EN ROUTE (parti de `gare`, pas encore arrivé à la gare suivante de SES
+ *   passages) : `vers` = cette gare suivante. La grille le dessine à
+ *   mi-chemin des deux lignes, sans interpoler à l'heure (décision de
+ *   l'exploitant du 05/11/2026).
  */
 export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number): PositionTrain[] {
   const positions: PositionTrain[] = [];
@@ -1482,14 +1488,28 @@ export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number
     }
 
     // Dernier point de passage : dernière gare atteinte (arrivée réelle ≤ maintenant).
-    let gare = premier.gare;
-    for (const passage of train.passages) {
-      const atteinte = passage.arrivee_s ?? passage.depart_s;
-      if (atteinte === null) continue;
-      if (atteinte + decalage <= maintenant_s) gare = passage.gare;
+    let rang = 0;
+    for (let i = 0; i < train.passages.length; i++) {
+      const passage = train.passages[i];
+      const atteinte = passage ? (passage.arrivee_s ?? passage.depart_s) : null;
+      if (!passage || atteinte === null) continue;
+      if (atteinte + decalage <= maintenant_s) rang = i;
       else break;
     }
-    positions.push({ numero: train.numero, sens: train.sens, rame: train.rame, gare });
+    const ici = train.passages[rang] ?? premier;
+    const suivant = train.passages[rang + 1];
+    // EN ROUTE dès le départ RÉEL de cette gare (départ de grille + retard) :
+    // avant, le train est à quai — un train retardé l'est à son origine. Le
+    // terminus n'a pas de départ, et pas de gare suivante.
+    const enRoute =
+      suivant !== undefined && ici.depart_s !== null && ici.depart_s + decalage <= maintenant_s;
+    positions.push({
+      numero: train.numero,
+      sens: train.sens,
+      rame: train.rame,
+      gare: ici.gare,
+      vers: enRoute ? suivant.gare : null,
+    });
   }
 
   return positions;

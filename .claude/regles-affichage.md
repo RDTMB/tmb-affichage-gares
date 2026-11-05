@@ -58,6 +58,30 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   jamais « fermé » — une fermeture fausse est pire qu'un écran vide. Jamais
   de fermeture annoncée sur des données périmées ou une horloge de poste
   fantaisiste (la date elle-même n'est plus sûre).
+- **Où est un train sur la grille du jour** (`positionsTrains`, rond couleur
+  rame, 05/11/2026) : à QUAI (arrivée ≤ maintenant < départ de la gare, retard
+  compris) → rond SUR la ligne de la gare ; EN ROUTE (parti de g1, pas arrivé à
+  la gare SUIVANTE DE SES PASSAGES g2) → rond À MI-CHEMIN entre les lignes de
+  g1 et g2, dans la colonne du train — jamais interpolé à l'heure. Le calcul se
+  fait sur les lignes AFFICHÉES (`ancrePosition`, `grille-logique.ts`) : en
+  descente le tableau est inversé ; un express traverse les lignes sautées ;
+  une gare sans ligne (hors section, non desservie) ne fait RIEN inventer — le
+  rond retombe à quai sur la ligne affichée la plus proche. Inchangé : en
+  ligne dès le départ THÉORIQUE de l'origine (un train retardé y est à quai),
+  disparu après l'arrivée au terminus, supprimé = pas de rond. CSS : `--saut`
+  lignes sous la cellule de g1, `top` en % de la cellule (aucune unité de
+  plus : l'échelle vh / --u de `grille.html` reste la sienne), `z-index` 2
+  (les cellules voisines sont `position: relative` et le couvriraient), sous
+  la colonne collante de l'embed (3). Exact tant que les lignes ont la même
+  hauteur — mesuré égales le 05/11/2026 ; à re-mesurer si une ligne peut
+  grandir.
+- **Colonne éclairée (« prochain départ »)** : `grille.html` seulement. L'embed
+  ne l'éclaire JAMAIS (`sansProchain`, même sans `?gare=`) ; le prochain
+  départ y est l'affaire de la vue des départs d'une gare.
+- **Sens** : « Montée / Ascent », « Descente / Descent » partout où un voyageur
+  lit — jamais « Uphill / Downhill ». Titre de grille : le trajet en grand,
+  le sens à côté en plus petit (`titresDesSens`, une seule source pour
+  `grille.html` et l'embed). Embed par gare : « Vers X / To X » puis le sens.
 - **Compte à rebours** : cases (« chips ») toutes de la même taille.
 - **Messages** : modifiables après création ; traduction anglaise générée
   automatiquement (service de traduction) puis éditable.
