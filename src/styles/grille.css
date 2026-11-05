@@ -472,8 +472,12 @@ tbody td {
    est à mi-chemin entre la ligne de sa gare de départ (la cellule qui la porte)
    et celle de la gare suivante de ses passages, `--saut` lignes plus bas.
    `top` se compte en hauteurs de la cellule (50 % = son milieu, +50 % par ligne
-   franchie) : aucune unité de plus, donc la mise à l'échelle en vh / --u et le
-   mode portrait restent ceux du rond à quai. Même voie (`--voie-rond`) que lui :
+   franchie) : aucune unité d'ÉCRAN de plus, donc la mise à l'échelle en vh / --u
+   et le mode portrait restent ceux du rond à quai. Le pourcentage se compte sur
+   le cadre de la cellule, qui a 1 px de moins que la ligne (sa bordure basse) :
+   +0,5 px par ligne comptée rend le milieu exact (mesuré le 05/11/2026 à
+   1920 x 1080 : -0,5 px pour un saut, -1,5 px pour l'express de trois lignes,
+   0 avec). Même voie (`--voie-rond`) que lui :
    seule la hauteur change. `z-index` pour passer au-dessus des cellules de la
    ligne suivante, qui sont `position: relative` et peintes après la sienne.
    Pointe TOUJOURS vers le bas (les lignes se lisent de haut en bas, la gare
@@ -484,7 +488,7 @@ tbody td {
 .train-fleche {
   position: absolute;
   left: var(--voie-rond);
-  top: calc(50% + var(--saut, 1) * 50%);
+  top: calc(50% + var(--saut, 1) * 50% + var(--saut, 1) * 0.5px);
   z-index: 2;
   transform: translate(-50%, -50%);
   /* 1,2 diamètre de large : entre l'heure et le bord de la voie il ne reste que

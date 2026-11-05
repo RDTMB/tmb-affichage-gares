@@ -542,10 +542,13 @@ describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne c
 
   it('grille.html : la flèche en route est à une hauteur en pourcentage de la cellule, sans unité ajoutée', () => {
     const r = regle(grille, '.train-fleche');
-    expect(r).toMatch(/top:\s*calc\(50% \+ var\(--saut, 1\) \* 50%\)/);
+    expect(r).toMatch(
+      /top:\s*calc\(50% \+ var\(--saut, 1\) \* 50% \+ var\(--saut, 1\) \* 0\.5px\)/,
+    );
     expect(r).toMatch(/z-index:\s*2/);
-    // aucune unité d'écran sur la hauteur : l'échelle vh / --u reste celle du rond à quai
-    expect(valeur(grille, '.train-fleche', 'top')).not.toMatch(/\d(vh|vw|px)\b/);
+    // aucune unité d'ÉCRAN sur la hauteur : l'échelle vh / --u reste celle du rond à quai
+    // (le demi-pixel par ligne est celui de la bordure de la cellule : il ne change pas d'échelle)
+    expect(valeur(grille, '.train-fleche', 'top')).not.toMatch(/\d(vh|vw)\b|--u/);
     // et le diamètre du rond vit à UN endroit, avec ses unités
     expect(regle(grille, '.train-pos')).toMatch(/width:\s*var\(--rond-d\)/);
     expect(grille).toMatch(/--rond-d:\s*1\.7vh/);
