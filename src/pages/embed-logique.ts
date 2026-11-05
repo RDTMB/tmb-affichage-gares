@@ -662,7 +662,9 @@ function grilleJourHtml(
     affluence: e.affluence,
     sansProchain: true,
   };
-  const positions = new Map(positionsTrains(grille, jour, e.maintenant_s).map((p) => [p.numero, p]));
+  const positions = new Map(
+    positionsTrains(grille, jour, e.maintenant_s).map((p) => [p.numero, p]),
+  );
   // Mêmes titres que `grille.html`, par la même fonction : la section du
   // jour, coupée au sommet de la grille (Bellevue en hiver).
   const titres = titresDesSens(grille, jour, nomGare);
