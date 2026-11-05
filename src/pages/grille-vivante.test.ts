@@ -538,3 +538,68 @@ describe('CSS — pleine largeur, rond au-dessus des cellules, sous la colonne c
     expect(embed).not.toContain('.barre {');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. Survivantes de la campagne de mutation du 05/11/2026
+// ---------------------------------------------------------------------------
+
+describe('positions — données limites (survivantes de la campagne de mutation)', () => {
+  /** Le grand service, avec un passage du TRAIN 1 réécrit. */
+  function avecPassage(gare: string, changement: { a?: string | null; d?: string | null }): Grille {
+    return {
+      ...GRAND,
+      montees: GRAND.montees.map((t) =>
+        t.numero !== 1
+          ? t
+          : {
+              ...t,
+              // `null` = la clé est ABSENTE du document (comme un terminus sans « d »)
+              passages: t.passages.map((p) =>
+                p.gare === gare
+                  ? Object.fromEntries(
+                      Object.entries({ ...p, ...changement }).filter(([, v]) => v !== null),
+                    )
+                  : p,
+              ),
+            },
+      ),
+    } as Grille;
+  }
+  const positionDe1 = (grille: Grille, quand: string) =>
+    positionsTrains(grille, generationJour(grille, '2026-07-15'), h(quand)).find(
+      (p) => p.numero === 1,
+    );
+
+  it('un terminus qui a aussi un départ, égal à l’arrivée : à quai, sans gare suivante, sans erreur', () => {
+    const grille = avecPassage('nid-daigle', { a: '08:05:30', d: '08:05:30' });
+    expect(positionDe1(grille, '08:05:30')).toMatchObject({ gare: 'nid-daigle', vers: null });
+  });
+
+  it('un passage intermédiaire sans heure de départ : le train reste à quai, jamais « en route »', () => {
+    const grille = avecPassage('motivon', { d: null });
+    expect(positionDe1(grille, '07:30:00')).toMatchObject({ gare: 'motivon', vers: null });
+  });
+
+  it('le rond tombe sur la cellule « | » d’un express quand sa gare n’a pas de ligne', () => {
+    // Plus aucune montée n'atteint le Nid d'Aigle : le tableau n'a plus sa ligne. Le
+    // TRAIN 10 (express) en est parti à 11:48:30 vers Motivon : la ligne affichée la
+    // plus proche est Bellevue, où il ne s'arrête pas — le rond est posé sur le « | ».
+    const sansNid: Grille = {
+      ...GRAND,
+      montees: GRAND.montees.map((t) => ({
+        ...t,
+        passages: t.passages.filter((p) => p.gare !== 'nid-daigle'),
+      })),
+    };
+    const jour = generationJour(sansNid, '2026-07-15');
+    for (const n of [9, 10]) circ(jour, n).facultatif_actif = true;
+    const html = table('descente', '12:00:00', jour, { grille: sansNid });
+    expect(ronds(html).find((r) => r.train === 10)).toEqual({
+      ligne: 'Bellevue',
+      train: 10,
+      enRoute: false,
+      saut: null,
+    });
+    expect(html).toMatch(/<td class="saute">\|<span class="train-pos"/);
+  });
+});
