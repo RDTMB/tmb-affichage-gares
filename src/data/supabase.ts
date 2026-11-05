@@ -385,10 +385,15 @@ export class SupabaseProvider implements DataProvider {
   async supprimerGrilleRemplacee(version: string, par: string): Promise<void> {
     const lues = await this.client
       .from('grilles')
-      .select('version, libelle, actif')
+      .select('version, libelle, actif, cree_le')
       .in('version', [version, par]);
     verifie(lues.error);
-    const lignes = (lues.data ?? []) as { version: string; libelle: string; actif: boolean }[];
+    const lignes = (lues.data ?? []) as {
+      version: string;
+      libelle: string;
+      actif: boolean;
+      cree_le: string;
+    }[];
     const refus = refusRemplacementGrille(
       lignes.find((l) => l.version === version) ?? null,
       lignes.find((l) => l.version === par) ?? null,

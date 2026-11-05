@@ -40,19 +40,29 @@ export function listeDates(dates: readonly string[]): string {
  * « désactivée » ni celui des journées ne s'appliquent ici : la correction est
  * précisément le geste qui remplace la grille d'origine, y compris quand des
  * journées à venir la référencent (elles retombent sur la grille en vigueur à
- * leur date). Le seul filet : le SUCCESSEUR nommé doit exister et être ACTIF,
- * sans quoi la suppression ne remplacerait rien et ouvrirait un trou de service.
+ * leur date). Mais ce chemin ne doit pas devenir un contournement : il n'ouvre
+ * que si le SUCCESSEUR nommé est bien celui d'une correction — il existe, il
+ * est ACTIF, il porte le MÊME NOM et il a été créé APRÈS l'ancienne. Sans ces
+ * quatre conditions, supprimer une grille active en citant un successeur
+ * quelconque ouvrirait un trou de service.
  */
 export function refusRemplacementGrille(
-  ancienne: { version: string; libelle: string } | null,
-  successeur: { version: string; actif: boolean } | null,
+  ancienne: { version: string; libelle: string; cree_le?: string } | null,
+  successeur: { version: string; libelle: string; actif: boolean; cree_le?: string } | null,
   version: string,
   par: string,
 ): string | null {
   if (version === par) return 'Une grille ne peut pas être remplacée par elle-même.';
   if (ancienne === null) return `Grille « ${version} » introuvable : rien n'a été supprimé.`;
+  const pasLe = `La grille « ${par} » n'est pas le remplacement de « ${ancienne.libelle} »`;
   if (successeur === null || !successeur.actif) {
-    return `La grille de remplacement « ${par} » n'existe pas ou n'est pas active : la grille « ${ancienne.libelle} » n'a pas été supprimée.`;
+    return `${pasLe} : elle n'existe pas ou n'est pas active. Rien n'a été supprimé.`;
+  }
+  if (successeur.libelle !== ancienne.libelle) {
+    return `${pasLe} : ce n'est pas la même grille (autre nom). Rien n'a été supprimé.`;
+  }
+  if (Date.parse(successeur.cree_le ?? '') <= Date.parse(ancienne.cree_le ?? '')) {
+    return `${pasLe} : elle n'est pas plus récente. Rien n'a été supprimé.`;
   }
   return null;
 }

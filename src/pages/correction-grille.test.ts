@@ -14,6 +14,8 @@ import {
 } from '../core/edition-grille';
 import type { Grille } from '../core/types';
 import {
+  appliqueCorrection,
+  type EcrituresCorrection,
   avertissementsCorrection,
   cleCellule,
   ecartsCorrection,
@@ -283,7 +285,7 @@ describe('resumeCorrection', () => {
     c.joursAReinitialiser.add('2026-07-15');
     const g = grilleAEnregistrerCorrection(c, [GRAND.version]);
     expect(resumeCorrection(c, g)).toBe(
-      `Grille « ${GRAND.libelle} » corrigée : nouvelle version ${GRAND.version}-v2, qui remplace ${GRAND.version} (supprimée) — ` +
+      `Grille « ${GRAND.libelle} » corrigée : nouvelle version ${GRAND.version}-v2, qui remplace ${GRAND.version} — ` +
         '1 écart(s) avec « ' +
         GRAND.libelle +
         ' » : 0 train(s) ajouté(s), 0 retiré(s), 1 heure(s) et 0 indicateur(s) modifié(s) — ' +
@@ -299,5 +301,116 @@ describe('resumeCorrection', () => {
     expect(resumeCorrection(d, g)).toBe(
       `Grille « Hiver » créée par copie de « ${PETIT.libelle} » (référence 2026-2027-hiver) : 19/12/2026 → 14/03/2027 — contenu identique`,
     );
+  });
+});
+
+describe('appliqueCorrection — la correction REMPLACE, dans cet ordre', () => {
+  type Appel = string;
+  /** Faux fournisseur : note chaque écriture dans l'ordre, et peut échouer à l'étape voulue. */
+  function faux(echoue: Partial<Record<'save' | 'supprimer' | 'journal' | 'reinit', string>> = {}) {
+    const appels: Appel[] = [];
+    const p: EcrituresCorrection = {
+      saveGrille: async (g, o) => {
+        appels.push(`save:${g.version}:${o?.commentaire ?? ''}`);
+        if (echoue.save) throw new Error(echoue.save);
+      },
+      reinitialiseJour: async (d) => {
+        appels.push(`reinit:${d}`);
+        if (echoue.reinit) throw new Error(echoue.reinit);
+      },
+      logPublication: async (r) => {
+        appels.push(`journal:${r}`);
+        if (echoue.journal) throw new Error(echoue.journal);
+      },
+      supprimerGrilleRemplacee: async (v, par) => {
+        appels.push(`supprimer:${v}<-${par}`);
+        if (echoue.supprimer) throw new Error(echoue.supprimer);
+      },
+    };
+    return { p, appels };
+  }
+
+  function correctionPrete() {
+    const c = nouvelleCorrection(GRAND);
+    c.commentaire = '  heure fausse  ';
+    c.joursAReinitialiser.add('2026-07-16');
+    c.joursAReinitialiser.add('2026-07-15');
+    const g = grilleAEnregistrerCorrection(c, [GRAND.version]);
+    return { c, g };
+  }
+
+  it('enregistre, réinitialise (dates triées), journalise, puis SUPPRIME l’ancienne en dernier', async () => {
+    const { c, g } = correctionPrete();
+    const { p, appels } = faux();
+    const issue = await appliqueCorrection(p, c, g, 'résumé');
+    expect(appels).toEqual([
+      `save:${GRAND.version}-v2:heure fausse`,
+      'reinit:2026-07-15',
+      'reinit:2026-07-16',
+      'journal:résumé',
+      `supprimer:${GRAND.version}<-${GRAND.version}-v2`,
+    ]);
+    expect(issue).toEqual({ erreurJournal: null, erreurSuppression: null });
+  });
+
+  it('l’échec de la suppression n’annule PAS la correction : message pour l’agent, et trace au journal', async () => {
+    const { c, g } = correctionPrete();
+    const { p, appels } = faux({ supprimer: 'suppression non autorisée pour vos rôles' });
+    const issue = await appliqueCorrection(p, c, g, 'résumé');
+    expect(issue.erreurSuppression).toBe('suppression non autorisée pour vos rôles');
+    // La grille corrigée EST enregistrée, rien n'a été défait.
+    expect(appels.filter((a) => a.startsWith('save:'))).toHaveLength(1);
+    // Et l'historique ne laisse pas croire qu'il ne reste qu'une grille.
+    expect(appels[appels.length - 1]).toContain('journal:Grille');
+    expect(appels[appels.length - 1]).toContain("n'a pas pu être supprimée");
+  });
+
+  it('un journal qui échoue ne bloque ni la suppression ni la correction', async () => {
+    const { c, g } = correctionPrete();
+    const { p, appels } = faux({ journal: 'journal indisponible' });
+    const issue = await appliqueCorrection(p, c, g, 'résumé');
+    expect((issue.erreurJournal as Error).message).toBe('journal indisponible');
+    expect(appels[appels.length - 1]).toBe(`supprimer:${GRAND.version}<-${GRAND.version}-v2`);
+    expect(issue.erreurSuppression).toBeNull();
+  });
+
+  it('l’échec de l’ENREGISTREMENT se propage et rien d’autre n’est écrit : l’ancienne reste', async () => {
+    const { c, g } = correctionPrete();
+    const { p, appels } = faux({ save: 'grille refusée' });
+    await expect(appliqueCorrection(p, c, g, 'résumé')).rejects.toThrow('grille refusée');
+    expect(appels).toHaveLength(1);
+  });
+
+  it('l’échec d’une réinitialisation se propage : l’ancienne n’est PAS supprimée', async () => {
+    const { c, g } = correctionPrete();
+    const { p, appels } = faux({ reinit: 'journée absente' });
+    await expect(appliqueCorrection(p, c, g, 'résumé')).rejects.toThrow('journée absente');
+    expect(appels.some((a) => a.startsWith('supprimer'))).toBe(false);
+  });
+
+  it('une grille déjà DÉSACTIVÉE est remplacée de la même façon', async () => {
+    const { c, g } = correctionPrete();
+    c.origine = { ...c.origine, actif: false };
+    const { p, appels } = faux();
+    await appliqueCorrection(p, c, g, 'résumé');
+    expect(appels[appels.length - 1]).toBe(`supprimer:${GRAND.version}<-${GRAND.version}-v2`);
+  });
+
+  it('une DUPLICATION ne supprime rien : c’est une grille de plus', async () => {
+    const c = nouvelleDuplication(PETIT);
+    c.libelle = 'Hiver';
+    c.periodes = [{ du: '2026-12-01', au: '2027-03-31' }];
+    const g = grilleAEnregistrerCorrection(c, [PETIT.version]);
+    const { p, appels } = faux();
+    const issue = await appliqueCorrection(p, c, g, 'résumé');
+    expect(appels.some((a) => a.startsWith('supprimer'))).toBe(false);
+    expect(issue.erreurSuppression).toBeNull();
+  });
+
+  it('le résumé journalisé ne prétend PAS la suppression faite : il dit « remplace »', () => {
+    const { c, g } = correctionPrete();
+    const r = resumeCorrection(c, g);
+    expect(r).toContain(`qui remplace ${GRAND.version}`);
+    expect(r).not.toMatch(/supprimée|désactivée|réactivable/);
   });
 });

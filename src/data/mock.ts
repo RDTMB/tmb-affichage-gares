@@ -746,7 +746,7 @@ export class MockProvider implements DataProvider {
     const successeur = toutes.find((g) => g.version === par) ?? null;
     const refus = refusRemplacementGrille(
       ancienne,
-      successeur ? { version: par, actif: successeur.actif !== false } : null,
+      successeur ? { ...successeur, actif: successeur.actif !== false } : null,
       version,
       par,
     );
@@ -854,6 +854,7 @@ export class MockProvider implements DataProvider {
       etat.jours[date] = {
         terminus: null,
         circulations: {},
+        ...(await this.grilleDuJour(date)),
         ...(reportee ? { section: reportee } : {}),
       };
       localStorage.setItem(CLE_ETAT, JSON.stringify(etat)); // simple lecture : pas de notification
@@ -1192,7 +1193,11 @@ export class MockProvider implements DataProvider {
   async saveCirculation(c: Circulation): Promise<void> {
     const avant = await this.circulationAvant(c.date, c.numero);
     const etat = litEtat();
-    etat.jours[c.date] ??= { terminus: null, circulations: {} };
+    etat.jours[c.date] ??= {
+      terminus: null,
+      circulations: {},
+      ...(await this.grilleDuJour(c.date)),
+    };
     const jour = etat.jours[c.date];
     if (jour) {
       trace(
@@ -1225,7 +1230,11 @@ export class MockProvider implements DataProvider {
     }
     const etat = litEtat();
     for (const c of cs) {
-      etat.jours[c.date] ??= { terminus: null, circulations: {} };
+      etat.jours[c.date] ??= {
+        terminus: null,
+        circulations: {},
+        ...(await this.grilleDuJour(c.date)),
+      };
       const jour = etat.jours[c.date];
       if (jour) {
         trace(
@@ -1253,7 +1262,7 @@ export class MockProvider implements DataProvider {
 
   async creerTrainSup(date: string, montee: Circulation, descente: Circulation): Promise<void> {
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {} };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     const jour = etat.jours[date];
     if (!jour) return;
     for (const c of [montee, descente]) {
@@ -1319,7 +1328,7 @@ export class MockProvider implements DataProvider {
 
   async setSectionJour(date: string, section: SectionJour): Promise<void> {
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {} };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     const etatJour = etat.jours[date];
     if (!etatJour) return;
     const propre: SectionJour = {
@@ -1363,7 +1372,7 @@ export class MockProvider implements DataProvider {
     const avant = await this.circulationAvant(date, numero);
     if (!avant) throw new Error(`Accès non enregistré pour le train ${numero} du ${date}`);
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {} };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     const jour = etat.jours[date];
     if (!jour) return;
     const apres: Circulation = { ...avant, acces, commanditaire };
@@ -1384,7 +1393,7 @@ export class MockProvider implements DataProvider {
     const grilles = await this.getGrilles();
     const grille = serviceActif(grilles, date) ?? grilles[0];
     const etat = litEtat();
-    etat.jours[date] ??= { terminus: null, circulations: {} };
+    etat.jours[date] ??= { terminus: null, circulations: {}, ...(await this.grilleDuJour(date)) };
     const etatJour = etat.jours[date];
     if (!etatJour || !grille) return;
     // `null` = pas de bascule. Seuil normalisé (un pair vise sa montée N − 1).

@@ -1464,3 +1464,157 @@ describe('Paramètres corrigés à la lecture : le fournisseur RETIENT le signal
     expect(provider.correctionsParams(), 'le signal survit à la correction').toEqual([]);
   });
 });
+
+describe('MockProvider — supprimer une grille : deux garde-fous, comme la base', () => {
+  beforeEach(() => {
+    stockage.clear();
+    sessionStockage.clear();
+    vi.useRealTimers();
+  });
+
+  const GRAND = grandServiceJson as unknown as Grille;
+  const V2: Grille = { ...GRAND, version: '2026-ete-grand-service-v2' };
+
+  /** Grand service corrigé : v2 active, v1 désactivée, une journée du 15/07 générée par v1. */
+  async function avecJourSurV1(provider: InstanceType<typeof MockProvider>): Promise<void> {
+    await provider.signIn('admin@demo', 'x');
+    await provider.getJour('2026-07-15', { creerSiAbsent: true });
+    await provider.saveGrille(V2);
+    await provider.setGrilleActive(GRAND.version, false);
+  }
+
+  it('garde-fou 1 : une grille ACTIVE ne se supprime pas, et rien ne bouge', async () => {
+    const provider = new MockProvider();
+    await expect(provider.supprimerGrille(GRAND.version)).rejects.toThrow(
+      'La grille « Grand service — été 2026 » est active : désactivez-la avant de la supprimer.',
+    );
+    expect(await provider.listGrilles()).toHaveLength(2);
+  });
+
+  it('une grille inconnue est refusée par son nom', async () => {
+    await expect(new MockProvider().supprimerGrille('absente')).rejects.toThrow(/introuvable/);
+  });
+
+  it('désactivée et sans journée : supprimée pour de bon, y compris une grille de référence', async () => {
+    const provider = new MockProvider();
+    await provider.setGrilleActive(GRAND.version, false);
+    await provider.supprimerGrille(GRAND.version);
+    expect((await provider.listGrilles()).map((g) => g.version)).toEqual([
+      '2026-ete-petit-service',
+    ]);
+    // Même en la réactivant : elle n'existe plus.
+    await expect(provider.setGrilleActive(GRAND.version, true)).rejects.toThrow(/introuvable/);
+  });
+
+  it('une grille importée se supprime aussi, et la suppression est tracée au journal', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await provider.saveGrille(V2, { actif: false });
+    await provider.supprimerGrille(V2.version);
+    expect((await provider.listGrilles()).map((g) => g.version)).not.toContain(V2.version);
+    const traces = (await provider.listJournal({})).filter(
+      (e) => e.table_cible === 'grilles' && e.cle === V2.version,
+    );
+    // Une suppression : « avant » renseigné, « après » vide (comme trg_journal_grilles).
+    expect(traces.some((e) => e.champ === 'libelle' && e.avant !== null && e.apres === null)).toBe(
+      true,
+    );
+  });
+
+  it('garde-fou 2 : une journée d’AUJOURD’HUI qui la référence bloque, dates à l’appui', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    await avecJourSurV1(provider);
+    await expect(provider.supprimerGrille(GRAND.version)).rejects.toThrow(
+      /1 journée d'aujourd'hui ou à venir \(15\/07\/2026\)/,
+    );
+    expect(await provider.listJoursUtilisantGrille(GRAND.version, '2026-07-15')).toEqual([
+      '2026-07-15',
+    ]);
+  });
+
+  it('garde-fou 2 : une journée à venir bloque aussi', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-10' });
+    await avecJourSurV1(provider);
+    await expect(provider.supprimerGrille(GRAND.version)).rejects.toThrow(/15\/07\/2026/);
+  });
+
+  it('une journée de HIER ne bloque pas', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-16' });
+    await avecJourSurV1(provider);
+    await provider.supprimerGrille(GRAND.version);
+    expect((await provider.listGrilles()).map((g) => g.version)).not.toContain(GRAND.version);
+  });
+
+  it('garde-fou 2 : le jour se lit à PARIS — 23:59 locale bloque, 00:00 le lendemain ne bloque plus', async () => {
+    // Jour d'été : minuit à Paris = 22:00 UTC. Une comparaison sur la date UTC
+    // lèverait ou lèverait pas le garde-fou deux heures trop tôt ou trop tard.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const provider = new MockProvider();
+    vi.setSystemTime(new Date('2026-07-15T21:59:59Z')); // 23:59:59 à Paris : le 15 est aujourd'hui
+    await avecJourSurV1(provider);
+    await expect(provider.supprimerGrille(GRAND.version)).rejects.toThrow(/15\/07\/2026/);
+    vi.setSystemTime(new Date('2026-07-15T22:00:00Z')); // 00:00 le 16 : le 15 est passé
+    await provider.supprimerGrille(GRAND.version);
+    expect((await provider.listGrilles()).map((g) => g.version)).not.toContain(GRAND.version);
+  });
+
+  it('réinitialiser la journée la fait renvoyer à la grille en vigueur : le blocage tombe', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    await avecJourSurV1(provider);
+    await provider.reinitialiseJour('2026-07-15');
+    expect(await provider.listJoursUtilisantGrille(GRAND.version, '2026-07-15')).toEqual([]);
+    expect(await provider.listJoursUtilisantGrille(V2.version, '2026-07-15')).toEqual([
+      '2026-07-15',
+    ]);
+    await provider.supprimerGrille(GRAND.version);
+  });
+
+  it('une journée créée par une écriture directe porte elle aussi sa grille', async () => {
+    const provider = new MockProvider({ aujourdhui: '2026-07-15' });
+    await provider.signIn('admin@demo', 'x');
+    await provider.setTerminusBellevue('2026-07-20', { a_partir_du_train: 19 });
+    expect(await provider.listJoursUtilisantGrille(GRAND.version, '2026-07-15')).toEqual([
+      '2026-07-20',
+    ]);
+  });
+
+  it('recréer la MÊME référence après suppression : grille neuve, active, sans réglages hérités', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await provider.updateGrilleMetadonnees(GRAND.version, {
+      libelle: 'Ancien nom',
+      periodes: GRAND.periodes,
+      commentaire: 'ancien commentaire',
+    });
+    await provider.setGrilleActive(GRAND.version, false);
+    await provider.supprimerGrille(GRAND.version);
+    await provider.saveGrille(GRAND);
+    const relue = (await provider.listGrilles()).find((g) => g.version === GRAND.version);
+    expect(relue).toMatchObject({ actif: true, libelle: GRAND.libelle, commentaire: null });
+    expect(relue?.cree_par).not.toBe('grilles de référence (démo)');
+  });
+
+  it('supprimerGrilleRemplacee : retire l’ancienne si le successeur est la correction', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await provider.saveGrille(V2);
+    await provider.supprimerGrilleRemplacee(GRAND.version, V2.version);
+    expect((await provider.listGrilles()).map((g) => g.version)).toEqual([
+      '2026-ete-petit-service',
+      V2.version,
+    ]);
+  });
+
+  it('supprimerGrilleRemplacee : une grille active n’est pas supprimable en citant une autre', async () => {
+    const provider = new MockProvider();
+    await provider.signIn('admin@demo', 'x');
+    await expect(
+      provider.supprimerGrilleRemplacee(GRAND.version, '2026-ete-petit-service'),
+    ).rejects.toThrow(/pas le remplacement/);
+    await provider.saveGrille(V2, { actif: false });
+    await expect(provider.supprimerGrilleRemplacee(GRAND.version, V2.version)).rejects.toThrow(
+      /pas active/,
+    );
+    expect(await provider.listGrilles()).toHaveLength(3);
+  });
+});

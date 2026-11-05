@@ -203,7 +203,7 @@ export function resumeCorrection(c: CorrectionEnCours, enregistree: Grille): str
   const morceaux: string[] = [];
   if (c.mode === 'correction') {
     morceaux.push(
-      `Grille « ${enregistree.libelle} » corrigée : nouvelle version ${enregistree.version}, qui remplace ${c.origine.version} (supprimée)`,
+      `Grille « ${enregistree.libelle} » corrigée : nouvelle version ${enregistree.version}, qui remplace ${c.origine.version}`,
     );
   } else {
     morceaux.push(
@@ -278,6 +278,14 @@ export async function appliqueCorrection(
       await p.supprimerGrilleRemplacee(c.origine.version, aEnregistrer.version);
     } catch (e) {
       erreurSuppression = e instanceof Error ? e.message : String(e);
+      // Le journal de l'étape 3 dit « remplace » sans affirmer la suppression ;
+      // celle qui n'a pas eu lieu est consignée à son tour, sinon l'historique
+      // laisserait croire qu'il ne reste qu'une grille.
+      await p
+        .logPublication(
+          `Grille « ${aEnregistrer.libelle} » : l'ancienne version ${c.origine.version} n'a pas pu être supprimée (à supprimer à la main)`,
+        )
+        .catch(() => undefined);
     }
   }
   return { erreurJournal, erreurSuppression };

@@ -47,6 +47,7 @@ import {
   planValidation,
   raisonsBlocage,
   raisonsBlocageEdition,
+  actionsGrille,
   resumeEdition,
   texteSuppression,
   resumePlan,
@@ -171,37 +172,7 @@ export function initOngletHoraires(deps: DependancesHoraires): OngletHoraires {
           ? '<span class="etat-grille en-service">En service aujourd’hui</span>'
           : '<span class="etat-grille active">Active</span>';
     const v = echapper(g.version);
-    // Télécharger n'est pas une écriture : la caisse aussi imprime le document.
-    const actions = [
-      `<button class="leger" data-action="voir" data-version="${v}">Voir</button>`,
-      `<button class="leger" data-action="telecharger" data-version="${v}" title="Télécharger le document d’exploitation (.xlsx) de cette grille">Télécharger</button>`,
-    ];
-    if (peutEcrire()) {
-      actions.push(
-        `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
-      );
-      actions.push(
-        `<button class="leger" data-action="corriger" data-version="${v}" title="Corriger les heures, les trains, les indicateurs — la version corrigée remplace cette grille">Corriger</button>`,
-      );
-      actions.push(
-        `<button class="leger" data-action="dupliquer" data-version="${v}" title="Créer une nouvelle grille à partir de celle-ci">Dupliquer</button>`,
-      );
-      if (g.actif === false) {
-        actions.push(
-          `<button class="leger" data-action="activer" data-version="${v}">Réactiver</button>`,
-        );
-        // « Supprimer » n'existe QUE sur une grille désactivée : une grille
-        // active est celle que lisent les écrans. Le fournisseur le refuse de
-        // toute façon (supprimerGrille) ; ici on ne propose pas ce qui échouera.
-        actions.push(
-          `<button class="leger danger" data-action="supprimer" data-version="${v}" title="Supprimer définitivement cette grille (aucun retour arrière)">Supprimer</button>`,
-        );
-      } else {
-        actions.push(
-          `<button class="leger danger" data-action="desactiver" data-version="${v}">Désactiver</button>`,
-        );
-      }
-    }
+    const actions = actionsGrille(g, peutEcrire());
     const chargee = g.cree_le ? dateCourte(g.cree_le.slice(0, 10)) : '—';
     return `<tr class="${g.actif === false ? 'inactif' : ''}">
       <td title="référence ${v}"><b>${echapper(g.libelle)}</b>${g.commentaire ? `<br><small>${echapper(g.commentaire)}</small>` : ''}</td>

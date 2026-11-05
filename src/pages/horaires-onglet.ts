@@ -22,6 +22,7 @@ import {
   type ResultatFeuille,
 } from '../core/import-grille';
 import type { Grille, Periode, TrainGrille } from '../core/types';
+import { echapper } from './affichage-commun';
 import { departOrigine, ordreRotations, rotationsDeGrille } from './supervision-logique';
 
 /** Une feuille du classeur dans la boîte de dialogue : ce que l'agent complète. */
@@ -502,4 +503,39 @@ export function texteSuppression(g: Grille, nbJoursPasses: number): string {
     'Pour en garder une trace, téléchargez-la d’abord.',
   );
   return lignes.join('\n');
+}
+
+/**
+ * Boutons d'une ligne de la liste des grilles, selon l'état de la grille et le
+ * droit de l'agent. Pure, donc testée : « Supprimer » ne doit exister QUE sur
+ * une grille désactivée, et seulement pour qui peut écrire les grilles (même
+ * porte que « Désactiver » : `aLeDroit(roles, 'grilles')`, passé ici en booléen).
+ */
+export function actionsGrille(g: Grille, peutEcrire: boolean): string[] {
+  const v = echapper(g.version);
+  // Télécharger n'est pas une écriture : la caisse aussi imprime le document.
+  const actions = [
+    `<button class="leger" data-action="voir" data-version="${v}">Voir</button>`,
+    `<button class="leger" data-action="telecharger" data-version="${v}" title="Télécharger le document d’exploitation (.xlsx) de cette grille">Télécharger</button>`,
+  ];
+  if (!peutEcrire) return actions;
+  actions.push(
+    `<button class="leger" data-action="modifier" data-version="${v}" title="Nom, dates de validité, commentaire">Modifier</button>`,
+    `<button class="leger" data-action="corriger" data-version="${v}" title="Corriger les heures, les trains, les indicateurs — la version corrigée remplace cette grille">Corriger</button>`,
+    `<button class="leger" data-action="dupliquer" data-version="${v}" title="Créer une nouvelle grille à partir de celle-ci">Dupliquer</button>`,
+  );
+  if (g.actif === false) {
+    actions.push(
+      `<button class="leger" data-action="activer" data-version="${v}">Réactiver</button>`,
+      // « Supprimer » n'existe QUE sur une grille désactivée : une grille
+      // active est celle que lisent les écrans. Le fournisseur le refuse de
+      // toute façon (supprimerGrille) ; ici on ne propose pas ce qui échouera.
+      `<button class="leger danger" data-action="supprimer" data-version="${v}" title="Supprimer définitivement cette grille (aucun retour arrière)">Supprimer</button>`,
+    );
+  } else {
+    actions.push(
+      `<button class="leger danger" data-action="desactiver" data-version="${v}">Désactiver</button>`,
+    );
+  }
+  return actions;
 }
