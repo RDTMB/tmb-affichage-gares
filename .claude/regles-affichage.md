@@ -75,6 +75,21 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   la colonne collante de l'embed (3). Exact tant que les lignes ont la même
   hauteur — mesuré égales le 05/11/2026 ; à re-mesurer si une ligne peut
   grandir.
+  **UNE voie pour le rond** (lot C, 05/11/2026) : l'HEURE ne bouge JAMAIS (le
+  rond est hors flux, jamais dans le flux d'une cellule) et le rond a UNE
+  abscisse, à DROITE de l'heure, la même à quai et en route — seule sa hauteur
+  change. La voie (`--voie-rond`) est définie une fois par feuille de style ;
+  `.train-pos.en-route` ne pose que `top`, jamais un axe horizontal (garde-fou
+  `grille-vivante.test.ts`). Elle se compte sur la demi-largeur de l'heure
+  (1,3 corps, mesurée 1,19 à 1,29), pas sur le `em` d'une cellule `td.saute`.
+  En PORTRAIT une cellule de 75 px ne laisse que 9 px de chaque côté de l'heure :
+  le rond y passe à 1,3 u (au lieu de 1,7) et déborde sa cellule de ~7 px, sans
+  toucher ni l'heure ni la voisine. **La flèche** accompagne le rond ENTRE DEUX
+  GARES seulement (jamais à quai) et pointe TOUJOURS vers le bas, en montée
+  comme en descente : les lignes se lisent de haut en bas et la gare suivante
+  est la ligne du dessous. Élément à part (`<svg class="train-fleche">`, posé
+  avant le rond), pas un pseudo-élément : sur `grille.html` le rond pulse et un
+  enfant hériterait de son opacité. Même voie, même hauteur (`--saut`).
 - **Colonne éclairée (« prochain départ »)** : `grille.html` seulement. L'embed
   ne l'éclaire JAMAIS (`sansProchain`, même sans `?gare=`) ; le prochain
   départ y est l'affaire de la vue des départs d'une gare.

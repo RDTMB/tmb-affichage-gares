@@ -422,14 +422,33 @@ td.supp {
   text-decoration: line-through;
 }
 
+/* LA VOIE DU ROND — une seule, définie ICI, pour les deux états du train.
+   L'heure est centrée dans sa cellule et ne bouge JAMAIS : le rond est hors
+   flux (`position: absolute`), à DROITE de l'heure, à la même abscisse que le
+   train soit à quai ou en route ; seule sa hauteur change (`top`, plus bas).
+   - 1,3 corps : DEMI-LARGEUR de l'heure (chiffres tabulaires), majorée. Mesuré
+     le 05/11/2026 : 62,5 px pour 24,3 px de corps (1080 p), soit 1,29 corps.
+   - 0,15 corps : le rond ne touche pas l'heure.
+   - la moitié du diamètre : on vise le CENTRE du rond (`translate(-50%, …)`).
+   Le corps est celui de L'HEURE (`--corps-heure`), pas le `em` de la cellule :
+   les cellules « | » et « — » (`td.saute`) ont un corps plus petit, et le rond
+   que porte l'une d'elles (gare sans ligne, voir `ancrePosition`) serait sinon
+   6 px plus à gauche que dans le reste de sa colonne. Le diamètre est lu à UN
+   seul endroit (`--rond-d`), qui sert aussi à la flèche. */
+tbody td {
+  --corps-heure: 2.25vh;
+  --rond-d: 1.7vh;
+  --voie-rond: calc(50% + 1.45 * var(--corps-heure) + var(--rond-d) / 2);
+}
+
 /* Point pulsant couleur rame : dernier point de passage des trains en ligne */
 .train-pos {
   position: absolute;
-  right: 0.3vw;
+  left: var(--voie-rond);
   top: 50%;
-  transform: translateY(-50%);
-  width: 1.7vh;
-  height: 1.7vh;
+  transform: translate(-50%, -50%);
+  width: var(--rond-d);
+  height: var(--rond-d);
   border-radius: 50%;
   animation: pulse 1.4s ease-in-out infinite;
   /* Le liseré prend la couleur de l'anneau quand la rame en a un, et le halo
@@ -447,12 +466,42 @@ td.supp {
    l'échelle en vh / --u et le mode portrait restent ceux du rond à quai.
    Centré dans la colonne ; `z-index` pour passer au-dessus des cellules de
    la ligne suivante, qui sont `position: relative` et peintes après la sienne. */
-.train-pos.en-route {
-  right: auto;
-  left: 50%;
+.train-pos.en-route,
+.train-fleche {
   top: calc(50% + var(--saut, 1) * 50%);
-  transform: translate(-50%, -50%);
   z-index: 2;
+}
+
+/* La FLÈCHE : posée sur le rond entre deux gares, pointe TOUJOURS vers le bas
+   (les lignes se lisent de haut en bas, la gare suivante est sous le train, en
+   montée comme en descente). Même voie, même hauteur que le rond (elle s'y
+   accroche), plus haute que lui : sa pointe dépasse dessous. Un élément À PART,
+   jamais un pseudo-élément du rond : le rond pulse, la flèche hériterait de
+   son opacité. Couleur : `--rame` ; contour : `--anneau` quand la rame en a un,
+   le liseré sombre du rond sinon. Elle est posée AVANT le rond dans le code :
+   à `z-index` égal, le rond se peint par-dessus. */
+.train-fleche {
+  position: absolute;
+  left: var(--voie-rond);
+  transform: translate(-50%, -50%);
+  /* 1,2 diamètre de large : entre l'heure et le bord de la voie il ne reste que
+     0,5 em (mesuré, 1080 p : 13 px de l'heure au centre du rond) ; plus large,
+     la base de la pointe mordrait sur le dernier chiffre. */
+  width: calc(var(--rond-d) * 1.2);
+  height: calc(var(--rond-d) * 2);
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 0 0.5vh rgba(255, 255, 255, 0.9));
+}
+
+.train-fleche path {
+  fill: var(--rame, #fff);
+  stroke: var(--anneau, rgba(24, 44, 66, 0.75));
+  /* Le contour passe SOUS le remplissage : seule sa moitié extérieure se voit. */
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 
 @keyframes pulse {
@@ -1114,12 +1163,22 @@ body.mode-horloge .badge-cache {
     font-size: calc(1.25 * var(--u));
   }
 
+  /* 1,3 u et non 1,7 : une cellule de 75 px ne laisse que 9 px de chaque côté
+     de l'heure (56 px), et un rond de 1,7 u (16,5 px) plus son anneau mordrait
+     sur l'heure voisine (mesuré le 05/11/2026). */
+  tbody td {
+    --corps-heure: calc(2.25 * var(--u));
+    --rond-d: calc(1.3 * var(--u));
+  }
+
   .train-pos {
-    width: calc(1.7 * var(--u));
-    height: calc(1.7 * var(--u));
     box-shadow:
       0 0 0 2px rgba(24, 44, 66, 0.75),
       0 0 calc(0.9 * var(--u)) rgba(255, 255, 255, 0.9);
+  }
+
+  .train-fleche {
+    filter: drop-shadow(0 0 calc(0.5 * var(--u)) rgba(255, 255, 255, 0.9));
   }
 
   /* La légende passe sur deux lignes plutôt que de perdre ses dernières

@@ -106,7 +106,10 @@ pointé sur la préversion.
   de la couleur de la rame marque **chaque train en ligne** : sur la ligne de
   la gare quand le train y est à quai, **à mi-chemin entre deux gares**
   quand il roule (par exemple entre « Col de Voza » et « Bellevue » pour un
-  train parti du Col de Voza). Un train arrivé à son terminus disparaît.
+  train parti du Col de Voza) ; il est alors posé sur une **flèche vers le
+  bas**, la gare suivante étant sous lui. Le rond reste dans la même colonne
+  à droite de l'heure, que le train soit à quai ou en route, et l'heure ne
+  bouge pas. Un train arrivé à son terminus disparaît.
   Chaque tableau est titré par son trajet — « Le Fayet → Bellevue » — suivi,
   en plus petit, du sens : « Montée / Ascent » ou « Descente / Descent ».
 - **Même vocabulaire partout** : « Montée / Ascent » et « Descente / Descent »
