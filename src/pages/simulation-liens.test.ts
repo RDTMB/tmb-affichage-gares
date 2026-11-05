@@ -23,6 +23,10 @@ describe('jourSimulationValide', () => {
     expect(jourSimulationValide('2026-06-31')).toBe(false);
     expect(jourSimulationValide('2026-13-01')).toBe(false);
     expect(jourSimulationValide('2026-12-1')).toBe(false);
+    // Année à deux chiffres : Date.UTC la ramène à 19xx, seule l'année le trahit.
+    expect(jourSimulationValide('0050-01-01')).toBe(false);
+    expect(jourSimulationValide('2026-12-12x')).toBe(false);
+    expect(jourSimulationValide('x2026-12-12')).toBe(false);
     expect(jourSimulationValide('')).toBe(false);
   });
 });
@@ -44,6 +48,9 @@ describe('heureSimulationNormalisee', () => {
 describe('suffixeSimulation', () => {
   it('jour et heure', () => {
     expect(suffixeSimulation(R)).toBe('&jour=2026-12-12&simule=08:29:30');
+  });
+  it('l’heure saisie sans secondes est complétée dans le lien', () => {
+    expect(suffixeSimulation({ ...R, heure: '08:29' })).toBe('&jour=2026-12-12&simule=08:29:00');
   });
   it('« Ne pas simuler » retire le paramètre', () => {
     expect(suffixeSimulation({ ...R, sansJour: true })).toBe('&simule=08:29:30');
