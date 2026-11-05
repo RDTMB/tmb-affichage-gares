@@ -565,17 +565,12 @@ interface RegleRond {
   decl: Record<string, string>;
 }
 
-/** Toutes les règles (même dans un `@media`) dont un sélecteur est le rond ou la flèche. */
-function reglesRond(source: string): RegleRond[] {
+/** Toutes les règles d'une feuille (même dans un `@media`), commentaires retirés. */
+function toutesRegles(source: string): RegleRond[] {
   const sansCommentaires = source.replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '');
   const sortie: RegleRond[] = [];
   for (const m of sansCommentaires.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selecteur = (m[1] ?? '').trim().replace(/\s+/g, ' ');
-    const cible = selecteur
-      .split(',')
-      .map((s) => s.trim())
-      .some((s) => /\.train-(pos|fleche)\b/.test(s) && !/\spath\b/.test(s));
-    if (!cible) continue;
     const decl: Record<string, string> = {};
     for (const d of (m[2] ?? '').split(';')) {
       const i = d.indexOf(':');
@@ -588,6 +583,23 @@ function reglesRond(source: string): RegleRond[] {
     sortie.push({ selecteur, decl });
   }
   return sortie;
+}
+
+/** Les règles qui nomment le rond ou la flèche (pas son tracé `path`). */
+function reglesRond(source: string): RegleRond[] {
+  return toutesRegles(source).filter((r) =>
+    r.selecteur
+      .split(',')
+      .map((s) => s.trim())
+      .some((s) => /\.train-(pos|fleche)\b/.test(s) && !/\spath\b/.test(s)),
+  );
+}
+
+/** La valeur d'une propriété dans la PREMIÈRE règle dont le sélecteur est exactement celui-ci. */
+function valeur(source: string, selecteur: string, propriete: string): string | undefined {
+  return toutesRegles(source).find((r) => r.selecteur === selecteur && propriete in r.decl)?.decl[
+    propriete
+  ];
 }
 
 describe('la voie du rond — une abscisse, jamais deux', () => {
@@ -621,6 +633,14 @@ describe('la voie du rond — une abscisse, jamais deux', () => {
         const poseurs = regles.filter(dansCellule).filter((r) => 'left' in r.decl);
         expect(poseurs.length).toBeGreaterThan(0);
         for (const r of poseurs) expect(r.decl['left'], r.selecteur).toBe('var(--voie-rond)');
+        // et personne ne la contredit par l'autre bord : `right` ancrait le rond à
+        // droite de la cellule (grille.html, avant le lot C), et ne se voit pas
+        // tant que `left` le masque
+        for (const r of regles.filter(dansCellule)) {
+          for (const p of ['right', 'inset', 'inset-inline', 'inset-inline-end', 'margin-left']) {
+            expect(r.decl, `${r.selecteur} ne doit pas poser « ${p} »`).not.toHaveProperty(p);
+          }
+        }
       });
 
       it('l’état « en route » ne touche à AUCUN axe horizontal', () => {
@@ -689,6 +709,82 @@ describe('la voie du rond — une abscisse, jamais deux', () => {
       /--voie-rond:\s*calc\(50% \+ 1\.3em \+ 0\.37em \+ var\(--rond-d\) \/ 2\)/,
     );
     expect(feuilles.embed).toMatch(/table\.grille td\.saute \{\s*color: var\(--texte-sec\);\s*\}/);
+  });
+});
+
+describe('le rond et la flèche — les valeurs que la mesure a établies', () => {
+  // Vitest n'a pas de navigateur : ces valeurs ont été choisies APRÈS mesure au
+  // navigateur (voir la PR), et ce garde-fou empêche un « nettoyage » de les
+  // défaire en silence. Les changer est permis — en re-mesurant.
+  const lire = (f: string): string => readFileSync(join(RACINE, f), 'utf-8');
+  const embed = lire('src/styles/embed.css');
+  const grille = lire('src/styles/grille.css');
+  const TRACE = '.train-fleche path';
+
+  it('embed : le rond hors flux, sur sa voie, à mi-hauteur de sa ligne à quai', () => {
+    const sel = 'table.grille td .train-pos, table.grille td .train-fleche';
+    expect(valeur(embed, sel, 'position')).toBe('absolute');
+    expect(valeur(embed, sel, 'top')).toBe('50%');
+    expect(valeur(embed, 'table.grille td', '--rond-d')).toBe('0.65em');
+  });
+
+  it('embed : la pastille de la légende est ronde, et du même diamètre que celle de la grille', () => {
+    // `.train-pos` seul (dans le flux) est la pastille « en ligne / running »
+    expect(valeur(embed, '.train-pos', 'width')).toBe('var(--rond-d, 0.65em)');
+    expect(valeur(embed, '.train-pos', 'height')).toBe(valeur(embed, '.train-pos', 'width'));
+  });
+
+  it('embed : la flèche dépasse le rond (plus large, bien plus haute), sans rogner ni capter la souris', () => {
+    const sel = 'table.grille td .train-fleche';
+    expect(valeur(embed, sel, 'width')).toBe('calc(var(--rond-d) * 1.8)');
+    expect(valeur(embed, sel, 'height')).toBe('calc(var(--rond-d) * 2.8)');
+    expect(valeur(embed, sel, 'overflow')).toBe('visible'); // le contour dépasse de la boîte
+    expect(valeur(embed, sel, 'pointer-events')).toBe('none');
+  });
+
+  it('embed : couleur de la rame, contour = anneau (sinon liseré du rond), peint SOUS le remplissage', () => {
+    expect(valeur(embed, TRACE, 'fill')).toBe('var(--rame, var(--accent))');
+    expect(valeur(embed, TRACE, 'stroke')).toBe('var(--anneau, var(--lisere-position))');
+    expect(valeur(embed, TRACE, 'stroke-width')).toBe('2px');
+    expect(valeur(embed, TRACE, 'paint-order')).toBe('stroke fill');
+    expect(valeur(embed, TRACE, 'vector-effect')).toBe('non-scaling-stroke');
+  });
+
+  it('grille.html : le rond hors flux, à mi-hauteur de sa ligne à quai', () => {
+    expect(valeur(grille, '.train-pos', 'position')).toBe('absolute');
+    expect(valeur(grille, '.train-pos', 'top')).toBe('50%');
+  });
+
+  it('grille.html : la flèche dépasse le rond, sans rogner ni capter la souris, avec son halo', () => {
+    expect(valeur(grille, '.train-fleche', 'position')).toBe('absolute');
+    expect(valeur(grille, '.train-fleche', 'width')).toBe('calc(var(--rond-d) * 1.2)');
+    expect(valeur(grille, '.train-fleche', 'height')).toBe('calc(var(--rond-d) * 2)');
+    expect(valeur(grille, '.train-fleche', 'overflow')).toBe('visible');
+    expect(valeur(grille, '.train-fleche', 'pointer-events')).toBe('none');
+    expect(valeur(grille, '.train-fleche', 'filter')).toBe(
+      'drop-shadow(0 0 0.5vh rgba(255, 255, 255, 0.9))',
+    );
+  });
+
+  it('grille.html : couleur de la rame, contour = anneau (sinon liseré sombre), peint SOUS le remplissage', () => {
+    expect(valeur(grille, TRACE, 'fill')).toBe('var(--rame, #fff)');
+    expect(valeur(grille, TRACE, 'stroke')).toBe('var(--anneau, rgba(24, 44, 66, 0.75))');
+    expect(valeur(grille, TRACE, 'stroke-width')).toBe('3px');
+    expect(valeur(grille, TRACE, 'paint-order')).toBe('stroke fill');
+    expect(valeur(grille, TRACE, 'vector-effect')).toBe('non-scaling-stroke');
+  });
+
+  it('grille.html en PORTRAIT : le rond passe à 1,3 u (cellule de 75 px), la flèche et son halo à l’échelle', () => {
+    const portrait = toutesRegles(grille.slice(grille.indexOf('@media (orientation: portrait)')));
+    const ronds = portrait.filter((r) => r.selecteur === 'tbody td' && '--rond-d' in r.decl);
+    expect(ronds.map((r) => r.decl['--rond-d'])).toEqual(['calc(1.3 * var(--u))']);
+    expect(portrait.find((r) => r.selecteur === '.train-fleche')?.decl['filter']).toBe(
+      'drop-shadow(0 0 calc(0.5 * var(--u)) rgba(255, 255, 255, 0.9))',
+    );
+    // le portrait garde l'anneau et le halo du rond, à l'échelle --u
+    expect(portrait.find((r) => r.selecteur === '.train-pos')?.decl['box-shadow']).toContain(
+      'calc(0.9 * var(--u))',
+    );
   });
 });
 
