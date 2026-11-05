@@ -4101,3 +4101,34 @@ body.en-apercu {
   margin-right: 4px;
   vertical-align: 1px;
 }
+
+/* Onglet Simulation : réglage du jour et de l'heure, puis les liens d'aperçu. */
+.sim-reglage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0 14px;
+}
+
+.sim-sans {
+  color: var(--sec);
+  font-size: 13px;
+}
+
+#sim-liens h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--titre);
+  margin: 14px 0 6px;
+}
+
+.sim-liens-groupe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.sim-liens-groupe a {
+  color: var(--bleu);
+}
