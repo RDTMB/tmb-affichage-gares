@@ -677,10 +677,13 @@ table.grille td.retard {
   font-weight: 700;
 }
 
+/* La pastille (couleur de la rame, anneau, liseré). Dans une CELLULE elle est
+   posée par la voie ci-dessous ; telle quelle (dans le flux) elle ne sert plus
+   qu'à la légende « en ligne / running ». */
 .train-pos {
   display: inline-block;
-  width: 0.65em;
-  height: 0.65em;
+  width: var(--rond-d, 0.65em);
+  height: var(--rond-d, 0.65em);
   border-radius: 50%;
   margin-left: 4px;
   background: var(--accent);
@@ -690,24 +693,75 @@ table.grille td.retard {
   vertical-align: 0.05em;
 }
 
+/* LA VOIE DU ROND — une seule, définie ICI, pour les deux états du train.
+   L'heure est centrée dans sa cellule et ne bouge JAMAIS : le rond est hors
+   flux (`position: absolute`), à DROITE de l'heure, à la même abscisse que le
+   train soit à quai ou en route. Seule sa hauteur change (`top`, plus bas).
+   - 1,3em : DEMI-LARGEUR de l'heure (chiffres tabulaires), majorée. Mesuré le
+     05/11/2026 AVEC Lato chargée : 35,0 px pour 13,6 px de corps, soit 1,29em
+     (1,19em avec la police de repli, plus étroite : mesurer sans Lato donne un
+     chiffre faux).
+   - 0,37em : le rond ne touche pas l'heure (son liseré déborde de 3 px).
+   - la moitié du diamètre : on vise le CENTRE du rond (`translate(-50%, …)`).
+   Le pourcentage se compte sur la largeur de la cellule. Les colonnes les plus
+   étroites mesurent 68,4 px (leur en-tête « TRAIN 1 » les y oblige) : le rond
+   y tient, son liseré dépasse de 0,3 px (34,5 px pour une demi-cellule de 34,2). */
+table.grille td {
+  --rond-d: 0.65em;
+  --voie-rond: calc(50% + 1.3em + 0.37em + var(--rond-d) / 2);
+}
+
+table.grille td .train-pos,
+table.grille td .train-fleche {
+  position: absolute;
+  left: var(--voie-rond);
+  top: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  /* Au-dessus des cellules voisines (`position: relative`, peintes après), sous
+     la colonne collante des gares (3). */
+  z-index: 2;
+}
+
 /* Train EN ROUTE : le rond est posé à mi-chemin entre la ligne de sa gare de
    départ (la cellule qui le porte) et celle de la gare suivante de ses
    passages, `--saut` lignes plus bas (1 = voisine ; plus pour un express qui
    traverse des lignes sautées). `top` se compte en hauteurs de CETTE cellule :
    50 % = son milieu, +50 % par ligne franchie, soit le milieu de l'intervalle
    entre les deux milieux de ligne — exact quand les lignes ont la même hauteur
-   (mesuré, voir la PR). Centré dans la colonne, au-dessus des cellules voisines
-   (`z-index`) puisqu'il déborde de la sienne. */
-.train-pos.en-route {
-  position: absolute;
-  left: 50%;
+   (mesuré, voir la PR). Même hauteur pour le rond ET sa flèche : elle s'y
+   accroche, elle ne la recalcule pas. */
+table.grille td .train-pos.en-route,
+table.grille td .train-fleche {
   /* Le pourcentage se compte sur le cadre de contenu de la cellule, qui a 1 px de
      moins que la ligne (sa bordure basse) : +0,5 px par ligne comptée rend le
      milieu exact (mesuré : -1 px sans, 0 avec). */
   top: calc(50% + var(--saut, 1) * 50% + (var(--saut, 1) + 1) * 0.5px);
-  margin: 0;
-  transform: translate(-50%, -50%);
-  z-index: 2;
+}
+
+/* La FLÈCHE : posée sur le rond entre deux gares, pointe TOUJOURS vers le bas
+   (les lignes se lisent de haut en bas, la gare suivante est sous le train, en
+   montée comme en descente). Centrée sur le rond, plus haute que lui : sa
+   pointe dépasse dessous. Un élément À PART, jamais un pseudo-élément du rond :
+   sur grille.html le rond pulse, et la flèche hériterait de son opacité. La
+   couleur vient de `--rame` (la couleur de fond de la rame), le contour de
+   `--anneau` quand la rame en a un, du liseré du rond sinon. */
+table.grille td .train-fleche {
+  width: calc(var(--rond-d) * 1.8);
+  height: calc(var(--rond-d) * 2.8);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.train-fleche path {
+  fill: var(--rame, var(--accent));
+  stroke: var(--anneau, var(--lisere-position));
+  /* Le contour passe SOUS le remplissage : seule sa moitié extérieure se voit, la
+     couleur de la rame reste pure (un contour translucide à cheval la salirait). */
+  stroke-width: 2px;
+  paint-order: stroke fill;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
 }
 
 .sens-mot {

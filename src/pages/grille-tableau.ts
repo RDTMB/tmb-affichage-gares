@@ -134,6 +134,24 @@ export function titresDesSens(
   };
 }
 
+/**
+ * La FLÈCHE posée sur le rond d'un train EN ROUTE : une pointe qui regarde
+ * toujours vers le bas, parce que les lignes des deux tableaux se lisent de haut
+ * en bas et que la gare suivante du train est la ligne du dessous, en montée
+ * comme en descente (jamais retournée).
+ *
+ * Un élément À PART, posé avant le rond, et pas un pseudo-élément de celui-ci :
+ * sur `grille.html` le rond pulse (opacité animée), et un enfant en hériterait.
+ * La couleur passe par `--rame` — le MÊME fond que `styleRame` pose sur le rond,
+ * lu depuis sa chaîne plutôt que recalculé : une seule décision de couleur. Le
+ * CSS (`embed.css`, `grille.css`) donne la voie et la hauteur, partagées avec le
+ * rond (`--voie-rond`, `--saut`).
+ */
+export function fleche(styleDuRond: string, saut: number): string {
+  const style = styleDuRond.replace(/^background:/, '--rame:');
+  return `<svg class="train-fleche" viewBox="0 0 10 14" style="${style}--saut:${saut};" aria-hidden="true"><path d="M0 0H10L5 14Z"/></svg>`;
+}
+
 function classesColonne(colonne: ColonneTrain, estProchain: boolean): string {
   return [
     colonne.supprime ? 'supp' : '',
@@ -262,7 +280,8 @@ export function tableHtml(
         const style = styleRame(machineDe(c.train.rame));
         point =
           ancre.saut > 0
-            ? `<span class="train-pos en-route" style="${style}--saut:${ancre.saut};"></span>`
+            ? fleche(style, ancre.saut) +
+              `<span class="train-pos en-route" style="${style}--saut:${ancre.saut};"></span>`
             : `<span class="train-pos" style="${style}"></span>`;
       }
       if (!passage) {

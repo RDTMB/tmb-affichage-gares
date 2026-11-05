@@ -868,8 +868,10 @@ altitudes officielles ; « | » pour passage express sans arrêt ; colonnes
 passées atténuées ; prochain départ surligné ; heures retardées en orange,
 supprimées barrées ; point pulsant couleur rame pour chaque train en ligne —
 sur la ligne de la gare quand il y est à quai, à mi-chemin entre la gare qu'il
-vient de quitter et la suivante de ses passages quand il roule (règle :
-.claude/regles-affichage.md) ; légende complète ; pied identique à l'écran
+vient de quitter et la suivante de ses passages quand il roule, le rond y étant
+posé sur une flèche qui pointe vers le bas ; le rond a UNE voie, à droite de
+l'heure, et l'heure ne bouge jamais (règle : .claude/regles-affichage.md) ;
+légende complète ; pied identique à l'écran
 gare (messages + météo).
 
 ## 5. Supervision (`supervision.html`) — onglets
