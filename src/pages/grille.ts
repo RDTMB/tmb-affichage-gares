@@ -11,6 +11,7 @@ import '@fontsource/lato/400.css';
 import '@fontsource/lato/700.css';
 import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
+import '../styles/profil.css';
 import '../styles/grille.css';
 
 import {
@@ -21,8 +22,10 @@ import {
   sectionDuJour,
   passagesPourGare,
   positionsTrains,
+  sommetDeLaGrille,
   vueJournee,
 } from '../core/horaires';
+import { profilSvg } from './profil-ligne';
 import { paramsValides } from '../core/params';
 import { ORDRE_GARES } from '../core/types';
 import type { Affluence, GareId, Grille, Jour, Message, Params } from '../core/types';
@@ -142,6 +145,8 @@ let params: Params | null = null;
 let messages: Message[] = [];
 let affluence: Affluence[] = [];
 let sync: Synchronisation | null = null;
+/** Dernier profil de ligne posé : le dessin ne change que quand un train bouge. */
+let dernierProfil = '';
 /**
  * Fournisseur retenu, gardé au niveau du module : la boucle de rendu a besoin
  * de lui interroger l'écart d'horloge à chaque seconde, et il est choisi dans
@@ -349,7 +354,22 @@ function rendre(): void {
   // Garde de TYPAGE seulement : `vue === 'horaires'` garantit les deux.
   if (!grille || !jour) return;
 
-  const positions = new Map(positionsTrains(grille, jour, maintenant).map((p) => [p.numero, p]));
+  const enLigne = positionsTrains(grille, jour, maintenant);
+  const positions = new Map(enLigne.map((p) => [p.numero, p]));
+  // Profil de la ligne dans le bandeau de titre : les mêmes positions que les
+  // ronds et flèches du tableau, posées sur la pente. Réécrit seulement quand
+  // le dessin change (un train bouge quelques fois par heure).
+  const profil = profilSvg({
+    gares: grille.gares,
+    sommet: sommetDeLaGrille(grille, jour.date),
+    ici: gare,
+    positions: enLigne,
+    machines: params?.machines ?? [],
+  });
+  if (profil !== dernierProfil) {
+    dernierProfil = profil;
+    $('profil').innerHTML = profil;
+  }
   const ctx = { grille, jour, gare, machines: params?.machines ?? [], affluence };
   poseTableau('tab-montee', tableHtml(ctx, 'montee', maintenant, positions));
   poseTableau('tab-descente', tableHtml(ctx, 'descente', maintenant, positions));

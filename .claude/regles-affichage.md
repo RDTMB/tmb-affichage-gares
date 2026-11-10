@@ -120,6 +120,15 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   recréé chaque seconde et son pulse repartait de zéro à chaque tick (mesuré).
   Légende « en ligne / running » : un rond ; voir la PR pour la question de la
   flèche.
+- **Profil de la ligne** (bandeau de l'écran de gare et de la grille du jour,
+  10/11/2026) : les trains y sont posés par `positionsTrains`, avec SA règle —
+  à quai SUR la gare, en route À MI-CHEMIN de la gare suivante de ses passages,
+  jamais interpolé à l'heure ; un train supprimé n'y est pas. La gare du poste
+  (`?gare=`) est un ANNEAU rouge autour du point, pas un point rouge : un train
+  à quai s'y pose dedans et reste visible. Au-dessus du sommet du jour
+  (`sommetDeLaGrille`) la voie et la gare restent dessinées, éteintes. Une gare
+  absente du profil ne fait rien inventer : le train n'est pas dessiné. Retiré
+  sous 4/3 (écran) et en portrait (grille) : il n'y a plus la place de le lire.
 - **Colonne éclairée (« prochain départ »)** : `grille.html` seulement. L'embed
   ne l'éclaire JAMAIS (`sansProchain`, même sans `?gare=`) ; le prochain
   départ y est l'affaire de la vue des départs d'une gare.

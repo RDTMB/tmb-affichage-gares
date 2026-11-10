@@ -1,6 +1,27 @@
 /* Supervision — port fidèle de maquettes/supervision.html (validée par
    l'exploitant) + écran de connexion. */
 
+/* ============ REFONTE DU 10/11/2026 — ce qui a changé, et pourquoi ==========
+   La supervision avait pris l'allure d'un tableau de bord générique : cartes
+   blanches arrondies, pastilles ovales partout, capitales espacées, trois
+   listes cerclées par rangée. Rien n'y disait « poste de commande d'un
+   tramway », et tout y avait le même poids.
+
+   AUCUNE COULEUR N'A BOUGÉ : les jetons de :root (clair et sombre, mesurés à
+   la #73) sont intacts. Ce sont les FORMES et la HIÉRARCHIE qui changent :
+     - les cartes deviennent des FICHES : angles droits, plus de cadre, un
+       filet marine en tête — un registre d'exploitation, pas une vitrine ;
+     - le filet rouge de la marque passe sous l'en-tête, comme sur les écrans
+       de gare ;
+     - l'ovale est réservé à ce qui se COMPTE ou se BASCULE (pastille de
+       messages, interrupteur) ; les états et les filtres sont des étiquettes
+       à angle droit ;
+     - bas de casse partout : en-têtes de tableau, intitulés ;
+     - dans Circulations, les listes d'une rangée se taisent tant qu'on n'y
+       touche pas (bord au survol et au focus) : on lit d'abord la journée,
+       on la modifie ensuite.
+   ========================================================================== */
+
 :root {
   --rouge: var(--tmb-rouge);
   --rouge-fonce: var(--tmb-rouge-fonce);
@@ -164,7 +185,9 @@ header {
      illisible est pire qu'un badge absent — on croit lire le sien. */
   flex-wrap: wrap;
   gap: 16px;
-  padding: 8px 22px;
+  padding: 10px 22px;
+  /* Le filet rouge de la marque, comme sous le bandeau des écrans de gare. */
+  border-bottom: 4px solid var(--rouge);
 }
 
 /* Rien de tout cela ne se comprime : ces éléments disent QUI on est et SUR
@@ -211,19 +234,17 @@ header img.logo {
 }
 
 header h1 {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  line-height: 1.15;
 }
 
 header h1 small {
   display: block;
   font-family: 'Lato', sans-serif;
-  font-size: 11.5px;
-  font-weight: 700;
+  font-size: 12.5px;
+  font-weight: 400;
   color: var(--bleu-clair);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 /* Version du code en ligne, À LA SUITE du sous-titre (pas une pastille : voir
@@ -253,14 +274,17 @@ header .spacer {
 }
 
 .pill {
+  /* Une information d'état, pas un bouton : texte nu, sans ovale. Seules les
+     pastilles de SÉCURITÉ (base servie, heure simulée) gardent un fond — ce
+     sont elles qu'on ne doit pas pouvoir manquer. La bordure transparente
+     donne la même boîte aux deux formes. */
   display: flex;
   align-items: center;
   gap: 7px;
-  background: #2c4a70;
-  border: 1px solid #3e608a;
-  border-radius: 99px;
-  padding: 6px 14px;
-  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 0;
+  font-size: 13.5px;
   font-weight: 700;
 }
 
@@ -376,7 +400,8 @@ nav.tabs .choix-theme button:hover {
 
 .connexion-carte {
   background: var(--carte);
-  border-radius: 14px;
+  border-radius: 4px;
+  border-top: 4px solid var(--rouge);
   padding: 28px;
   /* 380 px sur un écran de 390 tenait à 5 px près ; à 320 elle débordait. */
   width: min(380px, calc(100% - 20px));
@@ -395,7 +420,7 @@ nav.tabs .choix-theme button:hover {
 .connexion-carte input {
   font: inherit;
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 9px 11px;
 }
 
@@ -474,10 +499,8 @@ nav.tabs {
 
 /* Valeurs relevées dans le source du canevas. */
 .intitule-groupe {
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: 12.5px;
+  font-weight: 700;
   color: #9fb0c0;
   padding: 0 10px 0 0;
 }
@@ -553,6 +576,7 @@ nav.tabs button .badge {
   border-radius: 99px;
   font-size: 11px;
   padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
   margin-left: 6px;
 }
 
@@ -581,7 +605,7 @@ main {
   cursor: pointer;
   padding: 10px 14px;
   border: 1px solid var(--bord);
-  border-radius: 9px;
+  border-radius: 4px;
   background: var(--carte-douce);
   font-weight: 900;
   color: var(--titre);
@@ -601,17 +625,21 @@ main {
 }
 
 .carte {
+  /* Une FICHE : angles droits, pas de cadre, un filet marine en tête. Le
+     filet du bas la détache du fond sans l'encadrer. */
   background: var(--carte);
-  border: 1px solid var(--bord);
-  border-radius: 12px;
+  border: 0;
+  border-top: 3px solid var(--titre);
+  border-radius: 0;
+  box-shadow: 0 1px 0 var(--bord);
   overflow: hidden;
-  margin-bottom: 18px;
+  margin-bottom: 22px;
 }
 
 .carte > h2 {
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   color: var(--titre);
   padding: 14px 18px 10px;
   display: flex;
@@ -629,7 +657,7 @@ main {
 
 .carte > h2 .sous {
   font-family: 'Lato', sans-serif;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--sec);
   letter-spacing: 0;
@@ -638,7 +666,7 @@ main {
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 5px;
   border: 1px solid var(--bord);
   background: var(--bouton-bg);
   padding: 7px 13px;
@@ -716,7 +744,7 @@ input[type='number'],
 select {
   font: inherit;
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 6px 9px;
   background: var(--champ-bg);
   color: var(--texte);
@@ -800,7 +828,7 @@ input[type='color'] {
 .etat-jour {
   font-weight: 700;
   font-size: 12px;
-  border-radius: 99px;
+  border-radius: 4px;
   padding: 3px 10px;
   white-space: nowrap;
 }
@@ -836,7 +864,7 @@ input[type='color'] {
 .barre-jour .reglage.actif {
   background: var(--alerte-bg);
   border: 1px solid var(--alerte-bord);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 4px 8px;
 }
 
@@ -886,7 +914,7 @@ input[type='color'] {
 .chip-btn {
   font-size: 13px;
   font-weight: 700;
-  border-radius: 99px;
+  border-radius: 5px;
   padding: 5px 13px;
   border: 1px solid var(--bord);
   background: var(--bouton-bg);
@@ -903,7 +931,7 @@ input[type='color'] {
   font-weight: 700;
   color: var(--accent);
   background: var(--bleu-bg);
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 4px 10px;
   font-size: 13px;
 }
@@ -917,7 +945,7 @@ input[type='color'] {
   gap: 6px;
   background: var(--bouton-bg);
   border: 1px solid var(--bord);
-  border-radius: 10px;
+  border-radius: 5px;
   padding: 5px 8px;
   font-weight: 700;
   font-size: 12.5px;
@@ -945,6 +973,7 @@ input[type='color'] {
   color: #7a6017;
   border: 1px solid #e6c98a;
   font-weight: 900;
+  padding: 5px 10px;
 }
 
 .lien-section {
@@ -964,7 +993,7 @@ input[type='color'] {
   padding: 12px 14px;
   border: 1px solid var(--bord);
   border-left: 4px solid var(--rouge);
-  border-radius: 9px;
+  border-radius: 0 4px 4px 0;
   background: var(--carte-douce);
 }
 
@@ -1020,13 +1049,15 @@ table {
 }
 
 th {
-  font-size: 11.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  /* Bas de casse, sans espacement : « Sans voyageurs » se lit, « SANS
+     VOYAGEURS » se déchiffre. Un filet franc sous la ligne d'en-tête au lieu
+     d'un fond. */
+  font-size: 12.5px;
+  font-weight: 700;
   color: var(--sec);
   text-align: left;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--bord);
+  padding: 10px 12px 8px;
+  border-bottom: 2px solid var(--bord-fort);
   background: var(--entete-table);
 }
 
@@ -1064,26 +1095,23 @@ tr.inactif .sens-tag {
   font-size: 10.5px;
   color: var(--sec);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.03em;
 }
 
 .sens-tag {
+  /* Le sens : une flèche et un mot, sans étiquette de fond. */
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 700;
-  border-radius: 6px;
-  padding: 3px 8px;
 }
 
 .sens-tag.up {
-  background: var(--bleu-bg);
   color: var(--bleu);
 }
 
 .sens-tag.down {
-  background: var(--neutre-bg);
   color: var(--neutre-texte);
 }
 
@@ -1167,7 +1195,7 @@ tr.paire-fin td {
 .seg {
   display: inline-flex;
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
@@ -1179,6 +1207,9 @@ tr.paire-fin td {
   background: var(--bouton-bg);
   color: var(--sec);
   font-weight: 700;
+  /* « À l'heure » passait sur deux lignes dans une colonne Statut serrée
+     (mesuré le 10/11/2026 à 1440 px : bouton de 47 px de haut au lieu de 30). */
+  white-space: nowrap;
 }
 
 .seg button + button {
@@ -1256,6 +1287,32 @@ tr.paire-fin td {
    supervision voie d'un balayage qu'un train est plein sans changer
    d'onglet. Un filet à gauche et non un fond — « sans voyageurs » occupe
    déjà le fond, et les deux états peuvent coexister. */
+/* LES LISTES D'UNE RANGÉE SE TAISENT TANT QU'ON N'Y TOUCHE PAS. Rame, terminus,
+   accès, motif : quatre listes cerclées par train, treize trains — cinquante
+   cadres à l'écran avant d'avoir lu une heure. Le cadre n'apparaît qu'au
+   survol et au focus ; la flèche de la liste reste, elle dit qu'on peut
+   choisir. Au téléphone le tableau devient une pile de fiches où chaque
+   champ doit montrer sa zone de toucher : le bloc ≤ 768 px lui rend son
+   cadre (pas de cinquième requête par largeur : le verrou de
+   responsive-supervision.test.ts en compte quatre). */
+#tab-circ td select {
+  border-color: transparent;
+  background-color: transparent;
+  font-weight: 700;
+}
+
+#tab-circ td select:hover:not(:disabled),
+#tab-circ td select:focus-visible {
+  border-color: var(--bord-survol);
+  background-color: var(--champ-bg);
+}
+
+#tab-circ td select:disabled {
+  color: var(--sec);
+  font-weight: 400;
+  opacity: 1;
+}
+
 #tab-circ tr.aff-complet td:first-child {
   box-shadow: inset 4px 0 0 var(--rouge);
 }
@@ -1266,6 +1323,27 @@ tr.paire-fin td {
 /* ------- Onglet « Places » ------- */
 /* Une ligne par départ restant. Pas un tableau : quelques informations et
    une commande, sur un poste où l'on agit vite et souvent au comptoir. */
+/* ALIGNEMENTS DE FICHE (10/11/2026). Tout ce qu'une fiche contient part du
+   même bord, à 18 px — celui de son titre. Trois blocs partaient du bord de
+   la fiche elle-même, 18 px trop à gauche : le rang de date de Places, sa
+   liste « Gare », et la ligne « Rôle » de « Voir comme… ». */
+.carte > .ligne {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 2px 18px 10px;
+}
+
+.carte > .ligne label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--sec);
+}
+
 .barre-affluence {
   align-items: baseline;
   gap: 14px;
@@ -1282,6 +1360,7 @@ tr.paire-fin td {
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 10px;
+  padding: 0 18px;
 }
 
 .jour-affluence {
@@ -1296,9 +1375,9 @@ tr.paire-fin td {
    ÉCRITE, pas seulement suggérée par des boutons éteints. La caisse doit
    savoir quoi faire (demander l'ouverture), pas seulement constater. */
 .bandeau-affluence {
-  margin: 0 0 10px;
+  margin: 0 18px 10px;
   padding: 9px 12px;
-  border-radius: 8px;
+  border-radius: 0 4px 4px 0;
   border: 1px solid var(--bord);
   border-left: 4px solid var(--accent);
   background: var(--bleu-bg);
@@ -1317,7 +1396,8 @@ tr.paire-fin td {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 8px 10px;
+  /* 14 px + le filet de 4 px = 18 : l'heure s'aligne sur le titre de la fiche. */
+  padding: 9px 18px 9px 14px;
   border-bottom: 1px solid var(--bord);
   border-left: 4px solid transparent;
 }
@@ -2108,7 +2188,7 @@ tr.paire-fin td {
    jamais croire tester alors qu'on publie en gare. */
 .pill.base {
   font-weight: 900;
-  letter-spacing: 0.4px;
+  padding: 5px 10px;
 }
 
 .pill.base-prod {
@@ -2130,7 +2210,7 @@ tr.paire-fin td {
 
 .note {
   padding: 10px 18px 14px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--sec);
   line-height: 1.5;
 }
@@ -3360,6 +3440,10 @@ td.cell-sens > .sens-groupe {
    milieu d'une carte vide se lit comme une panne ; celle-ci s'annonce, puis
    dit quoi faire. */
 .etat-vide {
+  /* Posé dans une grille de cartes (écrans, médias), il prend TOUTE la
+     rangée : sans cela il se centrait dans la première piste de 330 px, à
+     gauche d'une fiche vide (mesuré le 10/11/2026). */
+  grid-column: 1 / -1;
   display: grid;
   gap: 4px;
   justify-items: center;
@@ -3462,6 +3546,19 @@ td.cell-sens > .sens-groupe {
 
   header img.logo {
     height: 36px;
+  }
+
+  /* Les pastilles se resserrent pour tenir sur UN rang (10/11/2026) : à
+     390 px, « Hors saison » passait seul sur un troisième rang et l'en-tête
+     prenait 170 px. Aucune n'est masquée — les deux de sécurité surtout. */
+  .pill {
+    font-size: 12.5px;
+    gap: 5px;
+  }
+
+  .pill.base,
+  .pill.simule {
+    padding: 4px 8px;
   }
 
   /* Le titre cède, comme sur le bureau : plus petit et compressible. */
@@ -3672,6 +3769,13 @@ td.cell-sens > .sens-groupe {
      De 701 à 768 px : QUATRE colonnes (heure · sens · statut sur deux ;
      rame · terminus · facultatif · sans voyageurs ; motif). Sous 700 :
      DEUX colonnes, le statut en tête à droite de l'heure. */
+  /* Au toucher, une liste sans cadre ne montre pas où poser le doigt. */
+  #tab-circ td select {
+    border-color: var(--bord);
+    background-color: var(--champ-bg);
+    font-weight: 400;
+  }
+
   #tab-circ thead {
     display: none;
   }
@@ -3752,9 +3856,8 @@ td.cell-sens > .sens-groupe {
   /* Étiquettes reprises des <th>, au style des <th>. */
   #tab-circ tbody td::before {
     display: block;
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    /* Bas de casse, comme les en-têtes de bureau qu'elles remplacent. */
+    font-size: 12px;
     color: var(--sec);
     font-weight: 700;
     margin-bottom: 3px;

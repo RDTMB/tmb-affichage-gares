@@ -80,8 +80,8 @@ body {
 
 .embed {
   /* La hauteur envoyée à la page parente est celle de ce bloc : rien ne doit
-     dépasser de lui (marges comprises dans son padding). */
-  padding: 12px 12px 16px;
+     en sortir. */
+  padding: 14px 14px 18px;
   max-width: 1100px;
   margin: 0 auto;
   overflow-wrap: anywhere;
@@ -110,7 +110,8 @@ h2,
 }
 
 .entete h1 {
-  font-size: 1.35rem;
+  font-size: 1.5rem;
+  line-height: 1.15;
 }
 
 .entete .date {
@@ -159,17 +160,23 @@ h2,
 }
 
 .message {
-  background: var(--fond-doux);
-  border-left: 4px solid var(--tmb-bleu-gris);
-  padding: 5px 10px;
-  margin-bottom: 5px;
+  /* Plus de pavé de fond par message (refonte du 10/11/2026) : un filet à
+     gauche suffit à dire « ceci est une annonce », et trois annonces ne
+     dressent plus un mur avant les horaires. */
+  border-left: 3px solid var(--tmb-bleu-gris);
+  padding: 1px 0 1px 10px;
+  margin-bottom: 8px;
   /* Plus petit que les horaires : sur un téléphone, trois messages ne
-     doivent pas repousser les départs hors de l'écran. */
+     doivent pas repousser les départs sous la ligne de flottaison. */
   font-size: 0.9rem;
 }
 
 .message.importante {
+  /* Le message IMPORTANT, lui, garde un fond : c'est le seul qui reste
+     au-dessus des horaires, et il doit s'y voir. */
+  background: var(--section-bg);
   border-left-color: var(--tmb-rouge);
+  padding: 6px 10px;
   font-weight: 700;
 }
 
@@ -231,37 +238,137 @@ h2,
   margin: 12px 0;
 }
 
-/* ---- Onglets des gares -------------------------------------------------- */
+/* ---- Sélecteur de gare : la LIGNE, sur sa pente ---------------------------
+   Six gares à l'échelle de leurs altitudes (refonte du 10/11/2026), à la place
+   de six pastilles sur deux rangées. Les boutons sont ceux d'avant — mêmes
+   classes, mêmes attributs — posés en une rangée de colonnes égales ; chacun
+   reçoit `--alt` (part de la montée, 0 → 1) et `data-alt` (« 786 m ») de
+   `ongletsHtml()`.
 
+   LES MÊMES CHIFFRES QUE LE TRACÉ : le point d'une gare est à 18 % + 64 % ×
+   `--alt` de la hauteur de la pente, comptés depuis le bas. `ongletsHtml()`
+   trace la voie avec ces deux nombres (82 − 64 × part, en ordonnée) : changer
+   l'un sans l'autre détache les points de leur ligne.
+
+   Tient à 320 px : 49 px par gare, noms sur deux lignes (« Saint- / Gervais »,
+   « Nid / d'Aigle »), mesuré le 10/11/2026 sans chevauchement. */
 .onglets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
+  --pente: 58px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--gares, 6), minmax(0, 1fr));
+  padding-top: var(--pente);
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--filet);
+}
+
+/* Sur un cadre large la pente s'étire : on lui rend de la hauteur, sinon elle
+   s'aplatit et ne dit plus « ça monte ». */
+@media (min-width: 760px) {
+  .onglets {
+    --pente: 86px;
+  }
+}
+
+.onglets-voie {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--pente);
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* La voie est piquetée — les dents d'une crémaillère — comme sur les écrans
+   de gare. `non-scaling-stroke` : le SVG est étiré à la largeur du cadre, le
+   trait et ses points gardent leur taille. */
+.onglets-voie polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 6;
+  vector-effect: non-scaling-stroke;
 }
 
 .onglet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 6px 2px 9px;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--texte);
   font-family: var(--police-titres);
   font-weight: 700;
-  font-size: 0.95rem;
-  padding: 7px 12px;
-  border: 2px solid var(--accent);
-  border-radius: 999px;
-  background: var(--fond);
-  color: var(--accent);
+  font-size: clamp(0.72rem, 2.9vw, 0.98rem);
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: normal;
   cursor: pointer;
 }
 
-.onglet.choisi {
+/* Le point de la gare sur la pente. `bottom: 100%` est le haut du bouton,
+   donc le bas de la pente ; les marges négatives centrent le point sur sa
+   position. */
+.onglet::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--pente) * (0.18 + 0.64 * var(--alt, 0)));
+  width: 13px;
+  height: 13px;
+  margin: 0 0 -6.5px -6.5px;
+  border: 2.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--fond);
+}
+
+/* L'altitude, sous le nom : un chiffre, pas une étiquette. */
+.onglet::after {
+  content: attr(data-alt);
+  font-family: var(--police-textes);
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--texte-sec);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.onglet:not(.inactif):hover::before {
   background: var(--accent);
-  color: var(--sur-accent);
+}
+
+/* La gare choisie : son point passe au rouge, cerclé, et un trait rouge la
+   souligne sur le filet du sélecteur. */
+.onglet.choisi {
+  color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--tmb-rouge);
+}
+
+.onglet.choisi::before {
+  width: 19px;
+  height: 19px;
+  margin: 0 0 -9.5px -9.5px;
+  border: 3px solid var(--fond);
+  background: var(--tmb-rouge);
+  box-shadow: 0 0 0 2.5px var(--tmb-rouge);
 }
 
 .onglet.inactif {
-  border-color: var(--filet);
   color: var(--inactif);
   cursor: not-allowed;
   text-decoration: line-through;
+}
+
+.onglet.inactif::before {
+  border-color: var(--inactif);
+  border-style: dashed;
 }
 
 /* Raison d'un onglet grisé, au toucher (pas de survol sur téléphone). Vide au
@@ -292,20 +399,44 @@ h2,
 .departs {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
+  gap: 18px;
 }
 
 @media (min-width: 760px) {
   .departs {
     grid-template-columns: 1fr 1fr;
+    gap: 18px 32px;
+  }
+
+  /* UN SEUL SENS (Le Fayet ne fait que monter, le sommet que descendre) : il
+     prend toute la largeur et range ses départs sur deux colonnes. Avant, la
+     liste restait dans la moitié gauche d'un cadre à moitié vide (mesuré le
+     10/11/2026 à 1100 px). */
+  .departs > .sens:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .departs > .sens:only-child .liste-departs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 32px;
   }
 }
 
+/* Les messages ORDINAIRES passent sous les horaires (vue par gare) : un filet
+   les en sépare. */
+.departs + .messages,
+.fin-service + .messages {
+  margin: 18px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--filet);
+}
+
 .sens h2 {
-  font-size: 1.05rem;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 2px solid var(--filet);
+  font-size: 1.15rem;
+  margin-bottom: 2px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--titre);
 }
 
 .liste-departs {
@@ -316,17 +447,19 @@ h2,
 
 .depart {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* `minmax(0, 1fr)` et non `1fr` : la colonne du milieu doit pouvoir céder,
+     sinon c'est elle qui est écrasée quand l'état de droite est large. */
+  grid-template-columns: 4.1rem minmax(0, 1fr) auto;
   gap: 4px 10px;
   align-items: start;
-  padding: 8px 0;
+  padding: 11px 0;
   border-bottom: 1px solid var(--filet);
 }
 
 .depart .heure {
   font-weight: 900;
-  font-size: 1.3rem;
-  line-height: 1.1;
+  font-size: 1.55rem;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
   display: flex;
   flex-direction: column;
@@ -346,37 +479,47 @@ h2,
 }
 
 .depart .dest {
+  font-family: var(--police-titres);
   font-weight: 700;
+  font-size: 1.12rem;
+  line-height: 1.15;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 6px;
+  gap: 4px 7px;
 }
 
 .badge-train {
-  font-size: 0.75rem;
+  /* Bleu clair de la charte, texte marine — comme sur l'écran de gare : le
+     numéro est un repère, pas un état. Les deux couleurs sont FIXES : marine
+     sur #bddcf4 fait 8,05:1 en thème clair comme en sombre. */
+  font-family: var(--police-textes);
+  font-size: 0.78rem;
   font-weight: 900;
-  background: var(--accent);
-  color: var(--sur-accent);
-  border-radius: 4px;
-  padding: 1px 5px;
+  background: var(--tmb-bleu-clair);
+  color: var(--tmb-marine);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .express {
+  font-family: var(--police-textes);
   font-size: 0.7rem;
   font-weight: 900;
   color: var(--tmb-marine);
   background: #f5ce5e;
-  border-radius: 4px;
-  padding: 1px 5px;
+  border-radius: 3px;
+  padding: 2px 6px;
 }
 
 .mention {
+  font-family: var(--police-textes);
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
-  border-radius: 999px;
-  padding: 1px 7px;
+  border-radius: 3px;
+  padding: 2px 7px;
 }
 
 .mention span {
@@ -443,28 +586,72 @@ h2,
 }
 
 .rebours {
+  /* Un nombre NU : la case ne se remplit que pour un état (à quai, départ
+     imminent), comme sur l'écran de gare. La bordure reste, transparente,
+     pour que les deux formes aient la même boîte. */
   font-weight: 900;
-  font-size: 0.85rem;
-  border: 1px solid var(--filet);
+  font-size: 1.05rem;
+  line-height: 1.2;
+  border: 1px solid transparent;
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 1px 7px;
+  margin-right: -7px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .rebours .en {
   font-weight: 400;
 }
 
+/* À QUAI : vert plein. DÉPART IMMINENT : rouge de la charte. Les deux codes
+   de l'écran de gare. Le texte prend la couleur du FOND de page : blanc en
+   thème clair, marine en thème sombre, où le vert et le rouge sont clairs. */
 .rebours.quai,
 .rebours.imminent {
-  background: var(--accent);
-  color: var(--sur-accent);
-  border-color: var(--accent);
+  margin-right: 0;
+  background: var(--ok);
+  color: var(--fond);
+  border-color: var(--ok);
+}
+
+.rebours.imminent {
+  background: var(--tmb-rouge);
+  border-color: var(--tmb-rouge);
+  color: #fff;
 }
 
 .rebours.quai .en,
 .rebours.imminent .en {
-  color: var(--sur-accent);
+  color: inherit;
+}
+
+/* LES ÉTATS NOMMÉS SE REPLIENT, les nombres non. « DÉPART IMMINENT Departing »
+   sur une ligne mesurait 262 px sur un téléphone de 390 : la colonne de
+   droite prenait tout, et le nom de la gare se cassait LETTRE PAR LETTRE dans
+   les 20 px restants (mesuré le 10/11/2026). Français au-dessus, anglais en
+   dessous, largeur plafonnée — la forme de la case de l'écran de gare. */
+.rebours.quai,
+.rebours.imminent,
+.rebours.parti,
+.rebours.arrivee-terminus {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 6.6rem;
+  padding: 3px 7px;
+  font-size: 0.8rem;
+  line-height: 1.1;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.rebours.quai .en,
+.rebours.imminent .en,
+.rebours.parti .en,
+.rebours.arrivee-terminus .en {
+  font-size: 0.72rem;
 }
 
 .rebours.parti {
@@ -473,6 +660,7 @@ h2,
 
 /* Arrivée au terminus exceptionnel : pas un compte à rebours, une étiquette. */
 .rebours.arrivee-terminus {
+  margin-right: 0;
   color: var(--retard);
   border-color: var(--retard);
 }
@@ -489,7 +677,20 @@ h2,
 }
 
 .statut.ok {
-  color: var(--ok);
+  /* « À l'heure » est l'état normal : il se dit sans couleur, une puce verte
+     devant. C'est le retard, en ambre, qui doit se détacher. */
+  color: var(--texte-sec);
+}
+
+.statut.ok .fr::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: var(--ok);
+  vertical-align: 0.08em;
 }
 
 .statut.retard {
