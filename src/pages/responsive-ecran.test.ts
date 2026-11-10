@@ -81,6 +81,11 @@ const CHOIX_DAFFICHAGE_ETROIT = new Map<string, string[]>([
   // ici : il réserve la largeur du plus long terminus sur chaque rangée, et
   // à 1024×768 la colonne ne l'a pas — « DERNIÈRES PLACES » y coupe déjà.
   ['.badge-train, .r-dest .dest .nom-dest', ['min-width: 0']],
+  // Le profil de la ligne (refonte du 10/11/2026) vit dans la place LIBRE du
+  // bandeau de titre ; sous 4/3 il n'en reste plus (130 px mesurés en
+  // portrait) et le dessin devient illisible. Un retrait d'élément, comme les
+  // deux premiers.
+  ['header .profil', ['display: none']],
 ]);
 
 describe('ecran.css — le 16:9 de Saint-Gervais ne bouge pas', () => {
