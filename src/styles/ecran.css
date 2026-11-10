@@ -113,8 +113,9 @@ header {
 
 /* PROFIL DE LA LIGNE. Il prend la place LIBRE entre le nom et l'horloge et
    la rend toujours : `flex: 1 1 0` + `min-width: 0`, un nom de gare plus long
-   le rétrécit, il ne pousse rien. Le dessin est un SVG à `viewBox` fixe
-   (profil-ligne.ts) : seules les couleurs se règlent ici, sur fond crème. */
+   le rétrécit, il ne pousse rien. Le DESSIN (voie, gares, trains) est réglé
+   dans src/styles/profil.css, commune à l'écran de gare et à la grille du
+   jour ; ici, seulement la place qu'il occupe. */
 .profil {
   flex: 1 1 0;
   min-width: 0;
@@ -122,68 +123,6 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.profil-svg {
-  height: 100%;
-  width: auto;
-  max-width: 100%;
-  overflow: visible;
-}
-
-/* La voie est PIQUETÉE, pas tirée : des points réguliers le long de la pente,
-   comme les dents d'une crémaillère. */
-.profil-voie {
-  fill: none;
-  stroke: var(--marine);
-  stroke-width: 3.6;
-  stroke-linecap: round;
-  stroke-dasharray: 0.1 8;
-}
-
-.profil-voie.hors {
-  stroke: var(--bleu-gris);
-  opacity: 0.55;
-}
-
-.profil-gare {
-  fill: var(--creme);
-  stroke: var(--marine);
-  stroke-width: 2.6;
-}
-
-.profil-gare.hors {
-  stroke: var(--bleu-gris);
-  opacity: 0.7;
-}
-
-/* « Vous êtes ici » : un anneau rouge AUTOUR de la gare — le seul rouge du
-   profil. La gare elle-même se remplit de marine, pour se lire sans train. */
-.profil-ici {
-  fill: none;
-  stroke: var(--rouge);
-  stroke-width: 4;
-}
-
-.profil-gare.ici {
-  fill: var(--marine);
-}
-
-.profil-alt {
-  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  fill: var(--marine);
-  opacity: 0.75;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Un train : la couleur de sa rame (attribut `fill`), son liseré (attribut
-   `stroke` — blanc, ou l'anneau rouge de Marguerite). Jamais de `stroke` ici :
-   une règle de feuille l'emporterait sur l'attribut. */
-.profil-train {
-  stroke-width: 2.6;
-  paint-order: stroke;
 }
 
 .heure-bloc {
