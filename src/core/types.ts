@@ -609,6 +609,15 @@ export interface PositionTrain {
   vers: GareId | null;
 }
 
+/**
+ * Position d'un train AVEC son avancement estimé entre `gare` et `vers` — pour
+ * le profil de la ligne seulement (voir `avancementsTrains`).
+ */
+export interface AvancementTrain extends PositionTrain {
+  /** 0 au départ réel de `gare`, 1 à l'arrivée réelle à `vers` ; 0 à quai. */
+  part: number;
+}
+
 // ---------------------------------------------------------------------------
 // Données d'exploitation hors horaires (messages, médias, paramètres, comptes)
 // ---------------------------------------------------------------------------
