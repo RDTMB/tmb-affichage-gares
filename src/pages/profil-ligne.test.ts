@@ -139,6 +139,18 @@ describe('profilSvg — le dessin', () => {
     expect(profilSvg({ gares: GARES, altitudes: 'aucune' })).not.toContain('profil-alt');
   });
 
+  it('pas d’altitude sur la gare du poste : l’anneau la recouvrirait, et le bandeau la dit déjà', () => {
+    const sommet = profilSvg({ gares: GARES, ici: 'nid-daigle' });
+    expect(sommet).not.toContain('>2\u00a0412\u00a0m</text>');
+    expect(sommet).toContain('>580\u00a0m</text>');
+    const pied = profilSvg({ gares: GARES, ici: 'le-fayet' });
+    expect(pied).not.toContain('>580\u00a0m</text>');
+    expect(pied).toContain('>2\u00a0412\u00a0m</text>');
+    // Ailleurs sur la ligne, les deux bouts gardent la leur.
+    const milieu = profilSvg({ gares: GARES, ici: 'motivon' });
+    expect(milieu.match(/class="profil-alt"/g)).toHaveLength(2);
+  });
+
   it('en hiver, le tronçon au-dessus du sommet est tracé à part, éteint', () => {
     const svg = profilSvg({ gares: GARES, sommet: 'bellevue' });
     expect(svg).toContain('class="profil-voie hors"');

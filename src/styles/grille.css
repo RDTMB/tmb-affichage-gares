@@ -1,5 +1,10 @@
-/* Grille du jour — port fidèle de maquettes/grille-horaire.html (validée par
-   l'exploitant, elle fait foi pour le visuel). Unités vh/vw : écran 16:9. */
+/* Grille du jour — refonte du 10/11/2026 : plus de quadrillage, colonne du
+   prochain départ bordée, profil de la ligne dans le bandeau.
+   maquettes/grille-horaire.html en est la photographie (régénérée par
+   outils/regenerer-maquettes.cjs) ; captures avant / après dans
+   docs/captures/2026-11-10-refonte/. Les TAILLES n'ont
+   pas bougé (hauteur des lignes, voie du rond, calage de la flèche : mesurées
+   identiques avant et après à 1920×1080). Unités vh/vw : écran 16:9. */
 
 :root {
   /* Alias maquette → tokens charte (src/styles/tokens.css) */

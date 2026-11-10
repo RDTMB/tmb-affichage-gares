@@ -1,5 +1,6 @@
-/* Écran de gare — refonte du 10/11/2026, reportée dans
-   maquettes/ecran-gare.html (qui fait foi pour le visuel). Unités vh/vw : le
+/* Écran de gare — refonte du 10/11/2026. maquettes/ecran-gare.html en est la
+   photographie (régénérée par outils/regenerer-maquettes.cjs) ; captures
+   avant / après dans docs/captures/2026-11-10-refonte/. Unités vh/vw : le
    rendu de référence est un écran 16:9 plein écran (1920×1080).
 
    CE QUI A CHANGÉ, ET POURQUOI. L'écran d'avant disait tout au même volume :

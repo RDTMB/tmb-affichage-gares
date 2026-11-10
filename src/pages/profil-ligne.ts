@@ -183,9 +183,16 @@ export function profilSvg(o: OptionsProfil): string {
     const premier = points[0];
     const dernier = points[points.length - 1];
     if (premier && dernier) {
-      etiquettes =
-        `<text class="profil-alt" x="${premier.x}" y="${arrondi(premier.y + 24)}" text-anchor="middle">${echapper(altitudeFr(premier.altitude_m))}</text>` +
-        `<text class="profil-alt" x="${dernier.x}" y="${arrondi(dernier.y - 14)}" text-anchor="middle">${echapper(altitudeFr(dernier.altitude_m))}</text>`;
+      // PAS D'ALTITUDE SUR LA GARE DU POSTE. L'anneau « vous êtes ici »
+      // (rayon 14) recouvrait « 2 412 m » au Nid d'Aigle et « 580 m » au Fayet
+      // (constaté le 10/11/2026) ; l'écarter la sortait du bandeau (3 px
+      // au-dessus de l'écran, mesuré). Et elle n'y manque pas : le nom de la
+      // gare, juste à côté, porte déjà son altitude en grand.
+      const etiquette = (p: PointProfil, y: number): string =>
+        p.id === o.ici
+          ? ''
+          : `<text class="profil-alt" x="${p.x}" y="${arrondi(y)}" text-anchor="middle">${echapper(altitudeFr(p.altitude_m))}</text>`;
+      etiquettes = etiquette(premier, premier.y + 24) + etiquette(dernier, dernier.y - 14);
     }
   }
 
