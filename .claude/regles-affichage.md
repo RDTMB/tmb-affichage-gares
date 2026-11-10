@@ -120,6 +120,35 @@ Voisins : `.claude/regles-horaires.md` (le calcul derrière les heures),
   recréé chaque seconde et son pulse repartait de zéro à chaque tick (mesuré).
   Légende « en ligne / running » : un rond ; voir la PR pour la question de la
   flèche.
+- **Profil de la ligne** (bandeau de l'écran de gare et de la grille du jour,
+  10/11/2026 ; `profil-ligne.ts`). Quatre décisions de l'exploitant, du même
+  jour :
+  - **La ligne DU JOUR, rien de plus.** Au-dessus du sommet de la grille
+    (`sommetDeLaGrille`), rien n'est dessiné : en hiver le profil va du Fayet
+    à Bellevue et s'étire sur toute sa boîte. Pas de tronçon « éteint » — un
+    tracé pâle se lisait encore comme une ligne où l'on peut aller.
+  - **Un sigle par gare**, au-dessus de son point : FAY, STG, MOT, CDV, BLV,
+    NDA (`SIGLES_GARES`). Une gare qui n'y figure pas reçoit ses initiales.
+  - **La machine dit son sens** : un rond prolongé d'un nez tourné dans le sens
+    de la marche, à quai comme en route. À quai, le nez regarde le tronçon
+    qu'elle va prendre.
+  - **La machine AVANCE le long de la voie**, d'une gare à la suivante de ses
+    passages, au prorata du temps (`avancementsTrains`) — express compris, qui
+    suit le tracé par les gares qu'il saute. C'est une position ESTIMÉE d'après
+    la grille et le retard DÉCLARÉ, pas une mesure : un train arrêté en pleine
+    voie sans retard saisi continue d'avancer à l'écran. **Pour ce dessin
+    seulement** : la grille du jour garde sa règle du 05/11 (ci-dessus — à
+    mi-chemin, jamais interpolé), et l'avancement ne doit JAMAIS porter une
+    heure, un compte à rebours ni un état de quai.
+
+  Le reste : un train supprimé n'y est pas ; la gare du poste (`?gare=`) est
+  un ANNEAU rouge autour du point, pas un point rouge — une machine à quai s'y
+  pose dedans et reste visible ; une gare absente du profil ne fait rien
+  inventer, la machine n'est pas dessinée. **Croisement** : deux machines au
+  même endroit (voie unique, croisement en gare tous les jours) reculent
+  chacune le long de sa marche, nez à nez de part et d'autre de la gare —
+  recul progressif, nul à 20 unités d'écart, pour qu'aucune ne saute. Retiré
+  sous 4/3 (écran) et en portrait (grille) : il n'y a plus la place de le lire.
 - **Colonne éclairée (« prochain départ »)** : `grille.html` seulement. L'embed
   ne l'éclaire JAMAIS (`sansProchain`, même sans `?gare=`) ; le prochain
   départ y est l'affaire de la vue des départs d'une gare.

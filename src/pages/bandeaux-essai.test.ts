@@ -207,9 +207,11 @@ describe('les deux bandeaux de test réservent la MÊME place', () => {
     }
   });
 
-  it('le badge de cache suit l’en-tête, à 1,5vh sous lui', () => {
+  it('le badge de cache suit l’en-tête, à 0,9vh sous lui', () => {
     // Il flotte sous l'en-tête : s'il ne suit pas la géométrie, il se retrouve
-    // dans le bandeau ou dans le tableau.
+    // dans le bandeau ou dans le tableau. 1,5 vh ramené à 0,9 le 10/11/2026 :
+    // à 1,5 il mordait de 5 à 7 px sur les en-têtes de colonnes (mesuré à
+    // 1920×1080, badge de 145,8 à 173,3 px pour des en-têtes à 168).
     for (const [entete, badge] of [
       ['body.mode-demo header', 'body.mode-demo .badge-cache'],
       ['body.mode-simule header', 'body.mode-simule .badge-cache'],
@@ -218,7 +220,7 @@ describe('les deux bandeaux de test réservent la MÊME place', () => {
     ] as const) {
       const basis = coefficient(valeur(bloc(horsMedia, entete), 'flex-basis')) ?? 0;
       const top = coefficient(valeur(bloc(horsMedia, badge), 'top'));
-      expect(top, `${badge} : ${top}vh au lieu de ${basis + 1.5}vh`).toBe(basis + 1.5);
+      expect(top, `${badge} : ${top}vh au lieu de ${basis + 0.9}vh`).toBeCloseTo(basis + 0.9, 5);
     }
   });
 });

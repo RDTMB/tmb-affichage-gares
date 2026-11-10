@@ -1,5 +1,10 @@
-/* Grille du jour — port fidèle de maquettes/grille-horaire.html (validée par
-   l'exploitant, elle fait foi pour le visuel). Unités vh/vw : écran 16:9. */
+/* Grille du jour — refonte du 10/11/2026 : plus de quadrillage, colonne du
+   prochain départ bordée, profil de la ligne dans le bandeau.
+   maquettes/grille-horaire.html en est la photographie (régénérée par
+   outils/regenerer-maquettes.cjs) ; captures avant / après dans
+   docs/captures/2026-11-10-refonte/. Les TAILLES n'ont
+   pas bougé (hauteur des lignes, voie du rond, calage de la flèche : mesurées
+   identiques avant et après à 1920×1080). Unités vh/vw : écran 16:9. */
 
 :root {
   /* Alias maquette → tokens charte (src/styles/tokens.css) */
@@ -18,7 +23,9 @@
   --jaune: #f5ce5e;
   --supprime: #ff8a7e;
   --texte-sec: #a9c0d8;
-  --texte-ter: #7c96b0;
+  /* Relevé de #7c96b0 à #8fa8c2, comme sur l'écran de gare : 4,6:1 sur le
+     marine (altitudes de la colonne des gares). */
+  --texte-ter: #8fa8c2;
 }
 
 * {
@@ -116,13 +123,28 @@ header {
   color: var(--marine);
 }
 
+/* Bas de casse, sans espacement : « Today's timetable · Grand service » se
+   lit comme une phrase (refonte du 10/11/2026). Même corps qu'avant. */
 .titre-bloc .en {
   font-weight: 700;
   font-size: 1.9vh;
   color: var(--rouge);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
   margin-top: 0.5vh;
+}
+
+/* PROFIL DE LA LIGNE, calé contre l'horloge : le titre reste centré sur
+   l'en-tête (`.titre-bloc` est hors flux), le profil prend la place libre à
+   sa droite. `margin-left: auto` et non un troisième bloc réparti : avec
+   `space-between` il tomberait au milieu, SUR le titre. Le dessin est réglé
+   dans profil.css. */
+.profil {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 10.4vh;
+  margin-left: auto;
+  margin-right: 2.4vw;
+  display: flex;
+  align-items: center;
 }
 
 .heure-bloc {
@@ -177,8 +199,6 @@ main {
   font-family: 'Amaranth', sans-serif;
   font-size: 2.2vh;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   padding: 0.1vh 0.2vw 0.25vh;
   flex: none;
   display: flex;
@@ -194,8 +214,6 @@ main {
 .sens h2 span.en {
   color: var(--texte-sec);
   font-weight: 400;
-  letter-spacing: 0.04em;
-  text-transform: none;
   font-size: 1.75vh;
   font-family: 'Lato', sans-serif;
 }
@@ -233,9 +251,17 @@ table {
   table-layout: fixed;
 }
 
+/* PLUS DE QUADRILLAGE : un filet ENTRE LES GARES, rien entre les trains
+   (refonte du 10/11/2026). Une grille horaire se lit en colonnes — un train —
+   et les 13 filets verticaux hachaient l'écran sans rien séparer que le blanc
+   ne sépare déjà (colonnes de 130 px pour 70 px d'heure). Les filets
+   horizontaux gardent leur pixel : la hauteur des lignes, la voie du rond et
+   le calage de la flèche (0,5 px par ligne) n'ont pas bougé. */
 th,
 td {
-  border: 1px solid var(--marine-ligne);
+  border: 0 solid var(--marine-ligne);
+  border-top-width: 1px;
+  border-bottom-width: 1px;
   text-align: center;
   position: relative;
 }
@@ -250,7 +276,7 @@ td {
    Mesuré à 1920×1080 : en-tête montée 76 → 67 px, en-tête descente 54 → 49 px,
    hauteur minimale d'une ligne de gare 47 → 41 px. */
 thead th {
-  background: #1b3252;
+  background: var(--marine-fonce);
   font-size: 2.25vh;
   font-weight: 900;
   padding: 0.3vh 0;
@@ -345,15 +371,19 @@ thead th .velo {
 
 thead th.col-gare {
   width: 10vw;
-  background: #1b3252;
+  background: var(--marine-fonce);
   font-size: 1.55vh;
-  letter-spacing: 0.12em;
-  color: var(--texte-ter);
+  color: var(--texte-sec);
   font-weight: 700;
+  text-align: left;
+  padding-left: 0.7vw;
 }
 
+/* La colonne des gares n'a plus de fond propre : c'est son filet de droite
+   qui la sépare des trains, et l'Amaranth qui la distingue. */
 tbody th {
-  background: var(--marine-row);
+  background: var(--marine);
+  border-right: 2px solid var(--marine-ligne);
   font-size: 1.85vh;
   line-height: 1.05;
   font-weight: 700;
@@ -394,10 +424,23 @@ th.passe {
   opacity: 0.36;
 }
 
+/* PROCHAIN DÉPART : une COLONNE, bordée de bleu clair sur ses deux flancs —
+   plus une case cerclée par cellule, qui redessinait le quadrillage qu'on
+   vient d'ôter. Tracé en ombre intérieure : aucune largeur prise aux
+   colonnes. */
 th.next,
 td.next {
-  background: #2c5580 !important;
-  box-shadow: inset 0 0 0 2px #5e86b4;
+  background: #2a4d77 !important;
+  box-shadow:
+    inset 2px 0 0 var(--bleu-clair),
+    inset -2px 0 0 var(--bleu-clair);
+}
+
+thead th.next {
+  box-shadow:
+    inset 2px 0 0 var(--bleu-clair),
+    inset -2px 0 0 var(--bleu-clair),
+    inset 0 2px 0 var(--bleu-clair);
 }
 
 thead th.retard,
@@ -646,16 +689,21 @@ body {
 
 .badge-cache {
   position: fixed;
-  top: 13.5vh;
+  top: 12.9vh;
   right: 1vw;
   z-index: 60;
   display: none;
   background: var(--retard);
   color: #402800;
   font-weight: 900;
-  font-size: 1.8vh;
-  padding: 0.5vh 1vw;
-  border-radius: 0.8vh;
+  /* 1,8 vh / 0,5 vh ramenés à 1,6 / 0,3 (10/11/2026) : le badge mesurait
+     3,3 vh de haut pour une rangée de titre de 3 vh, et mordait de 7 px sur
+     les en-têtes TRAIN 13 à TRAIN 25 (mesuré à 1920×1080). Pour la même
+     raison il se pose à 0,9 vh sous l'en-tête, plus 1,5 : il tient alors
+     entre l'en-tête et le tableau (139 → 167 px, en-têtes à 168). */
+  font-size: 1.6vh;
+  padding: 0.3vh 0.9vw;
+  border-radius: 0.5vh;
 }
 
 body.mode-degrade .badge-cache {
@@ -822,17 +870,20 @@ body.mode-erreur .erreur-config {
   color: var(--creme);
   border-bottom: 0.4vh solid var(--marine);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-demo b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-demo span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
+  white-space: nowrap;
   opacity: 0.92;
 }
 body.mode-demo .bandeau-demo {
@@ -850,7 +901,7 @@ body.mode-demo header {
   padding-top: 5vh;
 }
 body.mode-demo .badge-cache {
-  top: 18.5vh;
+  top: 17.9vh;
 }
 
 /* Bandeau HEURE SIMULÉE (?simule=HH:MM) : les horaires affichés sont décalés.
@@ -874,17 +925,20 @@ body.mode-demo .badge-cache {
   color: var(--jaune);
   border-bottom: 0.4vh solid var(--jaune);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-simule b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-simule span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
+  white-space: nowrap;
   opacity: 0.92;
 }
 body.mode-simule .bandeau-simule {
@@ -906,7 +960,7 @@ body.mode-simule header {
   padding-top: 5vh;
 }
 body.mode-simule .badge-cache {
-  top: 18.5vh;
+  top: 17.9vh;
 }
 /* Les deux bandeaux à la fois : ils s'empilent, ils ne se recouvrent pas.
 
@@ -936,7 +990,7 @@ body.mode-simule.mode-demo header {
   padding-top: 8vh;
 }
 body.mode-simule.mode-demo .badge-cache {
-  top: 21.5vh;
+  top: 20.9vh;
 }
 
 /* ---- Horloge du poste déréglée (lot 5) ------------------------------------
@@ -970,17 +1024,20 @@ body.mode-simule.mode-demo .badge-cache {
   color: #fff;
   border-bottom: 0.4vh solid var(--rouge-fonce);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-horloge b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-horloge span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
+  white-space: nowrap;
   opacity: 0.95;
 }
 body.mode-horloge .bandeau-horloge {
@@ -999,7 +1056,7 @@ body.mode-horloge header {
   padding-top: 5vh;
 }
 body.mode-horloge .badge-cache {
-  top: 18.5vh;
+  top: 17.9vh;
 }
 
 /* ============ AUTRES FORMATS DE MONITEUR (mesurés, pas supposés) ============
@@ -1061,6 +1118,13 @@ body.mode-horloge .badge-cache {
 
   .logo {
     height: calc(10.4 * var(--u));
+  }
+
+  /* Le profil de la ligne est RETIRÉ en portrait : le titre centré occupe
+     déjà toute la place entre le logo et l'horloge (mesuré le 10/11/2026 à
+     1080×1920 : logo jusqu'à 291 px, titre de 383 à 697). */
+  .profil {
+    display: none;
   }
 
   .bandeau-section {
@@ -1256,9 +1320,9 @@ body.mode-horloge .badge-cache {
 
   .badge-cache {
     top: calc(13.5 * var(--u));
-    font-size: calc(1.8 * var(--u));
-    padding: calc(0.5 * var(--u)) 1vw;
-    border-radius: calc(0.8 * var(--u));
+    font-size: calc(1.6 * var(--u));
+    padding: calc(0.3 * var(--u)) 0.9vw;
+    border-radius: calc(0.5 * var(--u));
   }
 
   /* Bandeaux de test : leurs deux langues s'empilent (une ligne de 1080 px
@@ -1283,11 +1347,11 @@ body.mode-horloge .badge-cache {
   }
 
   .bandeau-horloge b {
-    font-size: calc(2.6 * var(--u));
+    font-size: calc(2.2 * var(--u));
   }
 
   .bandeau-horloge span {
-    font-size: calc(1.9 * var(--u));
+    font-size: calc(1.6 * var(--u));
   }
 
   /* La variable du centrage vaut le `padding-top` du mode, ici en --u : les
@@ -1316,12 +1380,12 @@ body.mode-horloge .badge-cache {
 
   .bandeau-demo b,
   .bandeau-simule b {
-    font-size: calc(2.6 * var(--u));
+    font-size: calc(2.2 * var(--u));
   }
 
   .bandeau-demo span,
   .bandeau-simule span {
-    font-size: calc(1.9 * var(--u));
+    font-size: calc(1.6 * var(--u));
   }
 
   body.mode-demo,

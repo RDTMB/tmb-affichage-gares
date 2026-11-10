@@ -12,6 +12,7 @@ import '@fontsource/lato/400.css';
 import '@fontsource/lato/700.css';
 import '@fontsource/lato/900.css';
 import '../styles/tokens.css';
+import '../styles/profil.css';
 import '../styles/ecran.css';
 
 import type { EtatCycle } from '../core/cycle-medias';
@@ -31,6 +32,7 @@ import {
   libelleTrainCourt,
   lignesDuTableau,
   passagesPourGare,
+  avancementsTrains,
   prochaineArrivee,
   serviceActif,
   sommetDeLaGrille,
@@ -62,11 +64,9 @@ import { creeProviderDemo, creeProviderReel } from '../data';
 import type { DataProvider } from '../data/provider';
 import { configSupabasePresente, estModeDemo, modeDonnees } from '../data/config';
 import {
-  anneauSur,
   appliqueAffluence,
   badgeFraicheur,
   bandeauSimulation,
-  couleurSure,
   LIBELLE_MENTION,
   mentionCourse,
   styleRame,
@@ -86,6 +86,7 @@ import {
 import { poseFavicon } from './favicon';
 import { poseMarquePreversion, titrePage } from './preversion';
 import { creeSourceHeure } from './horloge-source';
+import { profilSvg } from './profil-ligne';
 import { identifiantEcran } from './supervision-logique';
 import {
   creeSynchronisation,
@@ -515,12 +516,41 @@ function rendsArrivee(gare: GareId, maintenant_s: number): void {
     $('arrivee').innerHTML = `${lbl}<span>— demain / tomorrow</span>`;
     return;
   }
+  // La rame se reconnaît à sa PASTILLE, la même que dans le tableau au-dessus
+  // — plus à un nom écrit dans sa couleur : le bleu de Marie et le rose de
+  // Jeanne passaient mal sur le marine, et Marguerite (blanche) réclamait un
+  // halo rouge pour exister.
   const machine = machineDe(prochaine.rame);
-  const anneauProchaine = anneauSur(machine.cercle);
-  const halo = anneauProchaine ? `text-shadow:0 0 4px ${anneauProchaine};` : '';
   $('arrivee').innerHTML = `${lbl}
-    <b>${formatHeure(prochaine.heure_s)}</b> — <span class="rame-col" style="color:${couleurSure(machine.couleur)};${halo}">${echapper(prochaine.rame)}</span>
-    <span>(TRAIN ${prochaine.numero}), en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
+    <b>${formatHeure(prochaine.heure_s)}</b>
+    <span class="pastille" style="${styleRame(machine)}"></span><span class="rame-col">${echapper(prochaine.rame)}</span>
+    <span>TRAIN ${prochaine.numero}, en provenance de ${echapper(nomGare(prochaine.provenance))}</span>`;
+}
+
+/** Dernier profil posé : le dessin ne change que quand un train bouge. */
+let dernierProfil = '';
+
+/**
+ * Profil de la ligne dans le bandeau de titre : la gare du poste, et les
+ * machines en ligne avec leur sens de marche. Leur position est ESTIMÉE le
+ * long de la voie (`avancementsTrains` : au prorata du temps entre deux gares,
+ * retard déclaré compris — décision de l'exploitant du 10/11/2026, pour ce
+ * dessin seulement). Réécrit seulement quand le dessin change : la position
+ * est arrondie au demi-point — 28 réécritures en 60 s mesurées avec trois
+ * machines en route, pour une boucle qui tourne à la seconde.
+ */
+function rendsProfil(gare: GareId, maintenant_s: number): void {
+  if (!grille || !jour) return;
+  const html = profilSvg({
+    gares: grille.gares,
+    sommet: sommetDeLaGrille(grille, jour.date),
+    ici: gare,
+    positions: avancementsTrains(grille, jour, maintenant_s),
+    machines: params?.machines ?? [],
+  });
+  if (html === dernierProfil) return;
+  dernierProfil = html;
+  $('profil').innerHTML = html;
 }
 
 function rendsMeteo(): void {
@@ -794,6 +824,8 @@ function rendre(gare: GareId): void {
   // Garde de TYPAGE seulement : `vue === 'horaires'` garantit les deux.
   if (!grille || !jour) return;
 
+  rendsProfil(gare, maintenant);
+
   // Le moteur horaires ignore le remplissage : la jointure (date, numéro) se
   // fait ici, sur ce qu'il vient de calculer.
   const passages = appliqueAffluence(passagesPourGare(grille, jour, gare, maintenant), affluence);
@@ -918,8 +950,10 @@ async function demarre(): Promise<void> {
     document.title = titrePage(`TMB — ${nomGare(gare)}`);
     $('gare-nom').textContent = nomGare(gare);
     const altitude = grille.gares.find((g) => g.id === gare)?.altitude_m;
+    // L'altitude est un CHIFFRE, pas une étiquette : « 786 m », comme sur une
+    // plaque de gare de montagne. Le mot « altitude » n'ajoutait rien.
     $('gare-alt').textContent =
-      altitude !== undefined ? `Altitude ${altitude.toLocaleString('fr-FR')} m` : '';
+      altitude !== undefined ? `${altitude.toLocaleString('fr-FR')}\u00a0m` : '';
     rendsMeteo();
   };
 

@@ -1,6 +1,26 @@
-/* Écran de gare — port fidèle de maquettes/ecran-gare.html (validée par
-   l'exploitant, elle fait foi pour le visuel). Unités vh/vw : le rendu de
-   référence est un écran 16:9 plein écran (1920×1080). */
+/* Écran de gare — refonte du 10/11/2026. maquettes/ecran-gare.html en est la
+   photographie (régénérée par outils/regenerer-maquettes.cjs) ; captures
+   avant / après dans docs/captures/2026-11-10-refonte/. Unités vh/vw : le
+   rendu de référence est un écran 16:9 plein écran (1920×1080).
+
+   CE QUI A CHANGÉ, ET POURQUOI. L'écran d'avant disait tout au même volume :
+   zébrures, cases cerclées, étiquette rouge sur chaque rangée, cinq « À
+   l'heure » verts, capitales espacées partout. Un voyageur sur le quai cherche
+   UNE heure et UN nom ; le reste doit se taire tant qu'il n'a rien à dire.
+     - la COULEUR est une information, jamais un décor : rouge = marque
+       (filet du bandeau, pied) et alerte (supprimé, complet, départ
+       imminent) ; ambre = retard ; vert = à quai ; le reste est marine,
+       crème et blanc ;
+     - le PROFIL DE LA LIGNE entre dans le bandeau de titre : la gare du
+       poste sur la pente, les trains en ligne à la couleur de leur rame
+       (src/pages/profil-ligne.ts). C'est le seul ornement, et il renseigne ;
+     - l'ALTITUDE est un chiffre accolé au nom, comme sur une plaque de gare
+       de montagne — plus une étiquette en capitales ;
+     - plus de zébrures ni de cases : un filet entre les rangées, et une case
+       ne se remplit que lorsqu'elle porte un ÉTAT (proche, à quai, imminent).
+   Ce qui n'a PAS bougé : les colonnes, les tailles mesurées de la ligne
+   Destination (badge, nom, pastilles, picto — leurs réserves avant troncature
+   sont celles du 10/09/2026) et la taille du badge de train. */
 
 :root {
   /* Alias maquette → tokens charte (src/styles/tokens.css) */
@@ -19,7 +39,9 @@
   --jaune: #f5ce5e;
   --supprime: #ff6b5e;
   --texte-sec: #a9c0d8;
-  --texte-ter: #7c96b0;
+  /* Relevé de #7c96b0 à #8fa8c2 : 4,6:1 sur le marine au lieu de 3,6 — il
+     porte les en-têtes de colonnes en anglais, lus de loin. */
+  --texte-ter: #8fa8c2;
 }
 
 * {
@@ -51,7 +73,7 @@ header {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 2.2vw;
   border-bottom: 0.9vh solid var(--rouge);
   padding: 0 1.6vw;
 }
@@ -62,30 +84,46 @@ header {
   flex: none;
 }
 
+/* Le nom de la gare et son altitude, sur UNE ligne de base, à gauche — une
+   plaque de gare, pas un titre centré. Dans le FLUX de l'en-tête (plus de
+   position absolue) : centré sur la hauteur totale, le nom passait SOUS les
+   bandeaux de test dès qu'ils étaient deux (mesuré le 10/11/2026, « Saint-
+   Gervais » rogné de moitié). */
 .gare-bloc {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 1.1vw;
   white-space: nowrap;
 }
 
 .gare-nom {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 6.4vh;
+  font-size: 7.4vh;
   line-height: 1;
   color: var(--marine);
 }
 
 .gare-alt {
-  font-weight: 700;
-  font-size: 2.1vh;
+  font-weight: 900;
+  font-size: 3.4vh;
   color: var(--rouge);
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  margin-top: 0.7vh;
+  font-variant-numeric: tabular-nums;
+}
+
+/* PROFIL DE LA LIGNE. Il prend la place LIBRE entre le nom et l'horloge et
+   la rend toujours : `flex: 1 1 0` + `min-width: 0`, un nom de gare plus long
+   le rétrécit, il ne pousse rien. Le DESSIN (voie, gares, trains) est réglé
+   dans src/styles/profil.css, commune à l'écran de gare et à la grille du
+   jour ; ici, seulement la place qu'il occupe. */
+.profil {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 12.6vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .heure-bloc {
@@ -127,22 +165,19 @@ main {
   display: flex;
   align-items: baseline;
   gap: 1.2vw;
-  padding: 1.5vh 2vw 0.7vh;
+  padding: 1.6vh 1.8vw 0.9vh;
 }
 
 .titre-tableau h1 {
   font-family: 'Amaranth', sans-serif;
-  font-size: 3.2vh;
+  font-size: 3.6vh;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .titre-tableau .en {
-  font-size: 2vh;
+  font-size: 2.3vh;
   color: var(--texte-sec);
   font-weight: 400;
-  letter-spacing: 0.06em;
 }
 
 .gridrow {
@@ -157,22 +192,30 @@ main {
   padding: 0 1.8vw;
 }
 
+/* En-têtes en bas de casse : le français, puis l'anglais en dessous, plus
+   léger. Les capitales espacées d'avant se lisaient moins bien de loin que
+   les mots eux-mêmes, et l'anglais (#5e7890) ne faisait que 2,4:1. */
 .entetes {
-  font-size: 1.7vh;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--texte-ter);
+  font-size: 2vh;
+  color: var(--texte-sec);
   font-weight: 700;
-  padding-bottom: 0.7vh;
+  padding-bottom: 0.8vh;
+  align-items: start;
 }
 
 .entetes small {
   display: block;
-  font-size: 1.4vh;
-  letter-spacing: 0.06em;
-  color: #5e7890;
-  text-transform: none;
+  font-size: 1.6vh;
+  color: var(--texte-ter);
   font-weight: 400;
+}
+
+/* « Départ dans » coiffe une case CENTRÉE (10,5 vw) : son en-tête l'est
+   aussi, sinon le mot part du bord gauche d'une colonne dont le contenu
+   n'y touche jamais. */
+.entetes > div:nth-child(4) {
+  width: 10.5vw;
+  text-align: center;
 }
 
 .corps {
@@ -181,15 +224,14 @@ main {
   flex-direction: column;
 }
 
+/* Plus de zébrures : un filet franc entre deux rangées. Sur des rangées de
+   130 px en corps de 60, l'œil ne perd pas sa ligne — et un fond qui alterne
+   se disputait avec les cases d'état, qui sont le vrai signal. */
 .rangee {
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--marine-ligne);
+  border-top: 0.2vh solid var(--marine-ligne);
   background: var(--marine);
-}
-
-.rangee:nth-child(even) {
-  background: var(--marine-row);
 }
 
 .rangee.supprime .r-dep,
@@ -223,7 +265,9 @@ main {
 
 .r-dep {
   font-weight: 900;
-  font-size: 5.6vh;
+  /* 5,6 → 5,8 vh. Pas 6 : à 4/3 exactement, « 10:45 » en 6 vh dépasse sa
+     colonne de 2 px (mesuré le 10/11/2026 à 1024×768). */
+  font-size: 5.8vh;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -242,27 +286,21 @@ main {
   min-width: 0;
 }
 
+/* La flèche de sens, NUE : plus de carré de fond. Elle dit « ça monte » ou
+   « ça descend » par sa direction ; le carré n'ajoutait qu'une forme de plus
+   à chaque rangée. */
 .fleche {
-  width: 5vh;
-  height: 5vh;
+  width: 4.6vh;
+  height: 4.6vh;
   flex: none;
-  border-radius: 1vh;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .fleche svg {
-  width: 3.2vh;
-  height: 3.2vh;
-}
-
-.fleche.up {
-  background: #2c5580;
-}
-
-.fleche.down {
-  background: #1b3a5e;
+  width: 4.6vh;
+  height: 4.6vh;
 }
 
 .r-dest .txt {
@@ -312,9 +350,13 @@ main {
   font-weight: 900;
   font-size: 2.8vh;
   line-height: 1;
-  color: #fff;
-  background: var(--tmb-rouge);
-  border-radius: 0.9vh;
+  /* Bleu clair de la charte, texte marine — plus le rouge. Le numéro est un
+     REPÈRE (il est sur le billet), pas une alerte : en rouge sur les cinq
+     rangées, il prenait la couleur de « Supprimé » et de « Complet » et les
+     noyait. Marine sur #bddcf4 : 8,05:1. */
+  color: var(--marine);
+  background: var(--bleu-clair);
+  border-radius: 0.5vh;
   padding: 0.2vh 1.2vh;
   margin-right: 1.5vh;
   font-variant-numeric: tabular-nums;
@@ -392,7 +434,7 @@ main {
   line-height: 1;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-radius: 0.9vh;
+  border-radius: 0.5vh;
   padding: 0.55vh 1.2vh;
   /* MARGE COMMUNE aux deux niveaux, et c'est elle qui aligne leurs bords
      gauches d'une rangée à l'autre : tant que « COMPLET » gardait 1,4vw et
@@ -437,7 +479,7 @@ main {
   line-height: 1;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-radius: 0.9vh;
+  border-radius: 0.5vh;
   padding: 0.55vh 1.2vh;
   margin-left: 0.7vw;
   white-space: nowrap;
@@ -607,8 +649,8 @@ main {
    les rames sans anneau — ni pour une couleur mal formée, qui ne pose pas la
    variable (voir anneauSur()). */
 .pastille {
-  width: 3vh;
-  height: 3vh;
+  width: 3.2vh;
+  height: 3.2vh;
   border-radius: 50%;
   flex: none;
   box-shadow: 0 0 0 0.4vh var(--anneau, rgba(255, 255, 255, 0.14));
@@ -620,23 +662,30 @@ main {
 
 /* Seule occupante de sa colonne depuis que le numéro est passé en badge
    devant la destination : elle peut respirer. */
+/* Marie, Anne, Jeanne, Marguerite sont des NOMS PROPRES : Amaranth, comme
+   les gares. */
 .r-train .nom-rame {
-  font-size: 2.9vh;
+  font-family: 'Amaranth', sans-serif;
+  font-size: 3.1vh;
   font-weight: 700;
-  color: #e8f0f8;
+  color: #fff;
   line-height: 1.15;
   white-space: nowrap;
 }
 
+/* LA CASE NE SE REMPLIT QUE POUR UN ÉTAT. Un compte à rebours ordinaire est
+   un nombre nu ; la case prend un fond quand il y a quelque chose à faire —
+   crème à moins de cinq minutes, vert à quai, rouge au départ imminent. Elles
+   gardent TOUTES la même boîte (règle d'affichage), remplie ou non. */
 .chip {
   font-weight: 900;
-  font-size: 3.2vh;
+  font-size: 3.6vh;
   padding: 0.7vh 0.4vw;
-  border-radius: 1.1vh;
+  border-radius: 0.6vh;
   white-space: nowrap;
-  background: #1a3454;
-  border: 1px solid #3a5e88;
-  color: #d8e8f8;
+  background: transparent;
+  border: 0.2vh solid transparent;
+  color: #fff;
   font-variant-numeric: tabular-nums;
   width: 10.5vw;
   /* Hauteur imposée : les cases restent TOUTES de la même taille (charte),
@@ -650,9 +699,9 @@ main {
 }
 
 .chip.proche {
-  color: #fff;
-  border-color: #5e86b4;
-  background: #254a74;
+  color: var(--marine);
+  border-color: var(--creme);
+  background: var(--creme);
 }
 
 /* Les trois états nommés tiennent sur deux lignes dans la MÊME case :
@@ -708,8 +757,8 @@ main {
 /* PARTI : gris, éteint — la ligne reste 2 min pour lever le doute du voyageur
    qui arrive en courant, sans lui laisser croire qu'il peut encore monter. */
 .chip.parti {
-  background: #24384f;
-  border-color: #35506e;
+  background: transparent;
+  border-color: #3f5b7c;
   color: #8ea4bb;
 }
 
@@ -717,7 +766,7 @@ main {
    autres. Ni vert (« À QUAI » dit qu'on peut monter), ni gris éteint
    (« PARTI ») : un liseré orange la rattache à la note qui l'explique. */
 .chip.arrivee-terminus {
-  background: #1a3454;
+  background: transparent;
   border-color: var(--retard);
   color: var(--retard);
 }
@@ -739,7 +788,14 @@ main {
   padding-left: 1.4vw;
 }
 
+/* « À l'heure » est l'état NORMAL : il se dit en clair, sans couleur — seule
+   sa puce reste verte. Cinq lignes vertes d'affilée faisaient autant de bruit
+   qu'un retard ; maintenant c'est le retard, en ambre, qui se détache. */
 .st-ok {
+  color: #e3ecf5;
+}
+
+.st-ok::before {
   color: var(--ok);
 }
 
@@ -764,14 +820,14 @@ main {
 
 /* ============ ARRIVÉE + ÉTATS SPÉCIAUX ============ */
 .arrivee {
-  border-top: 1px solid var(--marine-ligne);
-  background: #1b3252;
+  border-top: 0.2vh solid var(--marine-ligne);
+  background: var(--marine-fonce);
   display: flex;
   align-items: center;
   gap: 0.9vw;
-  padding: 1.2vh 2vw;
+  padding: 1.2vh 1.8vw;
   flex: 0 0 auto;
-  font-size: 2.25vh;
+  font-size: 2.3vh;
   color: var(--texte-sec);
 }
 
@@ -781,15 +837,21 @@ main {
 }
 
 .arrivee .lbl {
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-size: 1.75vh;
-  color: var(--texte-ter);
+  color: var(--texte-sec);
   font-weight: 700;
+  margin-right: 0.6vw;
+}
+
+.arrivee .pastille {
+  width: 2.4vh;
+  height: 2.4vh;
+  margin-left: 0.6vw;
 }
 
 .arrivee .rame-col {
-  font-weight: 900;
+  font-family: 'Amaranth', sans-serif;
+  font-weight: 700;
+  color: #fff;
 }
 
 .plein-ecran {
@@ -1117,18 +1179,21 @@ body.mode-erreur .erreur-config {
   color: var(--creme);
   border-bottom: 0.4vh solid var(--marine);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-demo b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-demo span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
   opacity: 0.92;
+  white-space: nowrap;
 }
 body.mode-demo .bandeau-demo {
   display: flex;
@@ -1166,18 +1231,21 @@ body.mode-demo .badge-cache {
   color: var(--jaune);
   border-bottom: 0.4vh solid var(--jaune);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-simule b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-simule span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
   opacity: 0.92;
+  white-space: nowrap;
 }
 body.mode-simule .bandeau-simule {
   display: flex;
@@ -1234,18 +1302,21 @@ body.mode-simule.mode-demo .badge-cache {
   color: #fff;
   border-bottom: 0.4vh solid var(--rouge-fonce);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
+  overflow: hidden;
 }
 .bandeau-horloge b {
   font-family: 'Amaranth', sans-serif;
   font-weight: 700;
-  font-size: 2.6vh;
+  font-size: 2.2vh;
+  white-space: nowrap;
 }
 .bandeau-horloge span {
   font-family: 'Lato', sans-serif;
   font-weight: 700;
-  font-size: 1.9vh;
+  font-size: 1.6vh;
   opacity: 0.95;
+  white-space: nowrap;
 }
 body.mode-horloge .bandeau-horloge {
   display: flex;
@@ -1301,7 +1372,8 @@ body.mode-horloge .badge-cache {
     --u: 0.75vw;
   }
 
-  /* Bandeau haut */
+  /* TRANSCRIPTION de la feuille de base, règle par règle et dans son ordre :
+     chaque taille en vh y est reprise à l'identique dans l'unité --u. */
   header {
     flex: 0 0 calc(14 * var(--u));
     border-bottom: calc(0.9 * var(--u)) solid var(--rouge);
@@ -1310,11 +1382,13 @@ body.mode-horloge .badge-cache {
     height: calc(12.2 * var(--u));
   }
   .gare-nom {
-    font-size: calc(6.4 * var(--u));
+    font-size: calc(7.4 * var(--u));
   }
   .gare-alt {
-    font-size: calc(2.1 * var(--u));
-    margin-top: calc(0.7 * var(--u));
+    font-size: calc(3.4 * var(--u));
+  }
+  .profil {
+    height: calc(12.6 * var(--u));
   }
   .horloge {
     font-size: calc(6.8 * var(--u));
@@ -1326,70 +1400,203 @@ body.mode-horloge .badge-cache {
     font-size: calc(1.95 * var(--u));
     margin-top: calc(0.5 * var(--u));
   }
-
-  /* Tableau */
   .titre-tableau {
-    padding: calc(1.5 * var(--u)) 2vw calc(0.7 * var(--u));
+    padding: calc(1.6 * var(--u)) 1.8vw calc(0.9 * var(--u));
   }
   .titre-tableau h1 {
-    font-size: calc(3.2 * var(--u));
+    font-size: calc(3.6 * var(--u));
   }
   .titre-tableau .en {
-    font-size: calc(2 * var(--u));
+    font-size: calc(2.3 * var(--u));
   }
   .entetes {
-    font-size: calc(1.7 * var(--u));
-    padding-bottom: calc(0.7 * var(--u));
+    font-size: calc(2 * var(--u));
+    padding-bottom: calc(0.8 * var(--u));
   }
   .entetes small {
-    font-size: calc(1.4 * var(--u));
+    font-size: calc(1.6 * var(--u));
+  }
+  .rangee {
+    border-top: calc(0.2 * var(--u)) solid var(--marine-ligne);
   }
   .r-dep {
-    font-size: calc(5.6 * var(--u));
+    font-size: calc(5.8 * var(--u));
   }
   .r-dep .retard-old {
     font-size: calc(1.9 * var(--u));
   }
   .fleche {
-    width: calc(5 * var(--u));
-    height: calc(5 * var(--u));
-    border-radius: calc(1 * var(--u));
+    width: calc(4.6 * var(--u));
+    height: calc(4.6 * var(--u));
   }
   .fleche svg {
-    width: calc(3.2 * var(--u));
-    height: calc(3.2 * var(--u));
+    width: calc(4.6 * var(--u));
+    height: calc(4.6 * var(--u));
   }
   .r-dest .dest {
     font-size: calc(4.3 * var(--u));
   }
   .badge-train {
     font-size: calc(2.8 * var(--u));
-    border-radius: calc(0.9 * var(--u));
+    border-radius: calc(0.5 * var(--u));
     padding: calc(0.2 * var(--u)) calc(1.2 * var(--u));
     margin-right: calc(1.5 * var(--u));
   }
-  .r-dest .dest img.motrice-dest {
-    height: calc(7 * var(--u));
-  }
   .pill-affluence {
-    font-size: calc(2.1 * var(--u));
     gap: calc(0.6 * var(--u));
-    border-radius: calc(0.9 * var(--u));
+    font-size: calc(2.1 * var(--u));
+    border-radius: calc(0.5 * var(--u));
     padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
   }
   .pill-affluence small {
     font-size: calc(1.5 * var(--u));
   }
-  /* Même gabarit que la pastille d'affluence, donc même transcription. */
   .pill-prive {
-    font-size: calc(2.1 * var(--u));
     gap: calc(0.6 * var(--u));
-    border-radius: calc(0.9 * var(--u));
+    font-size: calc(2.1 * var(--u));
+    border-radius: calc(0.5 * var(--u));
     padding: calc(0.55 * var(--u)) calc(1.2 * var(--u));
   }
   .pill-prive small {
     font-size: calc(1.5 * var(--u));
   }
+  .r-dest .dest img.motrice-dest {
+    height: calc(7 * var(--u));
+  }
+  .r-dest .note {
+    font-size: calc(1.95 * var(--u));
+  }
+  .r-dest .note.note-exp {
+    font-size: calc(1.62 * var(--u));
+  }
+  .pastille {
+    width: calc(3.2 * var(--u));
+    height: calc(3.2 * var(--u));
+    box-shadow: 0 0 0 calc(0.4 * var(--u)) var(--anneau, rgba(255, 255, 255, 0.14));
+  }
+  .r-train .nom-rame {
+    font-size: calc(3.1 * var(--u));
+  }
+  .chip {
+    font-size: calc(3.6 * var(--u));
+    padding: calc(0.7 * var(--u)) 0.4vw;
+    border-radius: calc(0.6 * var(--u));
+    border: calc(0.2 * var(--u)) solid transparent;
+    min-height: calc(7.4 * var(--u));
+  }
+  .chip b {
+    font-size: calc(2.4 * var(--u));
+  }
+  .chip small {
+    font-size: calc(1.4 * var(--u));
+  }
+  .r-statut {
+    font-size: calc(2.5 * var(--u));
+  }
+  .r-statut small {
+    font-size: calc(1.75 * var(--u));
+  }
+  .st-ok::before,
+  .st-retard::before,
+  .st-supp::before {
+    font-size: calc(1.7 * var(--u));
+    vertical-align: calc(0.4 * var(--u));
+  }
+  .arrivee {
+    border-top: calc(0.2 * var(--u)) solid var(--marine-ligne);
+    padding: calc(1.2 * var(--u)) 1.8vw;
+    font-size: calc(2.3 * var(--u));
+  }
+  .arrivee .pastille {
+    width: calc(2.4 * var(--u));
+    height: calc(2.4 * var(--u));
+  }
+  footer {
+    flex: 0 0 calc(8.5 * var(--u));
+  }
+  .ticker-inner {
+    font-size: calc(2.9 * var(--u));
+  }
+  .meteo {
+    font-size: calc(2.3 * var(--u));
+  }
+  .meteo .t {
+    font-size: calc(4.4 * var(--u));
+  }
+  .meteo small {
+    font-size: calc(1.65 * var(--u));
+  }
+  .badge-cache {
+    top: calc(15.5 * var(--u));
+    font-size: calc(1.8 * var(--u));
+    padding: calc(0.5 * var(--u)) 1vw;
+    border-radius: calc(0.8 * var(--u));
+  }
+  .releve {
+    font-size: calc(1.5 * var(--u));
+  }
+  .bandeau-demo {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--marine);
+  }
+  .bandeau-demo b {
+    font-size: calc(2.2 * var(--u));
+  }
+  .bandeau-demo span {
+    font-size: calc(1.6 * var(--u));
+  }
+  body.mode-demo header {
+    flex-basis: calc(19 * var(--u));
+    padding-top: calc(5 * var(--u));
+  }
+  body.mode-demo .badge-cache {
+    top: calc(20.5 * var(--u));
+  }
+  .bandeau-simule {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--jaune);
+  }
+  .bandeau-simule b {
+    font-size: calc(2.2 * var(--u));
+  }
+  .bandeau-simule span {
+    font-size: calc(1.6 * var(--u));
+  }
+  body.mode-simule header {
+    flex-basis: calc(19 * var(--u));
+    padding-top: calc(5 * var(--u));
+  }
+  body.mode-simule .badge-cache {
+    top: calc(20.5 * var(--u));
+  }
+  body.mode-simule.mode-demo .bandeau-demo {
+    top: calc(5 * var(--u));
+  }
+  body.mode-simule.mode-demo header {
+    flex-basis: calc(24 * var(--u));
+    padding-top: calc(10 * var(--u));
+  }
+  body.mode-simule.mode-demo .badge-cache {
+    top: calc(25.5 * var(--u));
+  }
+  .bandeau-horloge {
+    height: calc(5 * var(--u));
+    border-bottom: calc(0.4 * var(--u)) solid var(--rouge-fonce);
+  }
+  .bandeau-horloge b {
+    font-size: calc(2.2 * var(--u));
+  }
+  .bandeau-horloge span {
+    font-size: calc(1.6 * var(--u));
+  }
+  body.mode-horloge header {
+    flex-basis: calc(19 * var(--u));
+    padding-top: calc(5 * var(--u));
+  }
+  body.mode-horloge .badge-cache {
+    top: calc(20.5 * var(--u));
+  }
+
   /* §4.3 — DÉTERMINÉ AU RENDU, 1024×768 et 1080×1920, le 10/09/2026.
      Ici la colonne Destination est bien plus étroite qu'en 16/9 et la
      pastille n'y tient plus avec le picto : mesuré sur une ligne express
@@ -1437,139 +1644,13 @@ body.mode-horloge .badge-cache {
   .r-dest .dest .nom-dest {
     min-width: 0;
   }
-  .r-dest .note {
-    font-size: calc(1.95 * var(--u));
-  }
-  .r-dest .note.note-exp {
-    font-size: calc(1.62 * var(--u));
-  }
-  .pastille {
-    width: calc(3 * var(--u));
-    height: calc(3 * var(--u));
-    box-shadow: 0 0 0 calc(0.4 * var(--u)) var(--anneau, rgba(255, 255, 255, 0.14));
-  }
-  .r-train .nom-rame {
-    font-size: calc(2.9 * var(--u));
-  }
-  .chip {
-    font-size: calc(3.2 * var(--u));
-    padding: calc(0.7 * var(--u)) 0.4vw;
-    border-radius: calc(1.1 * var(--u));
-    min-height: calc(7.4 * var(--u));
-  }
-  .chip b {
-    font-size: calc(2.4 * var(--u));
-  }
-  .chip small {
-    font-size: calc(1.4 * var(--u));
-  }
-  .r-statut {
-    font-size: calc(2.5 * var(--u));
-  }
-  .r-statut small {
-    font-size: calc(1.75 * var(--u));
-  }
-  .st-ok::before,
-  .st-retard::before,
-  .st-supp::before {
-    font-size: calc(1.7 * var(--u));
-    vertical-align: calc(0.4 * var(--u));
-  }
-  .arrivee {
-    padding: calc(1.2 * var(--u)) 2vw;
-    font-size: calc(2.25 * var(--u));
-  }
-  .arrivee .lbl {
-    font-size: calc(1.75 * var(--u));
-  }
-
-  /* Bas */
-  footer {
-    flex: 0 0 calc(8.5 * var(--u));
-  }
-  .ticker-inner {
-    font-size: calc(2.9 * var(--u));
-  }
-  .meteo {
-    font-size: calc(2.3 * var(--u));
-  }
-  .meteo .t {
-    font-size: calc(4.4 * var(--u));
-  }
-  .meteo small {
-    font-size: calc(1.65 * var(--u));
-  }
-  .releve {
-    font-size: calc(1.5 * var(--u));
-  }
-
-  /* Badge « données de HH:MM » et bandeaux : ancrés sur la hauteur de
-     l'en-tête, ils suivent la même unité que lui. */
-  .badge-cache {
-    top: calc(15.5 * var(--u));
-    font-size: calc(1.8 * var(--u));
-    padding: calc(0.5 * var(--u)) 1vw;
-    border-radius: calc(0.8 * var(--u));
-  }
-  .bandeau-demo {
-    height: calc(5 * var(--u));
-    border-bottom: calc(0.4 * var(--u)) solid var(--marine);
-  }
-  .bandeau-demo b {
-    font-size: calc(2.6 * var(--u));
-  }
-  .bandeau-demo span {
-    font-size: calc(1.9 * var(--u));
-  }
-  body.mode-demo header {
-    flex-basis: calc(19 * var(--u));
-    padding-top: calc(5 * var(--u));
-  }
-  body.mode-demo .badge-cache {
-    top: calc(20.5 * var(--u));
-  }
-  .bandeau-simule {
-    height: calc(5 * var(--u));
-    border-bottom: calc(0.4 * var(--u)) solid var(--jaune);
-  }
-  .bandeau-horloge {
-    height: calc(5 * var(--u));
-    border-bottom: calc(0.4 * var(--u)) solid var(--rouge-fonce);
-  }
-  .bandeau-horloge b {
-    font-size: calc(2.6 * var(--u));
-  }
-  .bandeau-horloge span {
-    font-size: calc(1.9 * var(--u));
-  }
-  body.mode-horloge header {
-    flex-basis: calc(19 * var(--u));
-    padding-top: calc(5 * var(--u));
-  }
-  body.mode-horloge .badge-cache {
-    top: calc(20.5 * var(--u));
-  }
-  .bandeau-simule b {
-    font-size: calc(2.6 * var(--u));
-  }
-  .bandeau-simule span {
-    font-size: calc(1.9 * var(--u));
-  }
-  body.mode-simule header {
-    flex-basis: calc(19 * var(--u));
-    padding-top: calc(5 * var(--u));
-  }
-  body.mode-simule .badge-cache {
-    top: calc(20.5 * var(--u));
-  }
-  body.mode-simule.mode-demo .bandeau-demo {
-    top: calc(5 * var(--u));
-  }
-  body.mode-simule.mode-demo header {
-    flex-basis: calc(24 * var(--u));
-    padding-top: calc(10 * var(--u));
-  }
-  body.mode-simule.mode-demo .badge-cache {
-    top: calc(25.5 * var(--u));
+  /* LE PROFIL DE LA LIGNE EST RETIRÉ ICI. Sous 4/3 le bandeau de titre n'a
+     plus de place libre entre le nom de la gare et l'horloge : mesuré le
+     10/11/2026 à 1080×1920, il lui reste 130 px, soit des gares de 2 px de
+     rayon — un dessin qu'on ne peut plus lire vaut moins que pas de dessin.
+     Sélecteur préfixé `header` pour ne pas se confondre avec la transcription
+     de `.profil` juste au-dessus, qui ne porte que sa hauteur. */
+  header .profil {
+    display: none;
   }
 }

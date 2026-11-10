@@ -1,0 +1,82 @@
+/* LE PROFIL DE LA LIGNE — le dessin, commun aux deux pages qui le portent
+   (écran de gare, grille du jour). Le SVG vient de src/pages/profil-ligne.ts,
+   à `viewBox` fixe ; cette feuille n'en règle que les TRAITS. Chaque page
+   règle la PLACE (`.profil`) dans sa propre feuille, et peut changer les deux
+   couleurs ci-dessous pour son fond — elles valent par défaut pour un fond
+   crème.
+
+   AUCUNE requête média ici : l'écran de gare importe cette feuille, et il est
+   exclu du thème sombre (voir tokens.css). */
+:root {
+  --profil-trait: var(--tmb-marine);
+  --profil-fond: var(--tmb-creme);
+}
+
+.profil-svg {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  overflow: visible;
+}
+
+/* La voie est PIQUETÉE, pas tirée : des points réguliers le long de la pente,
+   comme les dents d'une crémaillère. */
+.profil-voie {
+  fill: none;
+  stroke: var(--profil-trait);
+  stroke-width: 3.6;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 8;
+}
+
+.profil-gare {
+  fill: var(--profil-fond);
+  stroke: var(--profil-trait);
+  stroke-width: 2.6;
+}
+
+/* « Vous êtes ici » : un anneau rouge AUTOUR de la gare — le seul rouge du
+   profil. La gare elle-même se remplit de marine, pour se lire sans train. */
+.profil-ici {
+  fill: none;
+  stroke: var(--tmb-rouge);
+  stroke-width: 4;
+}
+
+.profil-gare.ici {
+  fill: var(--profil-trait);
+}
+
+/* Le sigle de la gare (FAY, STG…), au-dessus de son point. En capitales parce
+   que c'en est un — pas un mot mis en capitales. Celui de la gare du poste
+   prend le rouge de son anneau. */
+.profil-sigle {
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-size: 12.5px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  fill: var(--profil-trait);
+}
+
+.profil-sigle.ici {
+  fill: var(--tmb-rouge);
+}
+
+.profil-alt {
+  font-family: 'Lato', 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--profil-trait);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Une machine : la couleur de sa rame (attribut `fill`), son liseré (attribut
+   `stroke` — blanc, ou l'anneau rouge de Marguerite). Jamais de `stroke` ici :
+   une règle de feuille l'emporterait sur l'attribut. Sa forme — un rond et un
+   nez tourné dans le sens de la marche — vient de profil-ligne.ts. */
+.profil-train {
+  stroke-width: 2.6;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
