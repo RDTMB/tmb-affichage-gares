@@ -15,6 +15,7 @@ import '../styles/profil.css';
 import '../styles/grille.css';
 
 import {
+  avancementsTrains,
   formatHeure,
   grillePourJour,
   messageTronconDefaut,
@@ -356,14 +357,16 @@ function rendre(): void {
 
   const enLigne = positionsTrains(grille, jour, maintenant);
   const positions = new Map(enLigne.map((p) => [p.numero, p]));
-  // Profil de la ligne dans le bandeau de titre : les mêmes positions que les
-  // ronds et flèches du tableau, posées sur la pente. Réécrit seulement quand
-  // le dessin change (un train bouge quelques fois par heure).
+  // Profil de la ligne dans le bandeau de titre. Les machines y AVANCENT le
+  // long de la pente (`avancementsTrains`, position estimée — décision de
+  // l'exploitant du 10/11/2026) ; le TABLEAU, lui, garde sa règle du 05/11 :
+  // rond à quai, flèche à mi-chemin, jamais interpolé. Réécrit seulement quand
+  // le dessin change (position arrondie au demi-point).
   const profil = profilSvg({
     gares: grille.gares,
     sommet: sommetDeLaGrille(grille, jour.date),
     ici: gare,
-    positions: enLigne,
+    positions: avancementsTrains(grille, jour, maintenant),
     machines: params?.machines ?? [],
   });
   if (profil !== dernierProfil) {

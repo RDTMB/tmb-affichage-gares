@@ -47,9 +47,12 @@ changé ; ce qui suit s'y ajoute et vaut partout.
   retard qui doit se détacher.
 - **Le profil de la ligne** (`src/pages/profil-ligne.ts`,
   `src/styles/profil.css`) est le motif du TMB : la pente à l'échelle des
-  altitudes, voie piquetée, gare du poste cerclée de rouge, trains à la
-  couleur de leur rame. Bandeau de l'écran de gare et de la grille ;
-  sélecteur de gare de l'embed. Ne pas en inventer un second.
+  altitudes, voie piquetée, sigle au-dessus de chaque gare, gare du poste
+  cerclée de rouge, machines à la couleur de leur rame avec un nez dans le
+  sens de la marche. Bandeau de l'écran de gare et de la grille ; l'embed a
+  son propre tracé, qui sert de sélecteur de gare. Ne pas en inventer un
+  troisième. Ce qu'il MONTRE est une règle d'affichage :
+  `.claude/regles-affichage.md`.
 - **L'altitude est un chiffre accolé au nom** (« Saint-Gervais 786 m »),
   jamais une étiquette « ALTITUDE ».
 - **Bas de casse** pour les titres, en-têtes et intitulés. Pas de capitales

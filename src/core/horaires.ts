@@ -4,6 +4,7 @@
 
 import { accesValide, horsGrille } from './types';
 import type {
+  AvancementTrain,
   Circulation,
   CompteARebours,
   FinDeService,
@@ -1469,7 +1470,39 @@ export function finDeService(
  *   l'exploitant du 05/11/2026).
  */
 export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number): PositionTrain[] {
-  const positions: PositionTrain[] = [];
+  // UNE SEULE lecture de « où est ce train » : l'avancement ci-dessous, dont on
+  // ne garde ici que la gare et la suivante. La part de trajet n'en sort pas —
+  // la grille du jour ne s'en sert JAMAIS (règle du 05/11/2026).
+  return avancementsTrains(grille, jour, maintenant_s).map(
+    ({ numero, sens, rame, gare, vers }): PositionTrain => ({ numero, sens, rame, gare, vers }),
+  );
+}
+
+/**
+ * Les mêmes trains en ligne, avec en plus leur AVANCEMENT ESTIMÉ entre deux
+ * gares : `part` va de 0 (départ réel de `gare`) à 1 (arrivée réelle à `vers`),
+ * au prorata du temps écoulé ; 0 pour un train à quai.
+ *
+ * POUR LE PROFIL DE LA LIGNE SEULEMENT (décision de l'exploitant du
+ * 10/11/2026) : la machine y glisse le long de la pente. La grille du jour
+ * garde sa règle du 05/11 — à mi-chemin, jamais interpolé — et passe par
+ * `positionsTrains`.
+ *
+ * C'EST UNE ESTIMATION, PAS UNE MESURE. Elle ne connaît que la grille et le
+ * retard DÉCLARÉ en supervision : un train arrêté en pleine voie sans retard
+ * saisi continue d'avancer à l'écran, et rattrape la gare suivante à l'heure
+ * prévue. Elle ne doit donc jamais porter une heure, un compte à rebours ni
+ * un état de quai — seulement un dessin.
+ *
+ * Sans heure d'arrivée à la gare suivante (ni arrivée ni départ), la part
+ * vaut 0,5 : le milieu, comme sur la grille, plutôt qu'une vitesse inventée.
+ */
+export function avancementsTrains(
+  grille: Grille,
+  jour: Jour,
+  maintenant_s: number,
+): AvancementTrain[] {
+  const avancements: AvancementTrain[] = [];
 
   for (const train of trainsDuJour(grille, jour)) {
     if (train.statut === 'supprime') continue;
@@ -1503,16 +1536,27 @@ export function positionsTrains(grille: Grille, jour: Jour, maintenant_s: number
     // terminus n'a pas de départ, et pas de gare suivante.
     const enRoute =
       suivant !== undefined && ici.depart_s !== null && ici.depart_s + decalage <= maintenant_s;
-    positions.push({
+
+    let part = 0;
+    if (enRoute && ici.depart_s !== null) {
+      const arrivee = suivant.arrivee_s ?? suivant.depart_s;
+      const duree = arrivee === null ? 0 : arrivee - ici.depart_s;
+      part =
+        duree > 0
+          ? Math.min(1, Math.max(0, (maintenant_s - ici.depart_s - decalage) / duree))
+          : 0.5;
+    }
+    avancements.push({
       numero: train.numero,
       sens: train.sens,
       rame: train.rame,
       gare: ici.gare,
       vers: enRoute ? suivant.gare : null,
+      part,
     });
   }
 
-  return positions;
+  return avancements;
 }
 
 /**

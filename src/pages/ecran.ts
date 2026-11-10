@@ -32,7 +32,7 @@ import {
   libelleTrainCourt,
   lignesDuTableau,
   passagesPourGare,
-  positionsTrains,
+  avancementsTrains,
   prochaineArrivee,
   serviceActif,
   sommetDeLaGrille,
@@ -532,10 +532,12 @@ let dernierProfil = '';
 
 /**
  * Profil de la ligne dans le bandeau de titre : la gare du poste, et les
- * trains en ligne. Mêmes positions que la grille du jour
- * (`positionsTrains`) — à quai SUR la gare, en route À MI-CHEMIN, jamais
- * interpolé. Réécrit seulement quand le dessin change : la boucle tourne à la
- * seconde, un train bouge quelques fois par heure.
+ * machines en ligne avec leur sens de marche. Leur position est ESTIMÉE le
+ * long de la voie (`avancementsTrains` : au prorata du temps entre deux gares,
+ * retard déclaré compris — décision de l'exploitant du 10/11/2026, pour ce
+ * dessin seulement). Réécrit seulement quand le dessin change : la position
+ * est arrondie au demi-point — 28 réécritures en 60 s mesurées avec trois
+ * machines en route, pour une boucle qui tourne à la seconde.
  */
 function rendsProfil(gare: GareId, maintenant_s: number): void {
   if (!grille || !jour) return;
@@ -543,7 +545,7 @@ function rendsProfil(gare: GareId, maintenant_s: number): void {
     gares: grille.gares,
     sommet: sommetDeLaGrille(grille, jour.date),
     ici: gare,
-    positions: positionsTrains(grille, jour, maintenant_s),
+    positions: avancementsTrains(grille, jour, maintenant_s),
     machines: params?.machines ?? [],
   });
   if (html === dernierProfil) return;
