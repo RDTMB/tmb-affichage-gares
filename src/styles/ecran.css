@@ -264,7 +264,9 @@ main {
 
 .r-dep {
   font-weight: 900;
-  font-size: 6vh;
+  /* 5,6 → 5,8 vh. Pas 6 : à 4/3 exactement, « 10:45 » en 6 vh dépasse sa
+     colonne de 2 px (mesuré le 10/11/2026 à 1024×768). */
+  font-size: 5.8vh;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -1417,7 +1419,7 @@ body.mode-horloge .badge-cache {
     border-top: calc(0.2 * var(--u)) solid var(--marine-ligne);
   }
   .r-dep {
-    font-size: calc(6 * var(--u));
+    font-size: calc(5.8 * var(--u));
   }
   .r-dep .retard-old {
     font-size: calc(1.9 * var(--u));

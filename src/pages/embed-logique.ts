@@ -233,6 +233,8 @@ function raisonNonDesservie(grille: Grille, id: GareId): RaisonInactif {
 export interface OngletGare {
   id: GareId;
   nom: string;
+  /** Altitude de la gare : pose l'onglet sur la pente du sélecteur. */
+  altitude_m: number;
   /**
    * Non nul quand l'écran de cette gare afficherait « ligne fermée » à cet
    * instant (`etatTronconFerme`) : hors de la section exploitée, ou Nid d'Aigle
@@ -256,7 +258,13 @@ export function ongletsGares(grille: Grille, jour: Jour, maintenant_s: number): 
     }
     return gareNonDesservie(grille, jour.date, id) ? raisonNonDesservie(grille, id) : null;
   };
-  return ORDRE_GARES.map((id) => ({ id, nom: nomGare(id), inactif: raison(id) }));
+  const altitude = (id: GareId): number => grille.gares.find((g) => g.id === id)?.altitude_m ?? 0;
+  return ORDRE_GARES.map((id) => ({
+    id,
+    nom: nomGare(id),
+    altitude_m: altitude(id),
+    inactif: raison(id),
+  }));
 }
 
 /** L'onglet affiché : celui demandé s'il est actif, sinon le premier actif de la ligne. */
@@ -381,7 +389,19 @@ function lienInfos(url: string | null): string {
   )}</a></p>`;
 }
 
-function messagesHtml(e: EntreeRendu): string {
+/**
+ * Les messages, en entier ou par moitié.
+ *
+ * Dans la vue PAR GARE, la page s'ouvre sur ce qu'on est venu chercher : les
+ * prochains départs (refonte du 10/11/2026). Mesuré sur un téléphone de
+ * 390 px : trois messages ordinaires repoussaient le premier horaire à 500 px
+ * du haut, sous le pli. Un message IMPORTANT reste au-dessus — c'est le sens
+ * de sa priorité ; les autres passent SOUS les horaires. Aucun n'est retiré.
+ */
+function messagesHtml(
+  e: EntreeRendu,
+  lesquels: 'tous' | 'importants' | 'ordinaires' = 'tous',
+): string {
   // MÊMES règles de ciblage et d'expiration que le bandeau des écrans : une
   // gare précise (`?gare=`), ou seulement les messages « toutes gares ». Les
   // passages restants servent aux messages ciblant un TRAIN.
@@ -389,7 +409,11 @@ function messagesHtml(e: EntreeRendu): string {
     e.etat === 'horaires' && e.grille && e.jour && e.gareUrl
       ? passagesPourGare(e.grille, e.jour, e.gareUrl, e.maintenant_s)
       : [];
-  const visibles = messagesVisibles([...e.messages], e.gareUrl, passages, e.maintenantMs);
+  const visibles = messagesVisibles([...e.messages], e.gareUrl, passages, e.maintenantMs).filter(
+    (m) =>
+      lesquels === 'tous' ||
+      (lesquels === 'importants' ? m.priorite === 'importante' : m.priorite !== 'importante'),
+  );
   if (visibles.length === 0) return '';
   const items = visibles
     .map((m) => {
@@ -555,11 +579,42 @@ function ligneDepart(
 </li>`;
 }
 
+/**
+ * Part de la montée déjà faite à cette gare, de 0 (la plus basse) à 1 (la plus
+ * haute) : c'est elle qui pose l'onglet sur la pente du sélecteur. Arrondie à
+ * trois décimales — elle part dans un attribut `style`.
+ */
+export function partDeMontee(onglets: readonly OngletGare[], altitude_m: number): number {
+  const altitudes = onglets.map((o) => o.altitude_m);
+  const bas = Math.min(...altitudes);
+  const etendue = Math.max(...altitudes) - bas;
+  if (!(etendue > 0)) return 0;
+  return Math.round(((altitude_m - bas) / etendue) * 1000) / 1000;
+}
+
+/**
+ * LE SÉLECTEUR DE GARE EST LA LIGNE ELLE-MÊME (refonte du 10/11/2026) : six
+ * gares posées sur la pente, à l'échelle de leurs altitudes, au lieu de six
+ * pastilles en vrac sur deux rangées. On choisit sa gare là où elle est sur la
+ * montagne — et l'altitude, qui n'apparaissait nulle part, se lit sous le nom.
+ *
+ * Les BOUTONS n'ont pas changé : mêmes classes, mêmes attributs, même texte
+ * (le nom reste le seul contenu du bouton, c'est lui qu'un lecteur d'écran
+ * annonce). La pente tient à deux ajouts : `--alt`, la part de montée, d'où la
+ * feuille de style tire la hauteur du point ; et le tracé SVG derrière, aux
+ * MÊMES proportions (18 % de marge en bas et en haut, 64 % de course — voir
+ * `.onglets` dans embed.css, qui porte les mêmes chiffres).
+ */
 function ongletsHtml(
   onglets: readonly OngletGare[],
   retenu: GareId | null,
   raisonDe: GareId | null,
 ): string {
+  const pente = (o: OngletGare): string => {
+    const part = partDeMontee(onglets, o.altitude_m);
+    const altitude = `${o.altitude_m.toLocaleString('fr-FR').replace(/[\u202f\u00a0]/g, '\u00a0')}\u00a0m`;
+    return ` style="--alt:${part}" data-alt="${echapper(altitude)}"`;
+  };
   const boutons = onglets
     .map((o) => {
       if (o.inactif) {
@@ -567,17 +622,27 @@ function ongletsHtml(
         // clic ni toucher, et sur téléphone l'infobulle ne se lit jamais. Pas de
         // `data-gare` : rien ne peut en faire l'onglet choisi (`etatApresClic`).
         const raison = `${o.inactif.texte_fr} / ${o.inactif.texte_en}`;
-        return `<button type="button" role="tab" class="onglet inactif" data-inactif="${o.id}" aria-disabled="true" aria-selected="false" title="${echapper(raison)}">${echapper(o.nom)}</button>`;
+        return `<button type="button" role="tab"${pente(o)} class="onglet inactif" data-inactif="${o.id}" aria-disabled="true" aria-selected="false" title="${echapper(raison)}">${echapper(o.nom)}</button>`;
       }
       const choisi = o.id === retenu;
-      return `<button type="button" role="tab" class="onglet${choisi ? ' choisi' : ''}" data-gare="${o.id}" aria-selected="${choisi}">${echapper(o.nom)}</button>`;
+      return `<button type="button" role="tab"${pente(o)} class="onglet${choisi ? ' choisi' : ''}" data-gare="${o.id}" aria-selected="${choisi}">${echapper(o.nom)}</button>`;
     })
     .join('');
+  // Le tracé : un point par gare, au milieu de sa colonne (viewBox de 100 par
+  // gare), à la hauteur que la feuille donne au bouton — 18 + 64 × part, en %
+  // de la hauteur, comptés depuis le bas.
+  const points = onglets
+    .map(
+      (o, i) =>
+        `${i * 100 + 50},${Math.round((82 - 64 * partDeMontee(onglets, o.altitude_m)) * 10) / 10}`,
+    )
+    .join(' ');
+  const voie = `<svg class="onglets-voie" viewBox="0 0 ${onglets.length * 100} 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="${points}" /></svg>`;
   // La ligne existe TOUJOURS, vide au repos : une zone `aria-live` doit être
   // en place avant que son texte change pour être annoncée.
   const touche = onglets.find((o) => o.id === raisonDe)?.inactif ?? null;
   const ligne = touche ? bilingue(touche.texte_fr, touche.texte_en) : '';
-  return `<nav class="onglets" role="tablist" aria-label="Gares / Stations">${boutons}</nav><p class="raison-inactif" role="status" aria-live="polite">${ligne}</p>`;
+  return `<nav class="onglets" role="tablist" aria-label="Gares / Stations" style="--gares:${onglets.length}">${voie}${boutons}</nav><p class="raison-inactif" role="status" aria-live="polite">${ligne}</p>`;
 }
 
 function bandeauSectionHtml(jour: Jour, nomGare: (id: GareId) => string): string {
@@ -708,7 +773,6 @@ export function rendEmbed(e: EntreeRendu): string {
     const m = messageSansHoraires(e.params?.periodes_exploitation ?? [], e.dateISO);
     return `${entete}${repliHtml(m.fr, m.en, e.urlInfos, m.intersaison ? 'intersaison' : '')}`;
   }
-  const messages = messagesHtml(e);
 
   const grille = e.grille;
   const jour = e.jour;
@@ -716,10 +780,12 @@ export function rendEmbed(e: EntreeRendu): string {
   const onglets = ongletsGares(grille, jour, e.maintenant_s);
   const retenu = ongletRetenu(onglets, e.ongletDemande);
 
-  const corps =
-    e.vue === 'jour'
-      ? grilleJourHtml(e, grille, jour, nomGare)
-      : `${ongletsHtml(onglets, retenu, e.raisonDe)}${retenu ? departsHtml(e, grille, jour, retenu, nomGare) : ''}`;
-
-  return `${entete}${badge}${messages}${bandeauSectionHtml(jour, nomGare)}${corps}`;
+  const section = bandeauSectionHtml(jour, nomGare);
+  if (e.vue === 'jour') {
+    // Grille complète : les messages restent en tête, comme sur l'écran — on
+    // la consulte en entier, il n'y a pas de « premier horaire » à protéger.
+    return `${entete}${badge}${messagesHtml(e)}${section}${grilleJourHtml(e, grille, jour, nomGare)}`;
+  }
+  const departs = retenu ? departsHtml(e, grille, jour, retenu, nomGare) : '';
+  return `${entete}${badge}${messagesHtml(e, 'importants')}${section}${ongletsHtml(onglets, retenu, e.raisonDe)}${departs}${messagesHtml(e, 'ordinaires')}`;
 }
